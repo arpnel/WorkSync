@@ -24,7 +24,7 @@ export default function HeroSection() {
                                             asChild
                                             size="lg"
                                             className="pr-4.5">
-                                            <Link href="/Marketplace">
+                                            <Link href="/Home">
                                                 <span className="text-nowrap">Get Started</span>
                                                 <ChevronRight className="opacity-50" />
                                             </Link>

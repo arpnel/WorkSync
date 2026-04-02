@@ -11,6 +11,7 @@ const fontMono = Geist_Mono({
   variable: "--font-mono",
 })
 
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -23,6 +24,7 @@ export default function RootLayout({
       className={cn("antialiased", fontMono.variable, "font-sans", geist.variable)}
     >
       <body>
+      
         <ThemeProvider
             attribute="class"
             defaultTheme="system"
@@ -30,7 +32,7 @@ export default function RootLayout({
             disableTransitionOnChange
           >
             {children}
-          </ThemeProvider>
+          </ThemeProvider>        
       </body>
     </html>
   )

@@ -13,7 +13,7 @@ export function AppSidebar() {
   const navItems = [
     { label: "Dashboard", icon: Home, href: "/Home" },
     { label: "Marketplace", icon: ShoppingCart, href: "/Home/MarketPlace" },
-    { label: "Projects", icon: Briefcase, href: "/dashboard/projects" },
+    { label: "Projects", icon: Briefcase, href: "/Home/Project" },
     { label: "Clients", icon: Users, href: "/dashboard/clients" },
   ]
 

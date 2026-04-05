@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Home, ShoppingCart, Briefcase, Users } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { usePathname } from "next/navigation"
+import { LogoIcon } from "./logo"
 
 export function AppSidebar() {
   const pathname = usePathname()
@@ -14,15 +15,16 @@ export function AppSidebar() {
     { label: "Dashboard", icon: Home, href: "/Home" },
     { label: "Marketplace", icon: ShoppingCart, href: "/Home/MarketPlace" },
     { label: "Projects", icon: Briefcase, href: "/Home/Project" },
-    { label: "Clients", icon: Users, href: "/dashboard/clients" },
+    { label: "Clients", icon: Users, href: "/Home/Client" },
   ]
 
   return (
     <Sidebar>
       {/* Header */}
-      <SidebarHeader>
-        <span className="text-xl font-bold">WorkSync</span>
-      </SidebarHeader>
+    <SidebarHeader className="flex flex-row items-center justify-center gap-2 py-4">
+        <LogoIcon />
+      <span className="text-xl font-bold">WorkSync</span>
+    </SidebarHeader>
 
 
       {/* Navigation */}

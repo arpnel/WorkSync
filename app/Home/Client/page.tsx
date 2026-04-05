@@ -1,6 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
-import { PhilippinePeso } from "lucide-react"
 
 export default function DashboardPage() {
   return (
@@ -268,7 +267,7 @@ export default function DashboardPage() {
                   </div>
 
                   <div className="mt-3">
-                    <p>Php 5000.00</p>  
+                    <p >Php 5000.00</p>
                   </div>
                 </div>
               </div>

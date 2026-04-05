@@ -14,10 +14,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     >
       <SidebarProvider>
         <div className="flex w-full min-h-screen">
-          <AppSidebar />
+          <AppSidebar/>
 
           <main className="flex-1 w-full p-6">
-            <SidebarTrigger />
+            <SidebarTrigger className="bg-yellow-500"/>
             {children}
           </main>
 

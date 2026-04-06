@@ -77,7 +77,7 @@ export default function DashboardPage() {
         <div className="lg:col-span-3 xl:col-span-1">
           <Card >
             <CardHeader>
-              <CardTitle className="text-xl">Projects</CardTitle>
+              <CardTitle className="text-xl">Lorem Ipsum</CardTitle>
             </CardHeader>
             <CardContent className="text-lg">25</CardContent>
           </Card>
@@ -86,7 +86,7 @@ export default function DashboardPage() {
         <div className="lg:col-span-3 xl:col-span-1">
           <Card >
             <CardHeader>
-              <CardTitle className="text-xl">Incoming Deadline</CardTitle>
+              <CardTitle className="text-xl">Lorem Ipsum</CardTitle>
             </CardHeader>
             <CardContent className="text-lg">10</CardContent>
           </Card>
@@ -95,7 +95,7 @@ export default function DashboardPage() {
         <div className="lg:col-span-3 xl:col-span-1">
           <Card >
             <CardHeader>
-              <CardTitle className="text-xl">Number of Client</CardTitle>
+              <CardTitle className="text-xl">Lorem Ipsum</CardTitle>
             </CardHeader>
             <CardContent className="text-lg">10</CardContent>
           </Card>

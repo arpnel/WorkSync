@@ -20,15 +20,16 @@ export default function DashboardPage() {
 
               <div className="flex justify-end">
                 <Field className="flex items-center">
-                  <ButtonGroup className="space-x-2 pr-2">
+                  <ButtonGroup>
                     <Input
                       id="input-button-group"
                       placeholder="Type to search..."
                       className="min-w-[200px]" // optional: ensures input has some width
                     />
                     <Button variant="outline">Search</Button>
-                    <Button variant="outline">Create</Button>
                   </ButtonGroup>
+                    
+                    <Button variant="outline">Create</Button>
                 </Field>
               </div>
             </div>

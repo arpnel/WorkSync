@@ -4,7 +4,7 @@ export default function StatsSection() {
             <div className="bg-muted/50 py-24">
                 <div className="mx-auto max-w-5xl px-6">
                     <div>
-                        <h2 className="text-4xl font-semibold lg:text-5xl">Tailark in numbers</h2>
+                        <h2 className="text-4xl font-semibold lg:text-5xl">Why Choose WorkSync?</h2>
                         <p className="text-muted-foreground mt-4 text-balance text-lg">Our platform continues to grow with developers and businesses using our tools to create innovative solutions and enhance productivity.</p>
                     </div>
                     <div className="mt-8 grid grid-cols-2 gap-4 md:mt-16 md:grid-cols-4">

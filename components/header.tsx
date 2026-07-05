@@ -6,6 +6,13 @@ import { Button } from '@/components/ui/button'
 import React from 'react'
 import { cn } from '../lib/utils'
 import { ModeToggle } from './ThemeToggleButton'
+import {
+  Dialog,
+  DialogTrigger,
+  DialogContent,
+} from "@/components/ui/dialog"
+import { SignupDialog } from "@/app/LogSign/signup/SignupDialog"
+import { SigninDialog } from "@/app/LogSign/login/SigninDialog"
 
 const menuItems = [
     { name: 'Features', href: '#link' },
@@ -83,23 +90,35 @@ export const HeroHeader = () => {
                                 </ul>
                             </div>
                             <div className="flex w-full flex-col space-y-3 sm:flex-row sm:gap-3 sm:space-y-0 md:w-fit">
-                                <Button
-                                    asChild
-                                    variant="ghost"
-                                    size="sm"
-                                    className={cn(isScrolled && 'lg:hidden')}>
-                                    <Link href="/login">
-                                        <span>Login</span>
-                                    </Link>
-                                </Button>
-                                <Button
-                                    asChild
-                                    size="sm"
-                                    className={cn(isScrolled && 'lg:hidden')}>
-                                    <Link href="/signup">
-                                        <span>Sign Up</span>
-                                    </Link>
-                                </Button>
+                                <Dialog>
+                                    <DialogTrigger asChild>
+                                        <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className={cn(isScrolled && "lg:hidden")}
+                                        >
+                                        Login
+                                        </Button>
+                                    </DialogTrigger>
+
+                                    <DialogContent className="sm:max-w-sm">
+                                        <SigninDialog />
+                                    </DialogContent>
+                                    </Dialog>
+                                <Dialog>
+                                    <DialogTrigger asChild>
+                                        <Button
+                                        size="sm"
+                                        className={cn(isScrolled && "lg:hidden")}
+                                        >
+                                        Sign Up
+                                        </Button>
+                                    </DialogTrigger>
+
+                                    <DialogContent className="sm:max-w-sm">
+                                        <SignupDialog />
+                                    </DialogContent>
+                                </Dialog>
                                 <Button
                                     asChild
                                     size="sm"

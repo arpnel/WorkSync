@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarHeader } from "@/components/ui/sidebar"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Home, ShoppingCart, Briefcase, Users } from "lucide-react"
+import { Home, ShoppingCart, Briefcase, Users, MessageCircle, Clipboard, Settings, Calendar, AlertCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { usePathname } from "next/navigation"
 import { LogoIcon } from "./logo"
@@ -14,8 +14,13 @@ export function AppSidebar() {
   const navItems = [
     { label: "Dashboard", icon: Home, href: "/Home" },
     { label: "Marketplace", icon: ShoppingCart, href: "/Home/MarketPlace" },
+    { label: "MyListings", icon: Clipboard, href: "/Home/MyListings" },
+    { label: "Messages", icon: MessageCircle, href: "/Home/Messages" },
     { label: "Projects", icon: Briefcase, href: "/Home/Project" },
-    { label: "Clients", icon: Users, href: "/Home/Client" },
+    { label: "Schedule", icon: Calendar, href: "/Home/Schedule" },
+    { label: "Clients", icon: Users, href: "/Home/Client" },    
+    { label: "Reports", icon: AlertCircle, href: "/Home/Reports" },
+    { label: "Settings", icon: Settings, href: "/Home/Settings" },
   ]
 
   return (

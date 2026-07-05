@@ -3,115 +3,105 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { BarChart } from "recharts/types/chart/BarChart";
 import { Bar } from "recharts/types/cartesian/Bar";
 import App from "next/app";
+import { Calendar } from "@/components/ui/calendar"
+import { Separator } from "@/components/ui/separator"
 import AppBarChart from "@/components/ui/AppBarChart";
 import { TableFooterExample } from "@/components/tablesam";
 export default function DashboardPage() {
-  
   return (
-    <div className="w-full  px-6">
-      <div className="grid grid-cols-1 lg:grid-cols-3 2xl:grid-cols-4 gap-4 mt-6 mb-6">
-        <div className="lg:col-span-3 xl:col-span-1">
-          <Card >
-            <CardHeader>
-              <CardTitle className="text-xl">Projects</CardTitle>
-            </CardHeader>
-            <CardContent className="text-lg">25</CardContent>
-          </Card>
+    <div className="grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-6 w-full">
+
+      {/* LEFT MAIN CONTENT */}
+      <div className="space-y-6">
+
+        {/* STATS */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          <Card><CardContent>Projects: 25</CardContent></Card>
+          <Card><CardContent>Deadlines: 10</CardContent></Card>
+          <Card><CardContent>Clients: 10</CardContent></Card>
+          <Card><CardContent>Finished: 24,203</CardContent></Card>
         </div>
 
-        <div className="lg:col-span-3 xl:col-span-1">
-          <Card >
-            <CardHeader>
-              <CardTitle className="text-xl">Incoming Deadline</CardTitle>
-            </CardHeader>
-            <CardContent className="text-lg">10</CardContent>
-          </Card>
-        </div>
-        
-        <div className="lg:col-span-3 xl:col-span-1">
-          <Card >
-            <CardHeader>
-              <CardTitle className="text-xl">Number of Client</CardTitle>
-            </CardHeader>
-            <CardContent className="text-lg">10</CardContent>
-          </Card>
-        </div>
-        
-        <div className="lg:col-span-3 xl:col-span-1">
-          <Card >
-            <CardHeader>
-              <CardTitle className="text-xl">Finished Projects</CardTitle>
-            </CardHeader>
-            <CardContent className="text-lg">24,203</CardContent>
-          </Card>
-        </div>
+        {/* CHART (FULL ROW / PROMINENT) */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Earnings Overview</CardTitle>
+          </CardHeader>
+
+          <CardContent>
+            <AppBarChart />
+          </CardContent>
+        </Card>
+
+        {/* TABLE (BELOW CHART FULL WIDTH) */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Top Paid Projects</CardTitle>
+          </CardHeader>
+
+          <CardContent>
+            <TableFooterExample />
+          </CardContent>
+        </Card>
 
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 2xl:grid-cols-2 gap-4 mt-6 mb-6">
-          <div className="lg:col-span-3 xl:col-span-1">
-            <Card className="w-full">
-              <CardHeader>
-                <CardTitle className="text-xl">Earnings</CardTitle>
-              </CardHeader>
-              <CardContent >
-                <AppBarChart />
-              </CardContent>
-            </Card>
+      {/* RIGHT SIDEBAR (LONG + FIXED + NO WRAP) */}
+       <div className="sticky top-6 h-[calc(100vh-3rem)] w-[340px] shrink-0 space-y-4">
+
+      {/* 📅 CALENDAR CARD */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Calendar</CardTitle>
+        </CardHeader>
+
+        <CardContent className="flex justify-center p-3">
+          <div className="w-full max-w-[280px]">
+            <Calendar
+              mode="single"
+              selected={new Date()}
+              className="w-full"
+            />
           </div>
+        </CardContent>
+      </Card>
 
-          <div className="lg:col-span-3 xl:col-span-1">
-            <Card className="w-full">
-              <CardHeader>
-                <CardTitle className="text-xl">Top Paid Projects</CardTitle>
-              </CardHeader>
-              <CardContent >
-                <TableFooterExample/>
-              </CardContent>
-            </Card>
-          </div>
+      {/* ⚡ QUICK ACTIONS CARD */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Quick Actions</CardTitle>
+        </CardHeader>
 
-      </div>
-      
-      <div className="grid grid-cols-1 lg:grid-cols-3 2xl:grid-cols-4 gap-4 mt-6 mb-6">
-        <div className="lg:col-span-3 xl:col-span-1">
-          <Card >
-            <CardHeader>
-              <CardTitle className="text-xl">Lorem Ipsum</CardTitle>
-            </CardHeader>
-            <CardContent className="text-lg">25</CardContent>
-          </Card>
-        </div>
+        <CardContent className="space-y-2">
+          <button className="w-full text-left px-3 py-2 rounded-md hover:bg-muted transition">
+            ➕ New Project
+          </button>
 
-        <div className="lg:col-span-3 xl:col-span-1">
-          <Card >
-            <CardHeader>
-              <CardTitle className="text-xl">Lorem Ipsum</CardTitle>
-            </CardHeader>
-            <CardContent className="text-lg">10</CardContent>
-          </Card>
-        </div>
-        
-        <div className="lg:col-span-3 xl:col-span-1">
-          <Card >
-            <CardHeader>
-              <CardTitle className="text-xl">Lorem Ipsum</CardTitle>
-            </CardHeader>
-            <CardContent className="text-lg">10</CardContent>
-          </Card>
-        </div>
-        
-        <div className="lg:col-span-3 xl:col-span-1">
-          <Card >
-            <CardHeader>
-              <CardTitle className="text-xl">Finished Projects</CardTitle>
-            </CardHeader>
-            <CardContent className="text-lg">24,203</CardContent>
-          </Card>
-        </div>
+          <button className="w-full text-left px-3 py-2 rounded-md hover:bg-muted transition">
+            👥 Find Freelancers
+          </button>
 
-      </div>
+          <button className="w-full text-left px-3 py-2 rounded-md hover:bg-muted transition">
+            💬 Messages
+          </button>
+        </CardContent>
+      </Card>
 
+      {/* 📝 ACTIVITY CARD */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Recent Activity</CardTitle>
+        </CardHeader>
+
+        <CardContent className="space-y-2 text-sm">
+          <p>🟢 Project “Logo Design” completed</p>
+          <p>🟡 Client left feedback</p>
+          <p>💰 Payment received</p>
+          <p>👤 New freelancer joined</p>
+        </CardContent>
+      </Card>
+
+    </div>
     </div>
   )
 }

@@ -16,8 +16,8 @@ export default function HeroSection() {
                         <div className="relative z-10 mx-auto w-full max-w-5xl px-6">
                             <div className="md:w-1/2">
                                 <div>
-                                    <h1 className="max-w-md text-balance text-5xl font-medium md:text-6xl">Simple payments for startups</h1>
-                                    <p className="text-muted-foreground my-8 max-w-2xl text-balance text-xl">One tool that does it all. Search, generate, analyze, and chat—right inside Tailark.</p>
+                                    <h1 className="max-w-md text-balance text-5xl font-medium md:text-6xl">Find Skilled Freelancers. Get Work Done Faster.</h1>
+                                    <p className="text-muted-foreground my-8 max-w-2xl text-balance text-xl">Connect with trusted professionals, manage projects, track milestones, and collaborate seamlessly—all in one platform.</p>
 
                                     <div className="flex items-center gap-3">
                                         <Button
@@ -31,23 +31,15 @@ export default function HeroSection() {
                                         </Button>
                                         <Button
                                             key={2}
-                                            asChild
                                             size="lg"
                                             variant="outline"
                                             className="pl-5">
-                                            <Link href="#link">
-                                                <CirclePlay className="fill-primary/25 stroke-primary" />
-                                                <span className="text-nowrap">Watch video</span>
-                                            </Link>
+                                            <span className="text-nowrap">Explore Freelancers</span>
                                         </Button>
                                     </div>
                                 </div>
 
-                                <div className="mt-10">
-                                    <p className="text-muted-foreground">Trusted by teams at :</p>
-                                    <div className="**:fill-foreground mt-6 flex items-center gap-8">
-                                    </div>
-                                </div>
+                                
                             </div>
                         </div>
 

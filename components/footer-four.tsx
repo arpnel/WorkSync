@@ -39,7 +39,7 @@ export default function FooterSection() {
                             aria-label="go home">
                             <LogoIcon />
                         </Link>
-                        <span className="text-muted-foreground block text-center text-sm">© {2026} Tailark Mist, All rights reserved</span>
+                        <span className="text-muted-foreground block text-center text-sm">© {2026} WorkSync, All rights reserved</span>
                     </div>
 
                     <div className="order-first flex flex-wrap gap-x-6 gap-y-4 md:order-last">

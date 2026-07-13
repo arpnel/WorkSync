@@ -19,9 +19,9 @@ export const LogoIcon = ({ className }: { className?: string }) => {
         <Image
             src="/WorkSyncLogo.png"
             alt="Logo"
-            width={40}
+            width={120}
             height={40}
-            className={cn('size-6', className)}
+            className={cn("object-contain", className)}
             priority
         />
     )

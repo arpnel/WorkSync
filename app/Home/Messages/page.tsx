@@ -1,81 +1,148 @@
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { MessageCircleMore, Paperclip, SendHorizonal } from "lucide-react";
+"use client";
 
-const conversations = [
-  { name: "Mina Chen", role: "Product Designer", preview: "Can you share the revised mockups?", active: true },
-  { name: "Drew Alvarez", role: "Marketing Lead", preview: "The campaign brief is ready for review.", active: false },
-  { name: "Riley Patel", role: "Developer", preview: "I pushed the latest fixes to staging.", active: false },
+import { useState } from "react";
+
+import ChatLayout from "./components/ChatLayout";
+import ChatHeader from "./components/ChatHeader";
+import ConversationSidebar from "./components/ConversationSidebar";
+import EmptyChat from "./components/EmptyChat";
+import MessageInput from "./components/MessageInput";
+import MessageScroller from "./components/MessageScroller";
+
+import type { Conversation } from "./components/ConversationList";
+import type { MessageItemProps } from "./components/MessageItem";
+
+const conversations: Conversation[] = [
+  {
+    id: "1",
+    name: "Mina Chen",
+    role: "Product Designer",
+    avatar: "",
+    lastMessage: "Can you share the revised mockups?",
+    lastMessageTime: "10:24 AM",
+    unreadCount: 2,
+    online: true,
+  },
+  {
+    id: "2",
+    name: "Drew Alvarez",
+    role: "Marketing Lead",
+    avatar: "",
+    lastMessage: "The campaign brief is ready.",
+    lastMessageTime: "Yesterday",
+    unreadCount: 0,
+    online: false,
+  },
+  {
+    id: "3",
+    name: "Riley Patel",
+    role: "Developer",
+    avatar: "",
+    lastMessage: "I pushed the latest fixes.",
+    lastMessageTime: "Monday",
+    unreadCount: 1,
+    online: true,
+  },
 ];
 
-const messages = [
-  { sender: "them", text: "Hi! I reviewed the latest draft and have a few notes." },
-  { sender: "me", text: "Perfect, I can update them before tomorrow morning." },
-  { sender: "them", text: "Great, I will also send the final brief shortly." },
-];
+const conversationMessages: Record<string, MessageItemProps[]> = {
+  "1": [
+    {
+      id: "1",
+      sender: "them",
+      senderName: "Mina Chen",
+      content: "Hi! I reviewed the latest draft.",
+      timestamp: "10:20 AM",
+      seen: true,
+    },
+  ],
 
-export default function Page() {
+  "2": [
+    {
+      id: "2",
+      sender: "them",
+      senderName: "Drew Alvarez",
+      content: "The campaign brief is ready.",
+      timestamp: "Yesterday",
+      seen: true,
+    },
+  ],
+
+  "3": [
+    {
+      id: "3",
+      sender: "them",
+      senderName: "Riley Patel",
+      content: "I pushed the latest fixes.",
+      timestamp: "Monday",
+      seen: false,
+    },
+  ],
+};
+
+
+
+
+export default function MessagesPage() {
+  const [selectedConversationId, setSelectedConversationId] = useState<
+    string | undefined
+  >();
+
+const messages = selectedConversationId
+  ? conversationMessages[selectedConversationId] ?? []
+  : [];
+  const selectedConversation = conversations.find(
+    (conversation) => conversation.id === selectedConversationId,
+  );
+
+  const handleSendMessage = (text: string) => {
+    const newMessage: MessageItemProps = {
+      id: crypto.randomUUID(),
+      sender: "me",
+      senderName: "You",
+      content: text,
+      timestamp: "Just now",
+      seen: false,
+    };
+
+<MessageScroller messages={messages} />
+  };
+
   return (
-    <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-      <Card className="h-[72vh]">
-        <CardHeader>
-          <CardTitle>Messages</CardTitle>
-          <CardDescription>Recent conversations with your clients and collaborators.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {conversations.map((conversation) => (
-            <button
-              key={conversation.name}
-              type="button"
-              className={`w-full rounded-xl border p-3 text-left transition ${conversation.active ? "border-primary bg-primary/5" : "hover:bg-muted/50"}`}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <p className="font-medium">{conversation.name}</p>
-                <MessageCircleMore className="h-4 w-4 text-muted-foreground" />
-              </div>
-              <p className="mt-1 text-sm text-muted-foreground">{conversation.role}</p>
-              <p className="mt-2 text-sm">{conversation.preview}</p>
-            </button>
-          ))}
-        </CardContent>
-      </Card>
+    <ChatLayout
+      sidebar={
+        <ConversationSidebar
+          conversations={conversations}
+          selectedConversationId={selectedConversationId}
+          onSelectConversation={setSelectedConversationId}
+        />
+      }
+    >
+      {selectedConversation ? (
+        <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+          <ChatHeader
+            name={selectedConversation.name}
+            role={selectedConversation.role}
+            project="Website Redesign"
+            avatar={selectedConversation.avatar}
+            online={selectedConversation.online}
+            onViewProject={() => {
+              console.log("Open project");
+            }}
+          />
 
-      <Card className="flex h-[72vh] flex-col">
-        <CardHeader>
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <CardTitle>Mina Chen</CardTitle>
-              <CardDescription>Product Designer · Project update</CardDescription>
-            </div>
-            <Button variant="outline" size="sm">
-              View project
-            </Button>
-          </div>
-        </CardHeader>
+          <MessageScroller messages={messages} />
 
-        <CardContent className="flex-1 space-y-4">
-          {messages.map((message, index) => (
-            <div key={`${message.sender}-${index}`} className={`flex ${message.sender === "me" ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[75%] rounded-2xl px-4 py-3 ${message.sender === "me" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
-                <p className="text-sm">{message.text}</p>
-              </div>
-            </div>
-          ))}
-        </CardContent>
-
-        <div className="border-t p-4">
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="icon">
-              <Paperclip className="h-4 w-4" />
-            </Button>
-            <Input placeholder="Write a message..." />
-            <Button size="icon">
-              <SendHorizonal className="h-4 w-4" />
-            </Button>
-          </div>
+          <MessageInput
+            onSend={handleSendMessage}
+            onAttach={() => {
+              console.log("Attachment");
+            }}
+          />
         </div>
-      </Card>
-    </div>
+      ) : (
+        <EmptyChat />
+      )}
+    </ChatLayout>
   );
 }

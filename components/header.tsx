@@ -7,9 +7,9 @@ import React from 'react'
 import { cn } from '../lib/utils'
 import { ModeToggle } from './ThemeToggleButton'
 import {
-  Dialog,
-  DialogTrigger,
-  DialogContent,
+    Dialog,
+    DialogTrigger,
+    DialogContent,
 } from "@/components/ui/dialog"
 import { SignupDialog } from "@/app/LogSign/signup/SignupDialog"
 import { SigninDialog } from "@/app/LogSign/login/SigninDialog"
@@ -43,7 +43,7 @@ export const HeroHeader = () => {
                                 href="/"
                                 aria-label="home"
                                 className="flex items-center space-x-2">
-                                <LogoIcon />
+                                <LogoIcon className="h-7 w-auto" />
                                 <span className="text-xl font-bold">WorkSync</span>
                             </Link>
 
@@ -93,25 +93,25 @@ export const HeroHeader = () => {
                                 <Dialog>
                                     <DialogTrigger asChild>
                                         <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className={cn(isScrolled && "lg:hidden")}
+                                            variant="ghost"
+                                            size="sm"
+                                            className={cn(isScrolled && "lg:hidden")}
                                         >
-                                        Login
+                                            Login
                                         </Button>
                                     </DialogTrigger>
 
                                     <DialogContent className="sm:max-w-sm">
                                         <SigninDialog />
                                     </DialogContent>
-                                    </Dialog>
+                                </Dialog>
                                 <Dialog>
                                     <DialogTrigger asChild>
                                         <Button
-                                        size="sm"
-                                        className={cn(isScrolled && "lg:hidden")}
+                                            size="sm"
+                                            className={cn(isScrolled && "lg:hidden")}
                                         >
-                                        Sign Up
+                                            Sign Up
                                         </Button>
                                     </DialogTrigger>
 

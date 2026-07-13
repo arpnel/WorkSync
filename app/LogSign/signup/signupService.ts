@@ -14,23 +14,25 @@ export async function createAccount({
   let authData;
   let authError;
 
-try {
-  const result = await supabase.auth.signUp({
-    email: cleanEmail,
-    password,
-  });
+  try {
+    const result = await supabase.auth.signUp({
+      email: cleanEmail,
+      password,
+      options: {
+        data: {
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          role: DEFAULT_ROLE,
+        },
+      },
+    });
 
-  console.log("SIGNUP RESULT:", result);
-
-  authData = result.data;
-  authError = result.error;
-} catch (e) {
-  console.error("SIGNUP THREW:", e);
-  console.dir(e);
-  throw e;
-}
-console.log("authData:", authData);
-console.log("authError:", authError);
+    authData = result.data;
+    authError = result.error;
+  } catch (e) {
+    console.error("SIGNUP THREW:", e);
+    throw e;
+  }
 
   if (authError) {
     const message = authError.message.toLowerCase();
@@ -43,40 +45,12 @@ console.log("authError:", authError);
       throw new Error("ACCOUNT_EXISTS");
     }
 
-    if (authError) {
-      console.error("Auth error:", authError);
-      throw authError;
-    }
+    throw authError;
   }
 
-  const user = authData.user;
-
-  if (!user) {
+  if (!authData.user) {
     throw new Error("Failed to create account.");
   }
 
-  const { error: profileError } = await supabase
-    .from("Users")
-    .insert({
-      user_id: user.id,
-      first_name: firstName.trim(),
-      last_name: lastName.trim(),
-      email: cleanEmail,
-      role: DEFAULT_ROLE,
-    });
-
-  if (profileError) {
-    const message = profileError.message.toLowerCase();
-
-    if (
-      message.includes("duplicate") ||
-      message.includes("unique")
-    ) {
-      throw new Error("ACCOUNT_EXISTS");
-    }
-
-    throw new Error(profileError.message);
-  }
-
-  return user;
+  return authData.user;
 }

@@ -1,23 +1,14 @@
-import {
-  EMAIL_REGEX,
-  NAME_REGEX,
-  MIN_PASSWORD_LENGTH,
-  ERROR_MESSAGES,
-} from "./constants";
-
+import {EMAIL_REGEX,  NAME_REGEX, MIN_PASSWORD_LENGTH, ERROR_MESSAGES} from "./constants";
 import { SignupFormData } from "./types";
+
 
 export interface ValidationResult {
   valid: boolean;
   message?: string;
 }
 
-/**
- * Email Validation
- */
-export function validateEmail(
-  email: string
-): ValidationResult {
+// Email Validation
+export function validateEmail( email: string ): ValidationResult {
   const cleanEmail = email.trim();
 
   if (!cleanEmail) {
@@ -37,9 +28,8 @@ export function validateEmail(
   return { valid: true };
 }
 
-/**
- * Name Validation
- */
+//Name Validation
+
 export function validateName(
   name: string,
   field: "First Name" | "Last Name"
@@ -63,9 +53,7 @@ export function validateName(
   return { valid: true };
 }
 
-/**
- * Password Validation
- */
+// Password Validation
 export function validatePassword(
   password: string
 ): ValidationResult {
@@ -86,9 +74,7 @@ export function validatePassword(
   return { valid: true };
 }
 
-/**
- * Confirm Password Validation
- */
+//Confirm Password Validation
 export function validateConfirmPassword(
   password: string,
   confirmPassword: string
@@ -110,9 +96,7 @@ export function validateConfirmPassword(
   return { valid: true };
 }
 
-/**
- * Complete Signup Validation
- */
+// Complete Signup Validation
 export function validateSignupForm(
   form: SignupFormData
 ): ValidationResult {

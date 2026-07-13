@@ -9,6 +9,7 @@ import {
 
 import { usePopup } from "../shared/usePopup";
 
+import { supabase } from "@/lib/supabaseClient";
 import { SigninForm } from "./SigninForm";
 import { useRouter } from "next/navigation";
 import { login } from "./signinService";
@@ -56,10 +57,16 @@ export function SigninDialog() {
     // Open Forgot Password Dialog
   };
 
-  const handleGoogleSignin = () => {
-    // TODO:
-    // Google OAuth
-  };
+  const handleGoogleSignin = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+    });
+
+    if (error) {
+        console.error(error.message);
+        showPopup(error.message, "error");
+    }
+};
 
   const handleSwitchToSignup = () => {
     // TODO:

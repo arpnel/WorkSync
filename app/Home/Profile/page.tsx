@@ -3,17 +3,16 @@
 import { useState } from "react";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent } from "@/components/ui/card";
 
-import { useProfile } from "./Hooks/useProfile";
+import { useProfile } from "../../../hooks/profile/useProfile";
 
-import ProfileHeader from "./components/ProfileHeader";
-import OverviewSection from "./components/OverviewSection";
-import AboutSection from "./components/AboutSection";
-import ServicesSection from "./components/ServicesSection";
-import PortfolioSection from "./components/PortfolioSection";
-import ReviewsSection from "./components/ReviewsSection";
-import EditProfileDialog from "./components/EditProfileDialog";
+import ProfileHeader from "../../../components/profile/ProfileHeader";
+import OverviewSection from "../../../components/profile/OverviewSection";
+import AboutSection from "../../../components/profile/AboutSection";
+import ServicesSection from "../../../components/profile/ServicesSection";
+import PortfolioSection from "../../../components/profile/PortfolioSection";
+import ReviewsSection from "../../../components/profile/ReviewsSection";
+import EditProfileDialog from "../../../components/profile/EditProfileDialog";
 
 export default function ProfilePage() {
   const {
@@ -28,21 +27,15 @@ export default function ProfilePage() {
   const [editOpen, setEditOpen] = useState(false);
 
   const handleAvatarUpdate = async (file: File) => {
-    const success = await updateAvatarImage(file);
-
-    return success;
+    return await updateAvatarImage(file);
   };
 
   const handleBannerUpdate = async (file: File) => {
-    const success = await updateBannerImage(file);
-
-    return success;
+    return await updateBannerImage(file);
   };
 
   const handleProfileUpdate = async (updates: any) => {
-    const success = await updateProfile(updates);
-
-    return success;
+    return await updateProfile(updates);
   };
 
   if (loading) {
@@ -73,17 +66,20 @@ export default function ProfilePage() {
     );
   }
 
-  return (
-    <main className="min-h-screen bg-muted/30">
-      <div className="mx-auto max-w-6xl space-y-6 px-4 py-6">
-        <ProfileHeader
-          profile={profile}
-          isOwner
-          onEdit={() => setEditOpen(true)}
-        />
+  const isFreelancer = profile.role === "freelancer";
 
-        <AboutSection profile={profile} />
+return (
+  <main className="min-h-screen bg-muted/30">
+    <div className="mx-auto max-w-6xl space-y-6 px-4 py-6">
+      <ProfileHeader
+        profile={profile}
+        isOwner
+        onEdit={() => setEditOpen(true)}
+      />
 
+      <AboutSection profile={profile} />
+
+      {isFreelancer ? (
         <Tabs defaultValue="overview" className="w-full">
           <TabsList className="mb-6 h-auto w-full justify-start rounded-none border-b bg-transparent p-0">
             <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -108,16 +104,19 @@ export default function ProfilePage() {
             <ReviewsSection userId={profile.user_id} />
           </TabsContent>
         </Tabs>
+      ) : (
+        <ReviewsSection userId={profile.user_id} />
+      )}
 
-        <EditProfileDialog
-          open={editOpen}
-          onOpenChange={setEditOpen}
-          profile={profile}
-          onSave={handleProfileUpdate}
-          onAvatarUpdate={handleAvatarUpdate}
-          onBannerUpdate={handleBannerUpdate}
-        />
-      </div>
-    </main>
-  );
+      <EditProfileDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        profile={profile}
+        onSave={handleProfileUpdate}
+        onAvatarUpdate={handleAvatarUpdate}
+        onBannerUpdate={handleBannerUpdate}
+      />
+    </div>
+  </main>
+);
 }

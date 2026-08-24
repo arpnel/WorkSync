@@ -1,9 +1,9 @@
 "use client";
 
 import { SidebarProvider } from "@/components/ui/sidebar";
-import { AppSidebar } from "@/components/app-sidebar";
+import { AppSidebar } from "@/components/layout/app-sidebar";
+import { DashboardHeader } from "@/components/layout/dashboard-header";
 import { ThemeProvider } from "@/components/theme-provider";
-import { SidebarTrigger } from "@/components/ui/sidebar";
 
 export default function DashboardLayout({
   children,
@@ -18,19 +18,21 @@ export default function DashboardLayout({
       disableTransitionOnChange
     >
       <SidebarProvider>
-        <div className="flex min-h-screen w-full">
+        <div className="flex h-screen w-full overflow-hidden">
           {/* SIDEBAR */}
           <AppSidebar />
 
           {/* MAIN AREA */}
-          <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
             {/* TOP BAR */}
-            <header className="flex h-14 items-center border-b px-4">
-              <SidebarTrigger className="cursor-pointer" />
-            </header>
+            <div className="sticky top-0 z-50 shrink-0">
+              <DashboardHeader />
+            </div>
 
             {/* PAGE CONTENT */}
-            <main className="min-w-0 flex-1 p-6">{children}</main>
+            <main className="min-w-0 flex-1 overflow-y-auto p-6">
+              {children}
+            </main>
           </div>
         </div>
       </SidebarProvider>

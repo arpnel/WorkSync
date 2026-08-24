@@ -2,15 +2,15 @@
 
 import { useState } from "react";
 
-import ChatLayout from "./components/ChatLayout";
-import ChatHeader from "./components/ChatHeader";
-import ConversationSidebar from "./components/ConversationSidebar";
-import EmptyChat from "./components/EmptyChat";
-import MessageInput from "./components/MessageInput";
-import MessageScroller from "./components/MessageScroller";
+import ChatLayout from "../../../components/message/ChatLayout";
+import ChatHeader from "../../../components/message/ChatHeader";
+import ConversationSidebar from "../../../components/message/ConversationSidebar";
+import EmptyChat from "../../../components/message/EmptyChat";
+import MessageInput from "../../../components/message/MessageInput";
+import MessageScroller from "../../../components/message/MessageScroller";
 
-import type { Conversation } from "./components/ConversationList";
-import type { MessageItemProps } from "./components/MessageItem";
+import type { Conversation } from "../../../components/message/ConversationList";
+import type { MessageItemProps } from "../../../components/message/MessageItem";
 
 const conversations: Conversation[] = [
   {

@@ -13,6 +13,6 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.redirect(
-        `${origin}/Home/MarketPlace`
+        `${origin}/home/marketplace`
     );
 }

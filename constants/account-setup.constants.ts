@@ -18,6 +18,22 @@ export const EMPLOYMENT_PREFERENCES = [
 ] as const;
 
 export const MAX_FILE_SIZE_MB = 10;
+
 export const MAX_IMAGE_SIZE_MB = 5;
+
+export const MAX_PDF_SIZE_MB = 5;
+
 export const MAX_BIO_LENGTH = 500;
 
+export const ACCEPTED_IMAGE_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+] as const;
+
+export const ACCEPTED_PDF_TYPES = [
+  "application/pdf",
+] as const;
+
+export const getMaxBytes = (sizeInMB: number) =>
+  sizeInMB * 1024 * 1024;

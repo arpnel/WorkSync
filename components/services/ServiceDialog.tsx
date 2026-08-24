@@ -455,7 +455,7 @@ if (!res.ok) {
 
                     <AvatarFallback>
                       {(
-                        profile?.username?.[0] ??
+                        profile?.display_name?.[0] ??
                         profile?.first_name?.[0] ??
                         "U"
                       ).toUpperCase()}
@@ -464,7 +464,7 @@ if (!res.ok) {
 
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold">
-                      {profile?.username ??
+                      {profile?.display_name ??
                         `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`}
                     </p>
 

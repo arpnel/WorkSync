@@ -2,7 +2,7 @@
 
 import * as React from "react";
 
-import { PopupState } from "../../../../components/auth/AuthPopup";
+import { PopupState } from "@/components/auth/AuthPopup";
 
 interface UsePopupReturn {
   popup: PopupState;

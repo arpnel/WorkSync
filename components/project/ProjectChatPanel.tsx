@@ -83,12 +83,15 @@ export function ProjectChatPanel({
 }: Props) {
   const [draft, setDraft] = useState("");
   const [attachment, setAttachment] = useState<File | null>(null);
-  const latestMessageRef = useRef<HTMLDivElement>(null);
+  const messagesViewportRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    latestMessageRef.current?.scrollIntoView({ behavior: "smooth" });
+    const viewport = messagesViewportRef.current;
+    if (viewport) {
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" });
+    }
   }, [messages, isOtherParticipantTyping]);
 
   useEffect(
@@ -128,7 +131,10 @@ export function ProjectChatPanel({
         </CardTitle>
       </CardHeader>
       <CardContent className="flex min-h-0 flex-1 flex-col p-0">
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4">
+        <div
+          ref={messagesViewportRef}
+          className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4"
+        >
           {messages.length ? (
             messages.map((item) => (
               <div
@@ -203,7 +209,6 @@ export function ProjectChatPanel({
               </div>
             </div>
           )}
-          <div ref={latestMessageRef} />
         </div>
 
         <div className="shrink-0 border-t p-3">

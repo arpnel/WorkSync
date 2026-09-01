@@ -15,10 +15,13 @@ export function StandardProjectWorkspace({ orderId }: { orderId: string }) {
     workspace,
     loading,
     sending,
+    updatingAgreement,
     isOtherParticipantTyping,
     error,
     sendMessage,
     sendTyping,
+    respondToAgreement,
+    saveAgreementTerms,
   } = useProjectWorkspace(orderId);
 
   if (loading)
@@ -98,7 +101,12 @@ export function StandardProjectWorkspace({ orderId }: { orderId: string }) {
           onSend={sendMessage}
           onTypingChange={sendTyping}
         />
-        <StandardProjectSummary project={workspace} />
+        <StandardProjectSummary
+          project={workspace}
+          updatingAgreement={updatingAgreement}
+          onRespond={respondToAgreement}
+          onSaveTerms={saveAgreementTerms}
+        />
       </div>
     </div>
   );

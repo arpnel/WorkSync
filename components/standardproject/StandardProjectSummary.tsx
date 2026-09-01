@@ -1,12 +1,21 @@
 import { CalendarDays, RotateCcw, Wallet } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ProjectAgreementCard } from "@/components/project/ProjectAgreementCard";
 import type { ProjectWorkspace } from "@/types/project/projectWorkspace";
+
+type Props = {
+  project: ProjectWorkspace;
+  updatingAgreement: boolean;
+  onRespond: (accepted: boolean) => Promise<boolean>;
+  onSaveTerms: (budget: number, deliveryDays: number) => Promise<boolean>;
+};
 
 export function StandardProjectSummary({
   project,
-}: {
-  project: ProjectWorkspace;
-}) {
+  updatingAgreement,
+  onRespond,
+  onSaveTerms,
+}: Props) {
   return (
     <div className="space-y-5">
       <Card>
@@ -43,32 +52,12 @@ export function StandardProjectSummary({
           </div>
         </CardContent>
       </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Agreement</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm">
-          <div className="flex justify-between gap-4">
-            <span className="text-muted-foreground">Status</span>
-            <span className="font-medium capitalize">
-              {project.contractStatus ?? "Pending"}
-            </span>
-          </div>
-          <div className="flex justify-between gap-4">
-            <span className="text-muted-foreground">Client</span>
-            <span>{project.clientSignedAt ? "Signed" : "Pending"}</span>
-          </div>
-          <div className="flex justify-between gap-4">
-            <span className="text-muted-foreground">Freelancer</span>
-            <span>{project.freelancerSignedAt ? "Signed" : "Pending"}</span>
-          </div>
-          {project.terms && (
-            <p className="border-t pt-3 leading-6 text-muted-foreground">
-              {project.terms}
-            </p>
-          )}
-        </CardContent>
-      </Card>
+      <ProjectAgreementCard
+        project={project}
+        updating={updatingAgreement}
+        onRespond={onRespond}
+        onSaveTerms={onSaveTerms}
+      />
     </div>
   );
 }

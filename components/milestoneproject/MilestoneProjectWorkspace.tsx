@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ProjectAgreementCard } from "@/components/project/ProjectAgreementCard";
 import { ProjectChatPanel } from "@/components/project/ProjectChatPanel";
 import { useProjectWorkspace } from "@/hooks/project/useProjectWorkspace";
 import { MilestoneWorkspaceList } from "./MilestoneWorkspaceList";
@@ -15,10 +16,13 @@ export function MilestoneProjectWorkspace({ orderId }: { orderId: string }) {
     workspace,
     loading,
     sending,
+    updatingAgreement,
     isOtherParticipantTyping,
     error,
     sendMessage,
     sendTyping,
+    respondToAgreement,
+    saveAgreementTerms,
   } = useProjectWorkspace(orderId);
 
   if (loading)
@@ -129,29 +133,12 @@ export function MilestoneProjectWorkspace({ orderId }: { orderId: string }) {
               </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Agreement</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <div className="flex justify-between gap-3">
-                <span className="text-muted-foreground">Status</span>
-                <span className="capitalize">
-                  {workspace.contractStatus ?? "Pending"}
-                </span>
-              </div>
-              <div className="flex justify-between gap-3">
-                <span className="text-muted-foreground">Client</span>
-                <span>{workspace.clientSignedAt ? "Signed" : "Pending"}</span>
-              </div>
-              <div className="flex justify-between gap-3">
-                <span className="text-muted-foreground">Freelancer</span>
-                <span>
-                  {workspace.freelancerSignedAt ? "Signed" : "Pending"}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
+          <ProjectAgreementCard
+            project={workspace}
+            updating={updatingAgreement}
+            onRespond={respondToAgreement}
+            onSaveTerms={saveAgreementTerms}
+          />
         </div>
       </div>
     </div>

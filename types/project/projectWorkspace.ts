@@ -25,6 +25,8 @@ export interface WorkspaceMessage {
 export interface ProjectWorkspace {
   orderId: string;
   currentUserId: string;
+  currentParty: "client" | "freelancer";
+  contractId: string | null;
   projectId: string | null;
   conversationId: string | null;
   type: WorkspaceProjectType;

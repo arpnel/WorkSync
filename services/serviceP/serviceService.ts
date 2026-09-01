@@ -116,6 +116,7 @@ async function createFreelancerService(
   const { data: service, error: serviceError } = await supabase
     .from("services")
     .insert({
+      service_id: crypto.randomUUID(),
       freelancer_id: freelancer.freelancer_id,
       category_id: payload.category_id,
       title: payload.title.trim(),
@@ -239,6 +240,7 @@ async function createClientJob(
   const { data: job, error: jobError } = await supabase
     .from("jobs")
     .insert({
+      job_id: crypto.randomUUID(),
       client_id: client.client_id,
       category_id: payload.category_id,
       title: payload.title.trim(),

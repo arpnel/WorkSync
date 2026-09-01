@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   createProjectTypingChannel,
   getProjectWorkspace,
+  respondToProjectAgreement,
   sendProjectMessage,
+  updateProjectAgreementTerms,
 } from "@/services/project/projectWorkspaceService";
 import {
   subscribeToConversationMessages,
@@ -33,6 +35,7 @@ export function useProjectWorkspace(orderId: string) {
   const [workspace, setWorkspace] = useState<ProjectWorkspace | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [updatingAgreement, setUpdatingAgreement] = useState(false);
   const [isOtherParticipantTyping, setIsOtherParticipantTyping] =
     useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,6 +88,28 @@ export function useProjectWorkspace(orderId: string) {
         )
       : subscribeToUserConversations(refreshMessages);
   }, [load, workspace?.conversationId]);
+
+  useEffect(() => {
+    if (!workspace?.contractId) return;
+
+    const channel = supabase
+      .channel(`project-contract:${workspace.contractId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "contracts",
+          filter: `contract_id=eq.${workspace.contractId}`,
+        },
+        () => void load(false),
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [load, workspace?.contractId]);
 
   useEffect(() => {
     if (!workspace?.conversationId) return;
@@ -176,14 +201,47 @@ export function useProjectWorkspace(orderId: string) {
     }
   };
 
+  const respondToAgreement = async (accepted: boolean) => {
+    try {
+      setUpdatingAgreement(true);
+      setError(null);
+      await respondToProjectAgreement(orderId, accepted);
+      await load(false);
+      return true;
+    } catch (cause) {
+      console.error("Failed to update agreement:", cause);
+      return false;
+    } finally {
+      setUpdatingAgreement(false);
+    }
+  };
+
+  const saveAgreementTerms = async (budget: number, deliveryDays: number) => {
+    try {
+      setUpdatingAgreement(true);
+      setError(null);
+      await updateProjectAgreementTerms(orderId, budget, deliveryDays);
+      await load(false);
+      return true;
+    } catch (cause) {
+      console.error("Failed to update agreement terms:", cause);
+      return false;
+    } finally {
+      setUpdatingAgreement(false);
+    }
+  };
+
   return {
     workspace,
     loading,
     sending,
+    updatingAgreement,
     isOtherParticipantTyping,
     error,
     refresh: () => load(false),
     sendMessage,
     sendTyping,
+    respondToAgreement,
+    saveAgreementTerms,
   };
 }

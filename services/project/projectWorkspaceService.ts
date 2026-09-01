@@ -65,7 +65,7 @@ async function attachmentUrl(value: string | null): Promise<string | null> {
 }
 
 const WORKSPACE_SELECT =
-  "order_id, service_id, freelancer_id, client_id, status, created_at, services(title, description, price, service_type, delivery_time_days, revisions_count), client_profiles(user_id), freelancer_profiles(user_id), projects(project_id, title, description, budget, status, start_date, due_date, milestones(milestone_id, title, description, amount, due_date, status, display_order)), contracts(final_price, delivery_time_days, revisions_count, terms, status, client_signed_at, freelancer_signed_at)";
+  "order_id, service_id, freelancer_id, client_id, status, created_at, services(title, description, price, service_type, delivery_time_days, revisions_count), client_profiles(user_id), freelancer_profiles(user_id), projects(project_id, title, description, budget, status, start_date, due_date, milestones(milestone_id, title, description, amount, due_date, status, display_order)), contracts(contract_id, final_price, delivery_time_days, revisions_count, terms, status, client_signed_at, freelancer_signed_at)";
 
 export async function getProjectWorkspace(
   orderId: string,
@@ -157,6 +157,8 @@ export async function getProjectWorkspace(
   return {
     orderId: text(row.order_id),
     currentUserId: userId,
+    currentParty: userId === clientUserId ? "client" : "freelancer",
+    contractId: text(contract?.contract_id) || null,
     projectId: text(project?.project_id) || null,
     conversationId: conversation?.conversation_id ?? null,
     type: service?.service_type === "milestone" ? "milestone" : "standard",
@@ -175,7 +177,7 @@ export async function getProjectWorkspace(
     createdAt: text(row.created_at),
     startDate: text(project?.start_date) || null,
     dueDate: text(project?.due_date) || null,
-    budget: numeric(project?.budget ?? contract?.final_price ?? service?.price),
+    budget: numeric(contract?.final_price ?? project?.budget ?? service?.price),
     deliveryDays:
       contract?.delivery_time_days == null &&
       service?.delivery_time_days == null
@@ -297,4 +299,77 @@ export function createProjectTypingChannel(
       });
     },
   };
+}
+
+async function getAgreementContext(orderId: string) {
+  const userId = await currentUserId();
+  const { data, error } = await supabase
+    .from("service_orders")
+    .select(
+      "client_profiles(user_id), freelancer_profiles(user_id), contracts(contract_id)",
+    )
+    .eq("order_id", orderId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("Project agreement not found.");
+
+  const row = data as unknown as Record<string, unknown>;
+  const client = record(row.client_profiles);
+  const freelancer = record(row.freelancer_profiles);
+  const contract = record(row.contracts);
+  const party =
+    text(client?.user_id) === userId
+      ? "client"
+      : text(freelancer?.user_id) === userId
+        ? "freelancer"
+        : null;
+  if (!party || !contract?.contract_id) {
+    throw new Error("You cannot update this agreement.");
+  }
+
+  return { contractId: text(contract.contract_id), party };
+}
+
+export async function respondToProjectAgreement(
+  orderId: string,
+  accepted: boolean,
+): Promise<void> {
+  const { contractId, party } = await getAgreementContext(orderId);
+  const updates = accepted
+    ? {
+        [party === "client" ? "client_signed_at" : "freelancer_signed_at"]:
+          new Date().toISOString(),
+      }
+    : { client_signed_at: null, freelancer_signed_at: null };
+
+  const { error } = await supabase
+    .from("contracts")
+    .update(updates)
+    .eq("contract_id", contractId);
+  if (error) throw new Error(error.message);
+}
+
+export async function updateProjectAgreementTerms(
+  orderId: string,
+  budget: number,
+  deliveryDays: number,
+): Promise<void> {
+  if (!Number.isFinite(budget) || budget <= 0) {
+    throw new Error("Budget must be greater than zero.");
+  }
+  if (!Number.isInteger(deliveryDays) || deliveryDays < 1) {
+    throw new Error("Duration must be at least one day.");
+  }
+
+  const { contractId } = await getAgreementContext(orderId);
+  const { error } = await supabase
+    .from("contracts")
+    .update({
+      final_price: budget,
+      delivery_time_days: deliveryDays,
+      client_signed_at: null,
+      freelancer_signed_at: null,
+    })
+    .eq("contract_id", contractId);
+  if (error) throw new Error(error.message);
 }

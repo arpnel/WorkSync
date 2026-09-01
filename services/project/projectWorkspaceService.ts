@@ -66,7 +66,7 @@ async function attachmentUrl(value: string | null): Promise<string | null> {
 }
 
 const WORKSPACE_SELECT =
-  "order_id, service_id, freelancer_id, client_id, status, created_at, services(title, description, price, service_type, delivery_time_days, revisions_count), client_profiles(user_id), freelancer_profiles(user_id), projects(project_id, title, description, budget, status, start_date, due_date, milestones(milestone_id, title, description, amount, due_date, status, display_order)), contracts(contract_id, final_price, delivery_time_days, revisions_count, terms, status, client_signed_at, freelancer_signed_at)";
+  "order_id, service_id, freelancer_id, client_id, status, created_at, services(title, description, price, service_type, delivery_time_days, revisions_count, job_categories(name)), client_profiles(user_id), freelancer_profiles(user_id), projects(project_id, title, description, budget, status, start_date, due_date, milestones(milestone_id, title, description, amount, due_date, status, display_order)), contracts(contract_id, final_price, delivery_time_days, revisions_count, terms, status, client_signed_at, freelancer_signed_at)";
 
 export async function getProjectWorkspace(
   orderId: string,
@@ -83,6 +83,7 @@ export async function getProjectWorkspace(
   const row = data as unknown as Record<string, unknown>;
   const service = record(row.services);
   const project = record(row.projects);
+  const category = record(service?.job_categories);
   const contract = record(row.contracts);
   const client = record(row.client_profiles);
   const freelancer = record(row.freelancer_profiles);
@@ -189,6 +190,7 @@ export async function getProjectWorkspace(
     conversationId: conversation?.conversation_id ?? null,
     type: service?.service_type === "milestone" ? "milestone" : "standard",
     title: text(project?.title) || text(service?.title, "Untitled Project"),
+    categoryName: text(category?.name) || null,
     description: text(project?.description) || text(service?.description),
     status:
       text(project?.status) ||

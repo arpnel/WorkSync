@@ -38,6 +38,7 @@ export interface ProjectWorkspace {
   conversationId: string | null;
   type: WorkspaceProjectType;
   title: string;
+  categoryName: string | null;
   description: string;
   status: string;
   orderStatus: string;

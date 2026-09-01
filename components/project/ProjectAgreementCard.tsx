@@ -31,8 +31,8 @@ type ApprovalRowProps = {
   approval?: WorkspaceAgreementItem;
   currentParty: "client" | "freelancer";
   updating: boolean;
-  onRespond: (itemKey: string, approved: boolean) => Promise<void>;
-  onSave: (itemKey: ItemKey, value: number) => Promise<void>;
+  onRespond: (itemKey: string, approved: boolean) => Promise<boolean>;
+  onSave: (itemKey: ItemKey, value: number) => Promise<boolean>;
 };
 
 function ApprovalRow({
@@ -47,11 +47,32 @@ function ApprovalRow({
   onSave,
 }: ApprovalRowProps) {
   const [value, setValue] = useState(initialValue);
-  const changed = value !== initialValue;
-  const clientApproved = Boolean(approval?.clientApprovedAt);
-  const freelancerApproved = Boolean(approval?.freelancerApprovedAt);
+  const [savedValue, setSavedValue] = useState(initialValue);
+  const [locallyReset, setLocallyReset] = useState(false);
+  const changed = value !== savedValue;
+  const clientApproved = !locallyReset && Boolean(approval?.clientApprovedAt);
+  const freelancerApproved =
+    !locallyReset && Boolean(approval?.freelancerApprovedAt);
+  const needsReview =
+    locallyReset ||
+    Boolean(
+      approval && !approval.clientApprovedAt && !approval.freelancerApprovedAt,
+    );
   const mineApproved =
     currentParty === "client" ? clientApproved : freelancerApproved;
+
+  const saveValue = async () => {
+    if (await onSave(itemKey, value)) {
+      setSavedValue(value);
+      setLocallyReset(true);
+    }
+  };
+
+  const respond = async (approved: boolean) => {
+    if (await onRespond(itemKey, approved)) {
+      setLocallyReset(false);
+    }
+  };
 
   return (
     <div className="rounded-md border p-4">
@@ -62,7 +83,11 @@ function ApprovalRow({
             clientApproved && freelancerApproved ? "secondary" : "outline"
           }
         >
-          {clientApproved && freelancerApproved ? "Approved" : "Review"}
+          {clientApproved && freelancerApproved
+            ? "Approved"
+            : needsReview
+              ? "Changed - review"
+              : "Review"}
         </Badge>
       </div>
 
@@ -87,7 +112,7 @@ function ApprovalRow({
           variant="outline"
           aria-label={`Save ${label.toLowerCase()}`}
           disabled={!changed || updating}
-          onClick={() => void onSave(itemKey, value)}
+          onClick={() => void saveValue()}
         >
           {updating ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -105,10 +130,16 @@ function ApprovalRow({
 
       <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
         <span className="text-muted-foreground">
-          Client: {clientApproved ? "Agreed" : "Waiting"}
+          Client:{" "}
+          {clientApproved ? "Agreed" : needsReview ? "Needs review" : "Waiting"}
         </span>
         <span className="text-right text-muted-foreground">
-          Freelancer: {freelancerApproved ? "Agreed" : "Waiting"}
+          Freelancer:{" "}
+          {freelancerApproved
+            ? "Agreed"
+            : needsReview
+              ? "Needs review"
+              : "Waiting"}
         </span>
       </div>
 
@@ -118,7 +149,7 @@ function ApprovalRow({
           size="sm"
           variant={mineApproved ? "secondary" : "outline"}
           disabled={updating || mineApproved || changed}
-          onClick={() => void onRespond(itemKey, true)}
+          onClick={() => void respond(true)}
         >
           <Check className="h-3.5 w-3.5" />
           {mineApproved ? "Agreed" : "Agree"}
@@ -128,7 +159,7 @@ function ApprovalRow({
           size="sm"
           variant="ghost"
           disabled={updating || changed}
-          onClick={() => void onRespond(itemKey, false)}
+          onClick={() => void respond(false)}
         >
           <X className="h-3.5 w-3.5" />
           Disagree
@@ -184,6 +215,7 @@ export function ProjectAgreementCard({
           : "Both approvals for this item were reset."
         : "The item approval could not be updated.",
     );
+    return saved;
   };
 
   const saveItem = async (itemKey: ItemKey, value: number) => {
@@ -193,6 +225,7 @@ export function ProjectAgreementCard({
         ? "Term updated and its approvals were reset."
         : "The term could not be updated.",
     );
+    return saved;
   };
 
   return (

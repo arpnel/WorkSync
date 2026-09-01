@@ -1,9 +1,10 @@
 "use client";
 
+import { Briefcase, MoreVertical } from "lucide-react";
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Briefcase, MoreVertical } from "lucide-react";
 
 interface ChatHeaderProps {
   name: string;
@@ -19,7 +20,7 @@ export default function ChatHeader({
   role,
   project,
   avatar,
-  online = false,
+  online,
   onViewProject,
 }: ChatHeaderProps) {
   const initials = name
@@ -38,31 +39,28 @@ export default function ChatHeader({
             <AvatarFallback>{initials}</AvatarFallback>
           </Avatar>
 
-          <span
-            className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-background ${
-              online ? "bg-green-500" : "bg-gray-400"
-            }`}
-          />
+          {online === true && (
+            <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-background bg-green-500" />
+          )}
         </div>
 
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-semibold">{name}</h2>
 
-            <Badge
-              variant={online ? "default" : "secondary"}
-              className="rounded-full"
-            >
-              {online ? "Online" : "Offline"}
-            </Badge>
+            {typeof online === "boolean" && (
+              <Badge
+                variant={online ? "default" : "secondary"}
+                className="rounded-full"
+              >
+                {online ? "Online" : "Offline"}
+              </Badge>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             {role && <span>{role}</span>}
-
-            {role && project && (
-              <span className="text-muted-foreground">•</span>
-            )}
+            {role && project && <span aria-hidden="true">/</span>}
 
             {project && (
               <>
@@ -75,13 +73,13 @@ export default function ChatHeader({
       </div>
 
       <div className="flex items-center gap-2">
-        {project && (
+        {project && onViewProject && (
           <Button variant="outline" onClick={onViewProject}>
             View Project
           </Button>
         )}
 
-        <Button variant="ghost" size="icon">
+        <Button variant="ghost" size="icon" aria-label="Conversation options">
           <MoreVertical className="h-5 w-5" />
         </Button>
       </div>

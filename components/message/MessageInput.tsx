@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, KeyboardEvent } from "react";
-import { Paperclip, SendHorizonal } from "lucide-react";
+import { type KeyboardEvent, useState } from "react";
+import { Paperclip, SendHorizontal } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -40,19 +40,22 @@ export default function MessageInput({
   return (
     <div className="shrink-0 border-t bg-background p-4">
       <div className="flex items-end gap-3">
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          onClick={onAttach}
-          disabled={disabled}
-        >
-          <Paperclip className="h-4 w-4" />
-        </Button>
+        {onAttach && (
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={onAttach}
+            disabled={disabled}
+            aria-label="Attach a file"
+          >
+            <Paperclip className="h-4 w-4" />
+          </Button>
+        )}
 
         <Textarea
           value={message}
-          onChange={(e) => setMessage(e.target.value)}
+          onChange={(event) => setMessage(event.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           disabled={disabled}
@@ -65,8 +68,9 @@ export default function MessageInput({
           size="icon"
           onClick={sendMessage}
           disabled={disabled || !message.trim()}
+          aria-label="Send message"
         >
-          <SendHorizonal className="h-4 w-4" />
+          <SendHorizontal className="h-4 w-4" />
         </Button>
       </div>
     </div>

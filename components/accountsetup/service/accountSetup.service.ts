@@ -9,7 +9,6 @@ import type {
    TABLES
 ========================================================== */
 
-const USERS_TABLE = "Users";
 const PROFILES_TABLE = "profiles";
 const CLIENT_PROFILES_TABLE = "client_profiles";
 const FREELANCER_PROFILES_TABLE = "freelancer_profiles";
@@ -95,9 +94,7 @@ async function uploadFile(
     filePath,
   });
 
-  const { error } = await supabase.storage
-    .from(bucket)
-    .upload(filePath, file);
+  const { error } = await supabase.storage.from(bucket).upload(filePath, file);
 
   if (error) {
     logError("File upload failed", {
@@ -109,9 +106,7 @@ async function uploadFile(
     throw error;
   }
 
-  const { data } = supabase.storage
-    .from(bucket)
-    .getPublicUrl(filePath);
+  const { data } = supabase.storage.from(bucket).getPublicUrl(filePath);
 
   logStep("File uploaded successfully", {
     bucket,
@@ -165,11 +160,7 @@ export async function submitClientSetup(
     /* ---------------- Profile Photo ---------------- */
 
     const avatarUrl = payload.profilePhoto
-      ? await uploadFile(
-          AVATARS_BUCKET,
-          userId,
-          payload.profilePhoto,
-        )
+      ? await uploadFile(AVATARS_BUCKET, userId, payload.profilePhoto)
       : null;
 
     /* ---------------- Profile ---------------- */
@@ -210,23 +201,34 @@ export async function submitClientSetup(
     /* ---------------- Client Profile ---------------- */
 
     const clientPayload = {
+      client_id: crypto.randomUUID(),
       user_id: userId,
     };
 
-    logStep(
-      "Inserting/upserting client profile record",
-      clientPayload,
-    );
+    logStep("Inserting/upserting client profile record", clientPayload);
 
-    const { error: clientError } = await supabase
+    const { data: existingClient, error: clientLookupError } = await supabase
       .from(CLIENT_PROFILES_TABLE)
-      .upsert(clientPayload);
+      .select("client_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (clientLookupError) {
+      logError("Client profile lookup failed", clientLookupError);
+      throw clientLookupError;
+    }
+
+    const { error: clientError } = existingClient
+      ? { error: null }
+      : await supabase.from(CLIENT_PROFILES_TABLE).insert(clientPayload);
 
     if (clientError) {
-      logError(
-        "Client profile record failed",
-        clientError,
-      );
+      logError("Client profile record failed", {
+        code: clientError.code,
+        message: clientError.message,
+        details: clientError.details,
+        hint: clientError.hint,
+      });
 
       throw clientError;
     }
@@ -265,11 +267,7 @@ export async function submitFreelancerSetup(
     ====================================================== */
 
     const avatarUrl = payload.profilePhoto
-      ? await uploadFile(
-          AVATARS_BUCKET,
-          userId,
-          payload.profilePhoto,
-        )
+      ? await uploadFile(AVATARS_BUCKET, userId, payload.profilePhoto)
       : null;
 
     logStep("Avatar processing completed", {
@@ -281,11 +279,7 @@ export async function submitFreelancerSetup(
     ====================================================== */
 
     const resumeUrl = payload.resume
-      ? await uploadFile(
-          RESUMES_BUCKET,
-          userId,
-          payload.resume,
-        )
+      ? await uploadFile(RESUMES_BUCKET, userId, payload.resume)
       : null;
 
     logStep("Resume processing completed", {
@@ -297,11 +291,7 @@ export async function submitFreelancerSetup(
     ====================================================== */
 
     const governmentIdUrl = payload.governmentId
-      ? await uploadFile(
-          VERIFICATION_BUCKET,
-          userId,
-          payload.governmentId,
-        )
+      ? await uploadFile(VERIFICATION_BUCKET, userId, payload.governmentId)
       : null;
 
     logStep("Government ID processing completed", {
@@ -363,54 +353,32 @@ export async function submitFreelancerSetup(
       account_setup_completed: true,
     };
 
-    console.log(
-      "========================================",
-    );
+    console.log("========================================");
 
-    console.log(
-      "PROFILE PAYLOAD BEING SENT TO SUPABASE:",
-    );
+    console.log("PROFILE PAYLOAD BEING SENT TO SUPABASE:");
 
     console.log(profilePayload);
 
-    console.log(
-      "========================================",
-    );
+    console.log("========================================");
 
     logStep("Saving profiles row...");
 
-    const { data: profileData, error: profileError } =
-      await supabase
-        .from(PROFILES_TABLE)
-        .upsert(profilePayload)
-        .select()
-        .single();
+    const { data: profileData, error: profileError } = await supabase
+      .from(PROFILES_TABLE)
+      .upsert(profilePayload)
+      .select()
+      .single();
 
     if (profileError) {
-      logError(
-        "PROFILES INSERT FAILED",
-        profileError,
-      );
+      logError("PROFILES INSERT FAILED", profileError);
 
-      console.error(
-        "Supabase profile error code:",
-        profileError.code,
-      );
+      console.error("Supabase profile error code:", profileError.code);
 
-      console.error(
-        "Supabase profile error message:",
-        profileError.message,
-      );
+      console.error("Supabase profile error message:", profileError.message);
 
-      console.error(
-        "Supabase profile error details:",
-        profileError.details,
-      );
+      console.error("Supabase profile error details:", profileError.details);
 
-      console.error(
-        "Supabase profile error hint:",
-        profileError.hint,
-      );
+      console.error("Supabase profile error hint:", profileError.hint);
 
       throw profileError;
     }
@@ -424,71 +392,64 @@ export async function submitFreelancerSetup(
     const freelancerPayload = {
       user_id: userId,
 
-      years_of_experience:
-        payload.yearsOfExperience,
+      years_of_experience: payload.yearsOfExperience,
 
-      employment_preference:
-        payload.employmentPreference,
+      employment_preference: payload.employmentPreference,
 
-      portfolio_website:
-        payload.portfolioWebsite,
+      portfolio_website: payload.portfolioWebsite,
 
-      linkedin_url:
-        payload.linkedIn,
+      linkedin_url: payload.linkedIn,
 
-      github_url:
-        payload.github,
+      github_url: payload.github,
 
       resume_url: resumeUrl,
 
-      government_id_url:
-        governmentIdUrl,
+      government_id_url: governmentIdUrl,
 
-      portfolio_sample_urls:
-        portfolioSampleUrls,
+      portfolio_sample_urls: portfolioSampleUrls,
 
-      certification_urls:
-        certificationUrls,
+      certification_urls: certificationUrls,
 
       // created_at intentionally omitted
       // because the database handles it automatically
     };
 
-    console.log(
-      "========================================",
-    );
+    console.log("========================================");
 
-    console.log(
-      "FREELANCER PROFILE PAYLOAD:",
-    );
+    console.log("FREELANCER PROFILE PAYLOAD:");
 
     console.log(freelancerPayload);
 
-    console.log(
-      "========================================",
-    );
+    console.log("========================================");
 
     logStep("Saving freelancer_profiles row...");
 
-    const {
-      data: freelancerData,
-      error: freelancerError,
-    } = await supabase
-      .from(FREELANCER_PROFILES_TABLE)
-      .upsert(freelancerPayload)
-      .select()
-      .single();
+    const { data: existingFreelancer, error: freelancerLookupError } =
+      await supabase
+        .from(FREELANCER_PROFILES_TABLE)
+        .select("freelancer_id")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+    if (freelancerLookupError) {
+      logError("Freelancer profile lookup failed", freelancerLookupError);
+      throw freelancerLookupError;
+    }
+
+    const freelancerQuery = existingFreelancer
+      ? supabase
+          .from(FREELANCER_PROFILES_TABLE)
+          .update(freelancerPayload)
+          .eq("freelancer_id", existingFreelancer.freelancer_id)
+      : supabase.from(FREELANCER_PROFILES_TABLE).insert(freelancerPayload);
+
+    const { data: freelancerData, error: freelancerError } =
+      await freelancerQuery.select().single();
 
     if (freelancerError) {
-      logError(
-        "FREELANCER_PROFILES INSERT FAILED",
-        freelancerError,
-      );
+      logError("FREELANCER_PROFILES INSERT FAILED", freelancerError);
 
-      console.error(
-        "Supabase freelancer error code:",
-        freelancerError.code,
-      );
+      console.error("Supabase freelancer error code:", freelancerError.code);
 
       console.error(
         "Supabase freelancer error message:",
@@ -500,35 +461,24 @@ export async function submitFreelancerSetup(
         freelancerError.details,
       );
 
-      console.error(
-        "Supabase freelancer error hint:",
-        freelancerError.hint,
-      );
+      console.error("Supabase freelancer error hint:", freelancerError.hint);
 
       throw freelancerError;
     }
 
-    logStep(
-      "FREELANCER_PROFILES saved successfully",
-      freelancerData,
-    );
+    logStep("FREELANCER_PROFILES saved successfully", freelancerData);
 
     /* ======================================================
        INDUSTRIES
     ====================================================== */
 
     if (payload.industries.length > 0) {
-      const industryRows = payload.industries.map(
-        (categoryId) => ({
-          freelancer_id: userId,
-          category_id: categoryId,
-        }),
-      );
+      const industryRows = payload.industries.map((categoryId) => ({
+        freelancer_id: freelancerData.freelancer_id,
+        category_id: categoryId,
+      }));
 
-      console.log(
-        "Industry rows:",
-        industryRows,
-      );
+      console.log("Industry rows:", industryRows);
 
       logStep("Saving freelancer industries...");
 
@@ -537,10 +487,7 @@ export async function submitFreelancerSetup(
         .insert(industryRows);
 
       if (error) {
-        logError(
-          "Freelancer industries insert failed",
-          error,
-        );
+        logError("Freelancer industries insert failed", error);
 
         throw error;
       }
@@ -553,17 +500,12 @@ export async function submitFreelancerSetup(
     ====================================================== */
 
     if (payload.skills.length > 0) {
-      const skillRows = payload.skills.map(
-        (skillId) => ({
-          freelancer_id: userId,
-          skill_id: skillId,
-        }),
-      );
+      const skillRows = payload.skills.map((skillId) => ({
+        freelancer_id: freelancerData.freelancer_id,
+        skill_id: skillId,
+      }));
 
-      console.log(
-        "Skill rows:",
-        skillRows,
-      );
+      console.log("Skill rows:", skillRows);
 
       logStep("Saving freelancer skills...");
 
@@ -572,10 +514,7 @@ export async function submitFreelancerSetup(
         .insert(skillRows);
 
       if (error) {
-        logError(
-          "Freelancer skills insert failed",
-          error,
-        );
+        logError("Freelancer skills insert failed", error);
 
         throw error;
       }
@@ -588,15 +527,10 @@ export async function submitFreelancerSetup(
     ====================================================== */
 
     logStep("========================================");
-    logStep(
-      "FREELANCER ACCOUNT SETUP COMPLETED SUCCESSFULLY",
-    );
+    logStep("FREELANCER ACCOUNT SETUP COMPLETED SUCCESSFULLY");
     logStep("========================================");
   } catch (error) {
-    logError(
-      "Failed to submit freelancer setup",
-      error,
-    );
+    logError("Failed to submit freelancer setup", error);
 
     throw error;
   }

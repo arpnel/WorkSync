@@ -6,17 +6,20 @@ import ConversationList, { type Conversation } from "./ConversationList";
 import ConversationSearch from "./ConversationSearch";
 
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface ConversationSidebarProps {
   conversations: Conversation[];
   selectedConversationId?: string;
   onSelectConversation?: (id: string) => void;
+  loading?: boolean;
 }
 
 export default function ConversationSidebar({
   conversations,
   selectedConversationId,
   onSelectConversation,
+  loading = false,
 }: ConversationSidebarProps) {
   const [search, setSearch] = useState("");
 
@@ -41,7 +44,6 @@ export default function ConversationSidebar({
       <div className="space-y-4 p-4">
         <div>
           <h2 className="text-xl font-semibold">Messages</h2>
-
           <p className="text-sm text-muted-foreground">Recent conversations</p>
         </div>
 
@@ -51,11 +53,19 @@ export default function ConversationSidebar({
       <Separator />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <ConversationList
-          conversations={filteredConversations}
-          selectedConversationId={selectedConversationId}
-          onSelectConversation={onSelectConversation}
-        />
+        {loading ? (
+          <div className="space-y-3 p-4">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <Skeleton key={index} className="h-20 w-full rounded-lg" />
+            ))}
+          </div>
+        ) : (
+          <ConversationList
+            conversations={filteredConversations}
+            selectedConversationId={selectedConversationId}
+            onSelectConversation={onSelectConversation}
+          />
+        )}
       </div>
     </aside>
   );

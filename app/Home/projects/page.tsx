@@ -7,40 +7,27 @@ import { useProjectFilters } from "@/hooks/project/useProjectFilters";
 import { useProjects } from "@/hooks/project/useProjects";
 
 export default function Page() {
-  const {
-    projects,
-    loading,
-    error,
-  } = useProjects();
-
+  const { projects, loading, error } = useProjects();
   const {
     activeFilter,
     setActiveFilter,
-
     search,
     setSearch,
-
     sortMode,
     setSortMode,
-
     dateAscending,
     setDateAscending,
-
     nameAscending,
     setNameAscending,
-
     budgetAscending,
     setBudgetAscending,
-
     filteredProjects,
   } = useProjectFilters(projects);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <p className="text-sm text-muted-foreground">
-          Loading projects...
-        </p>
+        <p className="text-sm text-muted-foreground">Loading projects...</p>
       </div>
     );
   }
@@ -48,9 +35,7 @@ export default function Page() {
   if (error) {
     return (
       <div className="flex items-center justify-center py-12">
-        <p className="text-sm text-destructive">
-          {error}
-        </p>
+        <p className="text-sm text-destructive">{error}</p>
       </div>
     );
   }
@@ -61,7 +46,6 @@ export default function Page() {
         activeFilter={activeFilter}
         onFilterChange={setActiveFilter}
       />
-
       <ProjectToolbar
         search={search}
         onSearchChange={setSearch}
@@ -74,10 +58,7 @@ export default function Page() {
         budgetAscending={budgetAscending}
         setBudgetAscending={setBudgetAscending}
       />
-
-      <ProjectList
-        projects={filteredProjects}
-      />
+      <ProjectList projects={filteredProjects} />
     </div>
   );
 }

@@ -6,31 +6,24 @@ import type { Project } from "@/components/project/ProjectCard";
 import type { FilterType } from "@/components/project/ProjectTabs";
 import type { SortMode } from "@/components/project/ProjectToolbar";
 
-export function useProjectFilters(
-  projects: Project[]
-) {
+export function useProjectFilters(projects: Project[]) {
   // Active status filter
-  const [activeFilter, setActiveFilter] =
-    React.useState<FilterType>("All");
+  const [activeFilter, setActiveFilter] = React.useState<FilterType>("All");
 
   // Search
   const [search, setSearch] = React.useState("");
 
   // Date sorting
-  const [dateAscending, setDateAscending] =
-    React.useState(false);
+  const [dateAscending, setDateAscending] = React.useState(false);
 
   // Name sorting
-  const [nameAscending, setNameAscending] =
-    React.useState(true);
+  const [nameAscending, setNameAscending] = React.useState(true);
 
   // Budget sorting
-  const [budgetAscending, setBudgetAscending] =
-    React.useState(false);
+  const [budgetAscending, setBudgetAscending] = React.useState(false);
 
   // Currently selected sort
-  const [sortMode, setSortMode] =
-    React.useState<SortMode>("date");
+  const [sortMode, setSortMode] = React.useState<SortMode>("date");
 
   const filteredProjects = React.useMemo(() => {
     let result = [...projects];
@@ -39,9 +32,7 @@ export function useProjectFilters(
      * Status filter
      */
     if (activeFilter !== "All") {
-      result = result.filter(
-        (project) => project.status === activeFilter
-      );
+      result = result.filter((project) => project.status === activeFilter);
     }
 
     /*
@@ -52,12 +43,8 @@ export function useProjectFilters(
 
       result = result.filter(
         (project) =>
-          project.title
-            .toLowerCase()
-            .includes(query) ||
-          project.client
-            .toLowerCase()
-            .includes(query)
+          project.title.toLowerCase().includes(query) ||
+          project.client.toLowerCase().includes(query),
       );
     }
 
@@ -70,37 +57,27 @@ export function useProjectFilters(
        */
       if (sortMode === "date") {
         const comparison =
-          new Date(a.createdAt).getTime() -
-          new Date(b.createdAt).getTime();
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
 
-        return dateAscending
-          ? comparison
-          : -comparison;
+        return dateAscending ? comparison : -comparison;
       }
 
       /*
        * Name
        */
       if (sortMode === "name") {
-        const comparison = a.title.localeCompare(
-          b.title
-        );
+        const comparison = a.title.localeCompare(b.title);
 
-        return nameAscending
-          ? comparison
-          : -comparison;
+        return nameAscending ? comparison : -comparison;
       }
 
       /*
        * Budget
        */
       if (sortMode === "budget") {
-        const comparison =
-          a.budget - b.budget;
+        const comparison = a.budget - b.budget;
 
-        return budgetAscending
-          ? comparison
-          : -comparison;
+        return budgetAscending ? comparison : -comparison;
       }
 
       return 0;

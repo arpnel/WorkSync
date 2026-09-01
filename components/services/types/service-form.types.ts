@@ -1,4 +1,8 @@
-export type ServiceType = "standard" | "milestone";
+import type {
+  ExperienceLevel,
+  PricingType,
+  ServiceType,
+} from "@/services/serviceP/service.types";
 
 export type ServiceMilestoneForm = {
   title: string;
@@ -8,41 +12,24 @@ export type ServiceMilestoneForm = {
 };
 
 export type ServiceFormValues = {
-  // Basic Information
   title: string;
-
-  // Selected job category
   categoryId: string;
   categoryText: string;
-
-  // Description
   description: string;
 
-  // Total service/project price
   price?: number;
-
-  // Service Type
   serviceType: ServiceType;
-
-  // Service Delivery
-  // Number of days needed to complete the service
   deliveryTimeDays: number;
-
-  // Revisions
-  // 0 = no revisions
-  // 1+ = number of revisions
   revisionCount: number;
 
-  // Skills
-  // Selected skills from category_skills
-  // Inserted into service_skills after service creation
+  budgetMin?: number;
+  budgetMax?: number;
+  pricingType: PricingType;
+  deadline: string;
+  experienceLevel: ExperienceLevel;
+
   skillIds: string[];
-
-  // Service Milestones
-  // Used only when serviceType === "milestone"
   milestones: ServiceMilestoneForm[];
-
-  // Media
   mediaFiles: File[];
   mediaUrls: string[];
 };

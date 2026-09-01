@@ -1,308 +1,297 @@
 import { supabase } from "@/lib/supabaseClient";
-import type { CreateServicePayload } from "./service.types";
+import type {
+  CreateListingPayload,
+  CreateListingResult,
+  ListingRole,
+} from "./service.types";
 
-function generateSlug(title: string) {
-  return (
-    title
-      .toLowerCase()
-      .trim()
-      .replace(/[^\w\s-]/g, "")
-      .replace(/\s+/g, "-") +
-    "-" +
-    crypto.randomUUID().slice(0, 8)
-  );
+const SERVICE_MEDIA_BUCKET = "service-media";
+
+async function getAuthenticatedUser() {
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!user) {
+    throw new Error("You must be logged in.");
+  }
+
+  return user;
 }
 
-export async function createService(payload: CreateServicePayload) {
+export async function getCurrentListingRole(): Promise<ListingRole> {
+  const user = await getAuthenticatedUser();
+  const { data, error } = await supabase
+    .from("Users")
+    .select("role")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  if (data?.role !== "client" && data?.role !== "freelancer") {
+    throw new Error("Your account role cannot create a listing.");
+  }
+
+  return data.role;
+}
+
+async function uploadServiceMedia(
+  userId: string,
+  serviceId: string,
+  files: File[],
+) {
+  const uploadedPaths: string[] = [];
+  const media: Array<{
+    media_url: string;
+    media_type: string;
+    display_order: number;
+  }> = [];
+
   try {
-    // ==========================================================
-    // 1. Get Authenticated User
-    // ==========================================================
+    for (const [index, file] of files.entries()) {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
+      const path = `${userId}/${serviceId}/${crypto.randomUUID()}-${safeName}`;
+      const { error } = await supabase.storage
+        .from(SERVICE_MEDIA_BUCKET)
+        .upload(path, file, {
+          cacheControl: "3600",
+          upsert: false,
+        });
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      throw new Error("User not authenticated.");
-    }
-
-    // ==========================================================
-    // 2. Get Current Account Role
-    // ==========================================================
-
-    const { data: userData, error: userError } = await supabase
-      .from("Users")
-      .select("role")
-      .eq("user_id", user.id)
-      .single();
-
-    if (userError) {
-      console.error("User role fetch error:", userError);
-      throw userError;
-    }
-
-    if (!userData) {
-      throw new Error("User account not found.");
-    }
-
-    // ==========================================================
-    // 3. Get Profile ID Based On Current Role
-    // ==========================================================
-
-    let freelancerId: string | null = null;
-    let clientId: string | null = null;
-
-    if (userData.role === "freelancer") {
-      const { data: freelancer, error: freelancerError } =
-        await supabase
-          .from("freelancer_profiles")
-          .select("freelancer_id")
-          .eq("user_id", user.id)
-          .single();
-
-      if (freelancerError) {
-        console.error(
-          "Freelancer profile fetch error:",
-          freelancerError,
-        );
-        throw freelancerError;
+      if (error) {
+        throw error;
       }
 
-      if (!freelancer) {
-        throw new Error("Freelancer profile not found.");
-      }
-
-      freelancerId = freelancer.freelancer_id;
-    } else if (userData.role === "client") {
-      const { data: client, error: clientError } = await supabase
-        .from("client_profiles")
-        .select("client_id")
-        .eq("user_id", user.id)
-        .single();
-
-      if (clientError) {
-        console.error("Client profile fetch error:", clientError);
-        throw clientError;
-      }
-
-      if (!client) {
-        throw new Error("Client profile not found.");
-      }
-
-      clientId = client.client_id;
-    } else {
-      throw new Error("Invalid user role.");
-    }
-
-    // ==========================================================
-    // 4. Determine Listing Type
-    // ==========================================================
-
-    const listingType =
-      userData.role === "freelancer"
-        ? "service"
-        : "job";
-
-    // ==========================================================
-    // 5. Create Marketplace Listing
-    // ==========================================================
-
-    const slug = generateSlug(payload.title);
-
-    const { data: service, error: serviceError } = await supabase
-      .from("marketplace_listings")
-      .insert({
-        freelancer_id: freelancerId,
-        client_id: clientId,
-
-        title: payload.title,
-        description: payload.description,
-
-        price: payload.price,
-        delivery_time_days: payload.delivery_time_days,
-        revisions_count: payload.revisions_count,
-
-        category_id: payload.category_id,
-        service_type: payload.service_type,
-
-        listing_type: listingType,
-
-        cover_image_url: null,
-
-        slug,
-      })
-      .select("service_id")
-      .single();
-
-    if (serviceError) {
-      console.log("Auth user ID:", user.id);
-      console.log("Current role:", userData.role);
-      console.log("Freelancer ID:", freelancerId);
-      console.log("Client ID:", clientId);
-      console.log("Listing type:", listingType);
-
-      console.error(
-        "Marketplace listing creation error:",
-        JSON.stringify(serviceError, null, 2),
-      );
-
-      throw serviceError;
-    }
-
-    if (!service) {
-      throw new Error("Failed to create marketplace listing.");
-    }
-
-    const serviceId = service.service_id;
-
-    // ==========================================================
-    // 6. Upload Media
-    // ==========================================================
-
-    const mediaUrls: string[] = [];
-
-    for (const file of payload.media_files) {
-      const fileName = `${crypto.randomUUID()}-${file.name}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("service-media")
-        .upload(fileName, file);
-
-      if (uploadError) {
-        console.error(
-          "Service media upload error:",
-          uploadError,
-        );
-        throw uploadError;
-      }
+      uploadedPaths.push(path);
 
       const { data } = supabase.storage
-        .from("service-media")
-        .getPublicUrl(fileName);
+        .from(SERVICE_MEDIA_BUCKET)
+        .getPublicUrl(path);
 
-      mediaUrls.push(data.publicUrl);
+      media.push({
+        media_url: data.publicUrl,
+        media_type: file.type.startsWith("video/") ? "video" : "image",
+        display_order: index,
+      });
     }
 
-    // ==========================================================
-    // 7. Update Cover Image
-    // ==========================================================
+    return { media, uploadedPaths };
+  } catch (error) {
+    if (uploadedPaths.length > 0) {
+      await supabase.storage.from(SERVICE_MEDIA_BUCKET).remove(uploadedPaths);
+    }
 
-    if (mediaUrls.length > 0) {
+    throw error;
+  }
+}
+
+async function createFreelancerService(
+  userId: string,
+  payload: CreateListingPayload,
+): Promise<CreateListingResult> {
+  const { data: freelancer, error: freelancerError } = await supabase
+    .from("freelancer_profiles")
+    .select("freelancer_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (freelancerError) {
+    throw freelancerError;
+  }
+
+  if (!freelancer) {
+    throw new Error(
+      "Complete your freelancer profile before posting a service.",
+    );
+  }
+
+  const { data: service, error: serviceError } = await supabase
+    .from("services")
+    .insert({
+      freelancer_id: freelancer.freelancer_id,
+      category_id: payload.category_id,
+      title: payload.title.trim(),
+      description: payload.description.trim(),
+      price: payload.price,
+      pricing_mode: payload.pricing_type ?? "fixed",
+      delivery_time_days: payload.delivery_time_days,
+      revisions_count: payload.revisions_count,
+      service_type: payload.service_type ?? "standard",
+      status: "Active",
+    })
+    .select("service_id")
+    .single();
+
+  if (serviceError) {
+    throw serviceError;
+  }
+
+  const uploadedPaths: string[] = [];
+
+  try {
+    if (payload.skill_ids.length > 0) {
+      const { error } = await supabase.from("service_skills").insert(
+        payload.skill_ids.map((skillId) => ({
+          service_id: service.service_id,
+          skill_id: skillId,
+        })),
+      );
+
+      if (error) {
+        throw error;
+      }
+    }
+
+    const files = payload.media_files ?? [];
+
+    if (files.length > 0) {
+      const upload = await uploadServiceMedia(
+        userId,
+        service.service_id,
+        files,
+      );
+      uploadedPaths.push(...upload.uploadedPaths);
+
+      const { error: mediaError } = await supabase.from("service_media").insert(
+        upload.media.map((item) => ({
+          service_id: service.service_id,
+          ...item,
+        })),
+      );
+
+      if (mediaError) {
+        throw mediaError;
+      }
+
       const { error: coverError } = await supabase
-        .from("marketplace_listings")
-        .update({
-          cover_image_url: mediaUrls[0],
-        })
-        .eq("service_id", serviceId);
+        .from("services")
+        .update({ cover_image_url: upload.media[0]?.media_url ?? null })
+        .eq("service_id", service.service_id);
 
       if (coverError) {
-        console.error(
-          "Cover image update error:",
-          coverError,
-        );
         throw coverError;
       }
     }
 
-    // ==========================================================
-    // 8. Insert Service Skills
-    // ==========================================================
-
-    if (payload.skill_ids.length > 0) {
-      const skillRows = payload.skill_ids.map((skillId) => ({
-        service_id: serviceId,
-        skill_id: skillId,
-      }));
-
-      const { error: skillsError } = await supabase
-        .from("service_skills")
-        .insert(skillRows);
-
-      if (skillsError) {
-        console.error(
-          "Service skills insertion error:",
-          skillsError,
-        );
-        throw skillsError;
-      }
-    }
-
-    // ==========================================================
-    // 9. Insert Service Media Records
-    // ==========================================================
-
-    if (mediaUrls.length > 0) {
-      const mediaRows = mediaUrls.map((url, index) => ({
-        service_id: serviceId,
-
-        media_url: url,
-
-        media_type: payload.media_files[index].type.startsWith(
-          "video",
-        )
-          ? "video"
-          : "image",
-
-        display_order: index,
-      }));
-
-      const { error: mediaError } = await supabase
-        .from("service_media")
-        .insert(mediaRows);
-
-      if (mediaError) {
-        console.error(
-          "Service media insertion error:",
-          mediaError,
-        );
-        throw mediaError;
-      }
-    }
-
-    // ==========================================================
-    // 10. Insert Service Milestones
-    // ==========================================================
-
     if (
       payload.service_type === "milestone" &&
-      payload.milestone_templates &&
-      payload.milestone_templates.length > 0
+      payload.milestone_templates?.length
     ) {
-      const milestoneRows =
+      const { error } = await supabase.from("service_milestones").insert(
         payload.milestone_templates.map((milestone) => ({
-          service_id: serviceId,
-
+          service_id: service.service_id,
           title: milestone.title,
-
           description: milestone.description ?? null,
-
           amount: milestone.amount,
-
           display_order: milestone.display_order,
-        }));
+        })),
+      );
 
-      const { error: milestoneError } = await supabase
-        .from("service_milestones")
-        .insert(milestoneRows);
-
-      if (milestoneError) {
-        console.error(
-          "Service milestones insertion error:",
-          milestoneError,
-        );
-        throw milestoneError;
+      if (error) {
+        throw error;
       }
     }
 
-    // ==========================================================
-    // 11. Return Listing ID
-    // ==========================================================
-
-    return serviceId;
+    return {
+      listingType: "service",
+      id: service.service_id,
+    };
   } catch (error) {
-    console.error("Failed to create service:", error);
+    if (uploadedPaths.length > 0) {
+      await supabase.storage.from(SERVICE_MEDIA_BUCKET).remove(uploadedPaths);
+    }
+
+    await supabase
+      .from("services")
+      .delete()
+      .eq("service_id", service.service_id);
+
     throw error;
   }
 }
+
+async function createClientJob(
+  userId: string,
+  payload: CreateListingPayload,
+): Promise<CreateListingResult> {
+  const { data: client, error: clientError } = await supabase
+    .from("client_profiles")
+    .select("client_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (clientError) {
+    throw clientError;
+  }
+
+  if (!client) {
+    throw new Error("Complete your client profile before posting a job.");
+  }
+
+  const { data: job, error: jobError } = await supabase
+    .from("jobs")
+    .insert({
+      client_id: client.client_id,
+      category_id: payload.category_id,
+      title: payload.title.trim(),
+      description: payload.description.trim(),
+      budget_min: payload.budget_min,
+      budget_max: payload.budget_max,
+      pricing_type: payload.pricing_type ?? "fixed",
+      deadline: payload.deadline || null,
+      experience_level: payload.experience_level ?? "intermediate",
+      status: "open",
+    })
+    .select("job_id")
+    .single();
+
+  if (jobError) {
+    throw jobError;
+  }
+
+  try {
+    if (payload.skill_ids.length > 0) {
+      const { error } = await supabase.from("job_skills").insert(
+        payload.skill_ids.map((skillId) => ({
+          job_id: job.job_id,
+          skill_id: skillId,
+        })),
+      );
+
+      if (error) {
+        throw error;
+      }
+    }
+
+    return {
+      listingType: "job",
+      id: job.job_id,
+    };
+  } catch (error) {
+    await supabase.from("jobs").delete().eq("job_id", job.job_id);
+    throw error;
+  }
+}
+
+export async function createListing(
+  payload: CreateListingPayload,
+): Promise<CreateListingResult> {
+  const user = await getAuthenticatedUser();
+  const role = await getCurrentListingRole();
+
+  if (role === "freelancer") {
+    return createFreelancerService(user.id, payload);
+  }
+
+  return createClientJob(user.id, payload);
+}
+
+export const createService = createListing;

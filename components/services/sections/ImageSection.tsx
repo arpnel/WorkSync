@@ -7,7 +7,6 @@ import type { ServiceFormValues } from "../types/service-form.types";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 
 import {
   ImageIcon,
@@ -30,26 +29,16 @@ export function ServiceImageSection({
 }: ServiceImageSectionProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  const handleMediaChange = (
-    event: ChangeEvent<HTMLInputElement>
-  ) => {
+  const handleMediaChange = (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
 
     if (!files.length) return;
 
-    const urls = files.map((file) =>
-      URL.createObjectURL(file)
-    );
+    const urls = files.map((file) => URL.createObjectURL(file));
 
     onChange({
-      mediaFiles: [
-        ...values.mediaFiles,
-        ...files,
-      ],
-      mediaUrls: [
-        ...values.mediaUrls,
-        ...urls,
-      ],
+      mediaFiles: [...values.mediaFiles, ...files],
+      mediaUrls: [...values.mediaUrls, ...urls],
     });
   };
 
@@ -70,35 +59,20 @@ export function ServiceImageSection({
 
   const nextMedia = () => {
     setCurrentIndex((prev) =>
-      prev === values.mediaUrls.length - 1
-        ? 0
-        : prev + 1
+      prev === values.mediaUrls.length - 1 ? 0 : prev + 1,
     );
   };
 
   const previousMedia = () => {
     setCurrentIndex((prev) =>
-      prev === 0
-        ? values.mediaUrls.length - 1
-        : prev - 1
+      prev === 0 ? values.mediaUrls.length - 1 : prev - 1,
     );
   };
 
-  const currentMedia =
-    values.mediaUrls[currentIndex];
+  const currentMedia = values.mediaUrls[currentIndex];
 
   return (
     <div className="space-y-5">
-      <div>
-        <Label className="text-sm font-semibold">
-          Service Media
-        </Label>
-
-        <p className="mt-1 text-xs text-muted-foreground">
-          Upload images or videos showcasing your service.
-        </p>
-      </div>
-
       <Input
         id="service-media"
         type="file"
@@ -111,25 +85,17 @@ export function ServiceImageSection({
       {!currentMedia ? (
         <button
           type="button"
-          onClick={() =>
-            document
-              .getElementById("service-media")
-              ?.click()
-          }
+          onClick={() => document.getElementById("service-media")?.click()}
           className="flex w-full flex-col items-center justify-center rounded-xl border-2 border-dashed p-10 transition hover:bg-muted/40"
         >
           <Upload className="mb-3 h-8 w-8 text-muted-foreground" />
 
-          <p className="font-medium">
-            Upload images or videos
-          </p>
+          <p className="font-medium">Upload images or videos</p>
         </button>
       ) : (
         <div className="space-y-4">
           <div className="relative overflow-hidden rounded-xl border">
-            {values.mediaFiles[currentIndex]?.type.startsWith(
-              "video"
-            ) ? (
+            {values.mediaFiles[currentIndex]?.type.startsWith("video") ? (
               <video
                 src={currentMedia}
                 controls
@@ -170,8 +136,7 @@ export function ServiceImageSection({
               <ImageIcon className="h-4 w-4 text-muted-foreground" />
 
               <span>
-                {currentIndex + 1} /
-                {values.mediaFiles.length}
+                {currentIndex + 1} /{values.mediaFiles.length}
               </span>
             </div>
 
@@ -180,9 +145,7 @@ export function ServiceImageSection({
                 type="button"
                 variant="outline"
                 onClick={() =>
-                  document
-                    .getElementById("service-media")
-                    ?.click()
+                  document.getElementById("service-media")?.click()
                 }
               >
                 Add More
@@ -202,9 +165,7 @@ export function ServiceImageSection({
       )}
 
       {errors.mediaUrls && (
-        <p className="text-xs text-destructive">
-          {errors.mediaUrls}
-        </p>
+        <p className="text-xs text-destructive">{errors.mediaUrls}</p>
       )}
     </div>
   );

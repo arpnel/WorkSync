@@ -10,9 +10,10 @@ import {
   type UserRole,
 } from "@/services/marketplace/AccountServices";
 
-import { getMarketplaceService } from "@/services/marketplace/MarketplaceServices";
-
-import type { MarketplaceService } from "@/services/marketplace/MarketplaceServices";
+import {
+  getMarketplaceService,
+  type MarketplaceService,
+} from "@/services/marketplace/MarketplaceServices";
 
 import ServiceReviews from "@/components/detailedservice/ServiceReviews";
 
@@ -23,121 +24,207 @@ interface MarketplaceServiceDetailsProps {
 export default function MarketplaceServiceDetails({
   serviceId,
 }: MarketplaceServiceDetailsProps) {
-  const [service, setService] = useState<MarketplaceService | null>(null);
+  const [service, setService] =
+    useState<MarketplaceService | null>(null);
 
-  const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(
-    null,
-  );
+  const [currentUserRole, setCurrentUserRole] =
+    useState<UserRole | null>(null);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] =
+    useState(true);
 
-  const [roleLoading, setRoleLoading] = useState(true);
+  const [roleLoading, setRoleLoading] =
+    useState(true);
 
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] =
+    useState<string | null>(null);
 
-  const [showRoleDialog, setShowRoleDialog] = useState(false);
+  const [showRoleDialog, setShowRoleDialog] =
+    useState(false);
 
-  const [switchingRole, setSwitchingRole] = useState(false);
+  const [switchingRole, setSwitchingRole] =
+    useState(false);
 
   /* ==========================================================
-     LOAD CURRENT USER ROLE + LISTEN FOR ROLE CHANGES
+     LOAD CURRENT USER ROLE
   ========================================================== */
 
   useEffect(() => {
+    let mounted = true;
+
     async function loadUserRole() {
       try {
         setRoleLoading(true);
 
-        const role = await getCurrentUserRole();
+        const role =
+          await getCurrentUserRole();
 
-        console.log("Marketplace listing current role:", role);
+        if (!mounted) {
+          return;
+        }
 
         setCurrentUserRole(role);
       } catch (err) {
-        console.error("Failed to load current user role:", err);
+        console.error(
+          "Failed to load current user role:",
+          err,
+        );
 
-        setCurrentUserRole(null);
+        if (mounted) {
+          setCurrentUserRole(null);
+        }
       } finally {
-        setRoleLoading(false);
+        if (mounted) {
+          setRoleLoading(false);
+        }
       }
     }
 
     loadUserRole();
 
-    function handleRoleChanged(event: Event) {
-      const customEvent = event as CustomEvent<{
-        role: UserRole;
-      }>;
+    function handleRoleChanged(
+      event: Event,
+    ) {
+      const customEvent =
+        event as CustomEvent<{
+          role: UserRole;
+        }>;
 
-      const role = customEvent.detail?.role;
+      const role =
+        customEvent.detail?.role;
 
-      if (role !== "client" && role !== "freelancer") {
+      if (
+        role !== "client" &&
+        role !== "freelancer"
+      ) {
         return;
       }
-
-      console.log("Marketplace role changed:", role);
 
       setCurrentUserRole(role);
     }
 
-    window.addEventListener("account-role-changed", handleRoleChanged);
+    window.addEventListener(
+      "account-role-changed",
+      handleRoleChanged,
+    );
 
     return () => {
-      window.removeEventListener("account-role-changed", handleRoleChanged);
+      mounted = false;
+
+      window.removeEventListener(
+        "account-role-changed",
+        handleRoleChanged,
+      );
     };
   }, []);
 
   /* ==========================================================
-     LOAD MARKETPLACE LISTING
+     LOAD SERVICE
   ========================================================== */
 
   useEffect(() => {
+    let mounted = true;
+
     async function loadService() {
       if (!serviceId) {
-        setError("Listing ID is missing.");
+        setError(
+          "Service ID is missing.",
+        );
         setLoading(false);
         return;
       }
 
-      setLoading(true);
-      setError(null);
-
       try {
-        console.log("Loading marketplace listing:", serviceId);
+        setLoading(true);
+        setError(null);
 
-        const data = await getMarketplaceService(serviceId);
+        const data =
+          await getMarketplaceService(
+            serviceId,
+          );
+
+        if (!mounted) {
+          return;
+        }
 
         if (!data) {
-          setError("Listing not found.");
           setService(null);
+          setError(
+            "Service not found.",
+          );
           return;
         }
 
         setService(data);
       } catch (err) {
-        console.error("Failed to load marketplace listing:", err);
+        console.error(
+          "Failed to load service:",
+          err,
+        );
 
-        setError("Failed to load listing.");
-        setService(null);
+        if (mounted) {
+          setService(null);
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Failed to load service.",
+          );
+        }
       } finally {
-        setLoading(false);
+        if (mounted) {
+          setLoading(false);
+        }
       }
     }
 
     loadService();
+
+    return () => {
+      mounted = false;
+    };
   }, [serviceId]);
 
   /* ==========================================================
-     SERVICE ACTION
+     BUY SERVICE
   ========================================================== */
 
-  async function handleServiceAction() {
-    if (currentUserRole === "freelancer") {
+  function handleServiceAction() {
+    if (!service) {
+      return;
+    }
+
+    /*
+     * Only clients can purchase a service.
+     */
+    if (
+      currentUserRole ===
+      "freelancer"
+    ) {
       setShowRoleDialog(true);
       return;
     }
 
-    console.log("Continue with service purchase");
+    /*
+     * User must be in Client mode.
+     */
+    if (
+      currentUserRole !==
+      "client"
+    ) {
+      setError(
+        "You must be logged in as a client to purchase this service.",
+      );
+      return;
+    }
+
+    /*
+     * Connect the actual service-order
+     * creation flow here.
+     */
+    console.log(
+      "Purchase service:",
+      service.service_id,
+    );
   }
 
   /* ==========================================================
@@ -148,21 +235,37 @@ export default function MarketplaceServiceDetails({
     try {
       setSwitchingRole(true);
 
-      await switchUserRole("client");
+      await switchUserRole(
+        "client",
+      );
 
-      setCurrentUserRole("client");
+      setCurrentUserRole(
+        "client",
+      );
 
       window.dispatchEvent(
-        new CustomEvent("account-role-changed", {
-          detail: {
-            role: "client",
+        new CustomEvent(
+          "account-role-changed",
+          {
+            detail: {
+              role: "client",
+            },
           },
-        }),
+        ),
       );
 
       setShowRoleDialog(false);
-    } catch (error) {
-      console.error("Failed to switch to client:", error);
+    } catch (err) {
+      console.error(
+        "Failed to switch to client:",
+        err,
+      );
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to switch to Client mode.",
+      );
     } finally {
       setSwitchingRole(false);
     }
@@ -172,10 +275,15 @@ export default function MarketplaceServiceDetails({
      LOADING
   ========================================================== */
 
-  if (loading || roleLoading) {
+  if (
+    loading ||
+    roleLoading
+  ) {
     return (
-      <div className="flex min-h-[400px] items-center justify-center">
-        <p className="text-muted-foreground">Loading listing...</p>
+      <div className="flex min-h-[400px] items-center justify-center px-4">
+        <p className="text-sm text-muted-foreground">
+          Loading service...
+        </p>
       </div>
     );
   }
@@ -186,47 +294,49 @@ export default function MarketplaceServiceDetails({
 
   if (error) {
     return (
-      <div className="flex min-h-[400px] items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-lg font-semibold">Unable to load listing</h2>
+      <div className="flex min-h-[400px] items-center justify-center px-4">
+        <div className="w-full max-w-md text-center">
+          <h2 className="text-lg font-semibold">
+            Unable to load service
+          </h2>
 
-          <p className="mt-2 text-sm text-muted-foreground">{error}</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {error}
+          </p>
         </div>
       </div>
     );
   }
 
   /* ==========================================================
-     LISTING NOT FOUND
+     NOT FOUND
   ========================================================== */
 
   if (!service) {
     return (
-      <div className="flex min-h-[400px] items-center justify-center">
-        <p className="text-muted-foreground">Listing not found.</p>
+      <div className="flex min-h-[400px] items-center justify-center px-4">
+        <p className="text-sm text-muted-foreground">
+          Service not found.
+        </p>
       </div>
     );
   }
 
   /* ==========================================================
-     LISTING TYPE
+     CURRENT ROLE
   ========================================================== */
 
-  const isService = service.listing_type === "service";
-  const isJob = service.listing_type === "job";
+  const isFreelancer =
+    currentUserRole ===
+    "freelancer";
 
   /* ==========================================================
-     CURRENT USER ROLE
+     SERVICE TYPE
   ========================================================== */
 
-  const isFreelancer = currentUserRole === "freelancer";
-
-  /*
-   * Only services can be purchased.
-   *
-   * Jobs do not use the service purchase flow.
-   */
-  const actionLabel = isService ? "Buy" : "Apply";
+  const isMilestone =
+    service.service_type ===
+    "milestone";
 
   /* ==========================================================
      RETURN
@@ -234,41 +344,50 @@ export default function MarketplaceServiceDetails({
 
   return (
     <>
-      <div className="w-full px-6 py-6">
-        <div className="mx-auto max-w-4xl">
+      <div className="w-full px-4 py-5 sm:px-6 sm:py-6">
+        <div className="mx-auto w-full max-w-4xl">
           {/* =====================================================
-              LISTING IMAGE
+              SERVICE IMAGE
           ===================================================== */}
 
-          <div className="overflow-hidden rounded-2xl border bg-muted">
+          <div className="overflow-hidden rounded-xl border bg-muted sm:rounded-2xl">
             {service.cover_image_url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={service.cover_image_url}
-                alt={service.title}
-                className="max-h-[500px] w-full object-cover"
+                src={
+                  service.cover_image_url
+                }
+                alt={
+                  service.title ||
+                  "Service"
+                }
+                className="aspect-video w-full object-cover"
               />
             ) : (
-              <div className="flex h-[400px] items-center justify-center">
-                <span className="text-muted-foreground">
-                  {isService ? "Service Thumbnail" : "Job Thumbnail"}
+              <div className="flex aspect-video w-full items-center justify-center">
+                <span className="text-sm text-muted-foreground">
+                  Service Thumbnail
                 </span>
               </div>
             )}
           </div>
 
           {/* =====================================================
-              LISTING TITLE
+              SERVICE HEADER
           ===================================================== */}
 
-          <div className="mt-6">
-            <h1 className="text-2xl font-bold tracking-tight">
-              {service.title}
+          <div className="mt-5 sm:mt-6">
+            <h1 className="text-xl font-bold tracking-tight sm:text-2xl lg:text-3xl">
+              {service.title ||
+                "Untitled Service"}
             </h1>
 
             {service.category?.name && (
               <p className="mt-2 text-sm text-muted-foreground">
-                {service.category.name}
+                {
+                  service.category
+                    .name
+                }
               </p>
             )}
           </div>
@@ -277,46 +396,52 @@ export default function MarketplaceServiceDetails({
               DESCRIPTION
           ===================================================== */}
 
-          <section className="mt-8">
+          <section className="mt-7 sm:mt-8">
             <h2 className="text-lg font-semibold">
-              {isService ? "About this service" : "About this job"}
+              About this service
             </h2>
 
             <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
-              {service.description}
+              {service.description ||
+                "No description provided."}
             </p>
           </section>
 
           {/* =====================================================
-              LISTING DETAILS
+              SERVICE INFORMATION
           ===================================================== */}
 
-          <section className="mt-8 rounded-2xl border bg-background">
-            {/* =================================================
-                PRICE / BUDGET
-            ================================================= */}
+          <section className="mt-7 overflow-hidden rounded-xl border bg-background sm:mt-8 sm:rounded-2xl">
+            {/* ===================================================
+                PRICE
+            =================================================== */}
 
-            <div className="border-b p-6">
+            <div className="border-b p-5 sm:p-6">
               <p className="text-sm text-muted-foreground">
-                {isService ? "Service price" : "Job budget"}
+                Service price
               </p>
 
-              <p className="mt-1 text-3xl font-bold tracking-tight">
+              <p className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
                 ₱
-                {Number(service.price).toLocaleString("en-PH", {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
+                {Number(
+                  service.price ?? 0,
+                ).toLocaleString(
+                  "en-PH",
+                  {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  },
+                )}
               </p>
             </div>
 
-            {/* =================================================
+            {/* ===================================================
                 DETAILS
-            ================================================= */}
+            =================================================== */}
 
-            <div className="p-6">
+            <div className="p-5 sm:p-6">
               <h2 className="text-base font-semibold">
-                {isService ? "Service details" : "Job details"}
+                Service details
               </h2>
 
               <div className="mt-5 space-y-5">
@@ -324,132 +449,141 @@ export default function MarketplaceServiceDetails({
 
                 <div className="flex items-center justify-between gap-4">
                   <span className="text-sm text-muted-foreground">
-                    {isService ? "Delivery" : "Expected delivery"}
+                    Delivery
                   </span>
 
-                  <span className="text-sm font-medium">
-                    {service.delivery_time_days}{" "}
-                    {service.delivery_time_days === 1 ? "day" : "days"}
+                  <span className="text-right text-sm font-medium">
+                    {
+                      service.delivery_time_days
+                    }{" "}
+                    {service.delivery_time_days ===
+                    1
+                      ? "day"
+                      : "days"}
                   </span>
                 </div>
 
-                {/* REVISIONS - SERVICE ONLY */}
+                {/* REVISIONS */}
 
-                {isService && (
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-sm text-muted-foreground">
-                      Revisions
-                    </span>
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-sm text-muted-foreground">
+                    Revisions
+                  </span>
 
-                    <span className="text-sm font-medium">
-                      {service.revisions_count}
-                    </span>
-                  </div>
-                )}
+                  <span className="text-right text-sm font-medium">
+                    {
+                      service.revisions_count
+                    }
+                  </span>
+                </div>
 
-                {/* SERVICE TYPE - SERVICE ONLY */}
+                {/* SERVICE TYPE */}
 
-                {isService && (
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-sm text-muted-foreground">
-                      Service type
-                    </span>
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-sm text-muted-foreground">
+                    Service type
+                  </span>
 
-                    <span className="text-sm font-medium">
-                      {service.service_type === "milestone"
-                        ? "Milestone"
-                        : "Standard"}
-                    </span>
-                  </div>
-                )}
+                  <span className="text-right text-sm font-medium">
+                    {isMilestone
+                      ? "Milestone"
+                      : "Standard"}
+                  </span>
+                </div>
+
+                {/* PRICING MODE */}
+
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-sm text-muted-foreground">
+                    Pricing
+                  </span>
+
+                  <span className="text-right text-sm font-medium capitalize">
+                    {service.pricing_mode ||
+                      "Fixed"}
+                  </span>
+                </div>
 
                 {/* CATEGORY */}
 
-                {service.category?.name && (
+                {service.category
+                  ?.name && (
                   <div className="flex items-center justify-between gap-4">
                     <span className="text-sm text-muted-foreground">
                       Category
                     </span>
 
-                    <span className="text-right text-sm font-medium">
-                      {service.category.name}
+                    <span className="max-w-[60%] text-right text-sm font-medium">
+                      {
+                        service
+                          .category
+                          .name
+                      }
                     </span>
                   </div>
                 )}
+
+                {/* STATUS */}
+
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-sm text-muted-foreground">
+                    Status
+                  </span>
+
+                  <span className="text-right text-sm font-medium capitalize">
+                    {service.status ||
+                      "Active"}
+                  </span>
+                </div>
               </div>
             </div>
 
-            {/* =================================================
+            {/* ===================================================
                 ACTION
-            ================================================= */}
+            =================================================== */}
 
-            <div className="border-t p-6">
-              {isService ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={handleServiceAction}
-                    className="
-                      w-full
-                      rounded-lg
-                      bg-primary
-                      px-4
-                      py-3
-                      text-sm
-                      font-semibold
-                      text-primary-foreground
-                      transition-opacity
-                      hover:opacity-90
-                    "
-                  >
-                    {actionLabel}
-                  </button>
+            <div className="border-t p-5 sm:p-6">
+              <button
+                type="button"
+                onClick={
+                  handleServiceAction
+                }
+                className="
+                  w-full
+                  rounded-lg
+                  bg-primary
+                  px-4
+                  py-3
+                  text-sm
+                  font-semibold
+                  text-primary-foreground
+                  transition-opacity
+                  hover:opacity-90
+                  active:opacity-80
+                "
+              >
+                Buy
+              </button>
 
-                  <p className="mt-3 text-center text-xs text-muted-foreground">
-                    {isFreelancer
-                      ? "Switch to a Client account to purchase this service."
-                      : "Purchase this service from the freelancer."}
-                  </p>
-                </>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    className="
-                      w-full
-                      rounded-lg
-                      bg-primary
-                      px-4
-                      py-3
-                      text-sm
-                      font-semibold
-                      text-primary-foreground
-                      transition-opacity
-                      hover:opacity-90
-                    "
-                  >
-                    Apply
-                  </button>
-
-                  <p className="mt-3 text-center text-xs text-muted-foreground">
-                    Submit your application to the client for this job.
-                  </p>
-                </>
-              )}
+              <p className="mt-3 text-center text-xs leading-5 text-muted-foreground">
+                {isFreelancer
+                  ? "Switch to a Client account to purchase this service."
+                  : "Purchase this service from the freelancer."}
+              </p>
             </div>
           </section>
 
           {/* =====================================================
               REVIEWS
-              
-              IMPORTANT:
-              Jobs do not need reviews.
-              Reviews are only rendered for services.
           ===================================================== */}
 
-          {isService && service.freelancer_id && (
-            <section className="mt-8">
-              <ServiceReviews freelancerId={service.freelancer_id} />
+          {service.freelancer_id && (
+            <section className="mt-7 sm:mt-8">
+              <ServiceReviews
+                freelancerId={
+                  service.freelancer_id
+                }
+              />
             </section>
           )}
         </div>
@@ -457,34 +591,42 @@ export default function MarketplaceServiceDetails({
 
       {/* ==========================================================
           SWITCH TO CLIENT DIALOG
-          
-          Only relevant for service purchases.
       ========================================================== */}
 
-      {showRoleDialog && isService && (
+      {showRoleDialog && (
         <div
           className="
             fixed inset-0 z-[200]
             flex items-center justify-center
-            bg-black/50 p-4
+            bg-black/50
+            p-4
           "
         >
           <div
             className="
-              w-full max-w-md
-              rounded-xl border
+              w-full
+              max-w-md
+              rounded-xl
+              border
               bg-background
-              p-6
+              p-5
               shadow-xl
+              sm:p-6
             "
           >
-            {/* DIALOG HEADER */}
+            {/* ===================================================
+                HEADER
+            =================================================== */}
 
             <div className="flex items-start gap-3">
               <div
                 className="
-                  flex h-10 w-10 shrink-0
-                  items-center justify-center
+                  flex
+                  h-10
+                  w-10
+                  shrink-0
+                  items-center
+                  justify-center
                   rounded-full
                   bg-yellow-500/10
                 "
@@ -492,23 +634,36 @@ export default function MarketplaceServiceDetails({
                 <AlertTriangle className="h-5 w-5 text-yellow-600" />
               </div>
 
-              <div>
-                <h2 className="text-lg font-semibold">Switch to Client?</h2>
+              <div className="min-w-0">
+                <h2 className="text-lg font-semibold">
+                  Switch to Client?
+                </h2>
 
-                <p className="mt-2 text-sm text-muted-foreground">
-                  This service can only be purchased by clients. Switch to your
-                  Client account to continue?
+                <p className="mt-2 text-sm leading-5 text-muted-foreground">
+                  This service can only
+                  be purchased by
+                  clients. Switch to
+                  your Client account
+                  to continue?
                 </p>
               </div>
             </div>
 
-            {/* DIALOG ACTIONS */}
+            {/* ===================================================
+                ACTIONS
+            =================================================== */}
 
-            <div className="mt-6 flex justify-end gap-2">
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <button
                 type="button"
-                disabled={switchingRole}
-                onClick={() => setShowRoleDialog(false)}
+                disabled={
+                  switchingRole
+                }
+                onClick={() =>
+                  setShowRoleDialog(
+                    false,
+                  )
+                }
                 className="
                   rounded-md
                   border
@@ -525,8 +680,12 @@ export default function MarketplaceServiceDetails({
 
               <button
                 type="button"
-                disabled={switchingRole}
-                onClick={handleSwitchToClient}
+                disabled={
+                  switchingRole
+                }
+                onClick={
+                  handleSwitchToClient
+                }
                 className="
                   rounded-md
                   bg-primary
@@ -541,7 +700,9 @@ export default function MarketplaceServiceDetails({
                   disabled:opacity-50
                 "
               >
-                {switchingRole ? "Switching..." : "Switch to Client"}
+                {switchingRole
+                  ? "Switching..."
+                  : "Switch to Client"}
               </button>
             </div>
           </div>
@@ -550,3 +711,4 @@ export default function MarketplaceServiceDetails({
     </>
   );
 }
+

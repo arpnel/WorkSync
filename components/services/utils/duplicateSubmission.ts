@@ -15,4 +15,3 @@ export function useDuplicateSubmissionLock() {
 
   return { lock, unlock };
 }
-

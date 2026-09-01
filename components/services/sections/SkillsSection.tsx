@@ -4,6 +4,7 @@ import type { ServiceFormValues } from "../types/service-form.types";
 import type { Skill } from "@/services/serviceP/categoryService";
 
 import { Input } from "@/components/ui/input";
+import { X } from "lucide-react";
 
 type Props = {
   values: ServiceFormValues;
@@ -52,7 +53,7 @@ export function ServiceSkillsSection({
       .filter(
         (skill) =>
           skill.name.toLowerCase().includes(query) &&
-          !values.skillIds.includes(skill.id)
+          !values.skillIds.includes(skill.id),
       )
       .sort((a, b) => {
         const aStart = a.name.toLowerCase().startsWith(query);
@@ -67,9 +68,7 @@ export function ServiceSkillsSection({
   }, [search, allSkills, values.skillIds]);
 
   const selectedSkills = useMemo(() => {
-    return allSkills.filter((skill) =>
-      values.skillIds.includes(skill.id)
-    );
+    return allSkills.filter((skill) => values.skillIds.includes(skill.id));
   }, [allSkills, values.skillIds]);
 
   return (
@@ -77,10 +76,6 @@ export function ServiceSkillsSection({
       {/* Search */}
 
       <div className="space-y-3">
-        <p className="text-xs text-muted-foreground">
-          Search skills
-        </p>
-
         <Input
           placeholder="Search existing skills..."
           value={search}
@@ -129,10 +124,6 @@ export function ServiceSkillsSection({
 
         {selectedSkills.length > 0 && (
           <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">
-              Selected skills
-            </p>
-
             <div className="flex flex-wrap gap-2">
               {selectedSkills.map((skill) => (
                 <button
@@ -154,7 +145,7 @@ export function ServiceSkillsSection({
                   "
                 >
                   {skill.name}
-                  <span className="text-xs">✕</span>
+                  <X className="h-3.5 w-3.5" aria-hidden="true" />
                 </button>
               ))}
             </div>
@@ -162,25 +153,20 @@ export function ServiceSkillsSection({
         )}
       </div>
 
-      {/* Recommended */}
+      {values.categoryId && (
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">Recommended skills</p>
 
-      <div className="space-y-2">
-        <p className="text-xs text-muted-foreground">
-          Recommended skills
-        </p>
-
-        <div className="flex flex-wrap gap-2">
-          {skills.length > 0 ? (
-            skills
-              .filter(
-                (skill) => !values.skillIds.includes(skill.id)
-              )
-              .map((skill) => (
-                <button
-                  key={skill.id}
-                  type="button"
-                  onClick={() => toggleSkill(skill.id)}
-                  className="
+          <div className="flex flex-wrap gap-2">
+            {skills.length > 0
+              ? skills
+                  .filter((skill) => !values.skillIds.includes(skill.id))
+                  .map((skill) => (
+                    <button
+                      key={skill.id}
+                      type="button"
+                      onClick={() => toggleSkill(skill.id)}
+                      className="
                     rounded-md
                     border
                     px-3
@@ -189,27 +175,18 @@ export function ServiceSkillsSection({
                     transition
                     hover:bg-muted
                   "
-                >
-                  {skill.name}
-                </button>
-              ))
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              No recommended skills loaded.
-            </p>
-          )}
+                    >
+                      {skill.name}
+                    </button>
+                  ))
+              : null}
+          </div>
         </div>
-      </div>
-
-      {errors.skillIds && (
-        <p className="text-xs text-destructive">
-          {errors.skillIds}
-        </p>
       )}
 
-      <p className="text-xs text-muted-foreground">
-        {values.skillIds.length} skills selected
-      </p>
+      {errors.skillIds && (
+        <p className="text-xs text-destructive">{errors.skillIds}</p>
+      )}
     </div>
   );
 }

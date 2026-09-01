@@ -10,47 +10,47 @@ export async function createAccount({
   lastName,
 }: CreateAccountData) {
   const cleanEmail = email.trim().toLowerCase();
+  const cleanFirstName = firstName.trim();
+  const cleanLastName = lastName.trim();
 
-  let authData;
-  let authError;
+  if (!cleanEmail || !password || !cleanFirstName || !cleanLastName) {
+    throw new Error("INVALID_SIGNUP_DATA");
+  }
 
   try {
-    const result = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email: cleanEmail,
       password,
       options: {
         data: {
-          first_name: firstName.trim(),
-          last_name: lastName.trim(),
+          first_name: cleanFirstName,
+          last_name: cleanLastName,
           role: DEFAULT_ROLE,
         },
       },
     });
 
-    authData = result.data;
-    authError = result.error;
-  } catch (e) {
-    console.error("SIGNUP THREW:", e);
-    throw e;
-  }
+    if (error) {
+      const message = error.message.toLowerCase();
 
-  if (authError) {
-    const message = authError.message.toLowerCase();
+      if (
+        message.includes("already") ||
+        message.includes("registered") ||
+        message.includes("exists")
+      ) {
+        throw new Error("ACCOUNT_EXISTS");
+      }
 
-    if (
-      message.includes("already") ||
-      message.includes("registered") ||
-      message.includes("exists")
-    ) {
-      throw new Error("ACCOUNT_EXISTS");
+      throw error;
     }
 
-    throw authError;
-  }
+    if (!data.user) {
+      throw new Error("FAILED_TO_CREATE_ACCOUNT");
+    }
 
-  if (!authData.user) {
-    throw new Error("Failed to create account.");
+    return data.user;
+  } catch (error) {
+    console.error("SIGNUP AUTH ERROR:", error);
+    throw error;
   }
-
-  return authData.user;
 }

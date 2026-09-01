@@ -1,0 +1,49 @@
+export type WorkspaceProjectType = "standard" | "milestone";
+
+export interface WorkspaceMilestone {
+  id: string;
+  title: string;
+  description: string;
+  amount: number;
+  dueDate: string | null;
+  status: string;
+  displayOrder: number;
+}
+
+export interface WorkspaceMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  senderAvatarUrl: string | null;
+  message: string;
+  attachmentUrl: string | null;
+  attachmentType: string | null;
+  createdAt: string;
+  mine: boolean;
+}
+
+export interface ProjectWorkspace {
+  orderId: string;
+  currentUserId: string;
+  projectId: string | null;
+  conversationId: string | null;
+  type: WorkspaceProjectType;
+  title: string;
+  description: string;
+  status: string;
+  orderStatus: string;
+  clientName: string;
+  freelancerName: string;
+  createdAt: string;
+  startDate: string | null;
+  dueDate: string | null;
+  budget: number;
+  deliveryDays: number | null;
+  revisions: number | null;
+  terms: string | null;
+  contractStatus: string | null;
+  clientSignedAt: string | null;
+  freelancerSignedAt: string | null;
+  milestones: WorkspaceMilestone[];
+  messages: WorkspaceMessage[];
+}

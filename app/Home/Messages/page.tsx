@@ -1,147 +1,140 @@
 "use client";
 
-import { useState } from "react";
-
-import ChatLayout from "../../../components/message/ChatLayout";
 import ChatHeader from "../../../components/message/ChatHeader";
+import ChatLayout from "../../../components/message/ChatLayout";
 import ConversationSidebar from "../../../components/message/ConversationSidebar";
 import EmptyChat from "../../../components/message/EmptyChat";
+import LoadingChat from "../../../components/message/LoadingChat";
 import MessageInput from "../../../components/message/MessageInput";
 import MessageScroller from "../../../components/message/MessageScroller";
 
-import type { Conversation } from "../../../components/message/ConversationList";
-import type { MessageItemProps } from "../../../components/message/MessageItem";
+import { Button } from "@/components/ui/button";
+import { useMessaging } from "@/hooks/message/useMessaging";
 
-const conversations: Conversation[] = [
-  {
-    id: "1",
-    name: "Mina Chen",
-    role: "Product Designer",
-    avatar: "",
-    lastMessage: "Can you share the revised mockups?",
-    lastMessageTime: "10:24 AM",
-    unreadCount: 2,
-    online: true,
-  },
-  {
-    id: "2",
-    name: "Drew Alvarez",
-    role: "Marketing Lead",
-    avatar: "",
-    lastMessage: "The campaign brief is ready.",
-    lastMessageTime: "Yesterday",
-    unreadCount: 0,
-    online: false,
-  },
-  {
-    id: "3",
-    name: "Riley Patel",
-    role: "Developer",
-    avatar: "",
-    lastMessage: "I pushed the latest fixes.",
-    lastMessageTime: "Monday",
-    unreadCount: 1,
-    online: true,
-  },
-];
+function formatConversationTime(value: string) {
+  const date = new Date(value);
+  const now = new Date();
 
-const conversationMessages: Record<string, MessageItemProps[]> = {
-  "1": [
-    {
-      id: "1",
-      sender: "them",
-      senderName: "Mina Chen",
-      content: "Hi! I reviewed the latest draft.",
-      timestamp: "10:20 AM",
-      seen: true,
-    },
-  ],
+  if (date.toDateString() === now.toDateString()) {
+    return new Intl.DateTimeFormat("en-PH", {
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(date);
+  }
 
-  "2": [
-    {
-      id: "2",
-      sender: "them",
-      senderName: "Drew Alvarez",
-      content: "The campaign brief is ready.",
-      timestamp: "Yesterday",
-      seen: true,
-    },
-  ],
+  return new Intl.DateTimeFormat("en-PH", {
+    month: "short",
+    day: "numeric",
+  }).format(date);
+}
 
-  "3": [
-    {
-      id: "3",
-      sender: "them",
-      senderName: "Riley Patel",
-      content: "I pushed the latest fixes.",
-      timestamp: "Monday",
-      seen: false,
-    },
-  ],
-};
-
-
-
+function formatMessageTime(value: string) {
+  return new Intl.DateTimeFormat("en-PH", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
 
 export default function MessagesPage() {
-  const [selectedConversationId, setSelectedConversationId] = useState<
-    string | undefined
-  >();
+  const {
+    currentUserId,
+    conversations,
+    selectedConversation,
+    selectedConversationId,
+    setSelectedConversationId,
+    messages,
+    loadingConversations,
+    loadingMessages,
+    sending,
+    error,
+    reload,
+    sendMessage,
+  } = useMessaging();
 
-const messages = selectedConversationId
-  ? conversationMessages[selectedConversationId] ?? []
-  : [];
-  const selectedConversation = conversations.find(
-    (conversation) => conversation.id === selectedConversationId,
-  );
+  const sidebarConversations = conversations.map((conversation) => ({
+    id: conversation.conversationId,
+    name: conversation.participant.name,
+    role: conversation.participant.role ?? undefined,
+    avatar: conversation.participant.avatarUrl ?? undefined,
+    lastMessage: conversation.lastMessage,
+    lastMessageTime: formatConversationTime(conversation.lastMessageAt),
+    unreadCount: conversation.unreadCount,
+  }));
 
-  const handleSendMessage = (text: string) => {
-    const newMessage: MessageItemProps = {
-      id: crypto.randomUUID(),
-      sender: "me",
-      senderName: "You",
-      content: text,
-      timestamp: "Just now",
-      seen: false,
-    };
-
-<MessageScroller messages={messages} />
-  };
+  const messageItems = messages.map((message) => ({
+    id: message.messageId,
+    sender:
+      message.senderId === currentUserId ? ("me" as const) : ("them" as const),
+    senderName: message.senderName,
+    avatar: message.senderAvatarUrl ?? undefined,
+    content: message.message,
+    timestamp: formatMessageTime(message.createdAt),
+    seen: Boolean(message.readAt),
+  }));
 
   return (
     <ChatLayout
       sidebar={
         <ConversationSidebar
-          conversations={conversations}
-          selectedConversationId={selectedConversationId}
+          conversations={sidebarConversations}
+          selectedConversationId={selectedConversationId ?? undefined}
           onSelectConversation={setSelectedConversationId}
+          loading={loadingConversations}
         />
       }
     >
-      {selectedConversation ? (
+      {loadingConversations ? (
+        <LoadingChat />
+      ) : error && conversations.length === 0 ? (
+        <EmptyChat
+          title="Messages unavailable"
+          description={error}
+          actionLabel="Try again"
+          onAction={() => void reload()}
+        />
+      ) : selectedConversation ? (
         <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
           <ChatHeader
-            name={selectedConversation.name}
-            role={selectedConversation.role}
-            project="Website Redesign"
-            avatar={selectedConversation.avatar}
-            online={selectedConversation.online}
-            onViewProject={() => {
-              console.log("Open project");
-            }}
+            name={selectedConversation.participant.name}
+            role={selectedConversation.participant.role ?? undefined}
+            project={selectedConversation.projectTitle ?? undefined}
+            avatar={selectedConversation.participant.avatarUrl ?? undefined}
           />
 
-          <MessageScroller messages={messages} />
+          {loadingMessages ? (
+            <div className="min-h-0 flex-1">
+              <LoadingChat />
+            </div>
+          ) : (
+            <MessageScroller messages={messageItems} />
+          )}
+
+          {error && messages.length > 0 && (
+            <div className="border-t bg-destructive/5 px-4 py-2 text-center text-xs text-destructive">
+              {error}
+              <Button
+                className="ml-2 h-auto p-0"
+                variant="link"
+                onClick={() => void reload()}
+              >
+                Retry
+              </Button>
+            </div>
+          )}
 
           <MessageInput
-            onSend={handleSendMessage}
-            onAttach={() => {
-              console.log("Attachment");
-            }}
+            onSend={(text) => void sendMessage(text)}
+            disabled={sending || loadingMessages}
+            placeholder={sending ? "Sending..." : "Write a message..."}
           />
         </div>
       ) : (
-        <EmptyChat />
+        <EmptyChat
+          title="No conversations yet"
+          description="Your project, order, and job conversations will appear here."
+        />
       )}
     </ChatLayout>
   );

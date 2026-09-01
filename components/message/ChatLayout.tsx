@@ -20,7 +20,7 @@ export default function ChatLayout({ sidebar, children }: ChatLayoutProps) {
         <ResizablePanel defaultSize={350} minSize={350} maxSize={450}>
           {sidebar}
         </ResizablePanel>
-        
+
         <ResizableHandle withHandle />
 
         <ResizablePanel defaultSize={65} minSize={55} className="min-w-0">

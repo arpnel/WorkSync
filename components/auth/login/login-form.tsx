@@ -138,14 +138,33 @@ export function LoginDialog() {
         .from("Users")
         .insert({
           user_id: user.id,
-          first_name: firstName,
-          last_name: lastName,
           email: cleanEmail,
           role: "client",
         });
 
       if (insertError) {
         console.error(insertError);
+
+        showPopup(
+          "Account created but profile setup failed.",
+          "error"
+        );
+
+        return;
+      }
+
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .upsert({
+          user_id: user.id,
+          first_name: firstName,
+          last_name: lastName,
+          display_name: `${firstName} ${lastName}`.trim(),
+          account_setup_completed: false,
+        });
+
+      if (profileError) {
+        console.error(profileError);
 
         showPopup(
           "Account created but profile setup failed.",

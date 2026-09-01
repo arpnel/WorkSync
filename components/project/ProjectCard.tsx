@@ -1,12 +1,8 @@
-    "use client";
+"use client";
 
-import {
-  Badge,
-} from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { useRouter } from "next/navigation";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   BriefcaseBusiness,
   CalendarDays,
@@ -17,6 +13,8 @@ import {
 } from "lucide-react";
 
 export interface Project {
+  orderId: string;
+  projectId: string | null;
   title: string;
   client: string;
   type: string;
@@ -32,13 +30,18 @@ interface ProjectCardProps {
   project: Project;
 }
 
-export function ProjectCard({
-  project,
-}: ProjectCardProps) {
+export function ProjectCard({ project }: ProjectCardProps) {
+  const router = useRouter();
+  const openProject = () => {
+    const type = project.type === "Milestone" ? "milestone" : "standard";
+    router.push(`/home/projects/${type}/${project.orderId}`);
+  };
+
   return (
     <button
       type="button"
       className="block w-full text-left"
+      onClick={openProject}
     >
       <Card className="transition hover:border-primary/30 hover:shadow-sm">
         <CardContent className="p-4 sm:p-5">
@@ -46,9 +49,7 @@ export function ProjectCard({
             {/* Project Info */}
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="font-semibold">
-                  {project.title}
-                </h2>
+                <h2 className="font-semibold">{project.title}</h2>
 
                 {/* Status */}
                 <Badge
@@ -75,10 +76,7 @@ export function ProjectCard({
                 </Badge>
 
                 {/* Project Type */}
-                <Badge
-                  variant="outline"
-                  className="gap-1 font-normal"
-                >
+                <Badge variant="outline" className="gap-1 font-normal">
                   {project.type === "Milestone" ? (
                     <ListChecks className="h-3 w-3" />
                   ) : (
@@ -137,9 +135,7 @@ export function ProjectCard({
                 <BriefcaseBusiness className="h-4 w-4 shrink-0 text-muted-foreground" />
 
                 <div>
-                  <p className="text-xs text-muted-foreground">
-                    Budget
-                  </p>
+                  <p className="text-xs text-muted-foreground">Budget</p>
 
                   <p className="font-medium">
                     ₱{project.budget.toLocaleString()}
@@ -154,13 +150,9 @@ export function ProjectCard({
                   <Clock3 className="h-4 w-4 shrink-0 text-muted-foreground" />
 
                   <div>
-                    <p className="text-xs text-muted-foreground">
-                      Deadline
-                    </p>
+                    <p className="text-xs text-muted-foreground">Deadline</p>
 
-                    <p className="font-medium text-muted-foreground">
-                      Not set
-                    </p>
+                    <p className="font-medium text-muted-foreground">Not set</p>
                   </div>
                 </div>
               ) : (
@@ -172,13 +164,9 @@ export function ProjectCard({
                   )}
 
                   <div>
-                    <p className="text-xs text-muted-foreground">
-                      Deadline
-                    </p>
+                    <p className="text-xs text-muted-foreground">Deadline</p>
 
-                    <p className="font-medium">
-                      {project.due}
-                    </p>
+                    <p className="font-medium">{project.due}</p>
                   </div>
                 </div>
               )}
@@ -186,13 +174,9 @@ export function ProjectCard({
               {/* Milestones */}
               {project.type === "Milestone" && (
                 <div className="text-sm">
-                  <p className="text-xs text-muted-foreground">
-                    Milestones
-                  </p>
+                  <p className="text-xs text-muted-foreground">Milestones</p>
 
-                  <p className="font-medium">
-                    {project.milestones}
-                  </p>
+                  <p className="font-medium">{project.milestones}</p>
                 </div>
               )}
             </div>

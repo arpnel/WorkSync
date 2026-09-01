@@ -1,8 +1,6 @@
-// services/marketplace/MarketplaceSorting.ts
-
 import type {
+  MarketplaceItem,
   MarketplaceQuery,
-  MarketplaceService,
   MarketplaceSort,
 } from "./MarketplaceServices";
 
@@ -38,7 +36,6 @@ export interface MarketplaceFilterValues {
 export const DEFAULT_MARKETPLACE_FILTERS: MarketplaceFilterValues = {
   sort: ["latest"],
 
-  // Show BOTH by default.
   showFreelancers: true,
   showClientJobs: true,
 
@@ -49,19 +46,16 @@ export const DEFAULT_MARKETPLACE_FILTERS: MarketplaceFilterValues = {
 };
 
 /* ==========================================================
-   GET LISTING TYPES
-==========================================================
-
-   Freelancer Services -> "service"
-   Client Job Posts    -> "job"
-
-   Both selected -> null
-   Neither selected -> "__none__"
+   LISTING TYPE
 ========================================================== */
 
 export function getMarketplaceListingType(
   filters: MarketplaceFilterValues,
-): "service" | "job" | null | "__none__" {
+):
+  | "service"
+  | "job"
+  | null
+  | "__none__" {
   if (
     filters.showFreelancers &&
     filters.showClientJobs
@@ -81,7 +75,7 @@ export function getMarketplaceListingType(
 }
 
 /* ==========================================================
-   CONVERT PRICE
+   PRICE PARSER
 ========================================================== */
 
 function parsePrice(
@@ -105,24 +99,25 @@ function parsePrice(
 }
 
 /* ==========================================================
-   CONVERT SORT
+   SORT
 ========================================================== */
 
 export function getMarketplaceSort(
   filters: MarketplaceFilterValues,
 ): MarketplaceSort {
-  /*
-   * The database query supports one sort at a time.
-   *
-   * If multiple sort chips are selected, the first
-   * selected supported sort takes priority.
-   */
-
-  if (filters.sort.includes("lowestPrice")) {
+  if (
+    filters.sort.includes(
+      "lowestPrice",
+    )
+  ) {
     return "lowestPrice";
   }
 
-  if (filters.sort.includes("highestPrice")) {
+  if (
+    filters.sort.includes(
+      "highestPrice",
+    )
+  ) {
     return "highestPrice";
   }
 
@@ -130,101 +125,115 @@ export function getMarketplaceSort(
 }
 
 /* ==========================================================
-   BUILD MARKETPLACE QUERY
+   BUILD QUERY
 ========================================================== */
 
 export function buildMarketplaceQuery(
   filters: MarketplaceFilterValues,
 ): MarketplaceQuery {
   const listingType =
-    getMarketplaceListingType(filters);
-
-  /*
-   * If neither listing type is selected,
-   * return a query that can never produce results.
-   *
-   * The page can detect "__none__" before querying.
-   */
-  if (listingType === "__none__") {
-    return {
-      sort: getMarketplaceSort(filters),
-      minPrice: parsePrice(filters.minPrice),
-      maxPrice: parsePrice(filters.maxPrice),
-      listingType: null,
-    };
-  }
+    getMarketplaceListingType(
+      filters,
+    );
 
   return {
-    sort: getMarketplaceSort(filters),
+    sort:
+      getMarketplaceSort(
+        filters,
+      ),
 
-    minPrice: parsePrice(filters.minPrice),
+    minPrice:
+      parsePrice(
+        filters.minPrice,
+      ),
 
-    maxPrice: parsePrice(filters.maxPrice),
+    maxPrice:
+      parsePrice(
+        filters.maxPrice,
+      ),
 
-    /*
-     * null means:
-     * service + job
-     *
-     * service means:
-     * freelancer services only
-     *
-     * job means:
-     * client jobs only
-     */
-    listingType,
+    listingType:
+      listingType ===
+      "__none__"
+        ? null
+        : listingType,
   };
 }
 
 /* ==========================================================
-   CLIENT-SIDE SORT
-==========================================================
+   GET ITEM PRICE
+========================================================== */
 
-   This is useful if the marketplace already has the
-   listings loaded and you want to sort them without
-   querying Supabase again.
+function getItemPrice(
+  item: MarketplaceItem,
+): number {
+  if (
+    item.listing_type ===
+    "service"
+  ) {
+    return Number(
+      item.price,
+    );
+  }
+
+  /*
+   * For jobs we use budget_min
+   * as the sorting/filtering base.
+   */
+  return Number(
+    item.budget_min,
+  );
+}
+
+/* ==========================================================
+   CLIENT-SIDE SORT
 ========================================================== */
 
 export function sortMarketplaceListings(
-  listings: MarketplaceService[],
+  listings: MarketplaceItem[],
   sort: MarketplaceSortOption,
-): MarketplaceService[] {
-  const sorted = [...listings];
+): MarketplaceItem[] {
+  const sorted = [
+    ...listings,
+  ];
 
   switch (sort) {
     case "lowestPrice":
       return sorted.sort(
         (a, b) =>
-          Number(a.price) - Number(b.price),
+          getItemPrice(a) -
+          getItemPrice(b),
       );
 
     case "highestPrice":
       return sorted.sort(
         (a, b) =>
-          Number(b.price) - Number(a.price),
+          getItemPrice(b) -
+          getItemPrice(a),
       );
 
     case "latest":
     default:
       return sorted.sort(
         (a, b) =>
-          new Date(b.created_at).getTime() -
-          new Date(a.created_at).getTime(),
+          new Date(
+            b.created_at,
+          ).getTime() -
+          new Date(
+            a.created_at,
+          ).getTime(),
       );
   }
 }
 
 /* ==========================================================
-   CLIENT-SIDE LISTING TYPE FILTER
+   LISTING TYPE FILTER
 ========================================================== */
 
 export function filterMarketplaceListings(
-  listings: MarketplaceService[],
+  listings: MarketplaceItem[],
   filters: MarketplaceFilterValues,
-): MarketplaceService[] {
-  /*
-   * Both selected
-   * -> show services + jobs
-   */
+): MarketplaceItem[] {
   if (
     filters.showFreelancers &&
     filters.showClientJobs
@@ -232,105 +241,112 @@ export function filterMarketplaceListings(
     return listings;
   }
 
-  /*
-   * Freelancer Services only
-   */
   if (filters.showFreelancers) {
     return listings.filter(
       (listing) =>
-        listing.listing_type === "service",
+        listing.listing_type ===
+        "service",
     );
   }
 
-  /*
-   * Client Job Posts only
-   */
   if (filters.showClientJobs) {
     return listings.filter(
       (listing) =>
-        listing.listing_type === "job",
+        listing.listing_type ===
+        "job",
     );
   }
 
-  /*
-   * Nothing selected
-   */
   return [];
 }
 
 /* ==========================================================
-   CLIENT-SIDE PRICE FILTER
+   PRICE FILTER
 ========================================================== */
 
 export function filterMarketplaceByPrice(
-  listings: MarketplaceService[],
+  listings: MarketplaceItem[],
   minPrice: string,
   maxPrice: string,
-): MarketplaceService[] {
-  const min = parsePrice(minPrice);
-  const max = parsePrice(maxPrice);
+): MarketplaceItem[] {
+  const min =
+    parsePrice(minPrice);
 
-  return listings.filter((listing) => {
-    const price = Number(listing.price);
+  const max =
+    parsePrice(maxPrice);
 
-    if (!Number.isFinite(price)) {
-      return false;
-    }
+  return listings.filter(
+    (listing) => {
+      const price =
+        getItemPrice(listing);
 
-    if (min !== null && price < min) {
-      return false;
-    }
+      if (
+        !Number.isFinite(
+          price,
+        )
+      ) {
+        return false;
+      }
 
-    if (max !== null && price > max) {
-      return false;
-    }
+      if (
+        min !== null &&
+        price < min
+      ) {
+        return false;
+      }
 
-    return true;
-  });
+      if (
+        max !== null &&
+        price > max
+      ) {
+        return false;
+      }
+
+      return true;
+    },
+  );
 }
 
 /* ==========================================================
-   COMPLETE CLIENT-SIDE FILTER
+   COMPLETE FILTER
 ========================================================== */
 
 export function applyMarketplaceFilters(
-  listings: MarketplaceService[],
+  listings: MarketplaceItem[],
   filters: MarketplaceFilterValues,
-): MarketplaceService[] {
-  let result = [...listings];
+): MarketplaceItem[] {
+  let result = [
+    ...listings,
+  ];
 
-  /*
-   * Listing type
-   */
-  result = filterMarketplaceListings(
-    result,
-    filters,
-  );
+  result =
+    filterMarketplaceListings(
+      result,
+      filters,
+    );
 
-  /*
-   * Price
-   */
-  result = filterMarketplaceByPrice(
-    result,
-    filters.minPrice,
-    filters.maxPrice,
-  );
+  result =
+    filterMarketplaceByPrice(
+      result,
+      filters.minPrice,
+      filters.maxPrice,
+    );
 
-  /*
-   * Sort
-   */
-  const sort = filters.sort[0] ?? "latest";
+  const sort =
+    filters.sort[0] ??
+    "latest";
 
-  result = sortMarketplaceListings(
-    result,
-    sort,
-  );
+  result =
+    sortMarketplaceListings(
+      result,
+      sort,
+    );
 
   return result;
 }
 
 /* ==========================================================
-   CHECK IF FILTERS ARE VALID
+   VALIDATION
 ========================================================== */
 
 export function validateMarketplaceFilters(
@@ -339,8 +355,15 @@ export function validateMarketplaceFilters(
   valid: boolean;
   error?: string;
 } {
-  const min = parsePrice(filters.minPrice);
-  const max = parsePrice(filters.maxPrice);
+  const min =
+    parsePrice(
+      filters.minPrice,
+    );
+
+  const max =
+    parsePrice(
+      filters.maxPrice,
+    );
 
   if (
     filters.minPrice.trim() &&
@@ -348,7 +371,8 @@ export function validateMarketplaceFilters(
   ) {
     return {
       valid: false,
-      error: "Minimum price must be a valid number.",
+      error:
+        "Minimum price must be a valid number.",
     };
   }
 
@@ -358,7 +382,8 @@ export function validateMarketplaceFilters(
   ) {
     return {
       valid: false,
-      error: "Maximum price must be a valid number.",
+      error:
+        "Maximum price must be a valid number.",
     };
   }
 

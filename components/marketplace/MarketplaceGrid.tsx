@@ -1,22 +1,20 @@
 "use client";
 
 import { Card, CardContent } from "@/components/ui/card";
-
 import MarketplaceCard from "./MarketplaceCard";
+import type { MarketplaceItem } from "@/services/marketplace/MarketplaceServices";
 
-import type { MarketplaceService } from "@/services/marketplace/MarketplaceServices";
-
-interface MarketplaceGridProps {
-  services: MarketplaceService[];
+interface Props {
+  services: MarketplaceItem[];
   loading?: boolean;
-  onCardClick?: (serviceId: string) => void;
+  onCardClick?: (listing: MarketplaceItem) => void;
 }
 
 export default function MarketplaceGrid({
   services,
   loading = false,
   onCardClick,
-}: MarketplaceGridProps) {
+}: Props) {
   if (loading) {
     return (
       <Card className="w-full">
@@ -41,22 +39,20 @@ export default function MarketplaceGrid({
     <Card className="w-full">
       <CardContent>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-          {services.map((service) => (
-            <MarketplaceCard
-              key={`${service.listing_type}-${service.service_id}`}
-              service={service}
-              onClick={() => {
-                if (!service.service_id) {
-                  console.error(
-                    "MarketplaceGrid: service_id is undefined.",
-                  );
-                  return;
-                }
+          {services.map((listing) => {
+            const id =
+              listing.listing_type === "service"
+                ? listing.service_id
+                : listing.job_id;
 
-                onCardClick?.(service.service_id);
-              }}
-            />
-          ))}
+            return (
+              <MarketplaceCard
+                key={`${listing.listing_type}-${id}`}
+                listing={listing}
+                onClick={() => onCardClick?.(listing)}
+              />
+            );
+          })}
         </div>
       </CardContent>
     </Card>

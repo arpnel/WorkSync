@@ -39,6 +39,8 @@ export async function getAccountRoleStatus(): Promise<AccountRoleStatus> {
 
   /* ========================================================
      USERS
+
+     PK: user_id
   ======================================================== */
 
   const {
@@ -54,6 +56,10 @@ export async function getAccountRoleStatus(): Promise<AccountRoleStatus> {
     throw userError;
   }
 
+  if (!userData) {
+    throw new Error("User account not found.");
+  }
+
   if (
     userData.role !== "client" &&
     userData.role !== "freelancer"
@@ -63,6 +69,9 @@ export async function getAccountRoleStatus(): Promise<AccountRoleStatus> {
 
   /* ========================================================
      CLIENT PROFILE
+
+     PK: client_id
+     FK: user_id -> Users.user_id
   ======================================================== */
 
   const {
@@ -70,7 +79,7 @@ export async function getAccountRoleStatus(): Promise<AccountRoleStatus> {
     error: clientError,
   } = await supabase
     .from("client_profiles")
-    .select("user_id")
+    .select("client_id, user_id")
     .eq("user_id", userId)
     .maybeSingle();
 
@@ -80,6 +89,9 @@ export async function getAccountRoleStatus(): Promise<AccountRoleStatus> {
 
   /* ========================================================
      FREELANCER PROFILE
+
+     PK: freelancer_id
+     FK: user_id -> Users.user_id
   ======================================================== */
 
   const {
@@ -87,7 +99,7 @@ export async function getAccountRoleStatus(): Promise<AccountRoleStatus> {
     error: freelancerError,
   } = await supabase
     .from("freelancer_profiles")
-    .select("user_id")
+    .select("freelancer_id, user_id")
     .eq("user_id", userId)
     .maybeSingle();
 
@@ -141,19 +153,33 @@ export async function switchUserRole(
 export async function createClientProfile(): Promise<void> {
   const userId = await getCurrentUserId();
 
-  const { error } = await supabase
-    .from("client_profiles")
-    .upsert(
-      {
-        user_id: userId,
-      },
-      {
-        onConflict: "user_id",
-      },
-    );
+  /* Check whether the profile already exists */
 
-  if (error) {
-    throw error;
+  const {
+    data: existingProfile,
+    error: checkError,
+  } = await supabase
+    .from("client_profiles")
+    .select("client_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (checkError) {
+    throw checkError;
+  }
+
+  /* Create only when it does not exist */
+
+  if (!existingProfile) {
+    const { error: insertError } = await supabase
+      .from("client_profiles")
+      .insert({
+        user_id: userId,
+      });
+
+    if (insertError) {
+      throw insertError;
+    }
   }
 
   /* Activate client role */
@@ -173,7 +199,7 @@ export async function activateClientRole(): Promise<void> {
     error,
   } = await supabase
     .from("client_profiles")
-    .select("user_id")
+    .select("client_id, user_id")
     .eq("user_id", userId)
     .maybeSingle();
 
@@ -182,9 +208,7 @@ export async function activateClientRole(): Promise<void> {
   }
 
   if (!clientProfile) {
-    throw new Error(
-      "Client profile does not exist.",
-    );
+    throw new Error("Client profile does not exist.");
   }
 
   await switchUserRole("client");
@@ -202,7 +226,7 @@ export async function activateFreelancerRole(): Promise<void> {
     error,
   } = await supabase
     .from("freelancer_profiles")
-    .select("user_id")
+    .select("freelancer_id, user_id")
     .eq("user_id", userId)
     .maybeSingle();
 
@@ -218,3 +242,4 @@ export async function activateFreelancerRole(): Promise<void> {
 
   await switchUserRole("freelancer");
 }
+

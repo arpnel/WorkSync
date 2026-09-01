@@ -11,7 +11,7 @@ import MarketplaceGrid from "../../../components/marketplace/MarketplaceGrid";
 import { getMarketplaceServices } from "@/services/marketplace/MarketplaceServices";
 
 import type {
-  MarketplaceService,
+  MarketplaceItem,
   MarketplaceSort,
 } from "@/services/marketplace/MarketplaceServices";
 
@@ -24,7 +24,7 @@ export default function MarketplacePage() {
      MARKETPLACE LISTINGS
   ========================================================== */
 
-  const [services, setServices] = useState<MarketplaceService[]>([]);
+  const [services, setServices] = useState<MarketplaceItem[]>([]);
 
   const [loading, setLoading] = useState(true);
 
@@ -71,9 +71,6 @@ export default function MarketplacePage() {
   ========================================================== */
 
   const loadServices = useCallback(async () => {
-   
-
-    
     setLoading(true);
 
     try {
@@ -116,7 +113,6 @@ export default function MarketplacePage() {
   ========================================================== */
 
   function handleServiceChange(service: string | null) {
-
     setSelectedService(service);
 
     /*
@@ -130,8 +126,6 @@ export default function MarketplacePage() {
   ========================================================== */
 
   function handleApplyFilters(filters: MarketplaceFiltersValue) {
-   
-
     /*
      * IMPORTANT:
      *
@@ -200,14 +194,15 @@ export default function MarketplacePage() {
      CREATE
   ========================================================== */
 
-  function handleCreateClick() {
-  }
+  function handleCreateClick() {}
 
   /* ==========================================================
      OPEN LISTING
   ========================================================== */
 
-  function handleServiceClick(serviceId: string) {
+  function handleServiceClick(listing: MarketplaceItem) {
+    if (listing.listing_type !== "service") return;
+    const serviceId = listing.service_id;
 
     if (!serviceId) {
       console.error("Cannot open marketplace listing: serviceId is undefined.");

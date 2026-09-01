@@ -1,221 +1,132 @@
 "use client";
 
-import { Card } from "@/components/ui/card";
-import { Button as CardButton } from "@/components/ui/CardButton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Rating } from "@/components/ui/rating";
+import { Card } from "@/components/ui/card";
+import type { MarketplaceItem } from "@/services/marketplace/MarketplaceServices";
 
-import type { MarketplaceService } from "@/services/marketplace/MarketplaceServices";
-
-interface MarketplaceCardProps {
-  service: MarketplaceService;
-  onClick?: (serviceId: string) => void;
+interface Props {
+  listing: MarketplaceItem;
+  onClick?: () => void;
 }
 
-export default function MarketplaceCard({
-  service,
-  onClick,
-}: MarketplaceCardProps) {
-  /* ==========================================================
-     LISTING TYPE
-  ========================================================== */
-
-  const isJob = service.listing_type === "job";
-  const isService = service.listing_type === "service";
-
-  /* ==========================================================
-     OWNER PROFILE
-
-     Service -> Freelancer
-     Job     -> Client
-  ========================================================== */
-
-  const profile = isJob ? service.client?.profile : service.freelancer?.profile;
-
-  /* ==========================================================
-     OWNER NAME
-  ========================================================== */
-
+export default function MarketplaceCard({ listing, onClick }: Props) {
+  const isService = listing.listing_type === "service";
+  const profile = isService
+    ? listing.freelancer?.profile
+    : listing.client?.profile;
   const ownerName =
     profile?.display_name ||
-    `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim() ||
-    (isJob ? "Client" : "Freelancer");
-
-  /* ==========================================================
-     OWNER INITIAL
-  ========================================================== */
-
-  const initials =
-    profile?.display_name?.[0] ||
-    profile?.first_name?.[0] ||
-    (isJob ? "C" : "F");
-
-  /* ==========================================================
-     OWNER SUBTITLE
-
-     Service -> Freelancer headline
-     Job     -> Client
-  ========================================================== */
-
-  const ownerSubtitle = isJob
-    ? "Client"
-    : service.freelancer?.headline || "Freelancer";
+    [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") ||
+    (isService ? "Freelancer" : "Client");
+  const priceLabel = isService
+    ? new Intl.NumberFormat("en-PH", {
+        style: "currency",
+        currency: "PHP",
+        maximumFractionDigits: 2,
+      }).format(listing.price)
+    : `${new Intl.NumberFormat("en-PH", {
+        style: "currency",
+        currency: "PHP",
+        maximumFractionDigits: 0,
+      }).format(listing.budget_min)} - ${new Intl.NumberFormat("en-PH", {
+        style: "currency",
+        currency: "PHP",
+        maximumFractionDigits: 0,
+      }).format(listing.budget_max)}`;
 
   return (
-    <CardButton
-      onClick={() => onClick?.(service.service_id)}
+    <button
+      type="button"
       className="block w-full text-left"
+      onClick={onClick}
+      disabled={!onClick}
     >
       <Card className="w-full overflow-hidden rounded-xl border bg-background transition hover:-translate-y-0.5 hover:shadow-md">
-        {/* ======================================================
-            THUMBNAIL
-        ====================================================== */}
-
         <div className="relative aspect-[1.7/1] w-full overflow-hidden bg-muted">
-          {service.cover_image_url ? (
+          {isService && listing.cover_image_url ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={service.cover_image_url}
-              alt={service.title}
+              src={listing.cover_image_url}
+              alt={listing.title}
               className="h-full w-full object-cover"
             />
           ) : (
-            <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
-              {isJob ? "Job Thumbnail" : "Service Thumbnail"}
+            <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+              {isService ? "Service Thumbnail" : "Job Posting"}
             </div>
           )}
 
-          {/* Listing Type Badge */}
-
-          <div className="absolute right-2.5 top-2.5">
-            <span className="rounded-md bg-background/90 px-2 py-1 text-[10px] font-medium shadow-sm backdrop-blur">
-              {isJob ? "Job" : "Service"}
-            </span>
-          </div>
+          <span className="absolute right-2.5 top-2.5 rounded-md bg-background/90 px-2 py-1 text-[10px] font-medium shadow-sm">
+            {isService ? "Service" : "Job"}
+          </span>
         </div>
 
-        <div className="px-3.5 pb-3.5 pt-3">
-          {/* ====================================================
-              OWNER
-          ==================================================== */}
-
+        <div className="space-y-3 p-3.5">
           <div className="flex items-center gap-2.5">
             <Avatar className="h-8 w-8 shrink-0">
               <AvatarImage
                 src={profile?.avatar_url ?? undefined}
                 alt={ownerName}
               />
-
               <AvatarFallback className="text-xs">
-                {initials.toUpperCase()}
+                {(ownerName[0] ?? "U").toUpperCase()}
               </AvatarFallback>
             </Avatar>
 
             <div className="min-w-0">
               <p className="truncate text-xs font-semibold">{ownerName}</p>
-
               <p className="truncate text-[11px] text-muted-foreground">
-                {ownerSubtitle}
+                {isService
+                  ? listing.freelancer?.headline || "Freelancer"
+                  : "Client"}
               </p>
             </div>
           </div>
 
-          {/* ====================================================
-              TITLE
-          ==================================================== */}
+          <h3 className="line-clamp-2 text-sm font-medium leading-[1.35]">
+            {listing.title}
+          </h3>
 
-          <div className="mt-2.5">
-            <h3 className="line-clamp-2 text-sm font-medium leading-[1.35]">
-              {service.title || (isJob ? "Untitled Job" : "Untitled Service")}
-            </h3>
+          <div className="flex items-center gap-1.5 overflow-hidden">
+            <span className="truncate rounded-md bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+              {listing.category?.name ?? "Category"}
+            </span>
+            <span className="shrink-0 rounded-md bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
+              {isService
+                ? listing.service_type === "milestone"
+                  ? "Milestone"
+                  : "Standard"
+                : listing.pricing_type === "hourly"
+                  ? "Hourly"
+                  : "Fixed"}
+            </span>
           </div>
 
-          {/* ====================================================
-              CATEGORY + TYPE
-          ==================================================== */}
-
-          <div className="mt-2 flex items-center gap-1.5 overflow-hidden">
-            {service.category?.name && (
-              <span className="truncate rounded-md bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
-                {service.category.name}
-              </span>
-            )}
-
-            {isJob ? (
-              <span className="shrink-0 rounded-md bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
-                Job
-              </span>
-            ) : (
-              service.service_type && (
-                <span className="shrink-0 rounded-md bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
-                  {service.service_type === "milestone"
-                    ? "Milestone"
-                    : "Standard"}
-                </span>
-              )
-            )}
-          </div>
-
-          {/* ====================================================
-              RATING
-
-              Services -> Freelancer rating
-              Jobs     -> No rating
-          ==================================================== */}
-
-          {isService ? (
-            <div className="mt-2 flex items-center gap-1.5">
-              <Rating rating={4.8} showValue />
-
-              <span className="text-[10px] text-muted-foreground">New</span>
-            </div>
-          ) : (
-            <div className="mt-2 h-[18px]" />
-          )}
-
-          {/* ====================================================
-              FOOTER
-          ==================================================== */}
-
-          <div className="mt-3 flex items-end justify-between border-t pt-2.5">
-            {/* ==================================================
-                PRICE / BUDGET
-            ================================================== */}
-
+          <div className="flex items-end justify-between border-t pt-2.5">
             <div>
-              <p className="text-[9px] uppercase tracking-wide text-muted-foreground">
-                {isJob ? "Budget" : "Starting at"}
+              <p className="text-[9px] uppercase text-muted-foreground">
+                {isService ? "Starting at" : "Budget"}
               </p>
-
-              <p className="text-lg font-bold leading-tight">
-                ₱{Number(service.price).toLocaleString()}
-              </p>
+              <p className="text-lg font-bold leading-tight">{priceLabel}</p>
             </div>
 
-            {/* ==================================================
-                DETAILS
-            ================================================== */}
-
-            <div className="text-right text-[10px] leading-4 text-muted-foreground">
+            <div className="text-right text-[10px] text-muted-foreground">
               {isService ? (
                 <>
-                  <p>
-                    {service.delivery_time_days}{" "}
-                    {service.delivery_time_days === 1 ? "day" : "days"}
-                  </p>
-
-                  <p>
-                    {service.revisions_count}{" "}
-                    {service.revisions_count === 1 ? "revision" : "revisions"}
-                  </p>
+                  <p>{listing.delivery_time_days} days</p>
+                  <p>{listing.revisions_count} revisions</p>
                 </>
               ) : (
-                <p>Job Posting</p>
+                listing.deadline && (
+                  <p>
+                    Due {new Date(listing.deadline).toLocaleDateString("en-PH")}
+                  </p>
+                )
               )}
             </div>
           </div>
         </div>
       </Card>
-    </CardButton>
+    </button>
   );
 }

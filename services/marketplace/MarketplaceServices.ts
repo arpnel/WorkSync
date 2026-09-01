@@ -4,7 +4,9 @@ import { supabase } from "@/lib/supabaseClient";
    TABLES
 ========================================================== */
 
-const MARKETPLACE_TABLE = "marketplace_listings";
+const SERVICES_TABLE = "services";
+const JOBS_TABLE = "jobs";
+
 const FREELANCER_TABLE = "freelancer_profiles";
 const CLIENT_TABLE = "client_profiles";
 const PROFILES_TABLE = "profiles";
@@ -43,128 +45,190 @@ export interface MarketplaceQuery {
 }
 
 /* ==========================================================
-   MARKETPLACE LISTING
+   PROFILE TYPES
+========================================================== */
+
+export interface MarketplaceProfile {
+  display_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  avatar_url: string | null;
+  location: string | null;
+}
+
+/* ==========================================================
+   FREELANCER
+========================================================== */
+
+export interface MarketplaceFreelancer {
+  freelancer_id: string;
+  user_id: string;
+
+  headline: string | null;
+  hourly_rate: number | null;
+  verification_status: string | null;
+
+  profile: MarketplaceProfile | null;
+}
+
+/* ==========================================================
+   CLIENT
+========================================================== */
+
+export interface MarketplaceClient {
+  client_id: string;
+  user_id: string;
+
+  profile: MarketplaceProfile | null;
+}
+
+/* ==========================================================
+   CATEGORY
+========================================================== */
+
+export interface MarketplaceCategory {
+  category_id: string;
+  name: string;
+}
+
+/* ==========================================================
+   SERVICE
 ========================================================== */
 
 export interface MarketplaceService {
+  listing_type: "service";
+
   service_id: string;
 
   freelancer_id: string | null;
-  client_id: string | null;
+  client_id: null;
 
   title: string;
   description: string;
 
   price: number;
 
-  delivery_time_days: number;
-  status: string;
+  pricing_mode: string;
 
+  delivery_time_days: number;
   revisions_count: number;
 
+  service_type: string;
+
+  status: string;
+
+  slug: string | null;
   cover_image_url: string | null;
 
   category_id: string;
-  service_type: string;
-
-  slug: string | null;
-
-  listing_type: string;
 
   created_at: string;
   updated_at: string;
 
-  freelancer: {
-    freelancer_id: string;
-    user_id: string;
+  freelancer: MarketplaceFreelancer | null;
+  client: null;
 
-    headline: string | null;
-    hourly_rate: number | null;
-    verification_status: string | null;
-
-    profile: {
-      display_name: string | null;
-      first_name: string | null;
-      last_name: string | null;
-      avatar_url: string | null;
-      location: string | null;
-    } | null;
-  } | null;
-
-  client: {
-    client_id: string;
-    user_id: string;
-
-    profile: {
-      display_name: string | null;
-      first_name: string | null;
-      last_name: string | null;
-      avatar_url: string | null;
-      location: string | null;
-    } | null;
-  } | null;
-
-  category: {
-    category_id: string;
-    name: string;
-  } | null;
+  category: MarketplaceCategory | null;
 }
 
 /* ==========================================================
-   DATABASE ROW
+   JOB
 ========================================================== */
 
-interface MarketplaceListingRow {
-  service_id: string;
+export interface MarketplaceJob {
+  listing_type: "job";
 
-  freelancer_id: string | null;
+  job_id: string;
+
+  freelancer_id: null;
   client_id: string | null;
 
   title: string;
   description: string;
 
-  price: number;
+  budget_min: number;
+  budget_max: number;
 
-  delivery_time_days: number;
+  pricing_type: string;
+
+  deadline: string | null;
+
   status: string;
 
+  category_id: string;
+
+  created_at: string;
+  updated_at: string;
+
+  freelancer: null;
+  client: MarketplaceClient | null;
+
+  category: MarketplaceCategory | null;
+}
+
+/* ==========================================================
+   UNIFIED MARKETPLACE ITEM
+========================================================== */
+
+export type MarketplaceItem = MarketplaceService | MarketplaceJob;
+
+/*
+ * Backwards-compatible name.
+ *
+ * Components that still import MarketplaceService
+ * can continue working while the actual database
+ * remains separated into services and jobs.
+ */
+export type MarketplaceListing = MarketplaceItem;
+
+/* ==========================================================
+   DATABASE ROWS
+========================================================== */
+
+interface ServiceRow {
+  service_id: string;
+  freelancer_id: string | null;
+  category_id: string;
+
+  title: string;
+  description: string;
+
+  price: number;
+  pricing_mode: string;
+
+  delivery_time_days: number;
   revisions_count: number;
 
-  cover_image_url: string | null;
-
-  category_id: string;
   service_type: string;
+  status: string;
 
   slug: string | null;
-
-  listing_type: string;
+  cover_image_url: string | null;
 
   created_at: string;
   updated_at: string;
 }
 
-/* ==========================================================
-   SELECT COLUMNS
-========================================================== */
+interface JobRow {
+  job_id: string;
+  client_id: string | null;
+  category_id: string;
 
-const MARKETPLACE_SELECT = `
-  service_id,
-  freelancer_id,
-  client_id,
-  title,
-  description,
-  price,
-  delivery_time_days,
-  status,
-  revisions_count,
-  cover_image_url,
-  category_id,
-  service_type,
-  slug,
-  listing_type,
-  created_at,
-  updated_at
-`;
+  title: string;
+  description: string;
+
+  budget_min: number;
+  budget_max: number;
+
+  pricing_type: string;
+
+  deadline: string | null;
+
+  status: string;
+
+  created_at: string;
+  updated_at: string;
+}
 
 /* ==========================================================
    LOAD FREELANCER
@@ -172,25 +236,28 @@ const MARKETPLACE_SELECT = `
 
 async function getFreelancerData(
   freelancerId: string | null,
-): Promise<MarketplaceService["freelancer"]> {
+): Promise<MarketplaceFreelancer | null> {
   if (!freelancerId) {
     return null;
   }
 
   const { data: freelancer, error: freelancerError } = await supabase
     .from(FREELANCER_TABLE)
-    .select(`
+    .select(
+      `
       freelancer_id,
       user_id,
       headline,
       hourly_rate,
       verification_status
-    `)
+    `,
+    )
     .eq("freelancer_id", freelancerId)
     .maybeSingle();
 
   if (freelancerError) {
     console.error("Failed to load freelancer:", freelancerError);
+
     return null;
   }
 
@@ -200,29 +267,30 @@ async function getFreelancerData(
 
   const { data: profile, error: profileError } = await supabase
     .from(PROFILES_TABLE)
-    .select(`
+    .select(
+      `
       display_name,
       first_name,
       last_name,
       avatar_url,
       location
-    `)
+    `,
+    )
     .eq("user_id", freelancer.user_id)
     .maybeSingle();
 
   if (profileError) {
-    console.error(
-      "Failed to load freelancer profile:",
-      profileError,
-    );
+    console.error("Failed to load freelancer profile:", profileError);
   }
 
   return {
     freelancer_id: freelancer.freelancer_id,
     user_id: freelancer.user_id,
+
     headline: freelancer.headline,
     hourly_rate: freelancer.hourly_rate,
     verification_status: freelancer.verification_status,
+
     profile: profile ?? null,
   };
 }
@@ -233,22 +301,25 @@ async function getFreelancerData(
 
 async function getClientData(
   clientId: string | null,
-): Promise<MarketplaceService["client"]> {
+): Promise<MarketplaceClient | null> {
   if (!clientId) {
     return null;
   }
 
   const { data: client, error: clientError } = await supabase
     .from(CLIENT_TABLE)
-    .select(`
+    .select(
+      `
       client_id,
       user_id
-    `)
+    `,
+    )
     .eq("client_id", clientId)
     .maybeSingle();
 
   if (clientError) {
     console.error("Failed to load client:", clientError);
+
     return null;
   }
 
@@ -258,26 +329,26 @@ async function getClientData(
 
   const { data: profile, error: profileError } = await supabase
     .from(PROFILES_TABLE)
-    .select(`
+    .select(
+      `
       display_name,
       first_name,
       last_name,
       avatar_url,
       location
-    `)
+    `,
+    )
     .eq("user_id", client.user_id)
     .maybeSingle();
 
   if (profileError) {
-    console.error(
-      "Failed to load client profile:",
-      profileError,
-    );
+    console.error("Failed to load client profile:", profileError);
   }
 
   return {
     client_id: client.client_id,
     user_id: client.user_id,
+
     profile: profile ?? null,
   };
 }
@@ -288,22 +359,25 @@ async function getClientData(
 
 async function getCategoryData(
   categoryId: string | null,
-): Promise<MarketplaceService["category"]> {
+): Promise<MarketplaceCategory | null> {
   if (!categoryId) {
     return null;
   }
 
   const { data: category, error } = await supabase
     .from(CATEGORY_TABLE)
-    .select(`
+    .select(
+      `
       id,
       name
-    `)
+    `,
+    )
     .eq("id", categoryId)
     .maybeSingle();
 
   if (error) {
     console.error("Failed to load category:", error);
+
     return null;
   }
 
@@ -318,82 +392,128 @@ async function getCategoryData(
 }
 
 /* ==========================================================
-   BUILD MARKETPLACE LISTING
+   BUILD SERVICE
 ========================================================== */
 
 async function buildMarketplaceService(
-  service: MarketplaceListingRow,
+  service: ServiceRow,
 ): Promise<MarketplaceService> {
-  const [freelancer, client, category] = await Promise.all([
+  const [freelancer, category] = await Promise.all([
     getFreelancerData(service.freelancer_id),
-    getClientData(service.client_id),
     getCategoryData(service.category_id),
   ]);
 
   return {
+    listing_type: "service",
+
     service_id: service.service_id,
 
     freelancer_id: service.freelancer_id,
-    client_id: service.client_id,
+    client_id: null,
 
     title: service.title,
     description: service.description,
 
     price: Number(service.price),
 
-    delivery_time_days: Number(service.delivery_time_days),
+    pricing_mode: service.pricing_mode,
 
-    status: service.status,
+    delivery_time_days: Number(service.delivery_time_days),
 
     revisions_count: Number(service.revisions_count),
 
+    service_type: service.service_type,
+
+    status: service.status,
+
+    slug: service.slug,
     cover_image_url: service.cover_image_url,
 
     category_id: service.category_id,
-
-    service_type: service.service_type,
-
-    slug: service.slug,
-
-    listing_type: service.listing_type,
 
     created_at: service.created_at,
     updated_at: service.updated_at,
 
     freelancer,
-    client,
+    client: null,
+
     category,
   };
 }
 
 /* ==========================================================
-   GET MARKETPLACE SERVICES / LISTINGS
+   BUILD JOB
 ========================================================== */
 
-export async function getMarketplaceServices(
-  query: MarketplaceQuery = {},
-): Promise<MarketplaceService[]> {
-  const {
-    search = "",
-    categoryId = null,
-    minPrice = null,
-    maxPrice = null,
-    sort = "latest",
-    listingType = null,
-    freelancerId = null,
-    clientId = null,
-  } = query;
+async function buildMarketplaceJob(job: JobRow): Promise<MarketplaceJob> {
+  const [client, category] = await Promise.all([
+    getClientData(job.client_id),
+    getCategoryData(job.category_id),
+  ]);
 
+  return {
+    listing_type: "job",
+
+    job_id: job.job_id,
+
+    freelancer_id: null,
+    client_id: job.client_id,
+
+    title: job.title,
+    description: job.description,
+
+    budget_min: Number(job.budget_min),
+    budget_max: Number(job.budget_max),
+
+    pricing_type: job.pricing_type,
+
+    deadline: job.deadline,
+
+    status: job.status,
+
+    category_id: job.category_id,
+
+    created_at: job.created_at,
+    updated_at: job.updated_at,
+
+    freelancer: null,
+    client,
+
+    category,
+  };
+}
+
+/* ==========================================================
+   GET SERVICES
+========================================================== */
+
+async function getServices(
+  query: MarketplaceQuery,
+): Promise<MarketplaceService[]> {
   let request = supabase
-    .from(MARKETPLACE_TABLE)
-    .select(MARKETPLACE_SELECT)
+    .from(SERVICES_TABLE)
+    .select(
+      `
+      service_id,
+      freelancer_id,
+      category_id,
+      title,
+      description,
+      price,
+      pricing_mode,
+      delivery_time_days,
+      revisions_count,
+      service_type,
+      status,
+      slug,
+      cover_image_url,
+      created_at,
+      updated_at
+    `,
+    )
     .eq("status", "Active");
 
-  if (listingType) {
-    request = request.eq("listing_type", listingType);
-  }
-
-  const searchValue = search.trim();
+  const searchValue = query.search?.trim() ?? "";
 
   if (searchValue) {
     request = request.or(
@@ -404,67 +524,177 @@ export async function getMarketplaceServices(
     );
   }
 
-  if (categoryId) {
-    request = request.eq("category_id", categoryId);
+  if (query.categoryId) {
+    request = request.eq("category_id", query.categoryId);
   }
 
-  if (freelancerId) {
-    request = request.eq("freelancer_id", freelancerId);
+  if (query.freelancerId) {
+    request = request.eq("freelancer_id", query.freelancerId);
   }
 
-  if (clientId) {
-    request = request.eq("client_id", clientId);
+  if (
+    query.minPrice !== null &&
+    query.minPrice !== undefined &&
+    Number.isFinite(query.minPrice)
+  ) {
+    request = request.gte("price", query.minPrice);
   }
 
-  if (minPrice !== null && Number.isFinite(minPrice)) {
-    request = request.gte("price", minPrice);
+  if (
+    query.maxPrice !== null &&
+    query.maxPrice !== undefined &&
+    Number.isFinite(query.maxPrice)
+  ) {
+    request = request.lte("price", query.maxPrice);
   }
 
-  if (maxPrice !== null && Number.isFinite(maxPrice)) {
-    request = request.lte("price", maxPrice);
-  }
-
-  switch (sort) {
+  switch (query.sort) {
     case "lowestPrice":
-      request = request.order("price", {
-        ascending: true,
-      });
+      request = request.order("price", { ascending: true });
       break;
 
     case "highestPrice":
-      request = request.order("price", {
-        ascending: false,
-      });
+      request = request.order("price", { ascending: false });
       break;
 
     case "latest":
     case "relevance":
     default:
-      request = request.order("created_at", {
-        ascending: false,
-      });
+      request = request.order("created_at", { ascending: false });
       break;
   }
 
   const { data, error } = await request;
 
   if (error) {
-    console.error(
-      "Failed to load marketplace listings:",
-      error,
-    );
+    console.error("Failed to load services:", error);
 
     throw error;
   }
 
-  if (!data || data.length === 0) {
+  if (!data) {
     return [];
   }
 
-  return Promise.all(
-    (data as MarketplaceListingRow[]).map(
-      buildMarketplaceService,
-    ),
+  return Promise.all((data as ServiceRow[]).map(buildMarketplaceService));
+}
+
+/* ==========================================================
+   GET JOBS
+========================================================== */
+
+async function getJobs(query: MarketplaceQuery): Promise<MarketplaceJob[]> {
+  let request = supabase
+    .from(JOBS_TABLE)
+    .select(
+      `
+      job_id,
+      client_id,
+      category_id,
+      title,
+      description,
+      budget_min,
+      budget_max,
+      pricing_type,
+      deadline,
+      status,
+      created_at,
+      updated_at
+    `,
+    )
+    .eq("status", "open");
+
+  const searchValue = query.search?.trim() ?? "";
+
+  if (searchValue) {
+    request = request.or(
+      [
+        `title.ilike.%${searchValue}%`,
+        `description.ilike.%${searchValue}%`,
+      ].join(","),
+    );
+  }
+
+  if (query.categoryId) {
+    request = request.eq("category_id", query.categoryId);
+  }
+
+  if (query.clientId) {
+    request = request.eq("client_id", query.clientId);
+  }
+
+  if (
+    query.minPrice !== null &&
+    query.minPrice !== undefined &&
+    Number.isFinite(query.minPrice)
+  ) {
+    request = request.gte("budget_min", query.minPrice);
+  }
+
+  if (
+    query.maxPrice !== null &&
+    query.maxPrice !== undefined &&
+    Number.isFinite(query.maxPrice)
+  ) {
+    request = request.lte("budget_max", query.maxPrice);
+  }
+
+  switch (query.sort) {
+    case "lowestPrice":
+      request = request.order("budget_min", { ascending: true });
+      break;
+
+    case "highestPrice":
+      request = request.order("budget_max", { ascending: false });
+      break;
+
+    case "latest":
+    case "relevance":
+    default:
+      request = request.order("created_at", { ascending: false });
+      break;
+  }
+
+  const { data, error } = await request;
+
+  if (error) {
+    console.error("Failed to load jobs:", error);
+
+    throw error;
+  }
+
+  if (!data) {
+    return [];
+  }
+
+  return Promise.all((data as JobRow[]).map(buildMarketplaceJob));
+}
+
+/* ==========================================================
+   GET MARKETPLACE
+========================================================== */
+
+export async function getMarketplaceServices(
+  query: MarketplaceQuery = {},
+): Promise<MarketplaceItem[]> {
+  const listingType = query.listingType ?? null;
+
+  if (listingType === "service") {
+    return getServices(query);
+  }
+
+  if (listingType === "job") {
+    return getJobs(query);
+  }
+
+  const [services, jobs] = await Promise.all([
+    getServices(query),
+    getJobs(query),
+  ]);
+
+  return [...services, ...jobs].sort(
+    (a, b) =>
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
   );
 }
 
@@ -472,18 +702,13 @@ export async function getMarketplaceServices(
    GET MY MARKETPLACE LISTINGS
 ========================================================== */
 
-export async function getMyMarketplaceListings(): Promise<MarketplaceService[]> {
+export async function getMyMarketplaceListings(): Promise<MarketplaceItem[]> {
   const {
     data: { user },
     error: authError,
   } = await supabase.auth.getUser();
 
   if (authError) {
-    console.error(
-      "getMyMarketplaceListings: Failed to get authenticated user:",
-      authError,
-    );
-
     throw authError;
   }
 
@@ -506,15 +731,14 @@ export async function getMyMarketplaceListings(): Promise<MarketplaceService[]> 
   }
 
   if (userData.role === "freelancer") {
-    const { data: freelancer, error: freelancerError } =
-      await supabase
-        .from(FREELANCER_TABLE)
-        .select("freelancer_id")
-        .eq("user_id", user.id)
-        .maybeSingle();
+    const { data: freelancer, error } = await supabase
+      .from(FREELANCER_TABLE)
+      .select("freelancer_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
 
-    if (freelancerError) {
-      throw freelancerError;
+    if (error) {
+      throw error;
     }
 
     if (!freelancer) {
@@ -523,20 +747,22 @@ export async function getMyMarketplaceListings(): Promise<MarketplaceService[]> 
 
     return getMarketplaceServices({
       freelancerId: freelancer.freelancer_id,
+
       listingType: "service",
+
       sort: "latest",
     });
   }
 
   if (userData.role === "client") {
-    const { data: client, error: clientError } = await supabase
+    const { data: client, error } = await supabase
       .from(CLIENT_TABLE)
       .select("client_id")
       .eq("user_id", user.id)
       .maybeSingle();
 
-    if (clientError) {
-      throw clientError;
+    if (error) {
+      throw error;
     }
 
     if (!client) {
@@ -545,7 +771,9 @@ export async function getMyMarketplaceListings(): Promise<MarketplaceService[]> 
 
     return getMarketplaceServices({
       clientId: client.client_id,
+
       listingType: "job",
+
       sort: "latest",
     });
   }
@@ -554,7 +782,7 @@ export async function getMyMarketplaceListings(): Promise<MarketplaceService[]> 
 }
 
 /* ==========================================================
-   SEARCH MARKETPLACE SERVICES
+   SEARCH SERVICES
 ========================================================== */
 
 export async function searchMarketplaceServices(
@@ -562,13 +790,15 @@ export async function searchMarketplaceServices(
 ): Promise<MarketplaceService[]> {
   return getMarketplaceServices({
     search,
+
     sort: "relevance",
+
     listingType: "service",
-  });
+  }) as Promise<MarketplaceService[]>;
 }
 
 /* ==========================================================
-   GET SERVICES BY CATEGORY
+   SERVICES BY CATEGORY
 ========================================================== */
 
 export async function getMarketplaceServicesByCategory(
@@ -580,13 +810,15 @@ export async function getMarketplaceServicesByCategory(
 
   return getMarketplaceServices({
     categoryId,
+
     sort: "latest",
+
     listingType: "service",
-  });
+  }) as Promise<MarketplaceService[]>;
 }
 
 /* ==========================================================
-   GET SERVICES BY PRICE RANGE
+   SERVICES BY PRICE
 ========================================================== */
 
 export async function getMarketplaceServicesByPriceRange(
@@ -595,130 +827,134 @@ export async function getMarketplaceServicesByPriceRange(
 ): Promise<MarketplaceService[]> {
   return getMarketplaceServices({
     minPrice: minPrice ?? null,
+
     maxPrice: maxPrice ?? null,
+
     sort: "lowestPrice",
+
     listingType: "service",
-  });
+  }) as Promise<MarketplaceService[]>;
 }
 
 /* ==========================================================
-   GET LOWEST PRICE SERVICES
+   LOWEST PRICE
 ========================================================== */
 
-export async function getLowestPriceMarketplaceServices(): Promise<MarketplaceService[]> {
+export async function getLowestPriceMarketplaceServices(): Promise<
+  MarketplaceService[]
+> {
   return getMarketplaceServices({
     sort: "lowestPrice",
+
     listingType: "service",
-  });
+  }) as Promise<MarketplaceService[]>;
 }
 
 /* ==========================================================
-   GET HIGHEST PRICE SERVICES
+   HIGHEST PRICE
 ========================================================== */
 
-export async function getHighestPriceMarketplaceServices(): Promise<MarketplaceService[]> {
+export async function getHighestPriceMarketplaceServices(): Promise<
+  MarketplaceService[]
+> {
   return getMarketplaceServices({
     sort: "highestPrice",
+
     listingType: "service",
-  });
+  }) as Promise<MarketplaceService[]>;
 }
 
 /* ==========================================================
-   GET LATEST SERVICES
+   LATEST SERVICES
 ========================================================== */
 
-export async function getLatestMarketplaceServices(): Promise< MarketplaceService[] > {
+export async function getLatestMarketplaceServices(): Promise<
+  MarketplaceService[]
+> {
   return getMarketplaceServices({
     sort: "latest",
+
     listingType: "service",
-  });
+  }) as Promise<MarketplaceService[]>;
 }
 
 /* ==========================================================
-   GET SERVICES BY FREELANCER
+   SERVICES BY FREELANCER
 ========================================================== */
 
 export async function getMarketplaceServicesByFreelancer(
   freelancerId: string,
 ): Promise<MarketplaceService[]> {
   if (!freelancerId) {
-    console.error(
-      "getMarketplaceServicesByFreelancer: freelancerId is undefined.",
-    );
-
     return [];
   }
 
   return getMarketplaceServices({
     freelancerId,
+
     sort: "latest",
+
     listingType: "service",
-  });
+  }) as Promise<MarketplaceService[]>;
 }
 
 /* ==========================================================
-   GET LISTINGS BY CLIENT
-   JOB ONLY
+   JOBS BY CLIENT
 ========================================================== */
 
 export async function getMarketplaceListingsByClient(
   clientId: string,
-): Promise<MarketplaceService[]> {
+): Promise<MarketplaceJob[]> {
   if (!clientId) {
-    console.error(
-      "getMarketplaceListingsByClient: clientId is undefined.",
-    );
-
     return [];
   }
 
   return getMarketplaceServices({
     clientId,
+
     sort: "latest",
+
     listingType: "job",
-  });
+  }) as Promise<MarketplaceJob[]>;
 }
 
 /* ==========================================================
-   GET SINGLE MARKETPLACE LISTING
-==========================================================
-
-   IMPORTANT:
-   This is intentionally NOT restricted to listing_type = service.
-
-   It can now load:
-
-   - service
-   - job
-
-   The component decides what UI to display based on:
-   service.listing_type
+   SINGLE SERVICE
 ========================================================== */
 
 export async function getMarketplaceService(
   serviceId: string,
 ): Promise<MarketplaceService | null> {
   if (!serviceId) {
-    console.error(
-      "getMarketplaceService: serviceId is undefined.",
-    );
-
     return null;
   }
 
   const { data, error } = await supabase
-    .from(MARKETPLACE_TABLE)
-    .select(MARKETPLACE_SELECT)
+    .from(SERVICES_TABLE)
+    .select(
+      `
+      service_id,
+      freelancer_id,
+      category_id,
+      title,
+      description,
+      price,
+      pricing_mode,
+      delivery_time_days,
+      revisions_count,
+      service_type,
+      status,
+      slug,
+      cover_image_url,
+      created_at,
+      updated_at
+    `,
+    )
     .eq("service_id", serviceId)
     .eq("status", "Active")
     .maybeSingle();
 
   if (error) {
-    console.error(
-      "Failed to load marketplace listing:",
-      error,
-    );
-
     throw error;
   }
 
@@ -726,47 +962,71 @@ export async function getMarketplaceService(
     return null;
   }
 
-  return buildMarketplaceService(
-    data as MarketplaceListingRow,
-  );
+  return buildMarketplaceService(data as ServiceRow);
 }
 
 /* ==========================================================
-   GET MARKETPLACE LISTINGS
+   SINGLE JOB
 ========================================================== */
 
-export async function getMarketplaceListings(
-  query: MarketplaceQuery = {},
-): Promise<MarketplaceService[]> {
-  return getMarketplaceServices(query);
+export async function getMarketplaceJob(
+  jobId: string,
+): Promise<MarketplaceJob | null> {
+  if (!jobId) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from(JOBS_TABLE)
+    .select(
+      `
+      job_id,
+      client_id,
+      category_id,
+      title,
+      description,
+      budget_min,
+      budget_max,
+      pricing_type,
+      deadline,
+      status,
+      created_at,
+      updated_at
+    `,
+    )
+    .eq("job_id", jobId)
+    .eq("status", "open")
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  return buildMarketplaceJob(data as JobRow);
 }
 
 /* ==========================================================
-   DELETE MARKETPLACE SERVICE
+   DELETE SERVICE
 ========================================================== */
 
 export async function deleteMarketplaceService(
   serviceId: string,
 ): Promise<boolean> {
   if (!serviceId) {
-    console.error(
-      "deleteMarketplaceService: serviceId is undefined.",
-    );
-
     return false;
   }
 
   const { error } = await supabase
-    .from(MARKETPLACE_TABLE)
+    .from(SERVICES_TABLE)
     .delete()
-    .eq("service_id", serviceId)
-    .eq("listing_type", "service");
+    .eq("service_id", serviceId);
 
   if (error) {
-    console.error(
-      "Failed to delete marketplace service:",
-      error,
-    );
+    console.error("Failed to delete service:", error);
 
     return false;
   }
@@ -774,19 +1034,43 @@ export async function deleteMarketplaceService(
   return true;
 }
 
+export async function deleteMarketplaceJob(jobId: string): Promise<boolean> {
+  if (!jobId) {
+    return false;
+  }
+
+  const { error } = await supabase
+    .from(JOBS_TABLE)
+    .delete()
+    .eq("job_id", jobId);
+
+  if (error) {
+    console.error("Failed to delete job:", error);
+    return false;
+  }
+
+  return true;
+}
+
 /* ==========================================================
-   MARKETPLACE REVIEWS
+   REVIEWS
 ========================================================== */
 
 export interface MarketplaceServiceReview {
   review_id: string;
+
   rating: number;
+
   comment: string | null;
+
   created_at: string;
 
   client_id: string;
+
   freelancer_id: string;
+
   project_id: string;
+
   reviewer_role: string;
 
   client: {
@@ -799,27 +1083,19 @@ export interface MarketplaceServiceReview {
 
 /* ==========================================================
    GET SERVICE REVIEWS
-==========================================================
-
-   Reviews are only used for services.
-
-   Jobs do not call this function.
 ========================================================== */
 
 export async function getMarketplaceServiceReviews(
   freelancerId: string,
 ): Promise<MarketplaceServiceReview[]> {
   if (!freelancerId) {
-    console.error(
-      "getMarketplaceServiceReviews: freelancerId is undefined.",
-    );
-
     return [];
   }
 
   const { data: reviews, error } = await supabase
     .from("reviews")
-    .select(`
+    .select(
+      `
       review_id,
       rating,
       comment,
@@ -828,7 +1104,8 @@ export async function getMarketplaceServiceReviews(
       freelancer_id,
       project_id,
       reviewer_role
-    `)
+    `,
+    )
     .eq("freelancer_id", freelancerId)
     .eq("reviewer_role", "client")
     .order("created_at", {
@@ -836,105 +1113,84 @@ export async function getMarketplaceServiceReviews(
     });
 
   if (error) {
-    console.error(
-      "Failed to load service reviews:",
-      error,
-    );
-
     throw error;
   }
 
-  if (!reviews || reviews.length === 0) {
+  if (!reviews?.length) {
     return [];
   }
 
-  const clientIds = [
-    ...new Set(
-      reviews.map((review) => review.client_id),
-    ),
-  ];
+  const clientIds = [...new Set(reviews.map((review) => review.client_id))];
 
-  const { data: clients, error: clientError } =
-    await supabase
-      .from("client_profiles")
-      .select(`
-        client_id,
-        user_id
-      `)
-      .in("client_id", clientIds);
-
-  if (clientError) {
-    console.error(
-      "Failed to load review clients:",
-      clientError,
-    );
-  }
+  const { data: clients } = await supabase
+    .from(CLIENT_TABLE)
+    .select(
+      `
+      client_id,
+      user_id
+    `,
+    )
+    .in("client_id", clientIds);
 
   const userIds =
-    clients
-      ?.map((client) => client.user_id)
-      .filter(Boolean) ?? [];
+    clients?.map((client) => client.user_id).filter(Boolean) ?? [];
 
   let profiles: {
     user_id: string;
+
     display_name: string | null;
     first_name: string | null;
     last_name: string | null;
     avatar_url: string | null;
   }[] = [];
 
-  if (userIds.length > 0) {
-    const {
-      data: profileData,
-      error: profileError,
-    } = await supabase
-      .from("profiles")
-      .select(`
+  if (userIds.length) {
+    const { data } = await supabase
+      .from(PROFILES_TABLE)
+      .select(
+        `
         user_id,
         display_name,
         first_name,
         last_name,
         avatar_url
-      `)
+      `,
+      )
       .in("user_id", userIds);
 
-    if (profileError) {
-      console.error(
-        "Failed to load review profiles:",
-        profileError,
-      );
-    }
-
-    profiles = profileData ?? [];
+    profiles = data ?? [];
   }
 
   return reviews.map((review) => {
-    const client = clients?.find(
-      (item) =>
-        item.client_id === review.client_id,
-    );
+    const client = clients?.find((item) => item.client_id === review.client_id);
 
-    const profile = profiles.find(
-      (item) =>
-        item.user_id === client?.user_id,
-    );
+    const profile = profiles.find((item) => item.user_id === client?.user_id);
 
     return {
       review_id: review.review_id,
+
       rating: Number(review.rating),
+
       comment: review.comment,
+
       created_at: review.created_at,
 
       client_id: review.client_id,
+
       freelancer_id: review.freelancer_id,
+
       project_id: review.project_id,
+
       reviewer_role: review.reviewer_role,
 
       client: profile
         ? {
             display_name: profile.display_name,
+
             first_name: profile.first_name,
+
             last_name: profile.last_name,
+
             avatar_url: profile.avatar_url,
           }
         : null,
@@ -943,7 +1199,7 @@ export async function getMarketplaceServiceReviews(
 }
 
 /* ==========================================================
-   CREATE MARKETPLACE ORDER
+   CREATE SERVICE ORDER
 ========================================================== */
 
 export async function createMarketplaceOrder(
@@ -963,147 +1219,96 @@ export async function createMarketplaceOrder(
     throw new Error("Freelancer ID is required.");
   }
 
-  /* ========================================================
-     GET CURRENT AUTHENTICATED USER
-  ======================================================== */
-
   const {
     data: { user },
     error: authError,
   } = await supabase.auth.getUser();
 
   if (authError) {
-    console.error(
-      "Failed to get authenticated user:",
-      authError,
-    );
-
     throw new Error(authError.message);
   }
 
   if (!user) {
-    throw new Error(
-      "You must be logged in to purchase a service.",
-    );
+    throw new Error("You must be logged in to purchase a service.");
   }
 
-  /* ========================================================
-     GET FREELANCER OWNER
-  ======================================================== */
-
-  const { data: freelancer, error: freelancerError } =
-    await supabase
-      .from(FREELANCER_TABLE)
-      .select("freelancer_id, user_id")
-      .eq("freelancer_id", freelancerId)
-      .maybeSingle();
+  const { data: freelancer, error: freelancerError } = await supabase
+    .from(FREELANCER_TABLE)
+    .select(
+      `
+      freelancer_id,
+      user_id
+    `,
+    )
+    .eq("freelancer_id", freelancerId)
+    .maybeSingle();
 
   if (freelancerError) {
-    console.error(
-      "Failed to verify service freelancer:",
-      freelancerError,
-    );
-
-    throw new Error(
-      "Unable to verify the service owner.",
-    );
+    throw new Error("Unable to verify the service owner.");
   }
 
   if (!freelancer) {
-    throw new Error(
-      "Freelancer profile not found.",
-    );
+    throw new Error("Freelancer profile not found.");
   }
-
-  /* ========================================================
-     PREVENT BUYING YOUR OWN SERVICE
-  ======================================================== */
 
   if (freelancer.user_id === user.id) {
-    throw new Error(
-      "You cannot purchase your own service.",
-    );
+    throw new Error("You cannot purchase your own service.");
   }
 
-  /* ========================================================
-     VERIFY SERVICE BELONGS TO FREELANCER
-  ======================================================== */
-
-  const { data: service, error: serviceError } =
-    await supabase
-      .from(MARKETPLACE_TABLE)
-      .select(
-        "service_id, freelancer_id, listing_type, status",
-      )
-      .eq("service_id", serviceId)
-      .maybeSingle();
+  const { data: service, error: serviceError } = await supabase
+    .from(SERVICES_TABLE)
+    .select(
+      `
+      service_id,
+      freelancer_id,
+      status
+    `,
+    )
+    .eq("service_id", serviceId)
+    .maybeSingle();
 
   if (serviceError) {
-    console.error(
-      "Failed to verify marketplace service:",
-      serviceError,
-    );
-
-    throw new Error(
-      "Unable to verify the service.",
-    );
+    throw new Error("Unable to verify the service.");
   }
 
   if (!service) {
-    throw new Error(
-      "Service not found.",
-    );
-  }
-
-  if (service.listing_type !== "service") {
-    throw new Error(
-      "This listing is not a service.",
-    );
+    throw new Error("Service not found.");
   }
 
   if (service.status !== "Active") {
-    throw new Error(
-      "This service is no longer available.",
-    );
+    throw new Error("This service is no longer available.");
   }
 
   if (service.freelancer_id !== freelancerId) {
-    throw new Error(
-      "Service owner information does not match.",
-    );
+    throw new Error("Service owner information does not match.");
   }
-
-  /* ========================================================
-     CREATE ORDER
-  ======================================================== */
 
   const { data, error } = await supabase
     .from("service_orders")
     .insert({
       service_id: serviceId,
+
       client_id: clientId,
+
       freelancer_id: freelancerId,
+
       status: "pending",
     })
     .select("order_id")
     .single();
 
   if (error) {
-    console.error(
-      "Failed to create marketplace order:",
-      error,
-    );
-
-    throw new Error(
-      error.message ||
-        "Failed to create marketplace order.",
-    );
+    throw new Error(error.message || "Failed to create service order.");
   }
 
   return data;
 }
 
-export async function getCurrentClientProfileId() {
+/* ==========================================================
+   CURRENT CLIENT PROFILE
+========================================================== */
+
+export async function getCurrentClientProfileId(): Promise<string> {
   const {
     data: { user },
     error: authError,
@@ -1114,26 +1319,17 @@ export async function getCurrentClientProfileId() {
   }
 
   if (!user) {
-    throw new Error(
-      "You must be logged in to continue.",
-    );
+    throw new Error("You must be logged in to continue.");
   }
 
   const { data, error } = await supabase
-    .from("client_profiles")
+    .from(CLIENT_TABLE)
     .select("client_id")
     .eq("user_id", user.id)
     .single();
 
   if (error) {
-    console.error(
-      "Failed to load client profile:",
-      error,
-    );
-
-    throw new Error(
-      "Client profile not found.",
-    );
+    throw new Error("Client profile not found.");
   }
 
   return data.client_id;

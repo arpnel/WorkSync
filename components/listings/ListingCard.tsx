@@ -1,59 +1,88 @@
 import { Badge } from "@/components/ui/badge";
+
 import { Card } from "@/components/ui/card";
+
 import {
   Avatar,
   AvatarFallback,
   AvatarImage,
 } from "@/components/ui/avatar";
-import { Pencil, Trash2 } from "lucide-react";
 
-import type { MarketplaceService } from "@/services/marketplace/MarketplaceServices";
+import {
+  Pencil,
+  Trash2,
+} from "lucide-react";
+
+import type {
+  MarketplaceItem,
+} from "@/services/marketplace/MarketplaceServices";
 
 interface ListingCardProps {
-  service: MarketplaceService;
-  onDelete?: (serviceId: string) => void;
+  listing: MarketplaceItem;
+
+  onDelete?: (
+    listingId: string,
+  ) => void;
+
+  onEdit?: (
+    listingId: string,
+  ) => void;
 }
 
 export function ListingCard({
-  service,
+  listing,
   onDelete,
+  onEdit,
 }: ListingCardProps) {
-  const isJob = service.listing_type === "job";
+  const isService =
+    listing.listing_type ===
+    "service";
 
-  /*
-   * My Listings already filters the listings based on
-   * the user's CURRENT role:
-   *
-   * freelancer -> service
-   * client     -> job
-   *
-   * Therefore, we only need to display the correct owner
-   * information based on the listing itself.
-   */
+  const isJob =
+    listing.listing_type ===
+    "job";
 
-  const profile = isJob
-    ? service.client?.profile
-    : service.freelancer?.profile;
+  const listingId = isService
+    ? listing.service_id
+    : listing.job_id;
+
+  const profile = isService
+    ? listing.freelancer?.profile
+    : listing.client?.profile;
 
   const displayName =
     profile?.display_name ||
-    `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim() ||
-    (isJob ? "Client" : "Freelancer");
+    `${profile?.first_name ?? ""} ${
+      profile?.last_name ?? ""
+    }`.trim() ||
+    (isService
+      ? "Freelancer"
+      : "Client");
 
   return (
     <Card className="mx-auto w-full overflow-hidden rounded-3xl border bg-background shadow-md transition hover:-translate-y-1 hover:shadow-lg">
-      {/* Listing Media */}
+      {/* ==================================================
+          MEDIA
+      ================================================== */}
+
       <div className="relative flex h-44 items-center justify-center overflow-hidden border-b bg-muted">
-        {service.cover_image_url ? (
+        {isService &&
+        listing.cover_image_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={service.cover_image_url}
-            alt={service.title}
+            src={
+              listing.cover_image_url
+            }
+            alt={
+              listing.title
+            }
             className="h-full w-full object-cover"
           />
         ) : (
           <span className="text-sm text-muted-foreground">
-            {isJob ? "Job Thumbnail" : "Service Thumbnail"}
+            {isJob
+              ? "Job Posting"
+              : "Service Thumbnail"}
           </span>
         )}
 
@@ -61,21 +90,30 @@ export function ListingCard({
           variant="secondary"
           className="absolute right-3 top-3 bg-background/90"
         >
-          {service.status}
+          {listing.status}
         </Badge>
       </div>
 
       <div className="space-y-3 p-4">
-        {/* Owner */}
+        {/* ==================================================
+            OWNER
+        ================================================== */}
+
         <div className="flex items-center gap-3">
           <Avatar className="h-9 w-9">
             <AvatarImage
-              src={profile?.avatar_url ?? undefined}
-              alt={displayName}
+              src={
+                profile?.avatar_url ??
+                undefined
+              }
+              alt={
+                displayName
+              }
             />
 
             <AvatarFallback>
-              {displayName[0]?.toUpperCase() ?? "U"}
+              {displayName[0]?.toUpperCase() ??
+                "U"}
             </AvatarFallback>
           </Avatar>
 
@@ -85,84 +123,154 @@ export function ListingCard({
             </p>
 
             <p className="text-xs text-muted-foreground">
-              {isJob ? "Client" : "Freelancer"}
+              {isService
+                ? "Freelancer"
+                : "Client"}
             </p>
           </div>
         </div>
 
-        {/* Listing Title */}
+        {/* ==================================================
+            TITLE
+        ================================================== */}
+
         <h3 className="line-clamp-2 text-sm font-medium leading-5">
-          {service.title}
+          {listing.title}
         </h3>
 
-        {/* Category + Type */}
+        {/* ==================================================
+            CATEGORY + TYPE
+        ================================================== */}
+
         <div className="flex flex-wrap gap-2">
           <span className="rounded-full bg-muted px-2.5 py-1 text-[11px]">
-            {service.category?.name ?? "Category"}
+            {listing.category
+              ?.name ??
+              "Category"}
           </span>
 
           <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] text-primary">
-            {isJob
-              ? "Job"
-              : service.service_type === "milestone"
+            {isService
+              ? listing.service_type ===
+                "milestone"
                 ? "Milestone"
-                : "Standard"}
+                : "Standard"
+              : "Job"}
           </span>
         </div>
 
-        {/* Details */}
+        {/* ==================================================
+            DETAILS
+        ================================================== */}
+
         <div className="flex flex-wrap gap-1.5">
-          {isJob ? (
-            <span className="rounded-md bg-muted px-2 py-1 text-[11px]">
-              Job Posting
-            </span>
-          ) : (
+          {isService ? (
             <>
               <span className="rounded-md bg-muted px-2 py-1 text-[11px]">
-                {service.delivery_time_days} Days
+                {
+                  listing.delivery_time_days
+                }{" "}
+                Days
               </span>
 
               <span className="rounded-md bg-muted px-2 py-1 text-[11px]">
-                {service.revisions_count} Revision
-                {service.revisions_count !== 1 && "s"}
+                {
+                  listing.revisions_count
+                }{" "}
+                Revision
+                {listing.revisions_count !==
+                  1 &&
+                  "s"}
               </span>
+            </>
+          ) : (
+            <>
+              <span className="rounded-md bg-muted px-2 py-1 text-[11px]">
+                {
+                  listing.pricing_type
+                }
+              </span>
+
+              {listing.deadline && (
+                <span className="rounded-md bg-muted px-2 py-1 text-[11px]">
+                  Deadline:{" "}
+                  {new Date(
+                    listing.deadline,
+                  ).toLocaleDateString(
+                    "en-PH",
+                  )}
+                </span>
+              )}
             </>
           )}
         </div>
 
-        {/* Footer */}
+        {/* ==================================================
+            FOOTER
+        ================================================== */}
+
         <div className="flex items-end justify-between border-t pt-3">
           <div>
             <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-              {isJob ? "Budget" : "Starting From"}
+              {isService
+                ? "Starting From"
+                : "Budget"}
             </p>
 
-            <p className="text-xl font-bold text-primary">
-              ₱{Number(service.price).toLocaleString()}
-            </p>
+            {isService ? (
+              <p className="text-xl font-bold text-primary">
+                ₱
+                {Number(
+                  listing.price,
+                ).toLocaleString()}
+              </p>
+            ) : (
+              <p className="text-xl font-bold text-primary">
+                ₱
+                {Number(
+                  listing.budget_min,
+                ).toLocaleString()}
+                {listing.budget_max !==
+                  listing.budget_min &&
+                  ` - ₱${Number(
+                    listing.budget_max,
+                  ).toLocaleString()}`}
+              </p>
+            )}
           </div>
 
-          {/* Actions */}
+          {/* ==================================================
+              ACTIONS
+          ================================================== */}
+
           <div className="flex gap-2">
-            {/* Edit */}
             <button
               type="button"
               className="flex h-9 w-9 items-center justify-center rounded-md border bg-background transition hover:bg-muted"
-              onClick={(event) => {
+              onClick={(
+                event,
+              ) => {
                 event.stopPropagation();
+
+                onEdit?.(
+                  listingId,
+                );
               }}
             >
               <Pencil className="h-4 w-4" />
             </button>
 
-            {/* Delete */}
             <button
               type="button"
               className="flex h-9 w-9 items-center justify-center rounded-md border border-destructive text-destructive transition hover:bg-destructive hover:text-destructive-foreground"
-              onClick={(event) => {
+              onClick={(
+                event,
+              ) => {
                 event.stopPropagation();
 
-                onDelete?.(service.service_id);
+                onDelete?.(
+                  listingId,
+                );
               }}
             >
               <Trash2 className="h-4 w-4" />

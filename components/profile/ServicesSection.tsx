@@ -1,68 +1,115 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Pencil, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Settings2 } from "lucide-react";
 
 import type { Service } from "../../types/profile/profile";
-
-import {
-  getServices,
-  deleteService,
-} from "../../services/profile/profileservice";
-
+import { getServices } from "../../services/profile/profileservice";
 import { ServiceCreateDialogLauncher } from "./ServiceCreateDialogLauncher";
 
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 
 interface ServicesSectionProps {
   userId: string;
 }
 
+function getDisplayStorageKey(userId: string) {
+  return `worksync:profile-services:${userId}`;
+}
+
 export default function ServicesSection({ userId }: ServicesSectionProps) {
   const [services, setServices] = useState<Service[]>([]);
+  const [displayedIds, setDisplayedIds] = useState<string[]>([]);
+  const [manageOpen, setManageOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const loadServices = async () => {
+  const loadServices = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
 
     try {
       const data = await getServices(userId);
       setServices(data);
+
+      const storedIds = window.localStorage.getItem(
+        getDisplayStorageKey(userId),
+      );
+
+      if (!storedIds) {
+        setDisplayedIds(data.map((service) => service.id));
+        return;
+      }
+
+      const parsedIds: unknown = JSON.parse(storedIds);
+      const validServiceIds = new Set(data.map((service) => service.id));
+
+      setDisplayedIds(
+        Array.isArray(parsedIds)
+          ? parsedIds.filter(
+              (id): id is string =>
+                typeof id === "string" && validServiceIds.has(id),
+            )
+          : data.map((service) => service.id),
+      );
+    } catch (error) {
+      console.error("Failed to load profile services:", error);
+      setLoadError("Unable to load services. Please try again.");
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    loadServices();
   }, [userId]);
 
-  const handleDelete = async (id: string) => {
-    if (!id) {
-      console.error("Cannot delete service: service ID is missing.");
-      return;
-    }
+  useEffect(() => {
+    void loadServices();
+  }, [loadServices]);
 
-    const confirmed = window.confirm("Delete this service?");
+  const displayedServices = useMemo(() => {
+    const selectedIds = new Set(displayedIds);
+    return services.filter((service) => selectedIds.has(service.id));
+  }, [displayedIds, services]);
 
-    if (!confirmed) return;
+  const setServiceDisplayed = (serviceId: string, displayed: boolean) => {
+    setDisplayedIds((current) => {
+      const next = displayed
+        ? [...new Set([...current, serviceId])]
+        : current.filter((id) => id !== serviceId);
 
-    const success = await deleteService(id);
+      window.localStorage.setItem(
+        getDisplayStorageKey(userId),
+        JSON.stringify(next),
+      );
 
-    if (success) {
-      await loadServices();
-    }
+      return next;
+    });
   };
 
   return (
     <Card className="rounded-2xl shadow-sm">
-      <CardHeader className="flex flex-row items-center justify-between pb-4">
+      <CardHeader className="flex flex-row items-center justify-between gap-3 pb-4">
         <CardTitle className="text-xl font-semibold">Services</CardTitle>
 
-        <ServiceCreateDialogLauncher />
+        <div className="flex flex-wrap justify-end gap-2">
+          {services.length > 0 && (
+            <Button variant="outline" onClick={() => setManageOpen(true)}>
+              <Settings2 className="h-4 w-4" />
+              Manage display
+            </Button>
+          )}
+
+          <ServiceCreateDialogLauncher onCreated={() => loadServices()} />
+        </div>
       </CardHeader>
 
       <CardContent>
@@ -83,25 +130,49 @@ export default function ServicesSection({ userId }: ServicesSectionProps) {
               </div>
             ))}
           </div>
+        ) : loadError ? (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-6 py-10 text-center">
+            <p className="text-sm text-destructive">{loadError}</p>
+            <Button
+              className="mt-4"
+              variant="outline"
+              onClick={() => void loadServices()}
+            >
+              Try again
+            </Button>
+          </div>
         ) : services.length === 0 ? (
           <div className="rounded-xl border border-dashed py-12 text-center">
             <p className="text-lg font-medium">No services available</p>
-
             <p className="mt-2 text-sm text-muted-foreground">
               Create your first service to start receiving orders.
             </p>
-
-            <ServiceCreateDialogLauncher />
+            <div className="mt-5">
+              <ServiceCreateDialogLauncher onCreated={() => loadServices()} />
+            </div>
+          </div>
+        ) : displayedServices.length === 0 ? (
+          <div className="rounded-xl border border-dashed py-12 text-center">
+            <p className="text-lg font-medium">No services selected</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Choose which existing services appear on your profile.
+            </p>
+            <Button
+              className="mt-5"
+              variant="outline"
+              onClick={() => setManageOpen(true)}
+            >
+              <Settings2 className="h-4 w-4" />
+              Select services
+            </Button>
           </div>
         ) : (
           <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-            {services.map((service, index) => (
+            {displayedServices.map((service) => (
               <Card
-                key={service.id ?? `service-${index}`}
+                key={service.id}
                 className="overflow-hidden rounded-2xl transition hover:shadow-md"
               >
-                {/* Image */}
-
                 <div className="flex h-44 items-center justify-center overflow-hidden bg-muted">
                   {service.cover_image_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -118,79 +189,43 @@ export default function ServicesSection({ userId }: ServicesSectionProps) {
                 </div>
 
                 <CardContent className="space-y-4 p-4">
-                  {/* Freelancer */}
-
                   <div className="flex items-center gap-3">
                     <Avatar className="h-9 w-9">
                       <AvatarImage src={service.avatar_url ?? undefined} />
-
                       <AvatarFallback>
-                        {service.display_name?.[0] ?? "U"}
+                        {(service.display_name?.[0] ?? "U").toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
 
-                    <div>
-                      <p className="text-sm font-semibold">
-                        {service.display_name ?? "Freelancer"}
-                      </p>
-
-                    </div>
+                    <p className="truncate text-sm font-semibold">
+                      {service.display_name ?? "Freelancer"}
+                    </p>
                   </div>
-
-                  {/* Title */}
 
                   <h3 className="line-clamp-2 text-sm font-semibold">
                     {service.title}
                   </h3>
 
-                  {/* Category + Type */}
-
                   <div className="flex flex-wrap gap-2">
                     <span className="rounded-full bg-muted px-2.5 py-1 text-[11px]">
-                      {service.category ?? "Category"}
+                      {service.category}
                     </span>
-
                     <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] text-primary">
                       {service.service_type}
                     </span>
                   </div>
 
-                  {/* Footer */}
-
-                  <div className="flex items-end justify-between border-t pt-3">
-                    <div>
-                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                        Starting From
-                      </p>
-
-                      <p className="text-xl font-bold text-primary">
-                        ₱{service.price}
-                      </p>
-                    </div>
-
-                    <div className="flex gap-2">
-                      <Button size="icon" variant="outline">
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-
-                      <Button
-                        size="icon"
-                        variant="destructive"
-                        disabled={!service.id}
-                        onClick={() => {
-                          if (!service.id) {
-                            console.error(
-                              "Cannot delete service: service ID is missing.",
-                            );
-                            return;
-                          }
-
-                          handleDelete(service.id);
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+                  <div className="border-t pt-3">
+                    <p className="text-[10px] uppercase text-muted-foreground">
+                      Starting From
+                    </p>
+                    <p className="text-xl font-bold text-primary">
+                      {new Intl.NumberFormat("en-PH", {
+                        style: "currency",
+                        currency: "PHP",
+                        maximumFractionDigits: 2,
+                      }).format(service.price)}
+                    </p>
                   </div>
                 </CardContent>
               </Card>
@@ -198,6 +233,57 @@ export default function ServicesSection({ userId }: ServicesSectionProps) {
           </div>
         )}
       </CardContent>
+
+      <Dialog open={manageOpen} onOpenChange={setManageOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Manage profile services</DialogTitle>
+            <DialogDescription>
+              Select the existing services you want displayed on your profile.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
+            {services.map((service) => {
+              const checkboxId = `profile-service-${service.id}`;
+              const checked = displayedIds.includes(service.id);
+
+              return (
+                <Label
+                  key={service.id}
+                  htmlFor={checkboxId}
+                  className="flex cursor-pointer items-center gap-3 rounded-md border p-3 hover:bg-muted/50"
+                >
+                  <Checkbox
+                    id={checkboxId}
+                    checked={checked}
+                    onCheckedChange={(value) =>
+                      setServiceDisplayed(service.id, value === true)
+                    }
+                  />
+
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">
+                      {service.title}
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      {service.category}
+                    </span>
+                  </span>
+
+                  <span className="text-sm font-semibold">
+                    {new Intl.NumberFormat("en-PH", {
+                      style: "currency",
+                      currency: "PHP",
+                      maximumFractionDigits: 2,
+                    }).format(service.price)}
+                  </span>
+                </Label>
+              );
+            })}
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

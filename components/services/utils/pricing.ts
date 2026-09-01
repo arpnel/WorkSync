@@ -21,4 +21,3 @@ export function computePrice({
     ? Number(hourlyRate ?? 0)
     : Number(fixedRate ?? 0);
 }
-

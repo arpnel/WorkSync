@@ -86,7 +86,13 @@ export function useClientSetup() {
     } catch (error) {
       console.error("Client setup error:", error);
 
-      toast.error("Failed to save your information.");
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : typeof error === "object" && error && "message" in error
+            ? String(error.message)
+            : "Failed to save your information.",
+      );
     } finally {
       setIsSubmitting(false);
     }

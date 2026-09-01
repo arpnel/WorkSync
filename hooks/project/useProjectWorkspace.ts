@@ -5,6 +5,7 @@ import {
   createProjectTypingChannel,
   getProjectWorkspace,
   respondToProjectAgreement,
+  respondToProjectAgreementItem,
   sendProjectMessage,
   updateProjectAgreementTerms,
 } from "@/services/project/projectWorkspaceService";
@@ -36,6 +37,9 @@ export function useProjectWorkspace(orderId: string) {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [updatingAgreement, setUpdatingAgreement] = useState(false);
+  const [updatingApprovalKey, setUpdatingApprovalKey] = useState<string | null>(
+    null,
+  );
   const [isOtherParticipantTyping, setIsOtherParticipantTyping] =
     useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -100,6 +104,16 @@ export function useProjectWorkspace(orderId: string) {
           event: "UPDATE",
           schema: "public",
           table: "contracts",
+          filter: `contract_id=eq.${workspace.contractId}`,
+        },
+        () => void load(false),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "contract_item_approvals",
           filter: `contract_id=eq.${workspace.contractId}`,
         },
         () => void load(false),
@@ -201,6 +215,20 @@ export function useProjectWorkspace(orderId: string) {
     }
   };
 
+  const respondToAgreementItem = async (itemKey: string, approved: boolean) => {
+    try {
+      setUpdatingApprovalKey(itemKey);
+      await respondToProjectAgreementItem(orderId, itemKey, approved);
+      await load(false);
+      return true;
+    } catch (cause) {
+      console.error("Failed to update item approval:", cause);
+      return false;
+    } finally {
+      setUpdatingApprovalKey(null);
+    }
+  };
+
   const respondToAgreement = async (accepted: boolean) => {
     try {
       setUpdatingAgreement(true);
@@ -236,12 +264,14 @@ export function useProjectWorkspace(orderId: string) {
     loading,
     sending,
     updatingAgreement,
+    updatingApprovalKey,
     isOtherParticipantTyping,
     error,
     refresh: () => load(false),
     sendMessage,
     sendTyping,
     respondToAgreement,
+    respondToAgreementItem,
     saveAgreementTerms,
   };
 }

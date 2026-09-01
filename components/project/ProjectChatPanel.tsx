@@ -14,9 +14,11 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import type { WorkspaceMessage } from "@/types/project/projectWorkspace";
 
 type Props = {
+  className?: string;
   messages: WorkspaceMessage[];
   sending: boolean;
   isOtherParticipantTyping: boolean;
@@ -75,6 +77,7 @@ function MessageAttachment({ message }: { message: WorkspaceMessage }) {
 }
 
 export function ProjectChatPanel({
+  className,
   messages,
   sending,
   isOtherParticipantTyping,
@@ -123,7 +126,12 @@ export function ProjectChatPanel({
   };
 
   return (
-    <Card className="flex h-[min(70vh,640px)] min-h-[480px] flex-col overflow-hidden">
+    <Card
+      className={cn(
+        "flex h-[min(70vh,640px)] min-h-[480px] flex-col overflow-hidden",
+        className,
+      )}
+    >
       <CardHeader className="shrink-0 border-b">
         <CardTitle className="flex items-center gap-2 text-base">
           <MessageSquare className="h-4 w-4" />

@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabaseClient";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type {
   ProjectWorkspace,
+  WorkspaceAgreementItem,
   WorkspaceMessage,
   WorkspaceMilestone,
 } from "@/types/project/projectWorkspace";
@@ -142,6 +143,31 @@ export async function getProjectWorkspace(
     );
   }
 
+  let agreementItems: WorkspaceAgreementItem[] = [];
+  const contractId = text(contract?.contract_id);
+  if (contractId) {
+    const approvals = await supabase
+      .from("contract_item_approvals")
+      .select(
+        "approval_id, item_key, client_approved_at, freelancer_approved_at",
+      )
+      .eq("contract_id", contractId);
+
+    if (!approvals.error) {
+      agreementItems = (approvals.data ?? []).map((item) => ({
+        id: item.approval_id,
+        itemKey: item.item_key,
+        clientApprovedAt: item.client_approved_at,
+        freelancerApprovedAt: item.freelancer_approved_at,
+      }));
+    } else {
+      console.warn(
+        "Individual agreement approvals are unavailable:",
+        approvals.error.message,
+      );
+    }
+  }
+
   const milestones: WorkspaceMilestone[] = records(project?.milestones)
     .map((milestone) => ({
       id: text(milestone.milestone_id),
@@ -158,7 +184,7 @@ export async function getProjectWorkspace(
     orderId: text(row.order_id),
     currentUserId: userId,
     currentParty: userId === clientUserId ? "client" : "freelancer",
-    contractId: text(contract?.contract_id) || null,
+    contractId: contractId || null,
     projectId: text(project?.project_id) || null,
     conversationId: conversation?.conversation_id ?? null,
     type: service?.service_type === "milestone" ? "milestone" : "standard",
@@ -192,6 +218,7 @@ export async function getProjectWorkspace(
     clientSignedAt: text(contract?.client_signed_at) || null,
     freelancerSignedAt: text(contract?.freelancer_signed_at) || null,
     milestones,
+    agreementItems,
     messages,
   };
 }
@@ -334,17 +361,19 @@ export async function respondToProjectAgreement(
   orderId: string,
   accepted: boolean,
 ): Promise<void> {
-  const { contractId, party } = await getAgreementContext(orderId);
-  const updates = accepted
-    ? {
-        [party === "client" ? "client_signed_at" : "freelancer_signed_at"]:
-          new Date().toISOString(),
-      }
-    : { client_signed_at: null, freelancer_signed_at: null };
+  const { contractId } = await getAgreementContext(orderId);
+
+  if (accepted) {
+    const { error } = await supabase.rpc("confirm_contract_agreement", {
+      p_contract_id: contractId,
+    });
+    if (error) throw new Error(error.message);
+    return;
+  }
 
   const { error } = await supabase
     .from("contracts")
-    .update(updates)
+    .update({ client_signed_at: null, freelancer_signed_at: null })
     .eq("contract_id", contractId);
   if (error) throw new Error(error.message);
 }
@@ -371,5 +400,24 @@ export async function updateProjectAgreementTerms(
       freelancer_signed_at: null,
     })
     .eq("contract_id", contractId);
+  if (error) throw new Error(error.message);
+
+  const reset = await supabase.rpc("reset_contract_item_approvals", {
+    p_contract_id: contractId,
+  });
+  if (reset.error) throw new Error(reset.error.message);
+}
+
+export async function respondToProjectAgreementItem(
+  orderId: string,
+  itemKey: string,
+  approved: boolean,
+): Promise<void> {
+  const { contractId } = await getAgreementContext(orderId);
+  const { error } = await supabase.rpc("respond_to_contract_item", {
+    p_contract_id: contractId,
+    p_item_key: itemKey,
+    p_approved: approved,
+  });
   if (error) throw new Error(error.message);
 }

@@ -17,11 +17,13 @@ export function MilestoneProjectWorkspace({ orderId }: { orderId: string }) {
     loading,
     sending,
     updatingAgreement,
+    updatingApprovalKey,
     isOtherParticipantTyping,
     error,
     sendMessage,
     sendTyping,
     respondToAgreement,
+    respondToAgreementItem,
     saveAgreementTerms,
   } = useProjectWorkspace(orderId);
 
@@ -97,16 +99,21 @@ export function MilestoneProjectWorkspace({ orderId }: { orderId: string }) {
         </CardContent>
       </Card>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(260px,0.8fr)_minmax(340px,1.2fr)_300px]">
+      <div className="grid gap-5 xl:grid-cols-2 2xl:grid-cols-[minmax(340px,0.9fr)_minmax(400px,1.1fr)_minmax(340px,0.8fr)]">
         <ProjectChatPanel
+          className="h-[700px] min-h-[700px]"
           messages={workspace.messages}
           sending={sending}
           isOtherParticipantTyping={isOtherParticipantTyping}
           onSend={sendMessage}
           onTypingChange={sendTyping}
         />
-        <MilestoneWorkspaceList milestones={workspace.milestones} />
-        <div className="space-y-5">
+        <MilestoneWorkspaceList
+          project={workspace}
+          updatingApprovalKey={updatingApprovalKey}
+          onRespondItem={respondToAgreementItem}
+        />
+        <div className="grid gap-5 xl:col-span-2 xl:grid-cols-2 2xl:col-span-1 2xl:block 2xl:space-y-5">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
@@ -136,7 +143,9 @@ export function MilestoneProjectWorkspace({ orderId }: { orderId: string }) {
           <ProjectAgreementCard
             project={workspace}
             updating={updatingAgreement}
+            updatingApprovalKey={updatingApprovalKey}
             onRespond={respondToAgreement}
+            onRespondItem={respondToAgreementItem}
             onSaveTerms={saveAgreementTerms}
           />
         </div>

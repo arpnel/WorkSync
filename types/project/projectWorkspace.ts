@@ -10,6 +10,13 @@ export interface WorkspaceMilestone {
   displayOrder: number;
 }
 
+export interface WorkspaceAgreementItem {
+  id: string;
+  itemKey: string;
+  clientApprovedAt: string | null;
+  freelancerApprovedAt: string | null;
+}
+
 export interface WorkspaceMessage {
   id: string;
   senderId: string;
@@ -47,5 +54,6 @@ export interface ProjectWorkspace {
   clientSignedAt: string | null;
   freelancerSignedAt: string | null;
   milestones: WorkspaceMilestone[];
+  agreementItems: WorkspaceAgreementItem[];
   messages: WorkspaceMessage[];
 }

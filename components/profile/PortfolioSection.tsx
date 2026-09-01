@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import Image from "next/image"
 import { Plus, Pencil, Trash2, ExternalLink } from "lucide-react"
 
 import type { PortfolioProject } from "../../types/profile/profile"
@@ -119,27 +118,14 @@ export default function PortfolioSection({
             {projects.map((project) => (
 
               <Card
-                key={project.id}
+                key={project.portfolio_id}
                 className="overflow-hidden rounded-xl transition hover:shadow-md"
               >
 
                 <div className="relative aspect-[16/10] bg-muted">
-                  {project.image_url ? (
-
-                    <Image
-                      src={project.image_url}
-                      alt={project.title}
-                      fill
-                      className="object-cover"
-                    />
-
-                  ) : (
-
-                    <div className="flex h-full items-center justify-center text-muted-foreground">
-                      No Image
-                    </div>
-
-                  )}
+                  <div className="flex h-full items-center justify-center text-muted-foreground">
+                    No Image
+                  </div>
 
                 </div>
 
@@ -159,31 +145,11 @@ export default function PortfolioSection({
                   </div>
 
 
-                  {project.technologies.length > 0 && (
-
-                    <div className="flex flex-wrap gap-2">
-
-                      {project.technologies.map((tech) => (
-
-                        <span
-                          key={tech}
-                          className="rounded-full bg-muted px-3 py-1 text-xs"
-                        >
-                          {tech}
-                        </span>
-
-                      ))}
-
-                    </div>
-
-                  )}
-
-
                   <div className="flex items-center justify-between">
 
-                    {project.external_link ? (
+                    {project.project_url ? (
                       <Button size="sm" variant="outline" asChild>
-                        <a href={project.external_link} target="_blank" rel="noopener noreferrer">
+                        <a href={project.project_url} target="_blank" rel="noopener noreferrer">
                           <ExternalLink className="mr-2 h-4 w-4" />
                           View
                         </a>
@@ -195,7 +161,7 @@ export default function PortfolioSection({
                       <Button size="icon" variant="outline">
                         <Pencil className="h-4 w-4" />
                       </Button>
-                      <Button size="icon" variant="destructive" onClick={() => handleDelete(project.id)}>
+                      <Button size="icon" variant="destructive" onClick={() => handleDelete(project.portfolio_id)}>
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>

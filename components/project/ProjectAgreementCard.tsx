@@ -1,12 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Loader2, Save, X } from "lucide-react";
+import { Check, Loader2, PencilLine, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type {
   ProjectWorkspace,
   WorkspaceAgreementItem,
@@ -22,6 +32,61 @@ type Props = {
   onRespondItem: (itemKey: string, approved: boolean) => Promise<boolean>;
   onSaveItem: (itemKey: ItemKey, value: number) => Promise<boolean>;
 };
+
+type ConfirmationDialogProps = {
+  open: boolean;
+  action: "agree" | "cancel";
+  subject: string;
+  processing: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
+};
+
+function ConfirmationDialog({
+  open,
+  action,
+  subject,
+  processing,
+  onOpenChange,
+  onConfirm,
+}: ConfirmationDialogProps) {
+  const agreeing = action === "agree";
+
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent className="max-w-sm">
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {agreeing ? `Confirm ${subject}?` : `Cancel ${subject} agreement?`}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {agreeing
+              ? "You are confirming that you accept every agreed term. The project becomes active after the other party also confirms."
+              : "This removes only your final confirmation. The other party's confirmation and all agreed terms remain unchanged."}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={processing}>Go back</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={processing}
+            onClick={(event) => {
+              event.preventDefault();
+              onConfirm();
+            }}
+            className={
+              agreeing
+                ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                : "bg-destructive text-white hover:bg-destructive/90"
+            }
+          >
+            {processing && <Loader2 className="h-4 w-4 animate-spin" />}
+            {agreeing ? "Confirm contract" : "Confirm cancellation"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
 
 type ApprovalRowProps = {
   label: string;
@@ -79,19 +144,22 @@ function ApprovalRow({
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold">{label}</h3>
         <Badge
-          variant={
-            clientApproved && freelancerApproved ? "secondary" : "outline"
+          variant="outline"
+          className={
+            clientApproved && freelancerApproved
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : undefined
           }
         >
           {clientApproved && freelancerApproved
-            ? "Approved"
+            ? "Agreed"
             : needsReview
               ? "Changed - review"
               : "Review"}
         </Badge>
       </div>
 
-      <div className="mt-3 flex gap-2">
+      <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
         <div className="relative min-w-0 flex-1">
           <Input
             type="number"
@@ -108,24 +176,34 @@ function ApprovalRow({
         </div>
         <Button
           type="button"
-          size="icon"
+          size="sm"
           variant="outline"
-          aria-label={`Save ${label.toLowerCase()}`}
           disabled={!changed || updating}
           onClick={() => void saveValue()}
+          className="shrink-0"
         >
-          {updating ? (
+          {updating && changed ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
-            <Save className="h-4 w-4" />
+            <PencilLine className="h-4 w-4" />
           )}
+          Propose change
         </Button>
       </div>
 
       {changed && (
-        <p className="mt-2 text-xs text-muted-foreground">
-          Saving this change resets both approvals for {label.toLowerCase()}.
-        </p>
+        <div className="mt-2 text-xs text-muted-foreground">
+          <p>
+            Currently shared:{" "}
+            <span className="font-medium text-foreground">
+              {savedValue.toLocaleString()} {suffix}
+            </span>
+          </p>
+          <p className="mt-1">
+            Proposing this change will notify the other party and reset both
+            approvals for {label.toLowerCase()}.
+          </p>
+        </div>
       )}
 
       <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
@@ -177,6 +255,9 @@ export function ProjectAgreementCard({
   onRespondItem,
   onSaveItem,
 }: Props) {
+  const [pendingFinalResponse, setPendingFinalResponse] = useState<
+    boolean | null
+  >(null);
   const clientAccepted = Boolean(project.clientSignedAt);
   const freelancerAccepted = Boolean(project.freelancerSignedAt);
   const mineAccepted =
@@ -197,6 +278,7 @@ export function ProjectAgreementCard({
 
   const respond = async (accepted: boolean) => {
     const saved = await onRespond(accepted);
+    setPendingFinalResponse(null);
     toast[saved ? "success" : "error"](
       saved
         ? accepted
@@ -295,22 +377,33 @@ export function ProjectAgreementCard({
                 !everyItemApproved ||
                 !project.contractId
               }
-              onClick={() => void respond(true)}
+              onClick={() => setPendingFinalResponse(true)}
             >
               <Check className="h-4 w-4" />
-              Confirm all
+              Confirm
             </Button>
             <Button
               type="button"
               variant="outline"
               disabled={updating || !project.contractId}
-              onClick={() => void respond(false)}
+              onClick={() => setPendingFinalResponse(false)}
             >
               <X className="h-4 w-4" />
-              Reset
+              Cancel
             </Button>
           </div>
         </div>
+
+        <ConfirmationDialog
+          open={pendingFinalResponse !== null}
+          action={pendingFinalResponse === false ? "cancel" : "agree"}
+          subject="the complete contract"
+          processing={updating}
+          onOpenChange={(open) => {
+            if (!open && !updating) setPendingFinalResponse(null);
+          }}
+          onConfirm={() => void respond(pendingFinalResponse ?? true)}
+        />
       </CardContent>
     </Card>
   );

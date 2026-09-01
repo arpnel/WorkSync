@@ -1,7 +1,6 @@
 "use client";
 
-import { ArrowLeft, BriefcaseBusiness, ListChecks, Tag } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Activity, ArrowLeft, FolderKanban, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import type { WorkspaceProjectType } from "@/types/project/projectWorkspace";
@@ -23,56 +22,62 @@ export function ProjectWorkspaceHeader({
   type,
   onBack,
 }: Props) {
-  const isMilestone = type === "milestone";
-
   return (
-    <Card className="overflow-hidden">
+    <Card className="gap-0 overflow-hidden py-0">
       <CardContent className="p-0">
-        <div className="border-b px-4 py-2 sm:px-5">
+        <div className="flex min-w-0 items-center gap-1.5 border-b px-3 py-2.5 sm:px-5">
           <Button
             type="button"
             variant="ghost"
-            size="sm"
-            className="-ml-2 text-muted-foreground"
+            size="icon"
+            className="h-8 w-8 shrink-0"
+            aria-label="Back to projects"
             onClick={onBack}
           >
-            <ArrowLeft className="h-4 w-4" />
-            Projects
+            <ArrowLeft className="h-4.5 w-4.5" />
           </Button>
+          <h1 className="min-w-0 truncate text-xl font-semibold sm:text-2xl">
+            {title}
+          </h1>
         </div>
 
-        <div className="space-y-4 px-4 py-5 sm:px-6">
-          <div className="space-y-3">
-            <h1 className="text-xl font-semibold sm:text-2xl">{title}</h1>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="secondary">
-                {isMilestone ? (
-                  <ListChecks className="mr-1 h-3.5 w-3.5" />
-                ) : (
-                  <BriefcaseBusiness className="mr-1 h-3.5 w-3.5" />
-                )}
-                {isMilestone ? "Milestone project" : "Standard project"}
-              </Badge>
-              <Badge variant="outline" className="capitalize">
-                {status}
-              </Badge>
-              {categoryName && (
-                <Badge variant="outline">
-                  <Tag className="mr-1 h-3.5 w-3.5" />
-                  {categoryName}
-                </Badge>
-              )}
-            </div>
+        <div className="grid gap-3 px-4 py-3 sm:grid-cols-3 sm:gap-0 sm:px-5">
+          <div className="min-w-0 sm:pr-5">
+            <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <FolderKanban className="h-3.5 w-3.5" />
+              Project type
+            </p>
+            <p className="mt-1 truncate text-sm font-medium">
+              {type === "milestone" ? "Milestone project" : "Standard project"}
+            </p>
           </div>
+          <div className="min-w-0 sm:border-l sm:px-5">
+            <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <Activity className="h-3.5 w-3.5" />
+              Process
+            </p>
+            <p className="mt-1 truncate text-sm font-medium capitalize">
+              {status}
+            </p>
+          </div>
+          <div className="min-w-0 sm:border-l sm:pl-5">
+            <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <Tag className="h-3.5 w-3.5" />
+              Work category
+            </p>
+            <p className="mt-1 truncate text-sm font-medium">
+              {categoryName || "Not specified"}
+            </p>
+          </div>
+        </div>
 
-          <div className="border-t pt-4">
-            <p className="text-xs font-medium text-muted-foreground">
-              Description
-            </p>
-            <p className="mt-1.5 max-w-4xl text-sm leading-6">
-              {description || "No project description was provided."}
-            </p>
-          </div>
+        <div className="border-t px-4 py-3 sm:px-5">
+          <p className="text-xs font-medium text-muted-foreground">
+            Description
+          </p>
+          <p className="mt-1.5 max-w-4xl text-sm leading-6">
+            {description || "No project description was provided."}
+          </p>
         </div>
       </CardContent>
     </Card>

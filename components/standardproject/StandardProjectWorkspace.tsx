@@ -133,11 +133,6 @@ export function StandardProjectWorkspace({ orderId }: { orderId: string }) {
                 <p className="text-xs text-muted-foreground">Freelancer</p>
                 <p className="mt-1 font-medium">{workspace.freelancerName}</p>
               </div>
-              {workspace.description && (
-                <p className="border-t pt-3 leading-6 text-muted-foreground">
-                  {workspace.description}
-                </p>
-              )}
             </CardContent>
           </Card>
         </aside>

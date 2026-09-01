@@ -147,7 +147,9 @@ async function createFreelancerService(
       );
 
       if (error) {
-        throw error;
+        throw new Error(
+          `Unable to attach skills to this service: ${error.message}`,
+        );
       }
     }
 
@@ -169,7 +171,9 @@ async function createFreelancerService(
       );
 
       if (mediaError) {
-        throw mediaError;
+        throw new Error(
+          `Unable to attach media to this service: ${mediaError.message}`,
+        );
       }
 
       const { error: coverError } = await supabase
@@ -210,10 +214,28 @@ async function createFreelancerService(
       await supabase.storage.from(SERVICE_MEDIA_BUCKET).remove(uploadedPaths);
     }
 
-    await supabase
+    await Promise.all([
+      supabase
+        .from("service_media")
+        .delete()
+        .eq("service_id", service.service_id),
+      supabase
+        .from("service_milestones")
+        .delete()
+        .eq("service_id", service.service_id),
+      supabase
+        .from("service_skills")
+        .delete()
+        .eq("service_id", service.service_id),
+    ]);
+
+    const cleanup = await supabase
       .from("services")
       .delete()
       .eq("service_id", service.service_id);
+    if (cleanup.error) {
+      console.error("Failed to roll back service listing:", cleanup.error);
+    }
 
     throw error;
   }
@@ -269,7 +291,9 @@ async function createClientJob(
       );
 
       if (error) {
-        throw error;
+        throw new Error(
+          `Unable to attach skills to this job: ${error.message}`,
+        );
       }
     }
 

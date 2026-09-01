@@ -66,7 +66,7 @@ async function attachmentUrl(value: string | null): Promise<string | null> {
 }
 
 const WORKSPACE_SELECT =
-  "order_id, service_id, freelancer_id, client_id, status, created_at, services(title, description, price, service_type, delivery_time_days, revisions_count, job_categories(name)), client_profiles(user_id), freelancer_profiles(user_id), projects(project_id, title, description, budget, status, start_date, due_date, milestones(milestone_id, title, description, amount, due_date, status, display_order)), contracts(contract_id, final_price, delivery_time_days, revisions_count, terms, status, client_signed_at, freelancer_signed_at)";
+  "order_id, service_id, freelancer_id, client_id, status, created_at, services(title, description, price, service_type, delivery_time_days, revisions_count, category_id), client_profiles(user_id), freelancer_profiles(user_id), projects(project_id, title, description, budget, status, start_date, due_date, milestones(milestone_id, title, description, amount, due_date, status, display_order)), contracts(contract_id, final_price, delivery_time_days, revisions_count, terms, status, client_signed_at, freelancer_signed_at)";
 
 export async function getProjectWorkspace(
   orderId: string,
@@ -83,12 +83,26 @@ export async function getProjectWorkspace(
   const row = data as unknown as Record<string, unknown>;
   const service = record(row.services);
   const project = record(row.projects);
-  const category = record(service?.job_categories);
   const contract = record(row.contracts);
   const client = record(row.client_profiles);
   const freelancer = record(row.freelancer_profiles);
   const clientUserId = text(client?.user_id);
   const freelancerUserId = text(freelancer?.user_id);
+  const categoryId = text(service?.category_id);
+  const categoryResult = categoryId
+    ? await supabase
+        .from("job_categories")
+        .select("name")
+        .eq("id", categoryId)
+        .maybeSingle()
+    : { data: null, error: null };
+  if (categoryResult.error) {
+    console.warn(
+      "Project category is unavailable:",
+      categoryResult.error.message,
+    );
+  }
+
   const participantIds = [clientUserId, freelancerUserId].filter(Boolean);
   const profilesResult = participantIds.length
     ? await supabase
@@ -181,6 +195,22 @@ export async function getProjectWorkspace(
     }))
     .sort((a, b) => a.displayOrder - b.displayOrder);
 
+  const storedStatus =
+    text(project?.status) ||
+    text(contract?.status) ||
+    text(row.status, "pending");
+  const terminalStatus = ["completed", "cancelled", "canceled"].includes(
+    storedStatus.toLowerCase(),
+  );
+  const clientSignedAt = text(contract?.client_signed_at) || null;
+  const freelancerSignedAt = text(contract?.freelancer_signed_at) || null;
+  const agreementStatus =
+    clientSignedAt && freelancerSignedAt
+      ? "Active"
+      : clientSignedAt || freelancerSignedAt
+        ? "Awaiting confirmation"
+        : "Pending agreement";
+
   return {
     orderId: text(row.order_id),
     currentUserId: userId,
@@ -190,12 +220,9 @@ export async function getProjectWorkspace(
     conversationId: conversation?.conversation_id ?? null,
     type: service?.service_type === "milestone" ? "milestone" : "standard",
     title: text(project?.title) || text(service?.title, "Untitled Project"),
-    categoryName: text(category?.name) || null,
+    categoryName: text(categoryResult.data?.name) || null,
     description: text(project?.description) || text(service?.description),
-    status:
-      text(project?.status) ||
-      text(contract?.status) ||
-      text(row.status, "pending"),
+    status: terminalStatus ? storedStatus : agreementStatus,
     orderStatus: text(row.status),
     clientName: displayName(profileMap.get(clientUserId) ?? null, "Client"),
     freelancerName: displayName(
@@ -217,8 +244,8 @@ export async function getProjectWorkspace(
         : numeric(contract?.revisions_count ?? service?.revisions_count),
     terms: text(contract?.terms) || null,
     contractStatus: text(contract?.status) || null,
-    clientSignedAt: text(contract?.client_signed_at) || null,
-    freelancerSignedAt: text(contract?.freelancer_signed_at) || null,
+    clientSignedAt,
+    freelancerSignedAt,
     milestones,
     agreementItems,
     messages,
@@ -332,52 +359,114 @@ export function createProjectTypingChannel(
 
 async function getAgreementContext(orderId: string) {
   const userId = await currentUserId();
-  const { data, error } = await supabase
-    .from("service_orders")
-    .select(
-      "client_profiles(user_id), freelancer_profiles(user_id), contracts(contract_id)",
-    )
-    .eq("order_id", orderId)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  if (!data) throw new Error("Project agreement not found.");
+  const [orderResult, clientResult, freelancerResult] = await Promise.all([
+    supabase
+      .from("service_orders")
+      .select("client_id, freelancer_id, service_id")
+      .eq("order_id", orderId)
+      .maybeSingle(),
+    supabase
+      .from("client_profiles")
+      .select("client_id")
+      .eq("user_id", userId)
+      .maybeSingle(),
+    supabase
+      .from("freelancer_profiles")
+      .select("freelancer_id")
+      .eq("user_id", userId)
+      .maybeSingle(),
+  ]);
 
-  const row = data as unknown as Record<string, unknown>;
-  const client = record(row.client_profiles);
-  const freelancer = record(row.freelancer_profiles);
-  const contract = record(row.contracts);
+  const firstError =
+    orderResult.error || clientResult.error || freelancerResult.error;
+  if (firstError) throw new Error(firstError.message);
+  if (!orderResult.data) throw new Error("Project order not found.");
+
   const party =
-    text(client?.user_id) === userId
+    clientResult.data?.client_id === orderResult.data.client_id
       ? "client"
-      : text(freelancer?.user_id) === userId
+      : freelancerResult.data?.freelancer_id === orderResult.data.freelancer_id
         ? "freelancer"
         : null;
-  if (!party || !contract?.contract_id) {
-    throw new Error("You cannot update this agreement.");
+  if (!party) {
+    throw new Error("Only project participants can update this agreement.");
   }
 
-  return { contractId: text(contract.contract_id), party };
+  const existingContract = await supabase
+    .from("contracts")
+    .select("contract_id")
+    .eq("order_id", orderId)
+    .maybeSingle();
+  if (existingContract.error) throw new Error(existingContract.error.message);
+
+  let contractId = existingContract.data?.contract_id;
+  if (!contractId) {
+    const serviceResult = await supabase
+      .from("services")
+      .select("price, delivery_time_days, revisions_count")
+      .eq("service_id", orderResult.data.service_id)
+      .maybeSingle();
+    if (serviceResult.error) throw new Error(serviceResult.error.message);
+    if (!serviceResult.data) {
+      throw new Error("The service for this project could not be found.");
+    }
+
+    const createdContract = await supabase
+      .from("contracts")
+      .insert({
+        order_id: orderId,
+        final_price: serviceResult.data.price,
+        delivery_time_days: serviceResult.data.delivery_time_days,
+        revisions_count: serviceResult.data.revisions_count,
+      })
+      .select("contract_id")
+      .single();
+
+    if (createdContract.error) {
+      if (createdContract.error.code !== "23505") {
+        throw new Error(
+          `This project has no agreement yet and it could not be created: ${createdContract.error.message}`,
+        );
+      }
+      const concurrentContract = await supabase
+        .from("contracts")
+        .select("contract_id")
+        .eq("order_id", orderId)
+        .single();
+      if (concurrentContract.error)
+        throw new Error(concurrentContract.error.message);
+      contractId = concurrentContract.data.contract_id;
+    } else {
+      contractId = createdContract.data.contract_id;
+    }
+  }
+
+  return { contractId, party };
 }
 
 export async function respondToProjectAgreement(
   orderId: string,
   accepted: boolean,
 ): Promise<void> {
-  const { contractId } = await getAgreementContext(orderId);
+  const { contractId, party } = await getAgreementContext(orderId);
+  const signatureColumn =
+    party === "client" ? "client_signed_at" : "freelancer_signed_at";
+  const update = {
+    [signatureColumn]: accepted ? new Date().toISOString() : null,
+  };
 
-  if (accepted) {
-    const { error } = await supabase.rpc("confirm_contract_agreement", {
-      p_contract_id: contractId,
-    });
-    if (error) throw new Error(error.message);
-    return;
-  }
-
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("contracts")
-    .update({ client_signed_at: null, freelancer_signed_at: null })
-    .eq("contract_id", contractId);
+    .update(update)
+    .eq("contract_id", contractId)
+    .select("contract_id")
+    .maybeSingle();
   if (error) throw new Error(error.message);
+  if (!data) {
+    throw new Error(
+      "The agreement was not updated. Check the contracts update policy.",
+    );
+  }
 }
 
 export async function updateProjectAgreementTerms(
@@ -404,9 +493,10 @@ export async function updateProjectAgreementTerms(
     .eq("contract_id", contractId);
   if (error) throw new Error(error.message);
 
-  const reset = await supabase.rpc("reset_contract_item_approvals", {
-    p_contract_id: contractId,
-  });
+  const reset = await supabase
+    .from("contract_item_approvals")
+    .update({ client_approved_at: null, freelancer_approved_at: null })
+    .eq("contract_id", contractId);
   if (reset.error) throw new Error(reset.error.message);
 }
 
@@ -415,13 +505,45 @@ export async function respondToProjectAgreementItem(
   itemKey: string,
   approved: boolean,
 ): Promise<void> {
-  const { contractId } = await getAgreementContext(orderId);
-  const { error } = await supabase.rpc("respond_to_contract_item", {
-    p_contract_id: contractId,
-    p_item_key: itemKey,
-    p_approved: approved,
-  });
+  const { contractId, party } = await getAgreementContext(orderId);
+  const existing = await supabase
+    .from("contract_item_approvals")
+    .select("approval_id")
+    .eq("contract_id", contractId)
+    .eq("item_key", itemKey)
+    .maybeSingle();
+  if (existing.error) throw new Error(existing.error.message);
+
+  const timestampColumn =
+    party === "client" ? "client_approved_at" : "freelancer_approved_at";
+  const values = approved
+    ? { [timestampColumn]: new Date().toISOString() }
+    : { client_approved_at: null, freelancer_approved_at: null };
+
+  const mutation = existing.data
+    ? supabase
+        .from("contract_item_approvals")
+        .update(values)
+        .eq("approval_id", existing.data.approval_id)
+        .select("approval_id")
+        .maybeSingle()
+    : supabase
+        .from("contract_item_approvals")
+        .insert({
+          contract_id: contractId,
+          item_key: itemKey,
+          ...values,
+        })
+        .select("approval_id")
+        .maybeSingle();
+
+  const { data, error } = await mutation;
   if (error) throw new Error(error.message);
+  if (!data) {
+    throw new Error(
+      "The item approval was not updated. Check the approval table policies.",
+    );
+  }
 }
 
 export async function updateProjectAgreementItem(
@@ -456,10 +578,10 @@ export async function updateProjectAgreementItem(
     .eq("contract_id", contractId);
   if (error) throw new Error(error.message);
 
-  const reset = await supabase.rpc("respond_to_contract_item", {
-    p_contract_id: contractId,
-    p_item_key: itemKey,
-    p_approved: false,
-  });
+  const reset = await supabase
+    .from("contract_item_approvals")
+    .update({ client_approved_at: null, freelancer_approved_at: null })
+    .eq("contract_id", contractId)
+    .eq("item_key", itemKey);
   if (reset.error) throw new Error(reset.error.message);
 }

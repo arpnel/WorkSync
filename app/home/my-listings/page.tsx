@@ -1,20 +1,34 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Archive, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 import {
   getMyMarketplaceListings,
-  deleteMarketplaceService,
-  deleteMarketplaceJob,
+  archiveMarketplaceService,
+  archiveMarketplaceJob,
   type MarketplaceItem,
 } from "@/services/marketplace/MarketplaceServices";
 
 import { ListingCard } from "@/components/listings/ListingsGrid";
 import { ListingsToolbar } from "@/components/listings/ListingsToolbar";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function Page() {
   const [listings, setListings] = useState<MarketplaceItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pendingArchiveId, setPendingArchiveId] = useState<string | null>(null);
+  const [archiving, setArchiving] = useState(false);
 
   /* ==========================================================
      LOAD MY LISTINGS
@@ -45,38 +59,42 @@ export default function Page() {
   }, [loadListings]);
 
   /* ==========================================================
-     DELETE LISTING
+     ARCHIVE LISTING
   ========================================================== */
 
-  const handleDelete = async (listingId: string) => {
-    if (!listingId) {
-      return;
-    }
+  const handleArchive = (listingId: string) => {
+    if (listingId) setPendingArchiveId(listingId);
+  };
 
-    const confirmed = window.confirm(
-      "Are you sure you want to delete this listing?",
-    );
+  const pendingListing = listings.find((item) =>
+    item.listing_type === "service"
+      ? item.service_id === pendingArchiveId
+      : item.job_id === pendingArchiveId,
+  );
 
-    if (!confirmed) {
-      return;
-    }
+  const confirmArchive = async () => {
+    if (!pendingArchiveId || !pendingListing) return;
 
     try {
-      const listing = listings.find((item) =>
-        item.listing_type === "service"
-          ? item.service_id === listingId
-          : item.job_id === listingId,
-      );
+      setArchiving(true);
       const success =
-        listing?.listing_type === "job"
-          ? await deleteMarketplaceJob(listingId)
-          : await deleteMarketplaceService(listingId);
+        pendingListing.listing_type === "job"
+          ? await archiveMarketplaceJob(pendingArchiveId)
+          : await archiveMarketplaceService(pendingArchiveId);
 
-      if (success) {
-        await loadListings();
+      if (!success) {
+        toast.error("The listing could not be archived.");
+        return;
       }
+
+      setPendingArchiveId(null);
+      toast.success("Listing archived.");
+      await loadListings();
     } catch (error) {
-      console.error("Failed to delete listing:", error);
+      console.error("Failed to archive listing:", error);
+      toast.error("The listing could not be archived.");
+    } finally {
+      setArchiving(false);
     }
   };
 
@@ -179,7 +197,7 @@ export default function Page() {
                           : crypto.randomUUID()
                     }
                     listing={listing}
-                    onDelete={handleDelete}
+                    onArchive={handleArchive}
                   />
                 ))}
               </div>
@@ -187,6 +205,48 @@ export default function Page() {
           </div>
         </div>
       </div>
+
+      <AlertDialog
+        open={Boolean(pendingArchiveId)}
+        onOpenChange={(open) => {
+          if (!open && !archiving) setPendingArchiveId(null);
+        }}
+      >
+        <AlertDialogContent className="max-w-sm">
+          <AlertDialogHeader>
+            <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-md bg-muted">
+              <Archive className="h-5 w-5" />
+            </div>
+            <AlertDialogTitle>Archive this listing?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <span className="font-medium text-foreground">
+                {pendingListing?.title ?? "This listing"}
+              </span>{" "}
+              will be removed from My Listings and the marketplace. Existing
+              project records will not be deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={archiving}>
+              Keep listing
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={archiving}
+              onClick={(event) => {
+                event.preventDefault();
+                void confirmArchive();
+              }}
+            >
+              {archiving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Archive className="h-4 w-4" />
+              )}
+              Archive
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </main>
   );
 }

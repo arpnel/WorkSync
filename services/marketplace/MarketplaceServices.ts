@@ -511,7 +511,8 @@ async function getServices(
       updated_at
     `,
     )
-    .eq("status", "Active");
+    .eq("status", "Active")
+    .eq("is_archived", false);
 
   const searchValue = query.search?.trim() ?? "";
 
@@ -602,7 +603,8 @@ async function getJobs(query: MarketplaceQuery): Promise<MarketplaceJob[]> {
       updated_at
     `,
     )
-    .eq("status", "open");
+    .eq("status", "open")
+    .eq("is_archived", false);
 
   const searchValue = query.search?.trim() ?? "";
 
@@ -952,6 +954,7 @@ export async function getMarketplaceService(
     )
     .eq("service_id", serviceId)
     .eq("status", "Active")
+    .eq("is_archived", false)
     .maybeSingle();
 
   if (error) {
@@ -996,6 +999,7 @@ export async function getMarketplaceJob(
     )
     .eq("job_id", jobId)
     .eq("status", "open")
+    .eq("is_archived", false)
     .maybeSingle();
 
   if (error) {
@@ -1010,46 +1014,49 @@ export async function getMarketplaceJob(
 }
 
 /* ==========================================================
-   DELETE SERVICE
+   ARCHIVE LISTING
 ========================================================== */
 
-export async function deleteMarketplaceService(
+export async function archiveMarketplaceService(
   serviceId: string,
 ): Promise<boolean> {
   if (!serviceId) {
     return false;
   }
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from(SERVICES_TABLE)
-    .delete()
-    .eq("service_id", serviceId);
+    .update({ is_archived: true })
+    .eq("service_id", serviceId)
+    .select("service_id")
+    .maybeSingle();
 
   if (error) {
-    console.error("Failed to delete service:", error);
-
+    console.error("Failed to archive service:", error);
     return false;
   }
 
-  return true;
+  return Boolean(data);
 }
 
-export async function deleteMarketplaceJob(jobId: string): Promise<boolean> {
+export async function archiveMarketplaceJob(jobId: string): Promise<boolean> {
   if (!jobId) {
     return false;
   }
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from(JOBS_TABLE)
-    .delete()
-    .eq("job_id", jobId);
+    .update({ is_archived: true })
+    .eq("job_id", jobId)
+    .select("job_id")
+    .maybeSingle();
 
   if (error) {
-    console.error("Failed to delete job:", error);
+    console.error("Failed to archive job:", error);
     return false;
   }
 
-  return true;
+  return Boolean(data);
 }
 
 /* ==========================================================
@@ -1261,7 +1268,8 @@ export async function createMarketplaceOrder(
       `
       service_id,
       freelancer_id,
-      status
+      status,
+      is_archived
     `,
     )
     .eq("service_id", serviceId)
@@ -1275,7 +1283,7 @@ export async function createMarketplaceOrder(
     throw new Error("Service not found.");
   }
 
-  if (service.status !== "Active") {
+  if (service.status !== "Active" || service.is_archived) {
     throw new Error("This service is no longer available.");
   }
 

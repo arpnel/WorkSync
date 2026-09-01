@@ -2,6 +2,7 @@
 
 import {
   ArrowLeft,
+  BriefcaseBusiness,
   CalendarDays,
   RotateCcw,
   Users,
@@ -29,7 +30,7 @@ export function StandardProjectWorkspace({ orderId }: { orderId: string }) {
     sendTyping,
     respondToAgreement,
     respondToAgreementItem,
-    saveAgreementTerms,
+    saveAgreementItem,
   } = useProjectWorkspace(orderId);
 
   if (loading) {
@@ -50,34 +51,39 @@ export function StandardProjectWorkspace({ orderId }: { orderId: string }) {
 
   if (workspace.type !== "standard") return null;
 
-  const bothAgreed =
-    Boolean(workspace.clientSignedAt) && Boolean(workspace.freelancerSignedAt);
-
   return (
-    <div className="space-y-5">
-      <header className="flex items-start justify-between gap-4 border-b pb-4">
+    <div className="mx-auto w-full max-w-[1800px] space-y-5 px-4 sm:px-6 lg:px-8">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
           <Button
             type="button"
-            variant="outline"
+            variant="ghost"
             size="icon"
             aria-label="Back to projects"
             onClick={() => router.push("/home/projects")}
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="h-5 w-5" />
           </Button>
           <div className="min-w-0">
-            <h1 className="truncate text-xl font-semibold">
-              {workspace.title}
-            </h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Standard contract negotiation
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-xl font-semibold sm:text-2xl">
+                {workspace.title}
+              </h1>
+              <Badge variant="secondary">
+                <BriefcaseBusiness className="mr-1 h-3.5 w-3.5" />
+                Standard
+              </Badge>
+              <Badge variant="outline" className="capitalize">
+                {workspace.status}
+              </Badge>
+            </div>
+            {workspace.description && (
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+                {workspace.description}
+              </p>
+            )}
           </div>
         </div>
-        <Badge variant={bothAgreed ? "secondary" : "outline"}>
-          {bothAgreed ? "Agreed" : "In discussion"}
-        </Badge>
       </header>
 
       <div className="grid gap-5 xl:grid-cols-2 2xl:grid-cols-[minmax(320px,0.9fr)_minmax(380px,1.1fr)_minmax(280px,0.75fr)] 2xl:items-start">
@@ -96,7 +102,7 @@ export function StandardProjectWorkspace({ orderId }: { orderId: string }) {
           updatingApprovalKey={updatingApprovalKey}
           onRespond={respondToAgreement}
           onRespondItem={respondToAgreementItem}
-          onSaveTerms={saveAgreementTerms}
+          onSaveItem={saveAgreementItem}
         />
 
         <aside className="grid gap-5 xl:col-span-2 xl:grid-cols-2 2xl:col-span-1 2xl:block 2xl:space-y-5">

@@ -421,3 +421,43 @@ export async function respondToProjectAgreementItem(
   });
   if (error) throw new Error(error.message);
 }
+
+export async function updateProjectAgreementItem(
+  orderId: string,
+  itemKey: "budget" | "delivery" | "revisions",
+  value: number,
+): Promise<void> {
+  if (
+    !Number.isFinite(value) ||
+    (itemKey === "revisions" ? value < 0 : value <= 0)
+  ) {
+    throw new Error("Enter a valid value.");
+  }
+  if (itemKey !== "budget" && !Number.isInteger(value)) {
+    throw new Error("Delivery and revisions must be whole numbers.");
+  }
+
+  const { contractId } = await getAgreementContext(orderId);
+  const column = {
+    budget: "final_price",
+    delivery: "delivery_time_days",
+    revisions: "revisions_count",
+  }[itemKey];
+
+  const { error } = await supabase
+    .from("contracts")
+    .update({
+      [column]: value,
+      client_signed_at: null,
+      freelancer_signed_at: null,
+    })
+    .eq("contract_id", contractId);
+  if (error) throw new Error(error.message);
+
+  const reset = await supabase.rpc("respond_to_contract_item", {
+    p_contract_id: contractId,
+    p_item_key: itemKey,
+    p_approved: false,
+  });
+  if (reset.error) throw new Error(reset.error.message);
+}

@@ -9,7 +9,10 @@ type Props = {
   updatingApprovalKey: string | null;
   onRespond: (accepted: boolean) => Promise<boolean>;
   onRespondItem: (itemKey: string, approved: boolean) => Promise<boolean>;
-  onSaveTerms: (budget: number, deliveryDays: number) => Promise<boolean>;
+  onSaveItem: (
+    itemKey: "budget" | "delivery" | "revisions",
+    value: number,
+  ) => Promise<boolean>;
 };
 
 export function StandardProjectSummary({
@@ -18,7 +21,7 @@ export function StandardProjectSummary({
   updatingApprovalKey,
   onRespond,
   onRespondItem,
-  onSaveTerms,
+  onSaveItem,
 }: Props) {
   return (
     <section className="space-y-4">
@@ -79,7 +82,7 @@ export function StandardProjectSummary({
           updatingApprovalKey={updatingApprovalKey}
           onRespond={onRespond}
           onRespondItem={onRespondItem}
-          onSaveTerms={onSaveTerms}
+          onSaveItem={onSaveItem}
         />
       </div>
     </section>

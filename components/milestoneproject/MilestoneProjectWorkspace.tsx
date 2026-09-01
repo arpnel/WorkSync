@@ -24,7 +24,7 @@ export function MilestoneProjectWorkspace({ orderId }: { orderId: string }) {
     sendTyping,
     respondToAgreement,
     respondToAgreementItem,
-    saveAgreementTerms,
+    saveAgreementItem,
   } = useProjectWorkspace(orderId);
 
   if (loading)
@@ -47,7 +47,7 @@ export function MilestoneProjectWorkspace({ orderId }: { orderId: string }) {
   );
 
   return (
-    <div className="space-y-5">
+    <div className="mx-auto w-full max-w-[1800px] space-y-5 px-4 sm:px-6 lg:px-8">
       <header className="flex min-w-0 items-start gap-3">
         <Button
           type="button"
@@ -120,7 +120,7 @@ export function MilestoneProjectWorkspace({ orderId }: { orderId: string }) {
             updatingApprovalKey={updatingApprovalKey}
             onRespond={respondToAgreement}
             onRespondItem={respondToAgreementItem}
-            onSaveTerms={saveAgreementTerms}
+            onSaveItem={saveAgreementItem}
           />
           <Card>
             <CardHeader>

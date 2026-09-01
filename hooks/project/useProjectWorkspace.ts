@@ -7,6 +7,7 @@ import {
   respondToProjectAgreement,
   respondToProjectAgreementItem,
   sendProjectMessage,
+  updateProjectAgreementItem,
   updateProjectAgreementTerms,
 } from "@/services/project/projectWorkspaceService";
 import {
@@ -244,6 +245,23 @@ export function useProjectWorkspace(orderId: string) {
     }
   };
 
+  const saveAgreementItem = async (
+    itemKey: "budget" | "delivery" | "revisions",
+    value: number,
+  ) => {
+    try {
+      setUpdatingApprovalKey(itemKey);
+      await updateProjectAgreementItem(orderId, itemKey, value);
+      await load(false);
+      return true;
+    } catch (cause) {
+      console.error("Failed to update agreement item:", cause);
+      return false;
+    } finally {
+      setUpdatingApprovalKey(null);
+    }
+  };
+
   const saveAgreementTerms = async (budget: number, deliveryDays: number) => {
     try {
       setUpdatingAgreement(true);
@@ -272,6 +290,7 @@ export function useProjectWorkspace(orderId: string) {
     sendTyping,
     respondToAgreement,
     respondToAgreementItem,
+    saveAgreementItem,
     saveAgreementTerms,
   };
 }

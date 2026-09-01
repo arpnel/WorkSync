@@ -2,13 +2,15 @@
 
 import * as React from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { AuthHeader, AuthPopup } from "../";
-import { usePopup } from "../../../hooks/auth/usePopup";
+import { AuthHeader } from "../";
 import { SignupEmailStep } from "./SignupEmailStep";
 import { SignupDetailsStep } from "./SignupDetailsStep";
 import { createAccount } from "../../../services/auth/signupService";
-import { validateEmail, validateSignupForm } from "../../../lib/validation/auth.validation";
-import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "../constants";
+import {
+  validateEmail,
+  validateSignupForm,
+} from "../../../lib/validation/auth.validation";
+import { ERROR_MESSAGES } from "../constants";
 
 export function SignupDialog() {
   const [step, setStep] = React.useState<"email" | "details">("email");
@@ -17,7 +19,8 @@ export function SignupDialog() {
   const [passwordError, setPasswordError] = React.useState("");
   const [showPassword, setShowPassword] = React.useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = React.useState(false);
-  const { popup, showPopup } = usePopup();
+  const [formError, setFormError] = React.useState("");
+  const showMessage = (message: string) => setFormError(message);
   const resetForm = () => {
     setEmail("");
     setPasswordError("");
@@ -37,7 +40,7 @@ export function SignupDialog() {
     });
 
     if (error) {
-      showPopup(error.message, "error");
+      showMessage(error.message);
       setLoading(false);
     }
   };
@@ -47,7 +50,7 @@ export function SignupDialog() {
     const validation = validateEmail(email);
 
     if (!validation.valid) {
-      showPopup(validation.message ?? ERROR_MESSAGES.INVALID_EMAIL, "error");
+      showMessage(validation.message ?? ERROR_MESSAGES.INVALID_EMAIL);
       return;
     }
 
@@ -88,7 +91,7 @@ export function SignupDialog() {
         if (validation.message?.toLowerCase().includes("password")) {
           setPasswordError(validation.message);
         }
-        showPopup(validation.message ?? ERROR_MESSAGES.UNKNOWN, "error");
+        showMessage(validation.message ?? ERROR_MESSAGES.UNKNOWN);
         return;
       }
 
@@ -100,8 +103,6 @@ export function SignupDialog() {
         firstName,
         lastName,
       });
-
-      showPopup(SUCCESS_MESSAGES.ACCOUNT_CREATED, "success");
 
       resetForm();
     } catch (error) {
@@ -115,12 +116,12 @@ export function SignupDialog() {
           message.includes("registered") ||
           message.includes("exists")
         ) {
-          showPopup(ERROR_MESSAGES.ACCOUNT_EXISTS, "error");
+          showMessage(ERROR_MESSAGES.ACCOUNT_EXISTS);
         } else {
-          showPopup(error.message, "error");
+          showMessage(error.message);
         }
       } else {
-        showPopup(ERROR_MESSAGES.UNKNOWN, "error");
+        showMessage(ERROR_MESSAGES.UNKNOWN);
       }
     } finally {
       setLoading(false);
@@ -128,7 +129,14 @@ export function SignupDialog() {
   };
   return (
     <>
-      <AuthPopup popup={popup} />
+      {formError && (
+        <p
+          role="alert"
+          className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {formError}
+        </p>
+      )}
 
       <AuthHeader
         title="Join WorkSync"

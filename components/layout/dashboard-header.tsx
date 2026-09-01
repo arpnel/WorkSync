@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
 import {
-  Bell,
   BriefcaseBusiness,
   ChevronDown,
   LogOut,
@@ -44,6 +43,7 @@ import {
 
 import type { Profile } from "@/types/profile/profile";
 import { getCurrentProfile } from "@/services/profile/profileservice";
+import { NotificationOverview } from "@/components/notifications/NotificationOverview";
 
 export function DashboardHeader() {
   const pathname = usePathname();
@@ -142,6 +142,10 @@ export function DashboardHeader() {
     {
       label: "Messages",
       href: "/home/messages",
+    },
+    {
+      label: "Notifications",
+      href: "/home/notifications",
     },
     {
       label: "Projects",
@@ -352,8 +356,7 @@ export function DashboardHeader() {
 
         <div className="relative ml-5 min-w-0 flex-1 sm:ml-7 lg:ml-10">
           <div className="relative w-full max-w-[560px]">
-            <Command onFocus={() => setSearchOpen(true)}
-            >
+            <Command onFocus={() => setSearchOpen(true)}>
               <CommandInput placeholder="Search..." className="h-9 border-0" />
               {searchOpen && (
                 <div
@@ -458,19 +461,7 @@ export function DashboardHeader() {
               NOTIFICATIONS
           ================================================= */}
 
-          <Link
-            href="/home/notifications"
-            className="
-              flex h-9 w-9 shrink-0
-              items-center justify-center
-              rounded-md transition
-              hover:bg-accent
-              hover:text-accent-foreground
-            "
-            aria-label="Notifications"
-          >
-            <Bell className="h-5 w-5" />
-          </Link>
+          <NotificationOverview />
 
           {/* =================================================
               MESSAGES
@@ -575,7 +566,7 @@ export function DashboardHeader() {
             <h2 className="text-lg font-semibold">Become a Client?</h2>
 
             <p className="mt-2 text-sm text-muted-foreground">
-              You don't have a client profile yet. Would you like to become a
+              You do not have a client profile yet. Would you like to become a
               client?
             </p>
 
@@ -642,8 +633,8 @@ export function DashboardHeader() {
             <h2 className="text-lg font-semibold">Become a Freelancer?</h2>
 
             <p className="mt-2 text-sm text-muted-foreground">
-              You don't have a freelancer profile yet. Complete freelancer setup
-              to start offering services.
+              You do not have a freelancer profile yet. Complete freelancer
+              setup to start offering services.
             </p>
 
             <div className="mt-6 flex justify-end gap-2">

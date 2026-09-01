@@ -1,7 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { FcGoogle } from "react-icons/fc";
@@ -27,10 +31,7 @@ export function LoginDialog() {
     type: "success",
   });
 
-  const showPopup = (
-    message: string,
-    type: "success" | "error"
-  ) => {
+  const showPopup = (message: string, type: "success" | "error") => {
     setPopup({
       show: true,
       message,
@@ -45,11 +46,8 @@ export function LoginDialog() {
       });
     }, 2500);
   };
-  const passwordRegex =
-    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
-  const handleCreateAccount = async (
-    form: HTMLFormElement
-  ) => {
+  const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+  const handleCreateAccount = async (form: HTMLFormElement) => {
     if (loading) return;
 
     setLoading(true);
@@ -63,9 +61,8 @@ export function LoginDialog() {
         form.elements.namedItem("lastName") as HTMLInputElement
       ).value.trim();
 
-      const password = (
-        form.elements.namedItem("password") as HTMLInputElement
-      ).value;
+      const password = (form.elements.namedItem("password") as HTMLInputElement)
+        .value;
 
       const confirmPassword = (
         form.elements.namedItem("confirmPassword") as HTMLInputElement
@@ -80,13 +77,10 @@ export function LoginDialog() {
 
       if (!passwordRegex.test(password)) {
         setPasswordError(
-          "Password must contain at least 8 characters, one uppercase letter, one lowercase letter, and one number."
+          "Password must contain at least 8 characters, one uppercase letter, one lowercase letter, and one number.",
         );
 
-        showPopup(
-          "Password is too weak.",
-          "error"
-        );
+        showPopup("Password is too weak.", "error");
 
         return;
       }
@@ -99,11 +93,10 @@ export function LoginDialog() {
 
       setPasswordError("");
 
-      const { data: authData, error: authError } =
-        await supabase.auth.signUp({
-          email: cleanEmail,
-          password,
-        });
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: cleanEmail,
+        password,
+      });
 
       if (authError) {
         const errorMessage = authError.message.toLowerCase();
@@ -113,10 +106,7 @@ export function LoginDialog() {
           errorMessage.includes("registered") ||
           errorMessage.includes("exists")
         ) {
-          showPopup(
-            "An account with this email already exists.",
-            "error"
-          );
+          showPopup("An account with this email already exists.", "error");
         } else {
           showPopup(authError.message, "error");
         }
@@ -127,56 +117,43 @@ export function LoginDialog() {
       const user = authData.user;
 
       if (!user) {
-        showPopup(
-          "Failed to create account.",
-          "error"
-        );
+        showPopup("Failed to create account.", "error");
         return;
       }
 
-      const { error: insertError } = await supabase
-        .from("Users")
-        .insert({
-          user_id: user.id,
-          email: cleanEmail,
-          role: "client",
-        });
+      const { error: insertError } = await supabase.from("Users").insert({
+        user_id: user.id,
+        email: cleanEmail,
+        role: "client",
+      });
 
       if (insertError) {
         console.error(insertError);
 
-        showPopup(
-          "Account created but profile setup failed.",
-          "error"
-        );
+        showPopup("Account created but profile setup failed.", "error");
 
         return;
       }
 
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .upsert({
-          user_id: user.id,
-          first_name: firstName,
-          last_name: lastName,
-          display_name: `${firstName} ${lastName}`.trim(),
-          account_setup_completed: false,
-        });
+      const { error: profileError } = await supabase.from("profiles").upsert({
+        user_id: user.id,
+        first_name: firstName,
+        last_name: lastName,
+        display_name: `${firstName} ${lastName}`.trim(),
+        account_setup_completed: false,
+      });
 
       if (profileError) {
         console.error(profileError);
 
-        showPopup(
-          "Account created but profile setup failed.",
-          "error"
-        );
+        showPopup("Account created but profile setup failed.", "error");
 
         return;
       }
 
       showPopup(
         "Account created! Please verify your email before logging in.",
-        "success"
+        "success",
       );
 
       setEmail("");
@@ -185,10 +162,7 @@ export function LoginDialog() {
     } catch (error) {
       console.error(error);
 
-      showPopup(
-        "Something went wrong. Please try again.",
-        "error"
-      );
+      showPopup("Something went wrong. Please try again.", "error");
     } finally {
       setLoading(false);
     }
@@ -197,13 +171,14 @@ export function LoginDialog() {
   return (
     <>
       {popup.show && (
-        <div className="fixed inset-0 flex items-center justify-center z-50">
+        <div role="status" className="mb-3">
           <div
-            className={`px-6 py-4 rounded-lg shadow-xl flex items-center gap-3 text-sm animate-in fade-in zoom-in
-            ${popup.type === "success"
+            className={`px-6 py-4 rounded-lg shadow-xl flex items-center gap-3 text-sm
+            ${
+              popup.type === "success"
                 ? "bg-green-600 text-white"
                 : "bg-red-600 text-white"
-              }`}
+            }`}
           >
             {popup.type === "success" ? (
               <CheckCircle2 className="h-5 w-5" />
@@ -217,9 +192,7 @@ export function LoginDialog() {
       )}
 
       <DialogHeader className="text-center space-y-2">
-        <DialogTitle className="text-2xl font-bold">
-          Join WorkSync
-        </DialogTitle>
+        <DialogTitle className="text-2xl font-bold">Join WorkSync</DialogTitle>
 
         <DialogDescription>
           Hire professionals or grow your freelance career.
@@ -241,17 +214,11 @@ export function LoginDialog() {
               type="email"
               required
               value={email}
-              onChange={(e) =>
-                setEmail(e.target.value)
-              }
+              onChange={(e) => setEmail(e.target.value)}
             />
           </Field>
 
-          <Button
-            type="submit"
-            className="w-full"
-            disabled={loading}
-          >
+          <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "Loading..." : "Continue"}
           </Button>
 
@@ -269,8 +236,7 @@ export function LoginDialog() {
           </Button>
 
           <p className="text-center text-xs text-muted-foreground">
-            By continuing, you agree to WorkSync’s Terms
-            and Privacy Policy.
+            By continuing, you agree to WorkSync’s Terms and Privacy Policy.
           </p>
         </form>
       )}
@@ -285,20 +251,12 @@ export function LoginDialog() {
         >
           <Field>
             <FieldLabel>First Name</FieldLabel>
-            <Input
-              name="firstName"
-              maxLength={50}
-              required
-            />
+            <Input name="firstName" maxLength={50} required />
           </Field>
 
           <Field>
             <FieldLabel>Last Name</FieldLabel>
-            <Input
-              name="lastName"
-              maxLength={50}
-              required
-            />
+            <Input name="lastName" maxLength={50} required />
           </Field>
 
           <Field>
@@ -307,25 +265,17 @@ export function LoginDialog() {
             <div className="relative">
               <Input
                 name="password"
-                type={
-                  showPassword ? "text" : "password"
-                }
+                type={showPassword ? "text" : "password"}
                 className="pr-10"
                 required
               />
 
               <button
                 type="button"
-                onClick={() =>
-                  setShowPassword(!showPassword)
-                }
+                onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-2 top-2"
               >
-                {showPassword ? (
-                  <EyeOff size={16} />
-                ) : (
-                  <Eye size={16} />
-                )}
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
           </Field>
@@ -336,29 +286,17 @@ export function LoginDialog() {
             <div className="relative">
               <Input
                 name="confirmPassword"
-                type={
-                  showConfirmPassword
-                    ? "text"
-                    : "password"
-                }
+                type={showConfirmPassword ? "text" : "password"}
                 className="pr-10"
                 required
               />
 
               <button
                 type="button"
-                onClick={() =>
-                  setShowConfirmPassword(
-                    !showConfirmPassword
-                  )
-                }
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                 className="absolute right-2 top-2"
               >
-                {showConfirmPassword ? (
-                  <EyeOff size={16} />
-                ) : (
-                  <Eye size={16} />
-                )}
+                {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
 
@@ -376,21 +314,13 @@ export function LoginDialog() {
               variant="outline"
               className="flex-1"
               disabled={loading}
-              onClick={() =>
-                setStep("email")
-              }
+              onClick={() => setStep("email")}
             >
               Back
             </Button>
 
-            <Button
-              type="submit"
-              className="flex-1"
-              disabled={loading}
-            >
-              {loading
-                ? "Creating..."
-                : "Create Account"}
+            <Button type="submit" className="flex-1" disabled={loading}>
+              {loading ? "Creating..." : "Create Account"}
             </Button>
           </div>
         </form>

@@ -194,7 +194,9 @@ export default function MarketplacePage() {
      CREATE
   ========================================================== */
 
-  function handleCreateClick() {}
+  function handleCreateClick() {
+    router.push("/home/my-listings");
+  }
 
   /* ==========================================================
      OPEN LISTING

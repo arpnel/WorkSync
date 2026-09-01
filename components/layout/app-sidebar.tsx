@@ -20,6 +20,7 @@ import {
   Settings,
   Calendar,
   AlertCircle,
+  BellRing,
   UserRound,
 } from "lucide-react";
 
@@ -30,11 +31,6 @@ export function AppSidebar() {
   const pathname = usePathname();
 
   const navItems = [
-     {
-      label: "Profile",
-      icon: UserRound,
-      href: "/home/profile",
-    },
     {
       label: "Dashboard",
       icon: Home,
@@ -46,9 +42,9 @@ export function AppSidebar() {
       href: "/home/marketplace",
     },
     {
-      label: "My Listings",
-      icon: Clipboard,
-      href: "/home/my-listings",
+      label: "Projects",
+      icon: Briefcase,
+      href: "/home/projects",
     },
     {
       label: "Messages",
@@ -56,14 +52,19 @@ export function AppSidebar() {
       href: "/home/messages",
     },
     {
-      label: "Projects",
-      icon: Briefcase,
-      href: "/home/projects",
+      label: "My Listings",
+      icon: Clipboard,
+      href: "/home/my-listings",
     },
     {
       label: "Schedule",
       icon: Calendar,
       href: "/home/schedule",
+    },
+    {
+      label: "Notifications",
+      icon: BellRing,
+      href: "/home/notifications",
     },
     {
       label: "Clients",
@@ -74,6 +75,11 @@ export function AppSidebar() {
       label: "Reports",
       icon: AlertCircle,
       href: "/home/reports",
+    },
+    {
+      label: "Profile",
+      icon: UserRound,
+      href: "/home/profile",
     },
     {
       label: "Settings",
@@ -92,9 +98,7 @@ export function AppSidebar() {
         >
           <LogoIcon className="h-7 w-auto" />
 
-          <span className="text-lg font-bold tracking-tight">
-            WorkSync
-          </span>
+          <span className="text-lg font-bold tracking-tight">WorkSync</span>
         </Link>
       </SidebarHeader>
 
@@ -110,8 +114,7 @@ export function AppSidebar() {
               className={cn(
                 "flex items-center gap-2 rounded-md px-3 py-2 transition",
                 "hover:bg-accent hover:text-accent-foreground",
-                pathname === item.href &&
-                  "bg-accent text-accent-foreground",
+                pathname === item.href && "bg-accent text-accent-foreground",
               )}
             >
               <item.icon className="h-5 w-5" />

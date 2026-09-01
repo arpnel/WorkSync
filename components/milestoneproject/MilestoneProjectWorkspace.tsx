@@ -99,9 +99,9 @@ export function MilestoneProjectWorkspace({ orderId }: { orderId: string }) {
         </CardContent>
       </Card>
 
-      <div className="grid gap-5 xl:grid-cols-2 2xl:grid-cols-[minmax(340px,0.9fr)_minmax(400px,1.1fr)_minmax(340px,0.8fr)]">
+      <div className="grid gap-5 xl:grid-cols-2 2xl:grid-cols-[minmax(300px,0.85fr)_minmax(360px,1.05fr)_minmax(300px,0.8fr)] 2xl:items-start">
         <ProjectChatPanel
-          className="h-[700px] min-h-[700px]"
+          className="h-[720px] min-h-[620px] 2xl:sticky 2xl:top-4"
           messages={workspace.messages}
           sending={sending}
           isOtherParticipantTyping={isOtherParticipantTyping}
@@ -113,12 +113,20 @@ export function MilestoneProjectWorkspace({ orderId }: { orderId: string }) {
           updatingApprovalKey={updatingApprovalKey}
           onRespondItem={respondToAgreementItem}
         />
-        <div className="grid gap-5 xl:col-span-2 xl:grid-cols-2 2xl:col-span-1 2xl:block 2xl:space-y-5">
+        <aside className="grid gap-5 xl:col-span-2 xl:grid-cols-2 2xl:col-span-1 2xl:block 2xl:space-y-5">
+          <ProjectAgreementCard
+            project={workspace}
+            updating={updatingAgreement}
+            updatingApprovalKey={updatingApprovalKey}
+            onRespond={respondToAgreement}
+            onRespondItem={respondToAgreementItem}
+            onSaveTerms={saveAgreementTerms}
+          />
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <Wallet className="h-4 w-4" />
-                Project Terms
+                Project Summary
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
@@ -131,24 +139,22 @@ export function MilestoneProjectWorkspace({ orderId }: { orderId: string }) {
                 <strong>PHP {milestoneTotal.toLocaleString()}</strong>
               </div>
               <div className="flex justify-between gap-3">
-                <span className="text-muted-foreground">Duration</span>
-                <span>
+                <span className="text-muted-foreground">Delivery</span>
+                <span className="font-medium">
                   {workspace.deliveryDays == null
                     ? "Not set"
                     : `${workspace.deliveryDays} days`}
                 </span>
               </div>
+              <div className="flex justify-between gap-3 border-t pt-3">
+                <span className="text-muted-foreground">Milestones</span>
+                <span className="font-medium">
+                  {workspace.milestones.length}
+                </span>
+              </div>
             </CardContent>
           </Card>
-          <ProjectAgreementCard
-            project={workspace}
-            updating={updatingAgreement}
-            updatingApprovalKey={updatingApprovalKey}
-            onRespond={respondToAgreement}
-            onRespondItem={respondToAgreementItem}
-            onSaveTerms={saveAgreementTerms}
-          />
-        </div>
+        </aside>
       </div>
     </div>
   );

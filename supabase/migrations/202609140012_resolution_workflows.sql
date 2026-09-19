@@ -1,0 +1,116 @@
+begin;
+create table if not exists public.project_disputes (
+ dispute_id uuid primary key default gen_random_uuid(), project_id uuid not null references public.projects(project_id),
+ milestone_id uuid references public.milestones(milestone_id), opened_by uuid not null references public."Users"(user_id),
+ category text not null check(category in ('scope','delivery','communication','quality','other')),
+ description text not null check(length(trim(description)) between 1 and 10000),
+ status text not null default 'open' check(status in ('open','under_review','resolved')),
+ evidence_path text, evidence_name text, admin_notes text not null default '', resolution text,
+ resolution_action text check(resolution_action in ('resume_work','cancel_project')),
+ reviewed_by uuid references public."Users"(user_id), created_at timestamptz not null default now(), resolved_at timestamptz
+);
+create unique index if not exists project_dispute_open on public.project_disputes(project_id) where status<>'resolved';
+create index if not exists project_disputes_queue on public.project_disputes(status,created_at desc);
+create table if not exists public.project_cancellations (
+ cancellation_id uuid primary key default gen_random_uuid(), order_id uuid not null references public.service_orders(order_id),
+ requested_by uuid not null references public."Users"(user_id), reason text not null check(length(trim(reason)) between 1 and 5000),
+ status text not null default 'requested' check(status in ('requested','accepted','rejected')),
+ responded_by uuid references public."Users"(user_id), response text, created_at timestamptz not null default now(), responded_at timestamptz,
+ cancelled_at timestamptz
+);
+create unique index if not exists project_cancellation_pending on public.project_cancellations(order_id) where status='requested';
+create index if not exists project_cancellation_history on public.project_cancellations(order_id,created_at desc);
+create or replace function public.worksync_order_party(p_order uuid) returns text
+language sql stable security definer set search_path='' as $$
+ select case when c.user_id=auth.uid() then 'client' when f.user_id=auth.uid() then 'freelancer' end
+ from public.service_orders o join public.client_profiles c using(client_id) join public.freelancer_profiles f using(freelancer_id) where o.order_id=p_order;
+$$;
+alter table public.project_disputes enable row level security;
+alter table public.project_cancellations enable row level security;
+revoke all on public.project_disputes,public.project_cancellations from anon,authenticated;
+grant select on public.project_disputes,public.project_cancellations to authenticated;
+create policy disputes_read on public.project_disputes for select to authenticated using(public.worksync_project_party(project_id) is not null or public.worksync_is_admin());
+create policy cancellations_read on public.project_cancellations for select to authenticated using(public.worksync_order_party(order_id) is not null or public.worksync_is_admin());
+create or replace function public.worksync_order_on_hold(p_order uuid) returns boolean
+language sql stable security definer set search_path='' as $$
+ select exists(select 1 from public.project_cancellations where order_id=p_order and status='requested') or exists(select 1 from public.project_disputes d join public.projects p using(project_id) where p.order_id=p_order and d.status<>'resolved');
+$$;
+-- Internal only: caller routines authorize, lock the contract and record the decision first.
+create or replace function public.worksync_cancel_order_internal(p_order uuid) returns void
+language plpgsql security definer set search_path='' as $$
+begin
+ if exists(select 1 from public.service_orders where order_id=p_order and status::text='completed') or exists(select 1 from public.projects where order_id=p_order and status::text='completed') then raise exception 'Completed work cannot be cancelled'; end if;
+ update public.service_orders set status='cancelled',updated_at=now() where order_id=p_order;
+ update public.projects set status='cancelled',updated_at=now() where order_id=p_order;
+ update public.milestones set status='cancelled' where project_id in (select project_id from public.projects where order_id=p_order) and status::text<>'completed';
+ update public.contracts set status='cancelled',updated_at=now() where order_id=p_order;
+end; $$;
+create or replace function public.worksync_request_cancellation(p_order uuid,p_reason text) returns uuid
+language plpgsql security definer set search_path='' as $$
+declare o public.service_orders; c public.contracts; result uuid; immediate boolean; recipient uuid;
+begin
+ select * into c from public.contracts where order_id=p_order for update;
+ select * into o from public.service_orders where order_id=p_order for update;
+ if public.worksync_order_party(p_order) is null or o.status::text not in ('pending','accepted','active','in_progress') then raise exception 'This order cannot be cancelled'; end if;
+ if coalesce(length(trim(p_reason)),0) not between 1 and 5000 then raise exception 'A cancellation reason is required'; end if;
+ if public.worksync_order_on_hold(p_order) then raise exception 'Resolve the existing dispute or cancellation request first'; end if;
+ -- An unconfirmed request can end immediately; a signed agreement requires the other participant.
+ immediate:=not exists(select 1 from public.projects where order_id=p_order and status::text in ('active','in_progress')) and not(c.client_signed_at is not null and c.freelancer_signed_at is not null);
+ insert into public.project_cancellations(order_id,requested_by,reason,status,responded_by,responded_at,cancelled_at)
+ values(p_order,auth.uid(),p_reason,case when immediate then 'accepted' else 'requested' end,case when immediate then auth.uid() end,case when immediate then now() end,case when immediate then now() end) returning cancellation_id into result;
+ if immediate then perform public.worksync_cancel_order_internal(p_order); end if;
+ for recipient in select user_id from public.client_profiles where client_id=o.client_id union select user_id from public.freelancer_profiles where freelancer_id=o.freelancer_id loop
+ insert into public.notifications(user_id,type,title,message,related_id,is_read) values(recipient,'project_update',case when immediate then 'Order cancelled' else 'Cancellation requested' end,p_reason,p_order,false);
+ end loop;
+ return result;
+end; $$;
+create or replace function public.worksync_respond_cancellation(p_id uuid,p_accept boolean,p_response text) returns void
+language plpgsql security definer set search_path='' as $$
+declare r public.project_cancellations; o public.service_orders; locked uuid; recipient uuid;
+begin
+ select * into r from public.project_cancellations where cancellation_id=p_id;
+ select contract_id into locked from public.contracts where order_id=r.order_id for update;
+ select * into o from public.service_orders where order_id=r.order_id for update;
+ select * into r from public.project_cancellations where cancellation_id=p_id for update;
+ if public.worksync_order_party(r.order_id) is null or r.requested_by=auth.uid() or r.status<>'requested' or p_accept is null or o.status::text in ('completed','cancelled','rejected') then raise exception 'Only the other participant may respond to an open cancellation'; end if;
+ if coalesce(length(trim(p_response)),0) not between 1 and 5000 then raise exception 'Explain your response'; end if;
+ update public.project_cancellations set status=case when p_accept then 'accepted' else 'rejected' end,response=p_response,responded_by=auth.uid(),responded_at=now(),cancelled_at=case when p_accept then now() end where cancellation_id=p_id;
+ if p_accept then perform public.worksync_cancel_order_internal(r.order_id); end if;
+ insert into public.notifications(user_id,type,title,message,related_id,is_read) values(r.requested_by,'project_update',case when p_accept then 'Cancellation accepted' else 'Cancellation declined' end,p_response,r.order_id,false);
+end; $$;
+create or replace function public.worksync_open_dispute(p_id uuid,p_project uuid,p_milestone uuid,p_category text,p_description text,p_path text,p_name text) returns void
+language plpgsql security definer set search_path='' as $$
+declare p public.projects; locked uuid; recipient uuid;
+begin
+ select * into p from public.projects where project_id=p_project;
+ select contract_id into locked from public.contracts where order_id=p.order_id for update;
+ select * into p from public.projects where project_id=p_project for update;
+ if public.worksync_project_party(p_project) is null or p.status::text not in ('active','in_progress') then raise exception 'Disputes require an active project and participant access'; end if;
+ if public.worksync_order_on_hold(p.order_id) then raise exception 'There is already an open resolution request'; end if;
+ if p_milestone is not null and not exists(select 1 from public.milestones where project_id=p_project and milestone_id=p_milestone and status::text<>'completed') then raise exception 'Choose an unfinished milestone from this project'; end if;
+ if p_path is not null and (p_path not like p_project::text||'/'||auth.uid()::text||'/'||p_id::text||'/%' or not exists(select 1 from storage.objects where bucket_id='project-attachments' and name=p_path)) then raise exception 'Invalid dispute evidence'; end if;
+ insert into public.project_disputes(dispute_id,project_id,milestone_id,opened_by,category,description,evidence_path,evidence_name) values(p_id,p_project,p_milestone,auth.uid(),p_category,p_description,p_path,p_name);
+ for recipient in select user_id from public.client_profiles where client_id=p.client_id union select user_id from public.freelancer_profiles where freelancer_id=p.freelancer_id loop
+ insert into public.notifications(user_id,type,title,message,related_id,is_read) values(recipient,'project_update','Project dispute opened','Delivery decisions are paused while the dispute is reviewed.',p.order_id,false);
+ end loop;
+end; $$;
+create or replace function public.worksync_resolve_dispute(p_id uuid,p_action text,p_notes text) returns void
+language plpgsql security definer set search_path='' as $$
+declare d public.project_disputes; p public.projects; locked uuid; recipient uuid;
+begin
+ if not public.worksync_is_admin() then raise exception 'Administrator access required'; end if;
+ select * into d from public.project_disputes where dispute_id=p_id;
+ select * into p from public.projects where project_id=d.project_id;
+ select contract_id into locked from public.contracts where order_id=p.order_id for update;
+ select * into d from public.project_disputes where dispute_id=p_id for update;
+ if d.dispute_id is null or d.status='resolved' or p_action is null or p_action not in ('under_review','resume_work','cancel_project') or coalesce(length(trim(p_notes)),0) not between 1 and 5000 then raise exception 'Invalid dispute resolution'; end if;
+ update public.project_disputes set status=case when p_action='under_review' then 'under_review' else 'resolved' end,admin_notes=p_notes,reviewed_by=auth.uid(),resolution=case when p_action<>'under_review' then p_notes end,resolution_action=case when p_action<>'under_review' then p_action end,resolved_at=case when p_action<>'under_review' then now() end where dispute_id=p_id;
+ if p_action='cancel_project' then perform public.worksync_cancel_order_internal(p.order_id); end if;
+ insert into public.admin_audit_log(admin_id,action,target_id,details) values(auth.uid(),'dispute:'||p_action,p_id,jsonb_build_object('notes',p_notes,'project_id',p.project_id));
+ for recipient in select user_id from public.client_profiles where client_id=p.client_id union select user_id from public.freelancer_profiles where freelancer_id=p.freelancer_id loop
+ insert into public.notifications(user_id,type,title,message,related_id,is_read) values(recipient,'project_update','Dispute review updated',p_notes,p.order_id,false);
+ end loop;
+end; $$;
+revoke all on function public.worksync_order_party(uuid),public.worksync_order_on_hold(uuid),public.worksync_cancel_order_internal(uuid),public.worksync_request_cancellation(uuid,text),public.worksync_respond_cancellation(uuid,boolean,text),public.worksync_open_dispute(uuid,uuid,uuid,text,text,text,text),public.worksync_resolve_dispute(uuid,text,text) from public;
+grant execute on function public.worksync_order_party(uuid),public.worksync_order_on_hold(uuid),public.worksync_request_cancellation(uuid,text),public.worksync_respond_cancellation(uuid,boolean,text),public.worksync_open_dispute(uuid,uuid,uuid,text,text,text,text),public.worksync_resolve_dispute(uuid,text,text) to authenticated;
+commit;

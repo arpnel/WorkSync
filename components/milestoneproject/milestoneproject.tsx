@@ -55,7 +55,7 @@ const milestones = [
   },
 ];
 
-export default function milestoneproject() {
+export default function MilestoneProject() {
   const [projectBudget, setProjectBudget] = React.useState(15000);
   const [duration, setDuration] = React.useState(25);
 

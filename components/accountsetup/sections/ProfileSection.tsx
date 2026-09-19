@@ -1,22 +1,13 @@
 import { useRef, type ChangeEvent } from "react";
 
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
-import {
-  ImageIcon,
-  Upload,
-} from "lucide-react";
+import { ImageIcon, Upload } from "lucide-react";
 
-import {
-  MAX_BIO_LENGTH,
-} from "@/constants/account-setup.constants";
+import { MAX_BIO_LENGTH } from "@/constants/account-setup.constants";
 
 import type { ClientSetupValues } from "@/types/account-setup.types";
 
@@ -29,14 +20,9 @@ type Props = {
 
   errors: Partial<Record<keyof TValues, string>>;
 
-  onChange: (
-    field: keyof TValues,
-    value: TValues[keyof TValues],
-  ) => void;
+  onChange: (field: keyof TValues, value: TValues[keyof TValues]) => void;
 
-  onPhotoSelect: (
-    event: ChangeEvent<HTMLInputElement>,
-  ) => void;
+  onPhotoSelect: (event: ChangeEvent<HTMLInputElement>) => void;
 
   onPhotoRemove: () => void;
 };
@@ -54,9 +40,7 @@ export function ProfileSection({
   return (
     <section className="rounded-2xl border bg-background p-6 shadow-sm">
       <div className="mb-5 flex items-center gap-3">
-        <h3 className="text-sm font-semibold">
-          Profile
-        </h3>
+        <h3 className="text-sm font-semibold">Profile</h3>
 
         <div className="h-px flex-1 bg-border" />
       </div>
@@ -76,10 +60,7 @@ export function ProfileSection({
           {photoPreview ? (
             <div className="flex items-center gap-4">
               <Avatar className="size-20">
-                <AvatarImage
-                  src={photoPreview}
-                  alt="Profile preview"
-                />
+                <AvatarImage src={photoPreview} alt="Profile preview" />
 
                 <AvatarFallback>
                   <ImageIcon className="size-6 text-muted-foreground" />
@@ -91,30 +72,28 @@ export function ProfileSection({
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() =>
-                    photoInputRef.current?.click()
-                  }
+                  onClick={() => photoInputRef.current?.click()}
                 >
                   Change Photo
                 </Button>
 
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={onPhotoRemove}
-                  className="text-destructive"
-                >
-                  Remove
-                </Button>
+                {values.profilePhoto && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={onPhotoRemove}
+                    className="text-destructive"
+                  >
+                    Remove selected photo
+                  </Button>
+                )}
               </div>
             </div>
           ) : (
             <button
               type="button"
-              onClick={() =>
-                photoInputRef.current?.click()
-              }
+              onClick={() => photoInputRef.current?.click()}
               className="
                 relative
                 flex
@@ -145,9 +124,7 @@ export function ProfileSection({
           )}
 
           {errors.profilePhoto && (
-            <p className="text-xs text-destructive">
-              {errors.profilePhoto}
-            </p>
+            <p className="text-xs text-destructive">{errors.profilePhoto}</p>
           )}
         </div>
 
@@ -156,8 +133,7 @@ export function ProfileSection({
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <Label htmlFor="shortBio">
-              Short Bio{" "}
-              <span className="text-destructive">*</span>
+              Short Bio <span className="text-destructive">*</span>
             </Label>
 
             <span className="text-xs text-muted-foreground">
@@ -170,19 +146,12 @@ export function ProfileSection({
             rows={4}
             maxLength={MAX_BIO_LENGTH}
             value={values.shortBio}
-            onChange={(event) =>
-              onChange(
-                "shortBio",
-                event.target.value,
-              )
-            }
+            onChange={(event) => onChange("shortBio", event.target.value)}
             placeholder="Tell us about your expertise and experience..."
           />
 
           {errors.shortBio && (
-            <p className="text-xs text-destructive">
-              {errors.shortBio}
-            </p>
+            <p className="text-xs text-destructive">{errors.shortBio}</p>
           )}
         </div>
       </div>

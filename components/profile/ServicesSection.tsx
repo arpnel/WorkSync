@@ -22,13 +22,17 @@ import { Label } from "@/components/ui/label";
 
 interface ServicesSectionProps {
   userId: string;
+  isOwner?: boolean;
 }
 
 function getDisplayStorageKey(userId: string) {
   return `worksync:profile-services:${userId}`;
 }
 
-export default function ServicesSection({ userId }: ServicesSectionProps) {
+export default function ServicesSection({
+  userId,
+  isOwner = true,
+}: ServicesSectionProps) {
   const [services, setServices] = useState<Service[]>([]);
   const [displayedIds, setDisplayedIds] = useState<string[]>([]);
   const [manageOpen, setManageOpen] = useState(false);
@@ -43,16 +47,29 @@ export default function ServicesSection({ userId }: ServicesSectionProps) {
       const data = await getServices(userId);
       setServices(data);
 
-      const storedIds = window.localStorage.getItem(
-        getDisplayStorageKey(userId),
-      );
+      if (!isOwner) {
+        setDisplayedIds(data.map((service) => service.id));
+        return;
+      }
+
+      let storedIds: string | null = null;
+      try {
+        storedIds = window.localStorage.getItem(getDisplayStorageKey(userId));
+      } catch {
+        /* Browser preferences are optional. */
+      }
 
       if (!storedIds) {
         setDisplayedIds(data.map((service) => service.id));
         return;
       }
 
-      const parsedIds: unknown = JSON.parse(storedIds);
+      let parsedIds: unknown;
+      try {
+        parsedIds = JSON.parse(storedIds);
+      } catch {
+        parsedIds = null;
+      }
       const validServiceIds = new Set(data.map((service) => service.id));
 
       setDisplayedIds(
@@ -69,7 +86,7 @@ export default function ServicesSection({ userId }: ServicesSectionProps) {
     } finally {
       setLoading(false);
     }
-  }, [userId]);
+  }, [isOwner, userId]);
 
   useEffect(() => {
     void loadServices();
@@ -86,10 +103,14 @@ export default function ServicesSection({ userId }: ServicesSectionProps) {
         ? [...new Set([...current, serviceId])]
         : current.filter((id) => id !== serviceId);
 
-      window.localStorage.setItem(
-        getDisplayStorageKey(userId),
-        JSON.stringify(next),
-      );
+      try {
+        window.localStorage.setItem(
+          getDisplayStorageKey(userId),
+          JSON.stringify(next),
+        );
+      } catch {
+        /* Keep the current view usable when storage is unavailable. */
+      }
 
       return next;
     });
@@ -101,14 +122,16 @@ export default function ServicesSection({ userId }: ServicesSectionProps) {
         <CardTitle className="text-xl font-semibold">Services</CardTitle>
 
         <div className="flex flex-wrap justify-end gap-2">
-          {services.length > 0 && (
+          {isOwner && services.length > 0 && (
             <Button variant="outline" onClick={() => setManageOpen(true)}>
               <Settings2 className="h-4 w-4" />
-              Manage display
+              Customize my view
             </Button>
           )}
 
-          <ServiceCreateDialogLauncher onCreated={() => loadServices()} />
+          {isOwner && (
+            <ServiceCreateDialogLauncher onCreated={() => loadServices()} />
+          )}
         </div>
       </CardHeader>
 
@@ -118,7 +141,7 @@ export default function ServicesSection({ userId }: ServicesSectionProps) {
             {Array.from({ length: 4 }).map((_, index) => (
               <div
                 key={index}
-                className="animate-pulse overflow-hidden rounded-2xl border"
+                className="motion-safe:animate-pulse overflow-hidden rounded-2xl border"
               >
                 <div className="h-44 bg-muted" />
 
@@ -145,11 +168,15 @@ export default function ServicesSection({ userId }: ServicesSectionProps) {
           <div className="rounded-xl border border-dashed py-12 text-center">
             <p className="text-lg font-medium">No services available</p>
             <p className="mt-2 text-sm text-muted-foreground">
-              Create your first service to start receiving orders.
+              {isOwner
+                ? "Create your first service to start receiving orders."
+                : "This freelancer has no available services."}
             </p>
-            <div className="mt-5">
-              <ServiceCreateDialogLauncher onCreated={() => loadServices()} />
-            </div>
+            {isOwner && (
+              <div className="mt-5">
+                <ServiceCreateDialogLauncher onCreated={() => loadServices()} />
+              </div>
+            )}
           </div>
         ) : displayedServices.length === 0 ? (
           <div className="rounded-xl border border-dashed py-12 text-center">
@@ -234,56 +261,59 @@ export default function ServicesSection({ userId }: ServicesSectionProps) {
         )}
       </CardContent>
 
-      <Dialog open={manageOpen} onOpenChange={setManageOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Manage profile services</DialogTitle>
-            <DialogDescription>
-              Select the existing services you want displayed on your profile.
-            </DialogDescription>
-          </DialogHeader>
+      {isOwner && (
+        <Dialog open={manageOpen} onOpenChange={setManageOpen}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Customize your service view</DialogTitle>
+              <DialogDescription>
+                Choose which services you see here on this browser. Visitors
+                still see all your published services.
+              </DialogDescription>
+            </DialogHeader>
 
-          <div className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
-            {services.map((service) => {
-              const checkboxId = `profile-service-${service.id}`;
-              const checked = displayedIds.includes(service.id);
+            <div className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
+              {services.map((service) => {
+                const checkboxId = `profile-service-${service.id}`;
+                const checked = displayedIds.includes(service.id);
 
-              return (
-                <Label
-                  key={service.id}
-                  htmlFor={checkboxId}
-                  className="flex cursor-pointer items-center gap-3 rounded-md border p-3 hover:bg-muted/50"
-                >
-                  <Checkbox
-                    id={checkboxId}
-                    checked={checked}
-                    onCheckedChange={(value) =>
-                      setServiceDisplayed(service.id, value === true)
-                    }
-                  />
+                return (
+                  <Label
+                    key={service.id}
+                    htmlFor={checkboxId}
+                    className="flex cursor-pointer items-center gap-3 rounded-md border p-3 hover:bg-muted/50"
+                  >
+                    <Checkbox
+                      id={checkboxId}
+                      checked={checked}
+                      onCheckedChange={(value) =>
+                        setServiceDisplayed(service.id, value === true)
+                      }
+                    />
 
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium">
-                      {service.title}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium">
+                        {service.title}
+                      </span>
+                      <span className="block text-xs text-muted-foreground">
+                        {service.category}
+                      </span>
                     </span>
-                    <span className="block text-xs text-muted-foreground">
-                      {service.category}
-                    </span>
-                  </span>
 
-                  <span className="text-sm font-semibold">
-                    {new Intl.NumberFormat("en-PH", {
-                      style: "currency",
-                      currency: "PHP",
-                      maximumFractionDigits: 2,
-                    }).format(service.price)}
-                  </span>
-                </Label>
-              );
-            })}
-          </div>
-        </DialogContent>
-      </Dialog>
+                    <span className="text-sm font-semibold">
+                      {new Intl.NumberFormat("en-PH", {
+                        style: "currency",
+                        currency: "PHP",
+                        maximumFractionDigits: 2,
+                      }).format(service.price)}
+                    </span>
+                  </Label>
+                );
+              })}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </Card>
   );
 }

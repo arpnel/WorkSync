@@ -1,4 +1,5 @@
 "use client";
+import ContentSkeleton from "@/components/shared/ContentSkeleton";
 
 import { BasicInformationSection } from "./sections/BasicInformationSection";
 import { ProfileSection } from "./sections/ProfileSection";
@@ -7,6 +8,8 @@ import { VerificationSection } from "./sections/VerificationSection";
 import { SubmitSection } from "./sections/SubmitSection";
 
 import { useFreelancerSetup } from "./hooks/useFreelancerSetup";
+import VerificationSettings from "@/components/account/VerificationSettings";
+import { Button } from "@/components/ui/button";
 
 export function FreelancerSetupForm() {
   const {
@@ -19,19 +22,47 @@ export function FreelancerSetupForm() {
     isLoadingCategories,
     isLoadingSkills,
     isSubmitting,
+    isLoadingProfile,
+    loadError,
+    retryLoad,
+    categoryError,
     handleChange,
     handlePhotoSelect,
     handlePhotoRemove,
-    handleIndustriesChange,
-    handleSkillsChange,
     handleFileSelect,
     handleMultiFileSelect,
     handleRemoveFile,
     handleSubmit,
   } = useFreelancerSetup();
 
+  if (isLoadingProfile)
+    return (
+      <ContentSkeleton
+        label="Loading your saved profile"
+        variant="setup"
+        count={4}
+      />
+    );
+  if (loadError)
+    return (
+      <div className="space-y-3">
+        <p role="alert" className="text-sm text-destructive">
+          {loadError}
+        </p>
+        <Button onClick={retryLoad}>Retry loading profile</Button>
+      </div>
+    );
+
   return (
-    <div className="mx-auto max-w-2xl space-y-8">
+    <fieldset
+      disabled={isSubmitting}
+      className="mx-auto min-w-0 max-w-2xl space-y-8"
+    >
+      {categoryError && (
+        <p role="alert" className="text-sm text-destructive">
+          {categoryError}
+        </p>
+      )}
       {/* Basic Information */}
 
       <BasicInformationSection
@@ -70,13 +101,12 @@ export function FreelancerSetupForm() {
       <VerificationSection
         values={values}
         errors={errors}
-        onChange={handleChange}
-        onFileSelect={handleFileSelect}
         onMultiFileSelect={handleMultiFileSelect}
         onRemoveFile={handleRemoveFile}
       />
 
       {/* Submit */}
+      <VerificationSettings />
 
       <SubmitSection
         isSubmitting={isSubmitting}
@@ -84,6 +114,6 @@ export function FreelancerSetupForm() {
         loadingLabel="Saving..."
         onSubmit={handleSubmit}
       />
-    </div>
+    </fieldset>
   );
 }

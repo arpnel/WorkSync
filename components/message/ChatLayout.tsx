@@ -1,32 +1,36 @@
 "use client";
-
-import * as React from "react";
-
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "@/components/ui/resizable";
-
+import type { ReactNode } from "react";
+import { cn } from "@/lib/utils";
 interface ChatLayoutProps {
-  sidebar: React.ReactNode;
-  children: React.ReactNode;
+  sidebar: ReactNode;
+  children: ReactNode;
+  mobileChatOpen?: boolean;
 }
-
-export default function ChatLayout({ sidebar, children }: ChatLayoutProps) {
+export default function ChatLayout({
+  sidebar,
+  children,
+  mobileChatOpen = false,
+}: ChatLayoutProps) {
   return (
-    <div className="flex h-[calc(100vh-8rem)] w-full overflow-hidden rounded-xl border bg-background">
-      <ResizablePanelGroup orientation="horizontal" className="h-full w-full">
-        <ResizablePanel defaultSize={350} minSize={350} maxSize={450}>
+    <div className="flex h-[calc(100dvh-6rem)] min-h-0 sm:h-[calc(100dvh-7rem)] w-full flex-col overflow-hidden rounded-xl border bg-background">
+      <div className="flex min-h-0 min-w-0 flex-1">
+        <div
+          className={cn(
+            "w-full shrink-0 border-r md:block md:w-80 lg:w-96",
+            mobileChatOpen && "hidden",
+          )}
+        >
           {sidebar}
-        </ResizablePanel>
-
-        <ResizableHandle withHandle />
-
-        <ResizablePanel defaultSize={65} minSize={55} className="min-w-0">
+        </div>
+        <div
+          className={cn(
+            "min-h-0 min-w-0 flex-1 md:block",
+            !mobileChatOpen && "hidden",
+          )}
+        >
           {children}
-        </ResizablePanel>
-      </ResizablePanelGroup>
+        </div>
+      </div>
     </div>
   );
 }

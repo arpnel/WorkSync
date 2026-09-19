@@ -15,9 +15,9 @@ import { SignupDialog } from "../auth/signup/SignupDialog"
 import { SigninDialog } from "../auth/login/SigninDialog"
 
 const menuItems = [
-    { name: 'Features', href: '#link' },
-    { name: 'Pricing', href: '#link' },
-    { name: 'About', href: '#link' },
+    { name: 'Features', href: '#features' },
+    { name: 'Marketplace', href: '/home/marketplace' },
+    { name: 'About', href: '#about' },
 ]
 
 export const HeroHeader = () => {

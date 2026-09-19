@@ -1,3 +1,5 @@
+import { getPublicIdentities } from "@/services/profile/publicIdentityService";
+import { platformAction } from "@/services/platform/platformService";
 import { supabase } from "@/lib/supabaseClient";
 
 /* ==========================================================
@@ -237,120 +239,33 @@ interface JobRow {
 async function getFreelancerData(
   freelancerId: string | null,
 ): Promise<MarketplaceFreelancer | null> {
-  if (!freelancerId) {
-    return null;
-  }
-
-  const { data: freelancer, error: freelancerError } = await supabase
-    .from(FREELANCER_TABLE)
-    .select(
-      `
-      freelancer_id,
-      user_id,
-      headline,
-      hourly_rate,
-      verification_status
-    `,
-    )
-    .eq("freelancer_id", freelancerId)
-    .maybeSingle();
-
-  if (freelancerError) {
-    console.error("Failed to load freelancer:", freelancerError);
-
-    return null;
-  }
-
-  if (!freelancer) {
-    return null;
-  }
-
-  const { data: profile, error: profileError } = await supabase
-    .from(PROFILES_TABLE)
-    .select(
-      `
-      display_name,
-      first_name,
-      last_name,
-      avatar_url,
-      location
-    `,
-    )
-    .eq("user_id", freelancer.user_id)
-    .maybeSingle();
-
-  if (profileError) {
-    console.error("Failed to load freelancer profile:", profileError);
-  }
-
-  return {
-    freelancer_id: freelancer.freelancer_id,
-    user_id: freelancer.user_id,
-
-    headline: freelancer.headline,
-    hourly_rate: freelancer.hourly_rate,
-    verification_status: freelancer.verification_status,
-
-    profile: profile ?? null,
-  };
+  if (!freelancerId) return null;
+  const data = await getPublicIdentities({ freelancerIds: [freelancerId] });
+  const freelancer = data.freelancers.find(
+    (row) => row.freelancer_id === freelancerId,
+  );
+  return freelancer
+    ? {
+        ...freelancer,
+        profile:
+          data.profiles.find((row) => row.user_id === freelancer.user_id) ??
+          null,
+      }
+    : null;
 }
-
-/* ==========================================================
-   LOAD CLIENT
-========================================================== */
-
 async function getClientData(
   clientId: string | null,
 ): Promise<MarketplaceClient | null> {
-  if (!clientId) {
-    return null;
-  }
-
-  const { data: client, error: clientError } = await supabase
-    .from(CLIENT_TABLE)
-    .select(
-      `
-      client_id,
-      user_id
-    `,
-    )
-    .eq("client_id", clientId)
-    .maybeSingle();
-
-  if (clientError) {
-    console.error("Failed to load client:", clientError);
-
-    return null;
-  }
-
-  if (!client) {
-    return null;
-  }
-
-  const { data: profile, error: profileError } = await supabase
-    .from(PROFILES_TABLE)
-    .select(
-      `
-      display_name,
-      first_name,
-      last_name,
-      avatar_url,
-      location
-    `,
-    )
-    .eq("user_id", client.user_id)
-    .maybeSingle();
-
-  if (profileError) {
-    console.error("Failed to load client profile:", profileError);
-  }
-
-  return {
-    client_id: client.client_id,
-    user_id: client.user_id,
-
-    profile: profile ?? null,
-  };
+  if (!clientId) return null;
+  const data = await getPublicIdentities({ clientIds: [clientId] });
+  const client = data.clients.find((row) => row.client_id === clientId);
+  return client
+    ? {
+        ...client,
+        profile:
+          data.profiles.find((row) => row.user_id === client.user_id) ?? null,
+      }
+    : null;
 }
 
 /* ==========================================================
@@ -1213,6 +1128,15 @@ export async function createMarketplaceOrder(
   serviceId: string,
   clientId: string,
   freelancerId: string,
+  details: {
+    projectTitle: string;
+    description: string;
+    budget: number;
+    deliveryTimeDays: number;
+    revisionsCount: number;
+    categoryId: string;
+    categoryName: string;
+  },
 ) {
   if (!serviceId) {
     throw new Error("Service ID is required.");
@@ -1224,6 +1148,13 @@ export async function createMarketplaceOrder(
 
   if (!freelancerId) {
     throw new Error("Freelancer ID is required.");
+  }
+
+  if (!details.projectTitle.trim() || !details.description.trim()) {
+    throw new Error("Project title and description are required.");
+  }
+  if (!details.categoryId) {
+    throw new Error("Job category is required.");
   }
 
   const {
@@ -1239,20 +1170,12 @@ export async function createMarketplaceOrder(
     throw new Error("You must be logged in to purchase a service.");
   }
 
-  const { data: freelancer, error: freelancerError } = await supabase
-    .from(FREELANCER_TABLE)
-    .select(
-      `
-      freelancer_id,
-      user_id
-    `,
-    )
-    .eq("freelancer_id", freelancerId)
-    .maybeSingle();
-
-  if (freelancerError) {
-    throw new Error("Unable to verify the service owner.");
-  }
+  const identities = await getPublicIdentities({
+    freelancerIds: [freelancerId],
+  });
+  const freelancer = identities.freelancers.find(
+    (row) => row.freelancer_id === freelancerId,
+  );
 
   if (!freelancer) {
     throw new Error("Freelancer profile not found.");
@@ -1291,25 +1214,10 @@ export async function createMarketplaceOrder(
     throw new Error("Service owner information does not match.");
   }
 
-  const { data, error } = await supabase
-    .from("service_orders")
-    .insert({
-      service_id: serviceId,
-
-      client_id: clientId,
-
-      freelancer_id: freelancerId,
-
-      status: "pending",
-    })
-    .select("order_id")
-    .single();
-
-  if (error) {
-    throw new Error(error.message || "Failed to create service order.");
-  }
-
-  return data;
+  return platformAction("worksync_request_service", {
+    p_service: serviceId,
+    p_details: details,
+  });
 }
 
 /* ==========================================================

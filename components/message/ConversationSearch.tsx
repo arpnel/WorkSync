@@ -11,6 +11,7 @@ interface ConversationSearchProps {
   placeholder?: string;
 }
 
+
 export default function ConversationSearch({
   value,
   onChange,
@@ -21,14 +22,16 @@ export default function ConversationSearch({
       <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
 
       <Input
+        aria-label="Search conversations"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="pl-9 pr-10"
+        className="h-10 rounded-full border-transparent bg-muted pl-9 pr-10 shadow-none focus-visible:bg-background"
       />
 
       {value && (
         <Button
+          aria-label="Clear search"
           type="button"
           variant="ghost"
           size="icon"

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 import {
   BriefcaseBusiness,
@@ -14,17 +14,9 @@ import {
   Users,
 } from "lucide-react";
 
-import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
+import { LogoIcon } from "@/components/shared/logo";
 
 import {
   DropdownMenu,
@@ -44,9 +36,17 @@ import {
 import type { Profile } from "@/types/profile/profile";
 import { getCurrentProfile } from "@/services/profile/profileservice";
 import { NotificationOverview } from "@/components/notifications/NotificationOverview";
+import { logout } from "@/services/auth/signinService";
+import { toast } from "sonner";
+
+const subscribeToClient = () => () => {};
 
 export function DashboardHeader() {
-  const pathname = usePathname();
+  const isClient = useSyncExternalStore(
+    subscribeToClient,
+    () => true,
+    () => false,
+  );
   const router = useRouter();
 
   /* ==========================================================
@@ -55,56 +55,46 @@ export function DashboardHeader() {
 
   const [profile, setProfile] = useState<Profile | null>(null);
 
-  const [searchOpen, setSearchOpen] = useState(false);
-
   const [currentRole, setCurrentRole] = useState<UserRole | null>(null);
 
   const [roleLoading, setRoleLoading] = useState(true);
 
   const [switchingRole, setSwitchingRole] = useState(false);
 
+  const [loggingOut, setLoggingOut] = useState(false);
+
   const [showClientDialog, setShowClientDialog] = useState(false);
 
   const [showFreelancerDialog, setShowFreelancerDialog] = useState(false);
 
-  /* ==========================================================
-     LOAD PROFILE
-  ========================================================== */
-
   useEffect(() => {
-    async function loadProfile() {
+    let active = true;
+
+    async function loadHeaderData() {
       try {
-        const currentProfile = await getCurrentProfile();
+        const [currentProfile, status] = await Promise.all([
+          getCurrentProfile(),
+          getAccountRoleStatus(),
+        ]);
 
-        setProfile(currentProfile);
+        if (active) {
+          setProfile(currentProfile);
+          setCurrentRole(status.currentRole);
+        }
       } catch (error) {
-        console.error("Failed to load profile:", error);
-      }
-    }
-
-    loadProfile();
-  }, []);
-
-  /* ==========================================================
-     LOAD ACCOUNT ROLE
-  ========================================================== */
-
-  useEffect(() => {
-    async function loadAccountRole() {
-      try {
-        setRoleLoading(true);
-
-        const status = await getAccountRoleStatus();
-
-        setCurrentRole(status.currentRole);
-      } catch (error) {
-        console.error("Failed to load account role:", error);
+        console.error("Failed to load dashboard header:", error);
       } finally {
-        setRoleLoading(false);
+        if (active) {
+          setRoleLoading(false);
+        }
       }
     }
 
-    loadAccountRole();
+    void loadHeaderData();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   /* ==========================================================
@@ -122,93 +112,20 @@ export function DashboardHeader() {
         .slice(0, 2)
     : "";
 
-  /* ==========================================================
-     SEARCH ITEMS
-  ========================================================== */
+  async function handleLogout() {
+    if (loggingOut) return;
 
-  const searchItems = [
-    {
-      label: "Dashboard",
-      href: "/home/dashboard",
-    },
-    {
-      label: "Marketplace",
-      href: "/home/marketplace",
-    },
-    {
-      label: "My Listings",
-      href: "/home/my-listings",
-    },
-    {
-      label: "Messages",
-      href: "/home/messages",
-    },
-    {
-      label: "Notifications",
-      href: "/home/notifications",
-    },
-    {
-      label: "Projects",
-      href: "/home/projects",
-    },
-    {
-      label: "Schedule",
-      href: "/home/schedule",
-    },
-    {
-      label: "Clients",
-      href: "/home/Client",
-    },
-    {
-      label: "Reports",
-      href: "/home/reports",
-    },
-    {
-      label: "Settings",
-      href: "/home/settings",
-    },
-    {
-      label: "Profile",
-      href: "/home/profile",
-    },
-  ];
-
-  /* ==========================================================
-     PAGE TITLES
-  ========================================================== */
-
-  const pageTitles: Record<string, string> = {
-    "/home/dashboard": "Dashboard",
-    "/home/marketplace": "Marketplace",
-    "/home/my-listings": "My Listings",
-    "/home/messages": "Messages",
-    "/home/projects": "Projects",
-    "/home/schedule": "Schedule",
-    "/home/Client": "Clients",
-    "/home/reports": "Reports",
-    "/home/settings": "Settings",
-    "/home/profile": "Profile",
-    "/home/notifications": "Notifications",
-  };
-
-  const currentPage =
-    pageTitles[pathname] ??
-    (pathname.startsWith("/home/marketplace/")
-      ? "Marketplace"
-      : pathname.startsWith("/home/projects/")
-        ? "Projects"
-        : pathname.startsWith("/home/messages/")
-          ? "Messages"
-          : "WorkSpace");
-
-  /* ==========================================================
-     SEARCH SELECT
-  ========================================================== */
-
-  const handleSearchSelect = (href: string) => {
-    setSearchOpen(false);
-    router.push(href);
-  };
+    try {
+      setLoggingOut(true);
+      await logout();
+      router.replace("/");
+      router.refresh();
+    } catch (error) {
+      console.error("Failed to log out:", error);
+      toast.error("Unable to log out. Please try again.");
+      setLoggingOut(false);
+    }
+  }
 
   /* ==========================================================
      ROLE CHANGE EVENT
@@ -314,85 +231,31 @@ export function DashboardHeader() {
      RETURN
   ========================================================== */
 
+  if (!isClient) {
+    return <header className="h-16 border-b bg-card" aria-hidden="true" />;
+  }
+
   return (
     <>
-      <header className="relative z-50 flex h-14 min-w-0 items-center border-b px-3 sm:px-4 lg:px-6">
-        {/* ===================================================
-            LEFT SECTION
-        =================================================== */}
-
-        <div className="flex min-w-0 shrink-0 items-center">
-          <SidebarTrigger className="shrink-0 cursor-pointer" />
-
-          <div className="ml-3 hidden items-center sm:flex lg:ml-4">
-            <div className="h-5 w-px bg-border" />
-
-            <div className="ml-4 flex items-center">
-              <span
-                className="
-                  relative max-w-[220px] truncate
-                  text-xl font-bold tracking-tight
-                  after:absolute
-                  after:-bottom-1
-                  after:left-0
-                  after:h-0.5
-                  after:w-1/2
-                  after:rounded-full
-                  after:bg-primary
-                  sm:text-2xl
-                  lg:text-3xl
-                  xl:text-4xl
-                "
-              >
-                {currentPage}
-              </span>
-            </div>
-          </div>
+      <header className="relative z-30 flex h-16 min-w-0 items-center border-b bg-card px-3 sm:px-4 lg:px-6">
+        <div className="flex min-w-0 items-center gap-1 sm:gap-3">
+          <Link
+            href="/home/dashboard"
+            className="flex shrink-0 items-center gap-2 rounded-lg"
+            aria-label="WorkSync dashboard"
+          >
+            <LogoIcon className="h-8 w-8 shrink-0" />
+            <span className="text-base font-bold tracking-tight sm:text-xl">
+              WorkSync
+            </span>
+          </Link>
         </div>
 
-        {/* ===================================================
-            SEARCH
-        =================================================== */}
-
-        <div className="relative ml-5 min-w-0 flex-1 sm:ml-7 lg:ml-10">
-          <div className="relative w-full max-w-[560px]">
-            <Command onFocus={() => setSearchOpen(true)}>
-              <CommandInput placeholder="Search..." className="h-9 border-0" />
-              {searchOpen && (
-                <div
-                  className="
-            absolute left-0 right-0 top-full z-[100]
-            mt-1 overflow-hidden
-            rounded-md border
-            bg-popover
-            shadow-lg
-          "
-                >
-                  <CommandList className="max-h-80">
-                    <CommandEmpty>No results found.</CommandEmpty>
-
-                    <CommandGroup heading="Navigation">
-                      {searchItems.map((item) => (
-                        <CommandItem
-                          key={item.href}
-                          value={item.label}
-                          onSelect={() => handleSearchSelect(item.href)}
-                        >
-                          {item.label}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </CommandList>
-                </div>
-              )}
-            </Command>
-          </div>
-        </div>
         {/* ===================================================
             RIGHT SECTION
         =================================================== */}
 
-        <div className="ml-3 flex shrink-0 items-center gap-1 sm:ml-6 sm:gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-1 pl-2 sm:gap-2 sm:pl-6">
           {/* =================================================
               ROLE SWITCHER
           ================================================= */}
@@ -434,7 +297,7 @@ export function DashboardHeader() {
                       : "Client"}
                 </span>
 
-                <ChevronDown className="h-4 w-4 shrink-0" />
+                <ChevronDown className="hidden h-4 w-4 shrink-0 sm:block" />
               </button>
             </DropdownMenuTrigger>
 
@@ -530,13 +393,12 @@ export function DashboardHeader() {
               <DropdownMenuSeparator />
 
               <DropdownMenuItem
+                disabled={loggingOut}
                 className="text-destructive focus:text-destructive"
-                onClick={() => {
-                  // Add logout logic here
-                }}
+                onClick={handleLogout}
               >
                 <LogOut className="mr-2 h-4 w-4" />
-                Logout
+                {loggingOut ? "Logging out..." : "Logout"}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -656,6 +518,7 @@ export function DashboardHeader() {
                 type="button"
                 onClick={() => {
                   setShowFreelancerDialog(false);
+                  router.push("/account-setup/freelancer");
                 }}
                 className="
                   rounded-md

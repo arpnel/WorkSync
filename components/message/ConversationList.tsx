@@ -11,6 +11,11 @@ export interface Conversation {
   lastMessageTime: string;
   unreadCount?: number;
   online?: boolean;
+  category?: "projects" | "orders" | "jobs" | "direct";
+  context?: string;
+  archived?: boolean;
+  pinned?: boolean;
+  blocked?: boolean;
 }
 
 interface ConversationListProps {
@@ -33,13 +38,16 @@ export default function ConversationList({
   }
 
   return (
-    <div className="flex flex-col gap-2 p-4">
+    <div className="flex flex-col gap-0.5 px-2 pb-3">
       {conversations.map((conversation) => (
         <ConversationItem
           key={conversation.id}
+          pinned={conversation.pinned}
+          blocked={conversation.blocked}
+          archived={conversation.archived}
           id={conversation.id}
           name={conversation.name}
-          role={conversation.role}
+          role={conversation.context ?? conversation.role}
           avatar={conversation.avatar}
           lastMessage={conversation.lastMessage}
           lastMessageTime={conversation.lastMessageTime}

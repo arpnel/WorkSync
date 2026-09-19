@@ -29,3 +29,13 @@ export interface ChatMessage {
   createdAt: string;
   readAt: string | null;
 }
+
+export interface MessagingPreferences {
+  preferences: {
+    conversation_id: string;
+    is_archived: boolean;
+    is_pinned: boolean;
+  }[];
+  blockedUserIds: string[];
+  blockedByUserIds: string[];
+}

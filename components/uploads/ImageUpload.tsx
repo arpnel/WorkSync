@@ -8,7 +8,6 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
   ACCEPTED_IMAGE_TYPES,
   MAX_IMAGE_SIZE_MB,
-  getMaxBytes,
 } from "@/constants/account-setup.constants";
 
 export interface ImageUploadProps {

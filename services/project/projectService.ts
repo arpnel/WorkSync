@@ -1,7 +1,11 @@
+import { getPublicIdentities } from "@/services/profile/publicIdentityService";
+import { platformAction } from "@/services/platform/platformService";
 import { supabase } from "@/lib/supabaseClient";
 
 export interface ProjectRecord {
+  current_user_id: string;
   order_id: string;
+  application_id?: string | null;
   service_id: string;
   freelancer_id: string;
   client_id: string;
@@ -22,11 +26,18 @@ export interface ProjectRecord {
 ========================================================== */
 
 export async function getProjects(): Promise<ProjectRecord[]> {
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError) throw new Error(`Authentication failed: ${authError.message}`);
+  if (!user) throw new Error("User not authenticated.");
   const { data, error } = await supabase
     .from("service_orders")
     .select(
       `
       order_id,
+      application_id,
       service_id,
       freelancer_id,
       client_id,
@@ -89,6 +100,7 @@ export async function getProjects(): Promise<ProjectRecord[]> {
         created_at,
         updated_at,
 
+        project_submissions (kind, attachment_path),
         milestones (
           milestone_id,
           project_id,
@@ -131,7 +143,31 @@ export async function getProjects(): Promise<ProjectRecord[]> {
     return [];
   }
 
-  return data.map((order) => {
+  const related = (value: unknown): Record<string, unknown> => {
+    const row = Array.isArray(value) ? value[0] : value;
+    return row && typeof row === "object"
+      ? (row as Record<string, unknown>)
+      : {};
+  };
+  const identities = await getPublicIdentities({
+    clientIds: [...new Set(data.map((row) => row.client_id))],
+    freelancerIds: [...new Set(data.map((row) => row.freelancer_id))],
+  });
+  const clients = new Map(
+    identities.clients.map((row) => [row.client_id, row]),
+  );
+  const freelancers = new Map(
+    identities.freelancers.map((row) => [row.freelancer_id, row]),
+  );
+  const profiles = new Map(
+    identities.profiles.map((row) => [row.user_id, row]),
+  );
+  const owned = data.filter(
+    (order) =>
+      clients.get(order.client_id)?.user_id === user.id ||
+      freelancers.get(order.freelancer_id)?.user_id === user.id,
+  );
+  return owned.map((order) => {
     /*
      * Supabase may return a nested project as either
      * an object or an array depending on the detected
@@ -160,7 +196,9 @@ export async function getProjects(): Promise<ProjectRecord[]> {
     }
 
     return {
+      current_user_id: user.id,
       order_id: order.order_id,
+      application_id: order.application_id,
       service_id: order.service_id,
       freelancer_id: order.freelancer_id,
       client_id: order.client_id,
@@ -170,9 +208,20 @@ export async function getProjects(): Promise<ProjectRecord[]> {
 
       service: order.services ?? null,
 
-      freelancer_profile: order.freelancer_profiles ?? null,
+      freelancer_profile: {
+        ...related(order.freelancer_profiles),
+        ...freelancers.get(order.freelancer_id),
+        profile:
+          profiles.get(freelancers.get(order.freelancer_id)?.user_id ?? "") ??
+          null,
+      },
 
-      client_profile: order.client_profiles ?? null,
+      client_profile: {
+        ...related(order.client_profiles),
+        ...clients.get(order.client_id),
+        profile:
+          profiles.get(clients.get(order.client_id)?.user_id ?? "") ?? null,
+      },
 
       project: order.projects ?? null,
 
@@ -180,5 +229,15 @@ export async function getProjects(): Promise<ProjectRecord[]> {
 
       milestones,
     };
+  });
+}
+
+export async function respondToServiceRequest(
+  orderId: string,
+  accepted: boolean,
+): Promise<void> {
+  await platformAction("worksync_respond_service", {
+    p_order: orderId,
+    p_accept: accepted,
   });
 }

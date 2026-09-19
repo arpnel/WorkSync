@@ -2,7 +2,7 @@ import React from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { HeroHeader } from './header'
-import { ChevronRight, CirclePlay } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import Image from 'next/image'
 
 
@@ -24,17 +24,18 @@ export default function HeroSection() {
                                             asChild
                                             size="lg"
                                             className="pr-4.5">
-                                            <Link href="/home/dashboard">
+                                            <Link href="/login">
                                                 <span className="text-nowrap">Get Started</span>
                                                 <ChevronRight className="opacity-50" />
                                             </Link>
                                         </Button>
                                         <Button
                                             key={2}
+                                            asChild
                                             size="lg"
                                             variant="outline"
                                             className="pl-5">
-                                            <span className="text-nowrap">Explore Freelancers</span>
+                                            <Link href="/home/marketplace">Explore Freelancers</Link>
                                         </Button>
                                     </div>
                                 </div>
@@ -47,11 +48,11 @@ export default function HeroSection() {
                             <div className="before:border-foreground/5 before:bg-foreground/5 relative h-full before:absolute before:-inset-x-4 before:bottom-7 before:top-0 before:skew-x-6 before:rounded-[calc(var(--radius)+1rem)] before:border">
                                 <div className="bg-background rounded-(--radius) shadow-foreground/10 ring-foreground/5 relative h-full -translate-y-12 skew-x-6 overflow-hidden border border-transparent shadow-md ring-1">
                                     <Image
-                                        src="/mist/tailark.png"
-                                        alt="app screen"
-                                        width="2880"
-                                        height="1842"
-                                        className="object-top-left size-full object-cover"
+                                        src="/WorkSyncLogo.png"
+                                        alt="WorkSync"
+                                        width={1200}
+                                        height={400}
+                                        className="size-full bg-muted/30 object-contain p-16"
                                     />
                                 </div>
                             </div>

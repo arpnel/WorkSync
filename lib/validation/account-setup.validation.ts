@@ -1,113 +1,72 @@
+import { listProvinces, listMuncities } from "@jobuntux/psgc";
+import {
+  ENGLISH_PROFICIENCY,
+  EMPLOYMENT_PREFERENCES,
+} from "@/constants/account-setup.constants";
 import type {
   ClientSetupValues,
   FreelancerSetupValues,
 } from "@/types/account-setup.types";
-
 type ValidationResult<T> =
   | { ok: true; data: T }
   | { ok: false; errors: Partial<Record<keyof T, string>> };
-
-// ──────────────────────────────────────────────
-// Single field validators
-// ──────────────────────────────────────────────
-
-function validateName(
-  name: string,
-  field: string,
+export function validateSetupFile(
+  file: File,
+  kind: "photo" | "resume" | "document",
 ): string | undefined {
-  const trimmed = name.trim();
-
-  if (!trimmed) {
-    return `${field} is required.`;
-  }
-
-  if (trimmed.length < 2) {
-    return `${field} must be at least 2 characters.`;
-  }
-
-  if (trimmed.length > 50) {
-    return `${field} must be at most 50 characters.`;
-  }
-
-  return undefined;
+  const types =
+    kind === "resume"
+      ? ["application/pdf"]
+      : kind === "photo"
+        ? ["image/jpeg", "image/png", "image/webp"]
+        : ["image/jpeg", "image/png", "image/webp", "application/pdf"];
+  const limit = kind === "photo" ? 5 : 10;
+  if (!types.includes(file.type))
+    return kind === "resume"
+      ? "Choose a PDF resume."
+      : "Choose a JPG, PNG or WebP image" +
+          (kind === "document" ? ", or a PDF." : ".");
+  if (file.size <= 0 || file.size > limit * 1024 * 1024)
+    return `Choose a non-empty file up to ${limit} MB.`;
 }
-
-// ──────────────────────────────────────────────
-// Client Setup Validation
-// ──────────────────────────────────────────────
-
 export function validateClientSetup(
   values: ClientSetupValues,
 ): ValidationResult<ClientSetupValues> {
   const errors: Partial<Record<keyof ClientSetupValues, string>> = {};
-
-  // ────────────────────────────────────────────
-  // Basic Information
-  // ────────────────────────────────────────────
-
-  const firstNameError = validateName(
-    values.firstName,
-    "First Name",
+  for (const field of ["firstName", "lastName"] as const) {
+    const name = values[field].trim();
+    if (!name || name.length > 50 || /[\u0000-\u001f<>]/.test(name))
+      errors[field] =
+        "Enter your name as it appears on your ID (up to 50 characters).";
+  }
+  if (!values.display_name.trim() || values.display_name.trim().length > 50)
+    errors.display_name = "Enter a display name of up to 50 characters.";
+  const province = listProvinces().find(
+    (p) => p.provName.toLowerCase() === values.province.trim().toLowerCase(),
   );
-
-  if (firstNameError) {
-    errors.firstName = firstNameError;
+  if (!province) errors.province = "Choose a province from the list.";
+  if (
+    !province ||
+    !listMuncities(province.provCode).some(
+      (c) => c.munCityName.toLowerCase() === values.city.trim().toLowerCase(),
+    )
+  )
+    errors.city = "Choose a city or municipality in your selected province.";
+  if (
+    !ENGLISH_PROFICIENCY.some(
+      (option) => option.value === values.englishProficiency,
+    )
+  )
+    errors.englishProficiency = "Select your English proficiency.";
+  if (!values.profilePhoto && !values.existingAvatarUrl)
+    errors.profilePhoto = "Add a profile photo.";
+  if (values.profilePhoto) {
+    const error = validateSetupFile(values.profilePhoto, "photo");
+    if (error) errors.profilePhoto = error;
   }
-
-  const lastNameError = validateName(
-    values.lastName,
-    "Last Name",
-  );
-
-  if (lastNameError) {
-    errors.lastName = lastNameError;
-  }
-
-  if (!values.province.trim()) {
-    errors.province = "Province is required.";
-  }
-
-  if (!values.city.trim()) {
-    errors.city = "City is required.";
-  }
-
-  if (!values.englishProficiency) {
-    errors.englishProficiency =
-      "Please select your English proficiency.";
-  }
-
-  // Display Name
-  if (!values.display_name?.trim()) {
-    errors.display_name = "Display name is required.";
-  }
-
-  // ────────────────────────────────────────────
-  // Profile
-  // ────────────────────────────────────────────
-
-  if (!values.profilePhoto) {
-    errors.profilePhoto = "Profile photo is required.";
-  }
-
-  if (!values.shortBio.trim()) {
-    errors.shortBio = "Short bio is required.";
-  } else if (values.shortBio.trim().length < 10) {
-    errors.shortBio = "Bio must be at least 10 characters.";
-  } else if (values.shortBio.trim().length > 500) {
-    errors.shortBio = "Bio must be at most 500 characters.";
-  }
-
-  // ────────────────────────────────────────────
-  // Return validation result
-  // ────────────────────────────────────────────
-
-  if (Object.keys(errors).length > 0) {
-    return {
-      ok: false,
-      errors,
-    };
-  }
-
+  if (values.shortBio.trim().length < 10 || values.shortBio.trim().length > 500)
+    errors.shortBio = "Write a bio between 10 and 500 characters.";
+  if (Object.keys(errors).length) return { ok: false, errors };
   return {
     ok: true,
     data: {
@@ -121,217 +80,104 @@ export function validateClientSetup(
     },
   };
 }
-
-// ──────────────────────────────────────────────
-// Freelancer Setup Validation
-// ──────────────────────────────────────────────
-
 export function validateFreelancerSetup(
   values: FreelancerSetupValues,
 ): ValidationResult<FreelancerSetupValues> {
-  const errors: Partial<
-    Record<keyof FreelancerSetupValues, string>
-  > = {};
-
-  // ────────────────────────────────────────────
-  // Basic Information
-  // ────────────────────────────────────────────
-
-  const firstNameError = validateName(
-    values.firstName,
-    "First Name",
-  );
-
-  if (firstNameError) {
-    errors.firstName = firstNameError;
-  }
-
-  const lastNameError = validateName(
-    values.lastName,
-    "Last Name",
-  );
-
-  if (lastNameError) {
-    errors.lastName = lastNameError;
-  }
-
-  if (!values.province.trim()) {
-    errors.province = "Province is required.";
-  }
-
-  if (!values.city.trim()) {
-    errors.city = "City is required.";
-  }
-
-  if (!values.englishProficiency) {
-    errors.englishProficiency =
-      "Please select your English proficiency.";
-  }
-
-  // Display Name
-  if (!values.display_name?.trim()) {
-    errors.display_name = "Display name is required.";
-  }
-
-  // ────────────────────────────────────────────
-  // Profile
-  // ────────────────────────────────────────────
-
-  if (!values.profilePhoto) {
-    errors.profilePhoto = "Profile photo is required.";
-  }
-
-  if (!values.shortBio.trim()) {
-    errors.shortBio = "Short bio is required.";
-  } else if (values.shortBio.trim().length < 10) {
-    errors.shortBio = "Bio must be at least 10 characters.";
-  } else if (values.shortBio.trim().length > 500) {
-    errors.shortBio = "Bio must be at most 500 characters.";
-  }
-
-  // ────────────────────────────────────────────
-  // Freelancer Information
-  // ────────────────────────────────────────────
-
-  // Industries
-  if (!values.industries || values.industries.length === 0) {
-    errors.industries = "Select at least one industry.";
-  }
-
-  // Skills
-  if (!values.skills || values.skills.length === 0) {
-    errors.skills = "Select at least one skill.";
-  } else if (values.skills.length > 25) {
-    errors.skills = "You can select up to 25 skills.";
-  }
-
-  // Years of Experience
+  const base = validateClientSetup(values);
+  const errors: Partial<Record<keyof FreelancerSetupValues, string>> = base.ok
+    ? {}
+    : { ...base.errors };
+  if ((values.headline?.trim().length ?? 0) > 120)
+    errors.headline = "Keep your professional headline within 120 characters.";
   if (
-    values.yearsOfExperience === undefined ||
-    values.yearsOfExperience < 0
-  ) {
-    errors.yearsOfExperience =
-      "Years of experience cannot be negative.";
-  } else if (values.yearsOfExperience > 50) {
-    errors.yearsOfExperience =
-      "Years of experience cannot exceed 50.";
-  }
-
-  // Employment Preference
-  if (!values.employmentPreference) {
-    errors.employmentPreference =
-      "Please select an employment preference.";
-  }
-
-  // ────────────────────────────────────────────
-  // URLs
-  // ────────────────────────────────────────────
-
+    values.hourlyRate?.trim() &&
+    (!Number.isFinite(Number(values.hourlyRate)) ||
+      Number(values.hourlyRate) <= 0)
+  )
+    errors.hourlyRate =
+      "Enter an hourly rate greater than zero, or leave it blank.";
+  if (!values.industries.length || values.industries.length > 10)
+    errors.industries = "Select between 1 and 10 industries.";
+  if (!values.skills.length || values.skills.length > 25)
+    errors.skills = "Select between 1 and 25 skills.";
   if (
-    values.portfolioWebsite?.trim() &&
-    !isValidUrl(values.portfolioWebsite.trim())
-  ) {
-    errors.portfolioWebsite = "Please enter a valid URL.";
-  }
-
+    !Number.isInteger(values.yearsOfExperience) ||
+    values.yearsOfExperience < 0 ||
+    values.yearsOfExperience > 50
+  )
+    errors.yearsOfExperience = "Enter a whole number from 0 to 50.";
   if (
-    values.linkedIn?.trim() &&
-    !isValidUrl(values.linkedIn.trim())
-  ) {
-    errors.linkedIn = "Please enter a valid URL.";
+    !EMPLOYMENT_PREFERENCES.some(
+      (option) => option.value === values.employmentPreference,
+    )
+  )
+    errors.employmentPreference = "Select an employment preference.";
+  for (const field of ["portfolioWebsite", "linkedIn", "github"] as const) {
+    if (!values[field].trim()) continue;
+    try {
+      const url = new URL(values[field].trim());
+      if (
+        !["https:", "http:"].includes(url.protocol) ||
+        url.username ||
+        url.password
+      )
+        throw new Error();
+      if (
+        field === "linkedIn" &&
+        url.hostname !== "linkedin.com" &&
+        !url.hostname.endsWith(".linkedin.com")
+      )
+        throw new Error();
+      if (
+        field === "github" &&
+        url.hostname !== "github.com" &&
+        url.hostname !== "www.github.com"
+      )
+        throw new Error();
+    } catch {
+      errors[field] =
+        `Enter a valid ${field === "linkedIn" ? "LinkedIn" : field === "github" ? "GitHub" : "website"} URL.`;
+    }
   }
-
+  if (!values.resume && !values.existingResumeUrl)
+    errors.resume = "Add your PDF resume.";
+  if (values.resume) {
+    const error = validateSetupFile(values.resume, "resume");
+    if (error) errors.resume = error;
+  }
   if (
-    values.github?.trim() &&
-    !isValidUrl(values.github.trim())
-  ) {
-    errors.github = "Please enter a valid URL.";
+    !values.portfolioSamples.length &&
+    !values.existingPortfolioSamples?.length
+  )
+    errors.portfolioSamples = "Add at least one portfolio sample.";
+  for (const field of ["portfolioSamples", "certifications"] as const) {
+    const previous =
+      field === "portfolioSamples"
+        ? values.existingPortfolioSamples
+        : values.existingCertifications;
+    if (values[field].length + (previous?.length ?? 0) > 10)
+      errors[field] = "Keep at most 10 files in this section.";
+    for (const file of values[field]) {
+      const error = validateSetupFile(file, "document");
+      if (error) {
+        errors[field] = error;
+        break;
+      }
+    }
   }
-
-  // ────────────────────────────────────────────
-  // Resume
-  // ────────────────────────────────────────────
-
-  if (!values.resume) {
-    errors.resume = "Resume is required.";
-  } else if (values.resume.type !== "application/pdf") {
-    errors.resume = "Resume must be a PDF file.";
-  } else if (values.resume.size > 10 * 1024 * 1024) {
-    errors.resume = "Resume must be less than 10MB.";
-  }
-
-  // ────────────────────────────────────────────
-  // Government ID
-  // ────────────────────────────────────────────
-
-  if (!values.governmentId) {
-    errors.governmentId = "Government ID is required.";
-  } else if (
-    values.governmentId.size > 10 * 1024 * 1024
-  ) {
-    errors.governmentId =
-      "Government ID must be less than 10MB.";
-  }
-
-  // ────────────────────────────────────────────
-  // Portfolio Samples
-  // ────────────────────────────────────────────
-
-  if (
-    !values.portfolioSamples ||
-    values.portfolioSamples.length === 0
-  ) {
-    errors.portfolioSamples =
-      "Upload at least one portfolio sample.";
-  }
-
-  // ────────────────────────────────────────────
-  // Return validation result
-  // ────────────────────────────────────────────
-
-  if (Object.keys(errors).length > 0) {
-    return {
-      ok: false,
-      errors,
-    };
-  }
-
+  if (Object.keys(errors).length) return { ok: false, errors };
   return {
     ok: true,
     data: {
       ...values,
-      firstName: values.firstName.trim(),
-      lastName: values.lastName.trim(),
-      display_name: values.display_name.trim(),
-      province: values.province.trim(),
-      city: values.city.trim(),
-      shortBio: values.shortBio.trim(),
-
-      portfolioWebsite:
-        values.portfolioWebsite?.trim() ?? "",
-
-      linkedIn:
-        values.linkedIn?.trim() ?? "",
-
-      github:
-        values.github?.trim() ?? "",
+      ...(base.ok ? base.data : {}),
+      industries: [...new Set(values.industries)],
+      skills: [...new Set(values.skills)],
+      headline: values.headline?.trim() ?? "",
+      hourlyRate: values.hourlyRate?.trim() ?? "",
+      portfolioWebsite: values.portfolioWebsite.trim(),
+      linkedIn: values.linkedIn.trim(),
+      github: values.github.trim(),
     },
   };
-}
-
-// ──────────────────────────────────────────────
-// Helpers
-// ──────────────────────────────────────────────
-
-function isValidUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-
-    return (
-      parsed.protocol === "http:" ||
-      parsed.protocol === "https:"
-    );
-  } catch {
-    return false;
-  }
 }

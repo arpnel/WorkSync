@@ -1,283 +1,225 @@
-"use client";
-
-import { useCallback, useEffect, useState } from "react";
-
+﻿"use client";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-
-import MarketplaceHeader from "../../../components/marketplace/MarketplaceHeader";
-import MarketplaceFilterSheet from "../../../components/marketplace/MarketplaceFilterSheet";
-import MarketplaceGrid from "../../../components/marketplace/MarketplaceGrid";
-
-import { getMarketplaceServices } from "@/services/marketplace/MarketplaceServices";
-
-import type {
-  MarketplaceItem,
-  MarketplaceSort,
+import MarketplaceHeader from "@/components/marketplace/MarketplaceHeader";
+import MarketplaceFilterSheet from "@/components/marketplace/MarketplaceFilterSheet";
+import MarketplaceGrid from "@/components/marketplace/MarketplaceGrid";
+import { Button } from "@/components/ui/button";
+import {
+  getMarketplaceServices,
+  type MarketplaceItem,
+  type MarketplaceSort,
 } from "@/services/marketplace/MarketplaceServices";
-
-import type { MarketplaceFiltersValue } from "../../../components/marketplace/MarketplaceFilters";
+import {
+  getSavedListings,
+  saveListing,
+  listingKey,
+  getFreelancerRatings,
+} from "@/services/marketplace/listingActions";
+import type {
+  MarketplaceFiltersValue,
+  SortOption,
+} from "@/components/marketplace/MarketplaceFilters";
 
 export default function MarketplacePage() {
   const router = useRouter();
-
-  /* ==========================================================
-     MARKETPLACE LISTINGS
-  ========================================================== */
-
+  const [ratings, setRatings] = useState<Map<string, number>>(new Map());
   const [services, setServices] = useState<MarketplaceItem[]>([]);
-
   const [loading, setLoading] = useState(true);
-
-  /* ==========================================================
-     SEARCH
-  ========================================================== */
-
+  const [error, setError] = useState("");
+  const [saveError, setSaveError] = useState("");
   const [search, setSearch] = useState("");
-
-  /* ==========================================================
-     CATEGORY / SERVICE
-  ========================================================== */
-
   const [selectedService, setSelectedService] = useState<string | null>(null);
-
-  /* ==========================================================
-     FILTERS
-  ========================================================== */
-
-  const [sort, setSort] = useState<MarketplaceSort>("latest");
-
-  const [minPrice, setMinPrice] = useState<number | null>(null);
-
-  const [maxPrice, setMaxPrice] = useState<number | null>(null);
-
-  /*
-   * Marketplace service layer uses:
-   *
-   * service = Freelancer Service
-   * job     = Client Job
-   */
-  const [listingType, setListingType] = useState<"service" | "job">("service");
-
-  const [rating, setRating] = useState(0);
-
-  /* ==========================================================
-     FILTER SHEET
-  ========================================================== */
-
   const [filterOpen, setFilterOpen] = useState(false);
-
-  /* ==========================================================
-     LOAD MARKETPLACE
-  ========================================================== */
-
-  const loadServices = useCallback(async () => {
+  const [filters, setFilters] = useState<MarketplaceFiltersValue>({
+    sort: ["latest"],
+    listingType: "freelancer",
+    minPrice: "",
+    maxPrice: "",
+    rating: 0,
+    savedOnly: false,
+  });
+  const [saved, setSaved] = useState<Set<string>>(new Set());
+  const savedOnly = filters.savedOnly;
+  const [saving, setSaving] = useState<string | null>(null);
+  const version = useRef(0);
+  const load = useCallback(async () => {
+    const request = ++version.current;
     setLoading(true);
-
+    setError("");
     try {
-      const data = await getMarketplaceServices({
+      const sort: MarketplaceSort = filters.sort.includes("lowestPrice")
+        ? "lowestPrice"
+        : "latest";
+      const result = await getMarketplaceServices({
         search,
         sort,
-        minPrice,
-        maxPrice,
-        listingType,
+        listingType: filters.listingType === "freelancer" ? "service" : "job",
+        minPrice: filters.minPrice ? Number(filters.minPrice) : null,
+        maxPrice: filters.maxPrice ? Number(filters.maxPrice) : null,
       });
-
-      setServices(data);
-    } catch (error) {
-      console.error("Marketplace failed to load:", error);
-
-      setServices([]);
+      const ratings = await getFreelancerRatings(
+        result.flatMap((item) =>
+          item.freelancer_id ? [item.freelancer_id] : [],
+        ),
+      );
+      const rated = result.filter(
+        (item) =>
+          item.listing_type === "job" ||
+          (ratings.get(item.freelancer_id ?? "") ?? 0) >= filters.rating,
+      );
+      if (filters.sort.includes("highestRated"))
+        rated.sort(
+          (a, b) =>
+            (ratings.get(b.freelancer_id ?? "") ?? 0) -
+            (ratings.get(a.freelancer_id ?? "") ?? 0),
+        );
+      if (request === version.current) {
+        setServices(rated);
+        setRatings(ratings);
+      }
+    } catch (cause) {
+      if (request === version.current)
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "Unable to load marketplace.",
+        );
     } finally {
-      setLoading(false);
+      if (request === version.current) setLoading(false);
     }
-  }, [search, sort, minPrice, maxPrice, listingType]);
-
-  /* ==========================================================
-     INITIAL / FILTERED LOAD
-  ========================================================== */
-
+  }, [search, filters]);
   useEffect(() => {
-    loadServices();
-  }, [loadServices]);
-
-  /* ==========================================================
-     SEARCH
-  ========================================================== */
-
-  function handleSearch() {
-    loadServices();
-  }
-
-  /* ==========================================================
-     SERVICE CATEGORY
-  ========================================================== */
-
-  function handleServiceChange(service: string | null) {
-    setSelectedService(service);
-
-    /*
-     * Category/subcategory mapping can be
-     * connected later.
-     */
-  }
-
-  /* ==========================================================
-     APPLY FILTERS
-  ========================================================== */
-
-  function handleApplyFilters(filters: MarketplaceFiltersValue) {
-    /*
-     * IMPORTANT:
-     *
-     * MarketplaceFilters uses:
-     *
-     * freelancer = Freelancer Services
-     * client     = Client Job Posts
-     *
-     * MarketplaceServices uses:
-     *
-     * service = Freelancer Services
-     * job     = Client Job Posts
-     *
-     * Convert between them here.
-     */
-
-    setListingType(filters.listingType === "freelancer" ? "service" : "job");
-
-    /* ========================================================
-       PRICE
-    ======================================================== */
-
-    setMinPrice(filters.minPrice ? Number(filters.minPrice) : null);
-
-    setMaxPrice(filters.maxPrice ? Number(filters.maxPrice) : null);
-
-    /* ========================================================
-       RATING
-    ======================================================== */
-
-    setRating(filters.rating);
-
-    /* ========================================================
-       SORT
-    ======================================================== */
-
-    if (filters.sort.includes("lowestPrice")) {
-      setSort("lowestPrice");
-    } else if (filters.sort.includes("highestRated")) {
-      /*
-       * highestRated is not currently available
-       * in MarketplaceSort, so keep latest until
-       * rating aggregation is implemented.
-       */
-      setSort("latest");
-    } else {
-      setSort("latest");
+    const requests = version;
+    const timer = setTimeout(() => void load(), 250);
+    return () => {
+      clearTimeout(timer);
+      requests.current++;
+    };
+  }, [load]);
+  useEffect(() => {
+    let alive = true;
+    void getSavedListings()
+      .then((data) => {
+        if (alive) setSaved(data);
+      })
+      .catch((cause) => {
+        if (alive) setSaveError(cause.message);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  async function toggle(listing: MarketplaceItem) {
+    if (saving) return;
+    const id =
+      listing.listing_type === "service" ? listing.service_id : listing.job_id;
+    const key = listingKey(listing.listing_type, id);
+    setSaving(key);
+    setSaveError("");
+    try {
+      await saveListing(listing.listing_type, id, !saved.has(key));
+      setSaved((current) => {
+        const next = new Set(current);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        return next;
+      });
+    } catch (cause) {
+      setSaveError(
+        cause instanceof Error ? cause.message : "Unable to save listing.",
+      );
+    } finally {
+      setSaving(null);
     }
-
-    /* ========================================================
-       CLOSE FILTER SHEET
-    ======================================================== */
-
-    setFilterOpen(false);
   }
-
-  /* ==========================================================
-     FILTER BUTTON
-  ========================================================== */
-
-  function handleFilterClick() {
-    setFilterOpen(true);
-  }
-
-  /* ==========================================================
-     CREATE
-  ========================================================== */
-
-  function handleCreateClick() {
-    router.push("/home/my-listings");
-  }
-
-  /* ==========================================================
-     OPEN LISTING
-  ========================================================== */
-
-  function handleServiceClick(listing: MarketplaceItem) {
-    if (listing.listing_type !== "service") return;
-    const serviceId = listing.service_id;
-
-    if (!serviceId) {
-      console.error("Cannot open marketplace listing: serviceId is undefined.");
-
-      return;
-    }
-
-    router.push(`/home/marketplace/${serviceId}`);
-  }
-
-  /* ==========================================================
-     CURRENT FILTERS
-  ========================================================== */
-
-  const currentFilters: MarketplaceFiltersValue = {
-    sort: [sort === "lowestPrice" ? "lowestPrice" : "latest"],
-
-    /*
-     * Convert the marketplace service-layer
-     * value back into the filter-layer value.
-     */
-    listingType: listingType === "service" ? "freelancer" : "client",
-
-    minPrice: minPrice !== null ? String(minPrice) : "",
-
-    maxPrice: maxPrice !== null ? String(maxPrice) : "",
-
-    rating,
-  };
-
-  /* ==========================================================
-     RENDER
-  ========================================================== */
-
+  const visible = services.filter((listing) => {
+    const id =
+      listing.listing_type === "service" ? listing.service_id : listing.job_id;
+    return (
+      (!savedOnly || saved.has(listingKey(listing.listing_type, id))) &&
+      (!selectedService ||
+        listing.category?.name.toLowerCase() === selectedService.toLowerCase())
+    );
+  });
   return (
-    <main className="min-h-screen bg-muted/30">
-      <div className="w-full px-6 py-4">
-        {/* ==================================================
-            HEADER
-        ================================================== */}
-
+    <main className="min-w-0">
+      <div className="mx-auto w-full max-w-[1600px] space-y-5">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+            Marketplace
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Find the right expertise or your next opportunity.
+          </p>
+        </div>
         <MarketplaceHeader
           search={search}
           onSearchChange={setSearch}
-          onSearch={handleSearch}
-          onFilterClick={handleFilterClick}
-          onCreateClick={handleCreateClick}
+          onSearch={() => void load()}
+          onFilterClick={() => setFilterOpen(true)}
+          onCreateClick={() => router.push("/home/my-listings")}
           selectedService={selectedService}
-          onServiceChange={handleServiceChange}
+          onServiceChange={setSelectedService}
         />
-
-        {/* ==================================================
-            FILTER SHEET
-        ================================================== */}
-
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p role="status" className="text-sm text-muted-foreground">
+            {loading ? "Finding listings..." : `${visible.length} listings`}
+          </p>
+          <label className="ml-auto flex items-center gap-2 text-sm">
+            <span className="shrink-0 text-muted-foreground">Sort by</span>
+            <select
+              className="h-11 rounded-lg border bg-card px-3 text-foreground"
+              value={filters.sort[0] ?? "latest"}
+              onChange={(event) => {
+                const sort = event.target.value as SortOption;
+                setFilters((current) => ({ ...current, sort: [sort] }));
+              }}
+            >
+              <option value="latest">Latest</option>
+              <option value="lowestPrice">Lowest price</option>
+              <option value="highestRated">Highest rated</option>
+            </select>
+          </label>
+        </div>
         <MarketplaceFilterSheet
           open={filterOpen}
           onOpenChange={setFilterOpen}
-          onApply={handleApplyFilters}
-          initialFilters={currentFilters}
+          initialFilters={filters}
+          onApply={(value) => {
+            setFilters((current) => ({ ...value, sort: current.sort }));
+            setFilterOpen(false);
+          }}
         />
-
-        {/* ==================================================
-            MARKETPLACE GRID
-        ================================================== */}
-
-        <div className="mt-4">
+        {saveError && (
+          <p role="alert" className="my-2 text-sm text-destructive">
+            Saved listings: {saveError}
+          </p>
+        )}
+        {error ? (
+          <div role="alert" className="p-4 text-sm text-destructive">
+            {error}
+            <Button variant="outline" onClick={() => void load()}>
+              Retry
+            </Button>
+          </div>
+        ) : (
           <MarketplaceGrid
-            services={services}
+            services={visible}
+            ratings={ratings}
             loading={loading}
-            onCardClick={handleServiceClick}
+            saved={saved}
+            saving={saving}
+            onSave={toggle}
+            onCardClick={(listing) =>
+              router.push(
+                listing.listing_type === "service"
+                  ? `/home/marketplace/${listing.service_id}`
+                  : `/home/marketplace/jobs/${listing.job_id}`,
+              )
+            }
           />
-        </div>
+        )}
       </div>
     </main>
   );

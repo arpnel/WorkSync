@@ -182,7 +182,14 @@ export async function getMessageConversations(): Promise<{
     messagesByConversation.set(message.conversation_id, existing);
   }
 
-  const conversations = (conversationsResult.data ?? []).map(
+  const conversationRows = [
+    ...new Map(
+      (conversationsResult.data ?? [])
+        .filter((row) => conversationIds.includes(row.conversation_id))
+        .map((row) => [row.conversation_id, row]),
+    ).values(),
+  ];
+  const conversations = conversationRows.map(
     (conversation): MessageConversation => {
       const messages =
         messagesByConversation.get(conversation.conversation_id) ?? [];
@@ -243,16 +250,52 @@ export async function getConversationMessages(
     throw new Error("You are not a participant in this conversation.");
   }
 
-  const { data: messages, error } = await supabase
-    .from("messages")
-    .select(
-      "message_id, conversation_id, sender_id, message, attachment_url, attachment_type, created_at, read_at",
-    )
-    .eq("conversation_id", conversationId)
-    .order("created_at", { ascending: true });
-
-  if (error) {
-    throw error;
+  // Fetch every page so shared history/search includes older attachments.
+  const messages: {
+    message_id: string;
+    conversation_id: string;
+    sender_id: string;
+    message: string | null;
+    attachment_url: string | null;
+    attachment_type: string | null;
+    created_at: string;
+    read_at: string | null;
+  }[] = [];
+  const pageSize = 500;
+  const seenMessageIds = new Set<string>();
+  let cursor: { createdAt: string; messageId: string } | null = null;
+  for (;;) {
+    let query = supabase
+      .from("messages")
+      .select(
+        "message_id, conversation_id, sender_id, message, attachment_url, attachment_type, created_at, read_at",
+      )
+      .eq("conversation_id", conversationId)
+      .order("created_at", { ascending: true })
+      .order("message_id", { ascending: true })
+      .limit(pageSize);
+    if (cursor) {
+      query = query.or(
+        `created_at.gt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},message_id.gt.${cursor.messageId})`,
+      );
+    }
+    const { data, error } = await query;
+    if (error) throw error;
+    let added = 0;
+    for (const message of data ?? []) {
+      // Keep the data boundary scoped even if a stale/invalid response arrives.
+      if (
+        message.conversation_id !== conversationId ||
+        seenMessageIds.has(message.message_id)
+      )
+        continue;
+      seenMessageIds.add(message.message_id);
+      messages.push(message);
+      added += 1;
+    }
+    if (!data || data.length < pageSize || added === 0) break;
+    const last = data[data.length - 1];
+    cursor = { createdAt: last.created_at, messageId: last.message_id };
   }
 
   const senderIds = [
@@ -270,7 +313,7 @@ export async function getConversationMessages(
       senderName:
         message.sender_id === currentUserId ? "You" : (sender?.name ?? "User"),
       senderAvatarUrl: sender?.avatarUrl ?? null,
-      message: message.message,
+      message: message.message ?? "",
       attachmentUrl: message.attachment_url,
       attachmentType: message.attachment_type,
       createdAt: message.created_at,
@@ -282,25 +325,116 @@ export async function getConversationMessages(
 export async function sendConversationMessage(
   conversationId: string,
   message: string,
+  attachment?: File,
 ): Promise<void> {
   const senderId = await getCurrentUserId();
   const cleanMessage = message.trim();
-
-  if (!cleanMessage) {
-    return;
+  if (!cleanMessage && !attachment) return;
+  if (cleanMessage.length > 10000)
+    throw new Error("Messages must be 10,000 characters or shorter.");
+  let path: string | null = null;
+  if (attachment) {
+    if (attachment.size > 10 * 1024 * 1024)
+      throw new Error("Files must be 10 MB or smaller.");
+    const name = attachment.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    path =
+      senderId + "/" + conversationId + "/" + crypto.randomUUID() + "-" + name;
+    const { error } = await supabase.storage
+      .from("message-attachments")
+      .upload(path, attachment);
+    if (error)
+      throw new Error(
+        "Unable to upload the file. Please try again or contact support.",
+      );
   }
-
   const { error } = await supabase.from("messages").insert({
     conversation_id: conversationId,
     sender_id: senderId,
-    message: cleanMessage,
-    attachment_url: null,
-    attachment_type: null,
+    message: cleanMessage || attachment?.name || "Attachment",
+    attachment_url: path,
+    attachment_type: attachment
+      ? attachment.type || "application/octet-stream"
+      : null,
   });
-
   if (error) {
-    throw error;
+    if (path) await supabase.storage.from("message-attachments").remove([path]);
+    throw new Error(error.message);
   }
+}
+
+export function isMessagingSetupMissing(error: unknown): boolean {
+  if (!error || typeof error !== "object" || !("code" in error)) return false;
+  return error.code === "PGRST205" || error.code === "42P01";
+}
+
+export async function getMessagingPreferences(): Promise<
+  import("@/types/message/message").MessagingPreferences
+> {
+  const userId = await getCurrentUserId();
+  const [preferences, blocks] = await Promise.all([
+    supabase
+      .from("conversation_preferences")
+      .select("conversation_id, is_archived, is_pinned")
+      .eq("user_id", userId),
+    supabase
+      .from("user_blocks")
+      .select("blocker_id, blocked_id")
+      .or("blocker_id.eq." + userId + ",blocked_id.eq." + userId),
+  ]);
+  if (preferences.error) throw preferences.error;
+  if (blocks.error) throw blocks.error;
+  return {
+    preferences: preferences.data ?? [],
+    blockedUserIds: (blocks.data ?? [])
+      .filter((b) => b.blocker_id === userId)
+      .map((b) => b.blocked_id),
+    blockedByUserIds: (blocks.data ?? [])
+      .filter((b) => b.blocked_id === userId)
+      .map((b) => b.blocker_id),
+  };
+}
+
+export async function saveConversationPreference(
+  conversationId: string,
+  preference: { is_archived: boolean; is_pinned: boolean },
+) {
+  const userId = await getCurrentUserId();
+  const { error } = await supabase.from("conversation_preferences").upsert(
+    {
+      conversation_id: conversationId,
+      user_id: userId,
+      ...preference,
+    },
+    { onConflict: "conversation_id,user_id" },
+  );
+  if (error) throw error;
+}
+
+export async function setUserBlocked(blockedId: string, blocked: boolean) {
+  const userId = await getCurrentUserId();
+  if (!blockedId || blockedId === userId) throw new Error("Invalid user.");
+  const result = blocked
+    ? await supabase
+        .from("user_blocks")
+        .upsert(
+          { blocker_id: userId, blocked_id: blockedId },
+          { onConflict: "blocker_id,blocked_id", ignoreDuplicates: true },
+        )
+    : await supabase
+        .from("user_blocks")
+        .delete()
+        .eq("blocker_id", userId)
+        .eq("blocked_id", blockedId);
+  if (result.error) throw result.error;
+}
+
+export async function getMessageAttachmentUrl(value: string): Promise<string> {
+  if (/^https?:\/\//i.test(value)) return value;
+  const { data, error } = await supabase.storage
+    .from("message-attachments")
+    .createSignedUrl(value, 60 * 5);
+  if (error) throw error;
+  return data.signedUrl;
 }
 
 export async function markConversationRead(

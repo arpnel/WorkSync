@@ -7,9 +7,10 @@ import { Project, ProjectCard } from "./ProjectCard";
 
 interface ProjectListProps {
   projects: Project[];
+  onChanged?: () => Promise<void> | void;
 }
 
-export function ProjectList({ projects }: ProjectListProps) {
+export function ProjectList({ projects, onChanged }: ProjectListProps) {
   if (projects.length === 0) {
     return (
       <Card>
@@ -29,7 +30,11 @@ export function ProjectList({ projects }: ProjectListProps) {
   return (
     <div className="space-y-3">
       {projects.map((project) => (
-        <ProjectCard key={project.orderId} project={project} />
+        <ProjectCard
+          key={project.orderId}
+          project={project}
+          onChanged={onChanged}
+        />
       ))}
     </div>
   );

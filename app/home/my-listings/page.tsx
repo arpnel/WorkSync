@@ -1,4 +1,5 @@
 "use client";
+import ContentSkeleton from "@/components/shared/ContentSkeleton";
 
 import { useCallback, useEffect, useState } from "react";
 import { Archive, Loader2 } from "lucide-react";
@@ -11,6 +12,7 @@ import {
   type MarketplaceItem,
 } from "@/services/marketplace/MarketplaceServices";
 
+import { ListingEditDialog } from "@/components/listings/ListingEditDialog";
 import { ListingCard } from "@/components/listings/ListingsGrid";
 import { ListingsToolbar } from "@/components/listings/ListingsToolbar";
 import {
@@ -25,7 +27,11 @@ import {
 } from "@/components/ui/alert-dialog";
 
 export default function Page() {
+  const [editing, setEditing] = useState<MarketplaceItem | null>(null);
+  const [search, setSearch] = useState("");
+  const [kind, setKind] = useState("all");
   const [listings, setListings] = useState<MarketplaceItem[]>([]);
+  const [loadError, setLoadError] = useState("");
   const [loading, setLoading] = useState(true);
   const [pendingArchiveId, setPendingArchiveId] = useState<string | null>(null);
   const [archiving, setArchiving] = useState(false);
@@ -40,9 +46,14 @@ export default function Page() {
     try {
       const data = await getMyMarketplaceListings();
 
+      setLoadError("");
       setListings(Array.isArray(data) ? data.filter(Boolean) : []);
     } catch (error) {
-      console.error("Failed to load listings:", error);
+      setLoadError(
+        error instanceof Error
+          ? error.message
+          : "Unable to load your listings.",
+      );
 
       setListings([]);
     } finally {
@@ -66,6 +77,13 @@ export default function Page() {
     if (listingId) setPendingArchiveId(listingId);
   };
 
+  const visible = listings.filter(
+    (item) =>
+      (kind === "all" || item.listing_type === kind) &&
+      [item.title, item.description].some((value) =>
+        value.toLowerCase().includes(search.toLowerCase()),
+      ),
+  );
   const pendingListing = listings.find((item) =>
     item.listing_type === "service"
       ? item.service_id === pendingArchiveId
@@ -102,44 +120,9 @@ export default function Page() {
      LOADING SKELETON
   ========================================================== */
 
-  const renderSkeleton = () => {
-    return (
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {Array.from({ length: 6 }).map((_, index) => (
-          <div
-            key={index}
-            className="animate-pulse overflow-hidden rounded-3xl border bg-background"
-          >
-            <div className="h-44 bg-muted" />
-
-            <div className="space-y-4 p-4">
-              <div className="flex items-center gap-3">
-                <div className="h-9 w-9 rounded-full bg-muted" />
-
-                <div className="flex-1 space-y-2">
-                  <div className="h-3 w-1/2 rounded bg-muted" />
-                  <div className="h-2.5 w-1/3 rounded bg-muted" />
-                </div>
-              </div>
-
-              <div className="h-4 w-4/5 rounded bg-muted" />
-
-              <div className="flex gap-2">
-                <div className="h-6 w-20 rounded-full bg-muted" />
-                <div className="h-6 w-16 rounded-full bg-muted" />
-              </div>
-
-              <div className="h-4 w-1/3 rounded bg-muted" />
-
-              <div className="border-t pt-3">
-                <div className="h-6 w-24 rounded bg-muted" />
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  };
+  const renderSkeleton = () => (
+    <ContentSkeleton label="Loading listings" variant="listings" />
+  );
 
   /* ==========================================================
      EMPTY STATE
@@ -165,45 +148,77 @@ export default function Page() {
   ========================================================== */
 
   return (
-    <main className="min-h-screen bg-background">
-      <div className="w-full px-3 py-4 sm:px-6 sm:py-6">
-        <div className="mx-auto w-full max-w-7xl rounded-2xl bg-muted/30 p-3 sm:p-4">
-          {/* ==================================================
+    <div className="min-w-0 space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+          My Listings
+        </h1>
+      </div>
+      {/* ==================================================
               TOOLBAR
           ================================================== */}
 
-          <div className="rounded-2xl border bg-card p-3 sm:p-4">
-            <ListingsToolbar onCreated={() => loadListings()} />
-          </div>
+      <div className="space-y-3">
+        {loadError && (
+          <p role="alert" className="text-sm text-destructive">
+            {loadError}{" "}
+            <button
+              className="underline"
+              type="button"
+              onClick={() => void loadListings()}
+            >
+              Retry
+            </button>
+          </p>
+        )}
+        <ListingsToolbar
+          onCreated={() => loadListings()}
+          search={search}
+          onSearchChange={setSearch}
+          kind={kind}
+          onKindChange={setKind}
+        />
+        {editing && (
+          <ListingEditDialog
+            key={
+              editing.listing_type === "service"
+                ? editing.service_id
+                : editing.job_id
+            }
+            listing={editing}
+            onClose={() => setEditing(null)}
+            onSaved={loadListings}
+          />
+        )}
+      </div>
 
-          {/* ==================================================
+      {/* ==================================================
               LISTINGS
           ================================================== */}
 
-          <div className="mt-3 rounded-2xl border bg-card p-3 sm:mt-4 sm:p-6">
-            {loading ? (
-              renderSkeleton()
-            ) : listings.length === 0 ? (
-              renderEmptyState()
-            ) : (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {listings.map((listing) => (
-                  <ListingCard
-                    key={
-                      "service_id" in listing
-                        ? listing.service_id
-                        : "job_id" in listing
-                          ? listing.job_id
-                          : crypto.randomUUID()
-                    }
-                    listing={listing}
-                    onArchive={handleArchive}
-                  />
-                ))}
-              </div>
-            )}
+      <div className="min-w-0">
+        {loading ? (
+          renderSkeleton()
+        ) : visible.length === 0 ? (
+          renderEmptyState()
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {visible.map((listing) => (
+              <ListingCard
+                key={
+                  "service_id" in listing
+                    ? listing.service_id
+                    : "job_id" in listing
+                      ? listing.job_id
+                      : crypto.randomUUID()
+                }
+                listing={listing}
+                onEdit={() => setEditing(listing)}
+                onArchive={handleArchive}
+              />
+            ))}
           </div>
-        </div>
+        )}
       </div>
 
       <AlertDialog
@@ -247,6 +262,6 @@ export default function Page() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </main>
+    </div>
   );
 }

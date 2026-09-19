@@ -143,13 +143,18 @@ export function BasicInformationSection({
 
         {/* Display Name */}
         <div className="space-y-2">
-          <Label htmlFor="display_name">Display Name</Label>
+          <Label htmlFor="display_name">
+            Display Name <span className="text-destructive">*</span>
+          </Label>
 
           <Input
             id="display_name"
             value={values.display_name}
             onChange={(e) => handleChange("display_name", e.target.value)}
           />
+          {errors.display_name && (
+            <p className="text-xs text-destructive">{errors.display_name}</p>
+          )}
         </div>
 
         {/* Province */}

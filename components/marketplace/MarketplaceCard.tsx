@@ -2,15 +2,22 @@
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card } from "@/components/ui/card";
-import { BriefcaseBusiness, CalendarDays, Wallet } from "lucide-react";
+import {
+  BriefcaseBusiness,
+  CalendarDays,
+  Wallet,
+  Star,
+  ShieldCheck,
+} from "lucide-react";
 import type { MarketplaceItem } from "@/services/marketplace/MarketplaceServices";
 
 interface Props {
   listing: MarketplaceItem;
+  rating?: number;
   onClick?: () => void;
 }
 
-export default function MarketplaceCard({ listing, onClick }: Props) {
+export default function MarketplaceCard({ listing, onClick, rating }: Props) {
   const isService = listing.listing_type === "service";
   const profile = isService
     ? listing.freelancer?.profile
@@ -35,12 +42,12 @@ export default function MarketplaceCard({ listing, onClick }: Props) {
     return (
       <button
         type="button"
-        className="block w-full text-left"
+        className="block h-full w-full rounded-2xl text-left focus-visible:outline-2 focus-visible:outline-primary"
         onClick={onClick}
         disabled={!onClick}
       >
-        <Card className="flex min-h-[280px] w-full flex-col gap-0 overflow-hidden rounded-lg border bg-background p-0 transition hover:-translate-y-0.5 hover:shadow-md">
-          <div className="flex items-start justify-between gap-3 border-b bg-muted/30 p-4">
+        <Card className="flex h-full min-h-[280px] w-full flex-col gap-0 overflow-hidden rounded-2xl border border-border bg-card p-0 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md">
+          <div className="flex items-start justify-between gap-3 border-b bg-primary/5 p-4">
             <div className="flex min-w-0 items-center gap-3">
               <Avatar className="h-10 w-10 shrink-0">
                 <AvatarImage
@@ -59,17 +66,15 @@ export default function MarketplaceCard({ listing, onClick }: Props) {
                 </p>
               </div>
             </div>
-            <span className="shrink-0 rounded-md border bg-background px-2 py-1 text-[10px] font-medium capitalize">
-              {listing.status}
-            </span>
+            <div className="w-9 shrink-0" />
           </div>
 
           <div className="flex flex-1 flex-col p-4">
             <div className="flex flex-wrap gap-2">
-              <span className="rounded-md bg-muted px-2 py-1 text-[10px] text-muted-foreground">
+              <span className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
                 {listing.category?.name ?? "Uncategorized"}
               </span>
-              <span className="rounded-md bg-primary/10 px-2 py-1 text-[10px] text-primary">
+              <span className="rounded-md bg-primary/10 px-2 py-1 text-xs text-primary">
                 {listing.pricing_type === "hourly" ? "Hourly" : "Fixed price"}
               </span>
             </div>
@@ -83,7 +88,7 @@ export default function MarketplaceCard({ listing, onClick }: Props) {
 
             <div className="mt-auto grid grid-cols-2 gap-3 border-t pt-4">
               <div className="min-w-0">
-                <p className="flex items-center gap-1.5 text-[10px] uppercase text-muted-foreground">
+                <p className="flex items-center gap-1.5 text-xs uppercase text-muted-foreground">
                   <Wallet className="h-3.5 w-3.5" />
                   Budget
                 </p>
@@ -92,7 +97,7 @@ export default function MarketplaceCard({ listing, onClick }: Props) {
                 </p>
               </div>
               <div className="min-w-0 text-right">
-                <p className="flex items-center justify-end gap-1.5 text-[10px] uppercase text-muted-foreground">
+                <p className="flex items-center justify-end gap-1.5 text-xs uppercase text-muted-foreground">
                   <CalendarDays className="h-3.5 w-3.5" />
                   Deadline
                 </p>
@@ -112,11 +117,11 @@ export default function MarketplaceCard({ listing, onClick }: Props) {
   return (
     <button
       type="button"
-      className="block w-full text-left"
+      className="block h-full w-full rounded-2xl text-left focus-visible:outline-2 focus-visible:outline-primary"
       onClick={onClick}
       disabled={!onClick}
     >
-      <Card className="w-full overflow-hidden rounded-xl border bg-background transition hover:-translate-y-0.5 hover:shadow-md">
+      <Card className="w-full gap-0 overflow-hidden rounded-2xl border bg-card p-0 transition hover:-translate-y-0.5 hover:shadow-md">
         <div className="relative aspect-[1.7/1] w-full overflow-hidden bg-muted">
           {isService && listing.cover_image_url ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -130,13 +135,9 @@ export default function MarketplaceCard({ listing, onClick }: Props) {
               {isService ? "Service Thumbnail" : "Job Posting"}
             </div>
           )}
-
-          <span className="absolute right-2.5 top-2.5 rounded-md bg-background/90 px-2 py-1 text-[10px] font-medium shadow-sm">
-            {isService ? "Service" : "Job"}
-          </span>
         </div>
 
-        <div className="space-y-3 p-3.5">
+        <div className="space-y-4 p-4">
           <div className="flex items-center gap-2.5">
             <Avatar className="h-8 w-8 shrink-0">
               <AvatarImage
@@ -160,24 +161,40 @@ export default function MarketplaceCard({ listing, onClick }: Props) {
             {listing.title}
           </h3>
 
-          <div className="flex items-center gap-1.5 overflow-hidden">
-            <span className="truncate rounded-md bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+          {listing.freelancer?.verification_status === "verified" && (
+            <p className="flex items-center gap-1.5 text-xs font-medium text-primary">
+              <ShieldCheck className="size-3.5" aria-hidden="true" />
+              Verified freelancer
+            </p>
+          )}
+          {rating != null && (
+            <p className="flex items-center gap-1.5 text-xs font-medium">
+              <Star
+                className="size-3.5 fill-amber-400 text-amber-600"
+                aria-hidden="true"
+              />
+              <span>{rating.toFixed(1)} rating</span>
+            </p>
+          )}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="truncate rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground">
               {listing.category?.name ?? "Category"}
             </span>
-            <span className="shrink-0 rounded-md bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
+            <span className="shrink-0 rounded-md bg-primary/10 px-2 py-0.5 text-xs text-primary">
               {listing.service_type === "milestone" ? "Milestone" : "Standard"}
             </span>
           </div>
 
-          <div className="flex items-end justify-between border-t pt-2.5">
+          <div className="flex flex-wrap items-end justify-between gap-3 border-t pt-3">
             <div>
-              <p className="text-[9px] uppercase text-muted-foreground">
+              <p className="text-[11px] uppercase text-muted-foreground">
                 Starting at
               </p>
               <p className="text-lg font-bold leading-tight">{priceLabel}</p>
             </div>
 
-            <div className="text-right text-[10px] text-muted-foreground">
+            <div className="text-right text-xs text-muted-foreground">
+              <p className="font-medium capitalize">{listing.pricing_mode}</p>
               <p>{listing.delivery_time_days} days</p>
               <p>{listing.revisions_count} revisions</p>
             </div>

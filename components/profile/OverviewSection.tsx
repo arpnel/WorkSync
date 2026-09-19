@@ -1,163 +1,161 @@
 "use client";
-
+import type { Profile } from "@/types/profile/profile";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import {
-  Briefcase,
-  FolderOpen,
-  Star,
-  CheckCircle,
-  Wrench,
-  RefreshCw,
-  BadgeCheck,
-  Award,
-} from "lucide-react";
-
-import type { Profile } from "../../types/profile/profile";
-
-import { Card, CardContent } from "@/components/ui/card";
-
-interface OverviewSectionProps {
-  profile: Profile;
-}
-
-export default function OverviewSection({
-  profile,
-}: OverviewSectionProps) {
+  EMPLOYMENT_PREFERENCES,
+  ENGLISH_PROFICIENCY,
+} from "@/constants/account-setup.constants";
+export default function OverviewSection({ profile }: { profile: Profile }) {
+  const unavailable = (name: string) =>
+    profile.unavailable_details?.includes(name);
   return (
     <div className="space-y-6">
-      {/* Quick Stats */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Card className="rounded-2xl">
-          <CardContent className="flex items-center gap-4 p-6">
-            <Briefcase className="h-8 w-8 text-primary" />
-            <div>
-              <p className="text-sm text-muted-foreground">Services</p>
-              <p className="text-2xl font-bold">0</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-2xl">
-          <CardContent className="flex items-center gap-4 p-6">
-            <FolderOpen className="h-8 w-8 text-primary" />
-            <div>
-              <p className="text-sm text-muted-foreground">
-                Portfolio Projects
-              </p>
-              <p className="text-2xl font-bold">0</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-2xl">
-          <CardContent className="flex items-center gap-4 p-6">
-            <Star className="h-8 w-8 text-primary" />
-            <div>
-              <p className="text-sm text-muted-foreground">
-                Average Rating
-              </p>
-              <p className="text-2xl font-bold">0.0</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-2xl">
-          <CardContent className="flex items-center gap-4 p-6">
-            <CheckCircle className="h-8 w-8 text-primary" />
-            <div>
-              <p className="text-sm text-muted-foreground">
-                Completed Jobs
-              </p>
-              <p className="text-2xl font-bold">0</p>
-            </div>
-          </CardContent>
-        </Card>
+      {!!profile.unavailable_details?.length && (
+        <p
+          role="status"
+          className="rounded-lg border p-3 text-sm text-muted-foreground"
+        >
+          Could not load: {profile.unavailable_details.join(", ")}. Other
+          profile details are still available. Reload to try again.
+        </p>
+      )}
+      <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        {[
+          [
+            "Services",
+            unavailable("Services")
+              ? "Not available"
+              : (profile.services_count ?? "Not available"),
+          ],
+          [
+            "Portfolio projects",
+            unavailable("Portfolio")
+              ? "Not available"
+              : (profile.portfolio_count ?? "Not available"),
+          ],
+          [
+            "Average rating",
+            unavailable("Reviews")
+              ? "Not available"
+              : profile.rating == null
+                ? "No reviews"
+                : profile.rating.toFixed(1),
+          ],
+          [
+            "Completed projects",
+            unavailable("Projects")
+              ? "Not available"
+              : profile.projects_completed,
+          ],
+        ].map(([label, value]) => (
+          <Card key={label}>
+            <CardContent className="p-5">
+              <p className="text-sm text-muted-foreground">{label}</p>
+              <p className="mt-2 text-xl font-semibold">{value}</p>
+            </CardContent>
+          </Card>
+        ))}
       </div>
-
-      {/* Professional Highlights */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="rounded-2xl">
-          <CardContent className="space-y-4 p-6">
-            <h3 className="text-lg font-semibold">
-              Professional Highlights
-            </h3>
-
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <BadgeCheck className="h-5 w-5 text-primary" />
-                <div>
-                  <p className="font-medium">
-                    Projects Continued
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    Successfully completed unfinished projects
-                    started by other freelancers.
-                  </p>
+      <div className="grid gap-6 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Professional details</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm">
+            <dl className="space-y-3">
+              {[
+                [
+                  "Experience",
+                  profile.years_of_experience == null
+                    ? "Not specified"
+                    : profile.years_of_experience + " years",
+                ],
+                [
+                  "Work preference",
+                  EMPLOYMENT_PREFERENCES.find(
+                    (option) => option.value === profile.employment_preference,
+                  )?.label ??
+                    profile.employment_preference ??
+                    "Not specified",
+                ],
+                [
+                  "English proficiency",
+                  ENGLISH_PROFICIENCY.find(
+                    (option) => option.value === profile.english_proficiency,
+                  )?.label ?? "Not specified",
+                ],
+              ].map(([label, value]) => (
+                <div
+                  key={label}
+                  className="flex flex-wrap justify-between gap-2"
+                >
+                  <dt className="text-muted-foreground">{label}</dt>
+                  <dd>{value}</dd>
                 </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <RefreshCw className="h-5 w-5 text-primary" />
-                <div>
-                  <p className="font-medium">
-                    Revision Requests Accepted
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    Shows willingness to refine work based on
-                    client feedback.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <Award className="h-5 w-5 text-primary" />
-                <div>
-                  <p className="font-medium">
-                    Client Satisfaction
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    Based on completed projects and ratings.
-                  </p>
-                </div>
-              </div>
+              ))}
+            </dl>
+            <div className="flex flex-wrap gap-3 border-t pt-4">
+              {[
+                ["Portfolio website", profile.portfolio_website],
+                ["LinkedIn", profile.linkedin_url],
+                ["GitHub", profile.github_url],
+              ]
+                .filter(([, url]) => url && /^https?:\/\//i.test(url))
+                .map(([label, url]) => (
+                  <a
+                    key={label}
+                    href={url!}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline underline-offset-4"
+                  >
+                    {label}
+                  </a>
+                ))}
             </div>
           </CardContent>
         </Card>
-
-        {/* Top Skills */}
-        <Card className="rounded-2xl">
-          <CardContent className="space-y-4 p-6">
-            <h3 className="text-lg font-semibold">
-              Top Skills
-            </h3>
-
-            <div className="flex flex-wrap gap-2">
-              <span className="rounded-full bg-primary/10 px-3 py-1 text-sm">
-                UI Design
-              </span>
-
-              <span className="rounded-full bg-primary/10 px-3 py-1 text-sm">
-                React
-              </span>
-
-              <span className="rounded-full bg-primary/10 px-3 py-1 text-sm">
-                Next.js
-              </span>
-
-              <span className="rounded-full bg-primary/10 px-3 py-1 text-sm">
-                TypeScript
-              </span>
-
-              <span className="rounded-full bg-primary/10 px-3 py-1 text-sm">
-                Tailwind CSS
-              </span>
+        <Card>
+          <CardHeader>
+            <CardTitle>Skills & industries</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div>
+              <h3 className="mb-2 text-sm font-medium">Skills</h3>
+              <div className="flex flex-wrap gap-2">
+                {profile.skills?.length ? (
+                  profile.skills.map((skill) => (
+                    <Badge key={skill.id} variant="secondary">
+                      {skill.name}
+                    </Badge>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    {unavailable("Skills")
+                      ? "Skills could not load."
+                      : "No skills added yet."}
+                  </p>
+                )}
+              </div>
             </div>
-
-            <div className="flex items-center gap-3 pt-2">
-              <Wrench className="h-5 w-5 text-primary" />
-              <p className="text-sm text-muted-foreground">
-                Skills will be populated from the freelancer's
-                profile.
-              </p>
+            <div>
+              <h3 className="mb-2 text-sm font-medium">Industries</h3>
+              <div className="flex flex-wrap gap-2">
+                {profile.industries?.length ? (
+                  profile.industries.map((industry) => (
+                    <Badge key={industry.id} variant="outline">
+                      {industry.name}
+                    </Badge>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    {unavailable("Industries")
+                      ? "Industries could not load."
+                      : "No industries added yet."}
+                  </p>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>

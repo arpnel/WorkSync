@@ -62,7 +62,7 @@ export function SignupEmailStep({
       />
 
       <p className="text-center text-xs text-muted-foreground">
-        By continuing, you agree to WorkSync's Terms
+        By continuing, you agree to WorkSync&apos;s Terms
         and Privacy Policy.
       </p>
     </form>

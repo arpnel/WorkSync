@@ -1,10 +1,13 @@
 "use client";
+import ContentSkeleton from "@/components/shared/ContentSkeleton";
 
 import { BasicInformationSection } from "./sections/BasicInformationSection";
 import { ProfileSection } from "./sections/ProfileSection";
 import { SubmitSection } from "./sections/SubmitSection";
 
 import { useClientSetup } from "./hooks/useClientSetup";
+import VerificationSettings from "@/components/account/VerificationSettings";
+import { Button } from "@/components/ui/button";
 
 export function ClientSetupForm() {
   const {
@@ -12,14 +15,38 @@ export function ClientSetupForm() {
     photoPreview,
     errors,
     isSubmitting,
+    isLoadingProfile,
+    loadError,
+    retryLoad,
     handleChange,
     handlePhotoSelect,
     handlePhotoRemove,
     handleSubmit,
   } = useClientSetup();
 
+  if (isLoadingProfile)
+    return (
+      <ContentSkeleton
+        label="Loading your saved profile"
+        variant="setup"
+        count={2}
+      />
+    );
+  if (loadError)
+    return (
+      <div className="space-y-3">
+        <p role="alert" className="text-sm text-destructive">
+          {loadError}
+        </p>
+        <Button onClick={retryLoad}>Retry loading profile</Button>
+      </div>
+    );
+
   return (
-    <div className="mx-auto max-w-2xl space-y-8">
+    <fieldset
+      disabled={isSubmitting}
+      className="mx-auto min-w-0 max-w-2xl space-y-8"
+    >
       {/* Basic Information */}
 
       <BasicInformationSection
@@ -40,6 +67,7 @@ export function ClientSetupForm() {
       />
 
       {/* Submit */}
+      <VerificationSettings />
 
       <SubmitSection
         isSubmitting={isSubmitting}
@@ -47,6 +75,6 @@ export function ClientSetupForm() {
         loadingLabel="Saving..."
         onSubmit={handleSubmit}
       />
-    </div>
+    </fieldset>
   );
 }

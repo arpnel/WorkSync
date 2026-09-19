@@ -1,4 +1,6 @@
+import { getPublicIdentities } from "@/services/profile/publicIdentityService";
 import { supabase } from "@/lib/supabaseClient";
+import { getFreelancerDetails } from "./profileDetails";
 
 import type {
   Profile,
@@ -32,7 +34,9 @@ const PORTFOLIO_BUCKET = "portfolio_images";
    PROFILE
 ========================================================== */
 
-export async function getCurrentProfile(): Promise<Profile | null> {
+export async function getCurrentProfile(
+  includeDetails = false,
+): Promise<Profile | null> {
   const {
     data: { user },
     error: authError,
@@ -48,18 +52,37 @@ export async function getCurrentProfile(): Promise<Profile | null> {
 
   /* ---------------- Users ---------------- */
 
-  const { data: userData, error: userError } = await supabase
-    .from(USERS_TABLE)
-    .select(
-      `
-      user_id,
-      email,
-      role,
-      created_at
-    `,
-    )
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const [userResult, profileResult] = await Promise.all([
+    supabase
+      .from(USERS_TABLE)
+      .select("user_id, email, role, created_at")
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    supabase
+      .from(PROFILES_TABLE)
+      .select(
+        `
+          user_id,
+          avatar_url,
+          bio,
+          location,
+          created_at,
+          updated_at,
+          display_name,
+          banner_url,
+          account_setup_completed,
+          first_name,
+          last_name,
+          province,
+          city,
+          english_proficiency
+        `,
+      )
+      .eq("user_id", user.id)
+      .maybeSingle(),
+  ]);
+
+  const { data: userData, error: userError } = userResult;
 
   if (userError) {
     throw userError;
@@ -71,28 +94,7 @@ export async function getCurrentProfile(): Promise<Profile | null> {
 
   /* ---------------- Profiles ---------------- */
 
-  const { data: profileData, error: profileError } = await supabase
-    .from(PROFILES_TABLE)
-    .select(
-      `
-        user_id,
-        avatar_url,
-        bio,
-        location,
-        created_at,
-        updated_at,
-        display_name,
-        banner_url,
-        account_setup_completed,
-        first_name,
-        last_name,
-        province,
-        city,
-        english_proficiency
-      `,
-    )
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const { data: profileData, error: profileError } = profileResult;
 
   if (profileError) {
     throw profileError;
@@ -123,7 +125,9 @@ export async function getCurrentProfile(): Promise<Profile | null> {
 
     avatar_url: profileData.avatar_url,
     bio: profileData.bio,
-    location: profileData.location,
+    location:
+      [profileData.city, profileData.province].filter(Boolean).join(", ") ||
+      profileData.location,
 
     display_name: profileData.display_name,
     banner_url: profileData.banner_url,
@@ -186,10 +190,81 @@ export async function getCurrentProfile(): Promise<Profile | null> {
       profile.headline = freelancerData.headline;
       profile.hourly_rate = freelancerData.hourly_rate;
       profile.verification_status = freelancerData.verification_status;
+      profile.years_of_experience = freelancerData.years_of_experience;
+      profile.employment_preference = freelancerData.employment_preference;
+      profile.portfolio_website = freelancerData.portfolio_website;
+      profile.linkedin_url = freelancerData.linkedin_url;
+      profile.github_url = freelancerData.github_url;
+      if (includeDetails)
+        Object.assign(
+          profile,
+          await getFreelancerDetails(freelancerData.freelancer_id),
+        );
     }
   }
 
   return profile;
+}
+
+export async function getPublicProfile(
+  userId: string,
+): Promise<Profile | null> {
+  const identities = await getPublicIdentities({ userIds: [userId] });
+  const identity = identities.profiles.find((row) => row.user_id === userId);
+  if (!identity) return null;
+  const freelancerResult = {
+    data: identities.freelancers.find((row) => row.user_id === userId) ?? null,
+  };
+  const profileResult = await supabase
+    .from(PROFILES_TABLE)
+    .select(
+      "user_id, avatar_url, bio, location, created_at, updated_at, display_name, banner_url, account_setup_completed, first_name, last_name, province, city, english_proficiency",
+    )
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  const details = freelancerResult.data
+    ? await getFreelancerDetails(freelancerResult.data.freelancer_id)
+    : {};
+
+  const base = profileResult.data ?? {
+    ...identity,
+    bio: identity.bio,
+    banner_url: identity.banner_url,
+    account_setup_completed: false,
+    province: null,
+    city: null,
+    english_proficiency: null,
+    created_at: identity.created_at,
+    updated_at: identity.updated_at,
+  };
+  return {
+    user_id: userId,
+    email: "",
+    role: freelancerResult.data ? "freelancer" : "client",
+    first_name: base.first_name,
+    last_name: base.last_name,
+    avatar_url: base.avatar_url,
+    bio: base.bio,
+    location:
+      [base.city, base.province].filter(Boolean).join(", ") || base.location,
+    display_name: base.display_name,
+    banner_url: base.banner_url,
+    account_setup_completed: base.account_setup_completed,
+    province: base.province,
+    city: base.city,
+    english_proficiency: base.english_proficiency,
+    headline: freelancerResult.data?.headline ?? null,
+    hourly_rate: freelancerResult.data?.hourly_rate ?? null,
+    verification_status: freelancerResult.data?.verification_status ?? null,
+    rating: null,
+    reviews_count: 0,
+    projects_completed: 0,
+    total_earnings: null,
+    created_at: base.created_at,
+    updated_at: base.updated_at,
+    ...details,
+  } as Profile;
 }
 
 /* ==========================================================
@@ -200,6 +275,13 @@ export async function updateProfile(
   userId: string,
   updates: UpdateProfilePayload,
 ): Promise<Profile> {
+  if (updates.headline && updates.headline.trim().length > 120)
+    throw new Error("Keep your headline within 120 characters.");
+  if (
+    updates.hourly_rate != null &&
+    (!Number.isFinite(updates.hourly_rate) || updates.hourly_rate <= 0)
+  )
+    throw new Error("Enter an hourly rate greater than zero.");
   /* ---------------- profiles ---------------- */
 
   const profileUpdates: Record<string, unknown> = {};
@@ -280,7 +362,7 @@ export async function updateProfile(
 
   /* ---------------- Reload Profile ---------------- */
 
-  const profile = await getCurrentProfile();
+  const profile = await getCurrentProfile(true);
 
   if (!profile) {
     throw new Error("Failed to reload profile.");
@@ -452,8 +534,7 @@ export async function getPortfolioProjects(
 
   if (error) {
     console.error("Failed to get portfolio:", JSON.stringify(error, null, 2));
-
-    return [];
+    throw error;
   }
 
   return (data ?? []) as PortfolioProject[];
@@ -508,6 +589,20 @@ export async function addPortfolioProject(
   return data as PortfolioProject;
 }
 
+export async function updatePortfolioProject(
+  portfolioId: string,
+  project: Pick<PortfolioProject, "title" | "description" | "project_url">,
+): Promise<PortfolioProject> {
+  const { data, error } = await supabase
+    .from(PORTFOLIO_TABLE)
+    .update(project)
+    .eq("portfolio_id", portfolioId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as PortfolioProject;
+}
+
 export async function deletePortfolioProject(
   portfolioId: string,
 ): Promise<boolean> {
@@ -517,10 +612,11 @@ export async function deletePortfolioProject(
     return false;
   }
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from(PORTFOLIO_TABLE)
     .delete()
-    .eq("portfolio_id", portfolioId);
+    .eq("portfolio_id", portfolioId)
+    .select("portfolio_id");
 
   if (error) {
     console.error(
@@ -531,7 +627,7 @@ export async function deletePortfolioProject(
     return false;
   }
 
-  return true;
+  return data?.length === 1;
 }
 
 export async function uploadPortfolioImage(
@@ -695,7 +791,29 @@ export async function deleteService(serviceId: string): Promise<boolean> {
    REVIEWS
 ========================================================== */
 
-export async function getReviews(freelancerId: string): Promise<Review[]> {
+export async function getReviews(
+  userId: string,
+  role?: Profile["role"],
+): Promise<Review[]> {
+  const [freelancer, client] = await Promise.all([
+    supabase
+      .from("freelancer_profiles")
+      .select("freelancer_id")
+      .eq("user_id", userId)
+      .maybeSingle(),
+    supabase
+      .from("client_profiles")
+      .select("client_id")
+      .eq("user_id", userId)
+      .maybeSingle(),
+  ]);
+  if (freelancer.error) throw new Error(freelancer.error.message);
+  if (client.error) throw new Error(client.error.message);
+  const asFreelancer = role ? role === "freelancer" : !!freelancer.data;
+  const id = asFreelancer
+    ? freelancer.data?.freelancer_id
+    : client.data?.client_id;
+  if (!id) return [];
   const { data, error } = await supabase
     .from(REVIEWS_TABLE)
     .select(
@@ -710,7 +828,8 @@ export async function getReviews(freelancerId: string): Promise<Review[]> {
       reviewer_role
     `,
     )
-    .eq("freelancer_id", freelancerId)
+    .eq(asFreelancer ? "freelancer_id" : "client_id", id)
+    .eq("reviewer_role", asFreelancer ? "client" : "freelancer")
     .order("created_at", {
       ascending: false,
     });
@@ -718,7 +837,7 @@ export async function getReviews(freelancerId: string): Promise<Review[]> {
   if (error) {
     console.error("Failed to get reviews:", JSON.stringify(error, null, 2));
 
-    return [];
+    throw new Error(error.message);
   }
 
   return (data ?? []).map(

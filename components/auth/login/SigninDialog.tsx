@@ -12,11 +12,15 @@ import { login } from "../../../services/auth/signinService";
 import { validateSigninForm } from "../../../lib/validation/auth.validation";
 
 import { ERROR_MESSAGES } from "../constants";
+import { SignupDialog } from "../signup/SignupDialog";
+import { Button } from "@/components/ui/button";
 
 export function SigninDialog() {
   const router = useRouter();
 
   const [email, setEmail] = React.useState("");
+  const [signup, setSignup] = React.useState(false);
+  const [notice, setNotice] = React.useState("");
 
   const [password, setPassword] = React.useState("");
 
@@ -36,9 +40,35 @@ export function SigninDialog() {
     setShowPassword(false);
   };
 
-  const handleForgotPassword = () => {
-    // TODO:
-    // Open Forgot Password Dialog
+  const handleForgotPassword = async () => {
+    if (loading) return;
+    setFormError("");
+    setNotice("");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      showMessage("Enter your email above, then select Forgot Password.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(
+        email.trim(),
+        {
+          redirectTo: `${window.location.origin}/reset-password`,
+        },
+      );
+      if (error) throw error;
+      setNotice(
+        "If an account uses this email, you will receive a password reset link.",
+      );
+    } catch (cause) {
+      showMessage(
+        cause instanceof Error
+          ? cause.message
+          : "Unable to send a reset link. Please try again.",
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleGoogleSignin = async () => {
@@ -56,9 +86,7 @@ export function SigninDialog() {
   };
 
   const handleSwitchToSignup = () => {
-    // TODO:
-    // Close Login Dialog
-    // Open Signup Dialog
+    setSignup(true);
   };
 
   const handleSignin = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -132,8 +160,22 @@ export function SigninDialog() {
       setLoading(false);
     }
   };
+  if (signup)
+    return (
+      <>
+        <SignupDialog />
+        <Button variant="ghost" onClick={() => setSignup(false)}>
+          Back to sign in
+        </Button>
+      </>
+    );
   return (
     <>
+      {notice && (
+        <p role="status" className="text-sm">
+          {notice}
+        </p>
+      )}
       {formError && (
         <p
           role="alert"

@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Camera, Loader2, Upload } from "lucide-react";
+import Link from "next/link";
+import Image from "next/image";
 import ImageCropDialog from "./ImageCropDialog";
 import { useImageCrop } from "@/hooks/profile/useImageCrop";
 import type {
@@ -39,7 +41,11 @@ interface EditProfileDialogProps {
   onBannerUpdate?: (file: File) => Promise<boolean>;
 }
 
-export default function EditProfileDialog({
+export default function EditProfileDialog(props: EditProfileDialogProps) {
+  return props.open ? <EditProfileContent {...props} /> : null;
+}
+
+function EditProfileContent({
   open,
   onOpenChange,
   profile,
@@ -58,11 +64,11 @@ export default function EditProfileDialog({
   const [uploadingBanner, setUploadingBanner] = useState(false);
 
   const [form, setForm] = useState({
-    display_name: "",
-    headline: "",
-    bio: "",
-    location: "",
-    hourly_rate: "",
+    display_name: profile.display_name ?? "",
+    headline: profile.headline ?? "",
+    bio: profile.bio ?? "",
+    location: profile.location ?? "",
+    hourly_rate: profile.hourly_rate?.toString() ?? "",
   });
 
   const {
@@ -84,21 +90,6 @@ export default function EditProfileDialog({
 
     resetImages,
   } = useImageCrop();
-
-  useEffect(() => {
-    if (!profile) return;
-
-    setForm({
-      display_name: profile.display_name ?? "",
-      headline: profile.headline ?? "",
-      bio: profile.bio ?? "",
-      location: profile.location ?? "",
-      hourly_rate: profile.hourly_rate?.toString() ?? "",
-    });
-
-    // Reset temporary images every time the dialog opens
-    resetImages();
-  }, [profile, open]);
 
   const avatar = avatarPreview ?? profile.avatar_url ?? undefined;
   const initials = `${profile.first_name} ${profile.last_name}`
@@ -139,10 +130,13 @@ export default function EditProfileDialog({
 
     const success = await onSave({
       display_name: form.display_name || null,
-      headline: form.headline || null,
+      ...(profile.role === "freelancer"
+        ? {
+            headline: form.headline || null,
+            hourly_rate: form.hourly_rate ? Number(form.hourly_rate) : null,
+          }
+        : {}),
       bio: form.bio || null,
-      location: form.location || null,
-      hourly_rate: form.hourly_rate ? Number(form.hourly_rate) : null,
     });
 
     setSaving(false);
@@ -172,7 +166,10 @@ export default function EditProfileDialog({
 
           <div className="relative h-52 overflow-hidden rounded-xl border bg-muted">
             {bannerPreview || profile.banner_url ? (
-              <img
+              <Image
+                fill
+                unoptimized
+                sizes="(max-width: 768px) 90vw, 800px"
                 src={bannerPreview ?? profile.banner_url!}
                 alt="Banner"
                 className="h-full w-full object-cover"
@@ -281,6 +278,8 @@ export default function EditProfileDialog({
 
             <Input
               id="headline"
+              maxLength={120}
+              disabled={profile.role !== "freelancer"}
               placeholder="Full Stack Developer"
               value={form.headline}
               onChange={(e) =>
@@ -298,6 +297,7 @@ export default function EditProfileDialog({
 
             <Input
               id="location"
+              readOnly
               placeholder="Philippines"
               value={form.location}
               onChange={(e) =>
@@ -311,10 +311,13 @@ export default function EditProfileDialog({
 
           {/* Hourly Rate */}
           <div className="space-y-2">
-            <Label htmlFor="hourly_rate">Hourly Rate (USD)</Label>
+            <Label htmlFor="hourly_rate">Hourly Rate (PHP)</Label>
 
             <Input
               id="hourly_rate"
+              disabled={profile.role !== "freelancer"}
+              min="0.01"
+              step="0.01"
               type="number"
               placeholder="25"
               value={form.hourly_rate}
@@ -328,6 +331,16 @@ export default function EditProfileDialog({
           </div>
         </div>
 
+        <Link
+          className="text-sm underline underline-offset-4"
+          href={
+            profile.role === "freelancer"
+              ? "/account-setup/freelancer"
+              : "/account-setup/client"
+          }
+        >
+          Edit account details, location & professional information
+        </Link>
         {/* About */}
         <div className="space-y-2">
           <Label htmlFor="bio">About Me</Label>

@@ -2,30 +2,9 @@ import { LogoIcon } from '@/components/shared/logo'
 import Link from 'next/link'
 
 const links = [
-    {
-        title: 'Features',
-        href: '#',
-    },
-    {
-        title: 'Solution',
-        href: '#',
-    },
-    {
-        title: 'Customers',
-        href: '#',
-    },
-    {
-        title: 'Pricing',
-        href: '#',
-    },
-    {
-        title: 'Help',
-        href: '#',
-    },
-    {
-        title: 'About',
-        href: '#',
-    },
+    { title: 'Features', href: '#features' },
+    { title: 'Marketplace', href: '/home/marketplace' },
+    { title: 'About', href: '#about' },
 ]
 
 export default function FooterSection() {
@@ -35,7 +14,7 @@ export default function FooterSection() {
                 <div className="flex flex-wrap justify-between gap-12">
                     <div className="order-last flex items-center gap-3 md:order-first">
                         <Link
-                            href="#"
+                            href="/"
                             aria-label="go home">
                             <LogoIcon />
                         </Link>

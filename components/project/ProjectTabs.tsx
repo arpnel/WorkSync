@@ -7,7 +7,8 @@ export type FilterType =
   | "Request"
   | "In Discussion"
   | "Active"
-  | "Completed";
+  | "Completed"
+  | "Cancelled";
 
 interface ProjectTabsProps {
   activeFilter: FilterType;
@@ -24,19 +25,21 @@ export function ProjectTabs({
     "In Discussion",
     "Active",
     "Completed",
+    "Cancelled",
   ];
 
   return (
-    <div className="overflow-x-auto">
-      <div className="flex min-w-max items-center gap-6 border-b">
+    <div className="min-w-0">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card p-2">
         {filters.map((filter) => (
           <button
             key={filter}
             type="button"
+            aria-pressed={activeFilter === filter}
             onClick={() => onFilterChange(filter)}
-            className={`pb-3 text-sm transition-colors ${
+            className={`min-h-11 rounded-lg px-3 py-2 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-primary ${
               activeFilter === filter
-                ? "border-b-2 border-primary font-medium"
+                ? "bg-primary text-primary-foreground font-medium"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >

@@ -1,6 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import ContentSkeleton from "@/components/shared/ContentSkeleton";
+import Link from "next/link";
+import { SetupDocuments } from "@/components/profile/SetupDocuments";
+import type { UpdateProfilePayload } from "@/types/profile/profile";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -34,23 +38,12 @@ export default function ProfilePage() {
     return await updateBannerImage(file);
   };
 
-  const handleProfileUpdate = async (updates: any) => {
+  const handleProfileUpdate = async (updates: UpdateProfilePayload) => {
     return await updateProfile(updates);
   };
 
-  if (loading) {
-    return (
-      <div className="mx-auto max-w-6xl px-4 py-6">
-        <div className="animate-pulse space-y-6">
-          <div className="h-80 rounded-2xl bg-muted" />
-          <div className="h-72 rounded-2xl bg-muted" />
-          <div className="h-96 rounded-2xl bg-muted" />
-          <div className="h-96 rounded-2xl bg-muted" />
-          <div className="h-96 rounded-2xl bg-muted" />
-        </div>
-      </div>
-    );
-  }
+  if (loading)
+    return <ContentSkeleton label="Loading profile" variant="profile" />;
 
   if (!profile) {
     return (
@@ -68,55 +61,67 @@ export default function ProfilePage() {
 
   const isFreelancer = profile.role === "freelancer";
 
-return (
-  <main className="min-h-screen bg-muted/30">
-    <div className="mx-auto max-w-6xl space-y-6 px-4 py-6">
-      <ProfileHeader
-        profile={profile}
-        isOwner
-        onEdit={() => setEditOpen(true)}
-      />
+  return (
+    <main className="min-w-0">
+      <div className="mx-auto max-w-6xl space-y-6 py-2">
+        <ProfileHeader
+          profile={profile}
+          isOwner
+          onEdit={() => setEditOpen(true)}
+        />
 
-      <AboutSection profile={profile} />
+        <AboutSection profile={profile} />
+        <Link
+          className="inline-block text-sm underline underline-offset-4"
+          href={
+            isFreelancer ? "/account-setup/freelancer" : "/account-setup/client"
+          }
+        >
+          Edit account details
+          {isFreelancer ? ", skills & supporting documents" : " & location"}
+        </Link>
 
-      {isFreelancer ? (
-        <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="mb-6 h-auto w-full justify-start rounded-none border-b bg-transparent p-0">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="services">Services</TabsTrigger>
-            <TabsTrigger value="portfolio">Portfolio</TabsTrigger>
-            <TabsTrigger value="reviews">Reviews</TabsTrigger>
-          </TabsList>
+        {isFreelancer ? (
+          <Tabs defaultValue="overview" className="w-full">
+            <TabsList className="mb-6 h-auto w-full flex-wrap justify-start rounded-none border-b bg-transparent p-0">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="services">Services</TabsTrigger>
+              <TabsTrigger value="portfolio">Portfolio</TabsTrigger>
+              <TabsTrigger value="reviews">Reviews</TabsTrigger>
+            </TabsList>
 
-          <TabsContent value="overview">
-            <OverviewSection profile={profile} />
-          </TabsContent>
+            <TabsContent value="overview">
+              <OverviewSection profile={profile} />
+              <div className="mt-6">
+                <SetupDocuments userId={profile.user_id} />
+              </div>
+            </TabsContent>
 
-          <TabsContent value="services">
-            <ServicesSection userId={profile.user_id} />
-          </TabsContent>
+            <TabsContent value="services">
+              <ServicesSection userId={profile.user_id} />
+            </TabsContent>
 
-          <TabsContent value="portfolio">
-            <PortfolioSection userId={profile.user_id} />
-          </TabsContent>
+            <TabsContent value="portfolio">
+              <PortfolioSection userId={profile.user_id} />
+            </TabsContent>
 
-          <TabsContent value="reviews">
-            <ReviewsSection userId={profile.user_id} />
-          </TabsContent>
-        </Tabs>
-      ) : (
-        <ReviewsSection userId={profile.user_id} />
-      )}
+            <TabsContent value="reviews">
+              <ReviewsSection userId={profile.user_id} role={profile.role} />
+            </TabsContent>
+          </Tabs>
+        ) : (
+          <ReviewsSection userId={profile.user_id} role={profile.role} />
+        )}
 
-      <EditProfileDialog
-        open={editOpen}
-        onOpenChange={setEditOpen}
-        profile={profile}
-        onSave={handleProfileUpdate}
-        onAvatarUpdate={handleAvatarUpdate}
-        onBannerUpdate={handleBannerUpdate}
-      />
-    </div>
-  </main>
-);
+        <EditProfileDialog
+          open={editOpen}
+          onOpenChange={setEditOpen}
+          profile={profile}
+          onSave={handleProfileUpdate}
+          onAvatarUpdate={handleAvatarUpdate}
+          onBannerUpdate={handleBannerUpdate}
+        />
+      </div>
+    </main>
+  );
 }

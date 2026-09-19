@@ -1,3 +1,9 @@
+import {
+  workspaceStatus,
+  contractStatus,
+  orderStatus,
+  milestoneStatus,
+} from "@/types/project/status";
 import { supabase } from "@/lib/supabaseClient";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type {
@@ -84,11 +90,29 @@ export async function getProjectWorkspace(
   const service = record(row.services);
   const project = record(row.projects);
   const contract = record(row.contracts);
+  let requestTitle = "";
+  let requestDescription = "";
+  let requestCategoryId = "";
+  let requestCategoryName = "";
+  const rawTerms = text(contract?.terms);
+  if (rawTerms) {
+    try {
+      const requestDetails = JSON.parse(rawTerms) as Record<string, unknown>;
+      requestTitle = text(requestDetails.projectTitle);
+      requestDescription = text(requestDetails.description);
+      requestCategoryId = text(requestDetails.categoryId);
+      requestCategoryName = text(requestDetails.categoryName);
+    } catch {
+      requestDescription = rawTerms;
+    }
+  }
   const client = record(row.client_profiles);
   const freelancer = record(row.freelancer_profiles);
   const clientUserId = text(client?.user_id);
   const freelancerUserId = text(freelancer?.user_id);
-  const categoryId = text(service?.category_id);
+  if (userId !== clientUserId && userId !== freelancerUserId)
+    throw new Error("Only project participants can open this workspace.");
+  const categoryId = requestCategoryId || text(service?.category_id);
   const categoryResult = categoryId
     ? await supabase
         .from("job_categories")
@@ -190,26 +214,13 @@ export async function getProjectWorkspace(
       description: text(milestone.description),
       amount: numeric(milestone.amount),
       dueDate: text(milestone.due_date) || null,
-      status: text(milestone.status, "pending"),
+      status: milestoneStatus(text(milestone.status, "pending")),
       displayOrder: numeric(milestone.display_order),
     }))
     .sort((a, b) => a.displayOrder - b.displayOrder);
 
-  const storedStatus =
-    text(project?.status) ||
-    text(contract?.status) ||
-    text(row.status, "pending");
-  const terminalStatus = ["completed", "cancelled", "canceled"].includes(
-    storedStatus.toLowerCase(),
-  );
   const clientSignedAt = text(contract?.client_signed_at) || null;
   const freelancerSignedAt = text(contract?.freelancer_signed_at) || null;
-  const agreementStatus =
-    clientSignedAt && freelancerSignedAt
-      ? "Active"
-      : clientSignedAt || freelancerSignedAt
-        ? "Awaiting confirmation"
-        : "Pending agreement";
 
   return {
     orderId: text(row.order_id),
@@ -219,11 +230,24 @@ export async function getProjectWorkspace(
     projectId: text(project?.project_id) || null,
     conversationId: conversation?.conversation_id ?? null,
     type: service?.service_type === "milestone" ? "milestone" : "standard",
-    title: text(project?.title) || text(service?.title, "Untitled Project"),
-    categoryName: text(categoryResult.data?.name) || null,
-    description: text(project?.description) || text(service?.description),
-    status: terminalStatus ? storedStatus : agreementStatus,
-    orderStatus: text(row.status),
+    title:
+      text(project?.title) ||
+      requestTitle ||
+      text(service?.title, "Untitled Project"),
+    categoryName:
+      requestCategoryName || text(categoryResult.data?.name) || null,
+    description:
+      text(project?.description) ||
+      requestDescription ||
+      text(service?.description),
+    status: workspaceStatus(
+      text(project?.status) || null,
+      text(contract?.status) || null,
+      text(row.status),
+      clientSignedAt,
+      freelancerSignedAt,
+    ),
+    orderStatus: orderStatus(text(row.status)),
     clientName: displayName(profileMap.get(clientUserId) ?? null, "Client"),
     freelancerName: displayName(
       profileMap.get(freelancerUserId) ?? null,
@@ -242,8 +266,10 @@ export async function getProjectWorkspace(
       contract?.revisions_count == null && service?.revisions_count == null
         ? null
         : numeric(contract?.revisions_count ?? service?.revisions_count),
-    terms: text(contract?.terms) || null,
-    contractStatus: text(contract?.status) || null,
+    terms: requestDescription || rawTerms || null,
+    contractStatus: contract?.status
+      ? contractStatus(text(contract.status))
+      : null,
     clientSignedAt,
     freelancerSignedAt,
     milestones,
@@ -493,11 +519,7 @@ export async function updateProjectAgreementTerms(
     .eq("contract_id", contractId);
   if (error) throw new Error(error.message);
 
-  const reset = await supabase
-    .from("contract_item_approvals")
-    .update({ client_approved_at: null, freelancer_approved_at: null })
-    .eq("contract_id", contractId);
-  if (reset.error) throw new Error(reset.error.message);
+  // The checked contract trigger resets approvals in the same transaction.
 }
 
 export async function respondToProjectAgreementItem(
@@ -578,10 +600,5 @@ export async function updateProjectAgreementItem(
     .eq("contract_id", contractId);
   if (error) throw new Error(error.message);
 
-  const reset = await supabase
-    .from("contract_item_approvals")
-    .update({ client_approved_at: null, freelancer_approved_at: null })
-    .eq("contract_id", contractId)
-    .eq("item_key", itemKey);
-  if (reset.error) throw new Error(reset.error.message);
+  // The checked contract trigger resets approvals in the same transaction.
 }

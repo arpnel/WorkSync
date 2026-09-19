@@ -22,6 +22,7 @@ export async function createAccount({
       email: cleanEmail,
       password,
       options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
         data: {
           first_name: cleanFirstName,
           last_name: cleanLastName,

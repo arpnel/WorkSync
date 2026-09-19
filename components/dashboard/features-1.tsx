@@ -4,7 +4,7 @@ import { ReactNode } from 'react'
 
 export default function Features() {
     return (
-        <section className="bg-zinc-50 py-16 md:py-32 dark:bg-transparent">
+        <section id="features" className="bg-zinc-50 py-16 md:py-32 dark:bg-transparent">
             <div className="@container mx-auto max-w-5xl px-6">
                 <div className="text-center">
                     <h2 className="text-balance text-4xl font-semibold lg:text-5xl">Everything You Need to Work Better Together</h2>
@@ -24,7 +24,7 @@ export default function Features() {
                         </CardHeader>
 
                         <CardContent>
-                            <p className="text-sm">Browse verified professionals across different fields and connect with experts that match your project's needs.</p>
+                            <p className="text-sm">Browse verified professionals across different fields and connect with experts that match your project&apos;s needs.</p>
                         </CardContent>
                     </Card>
 

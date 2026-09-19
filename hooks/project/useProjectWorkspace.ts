@@ -1,5 +1,9 @@
 "use client";
 
+import {
+  readProjectCache,
+  clearProjectReadCache,
+} from "@/lib/projectReadCache";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   createProjectTypingChannel,
@@ -44,18 +48,27 @@ export function useProjectWorkspace(orderId: string) {
   const [isOtherParticipantTyping, setIsOtherParticipantTyping] =
     useState(false);
   const [error, setError] = useState<string | null>(null);
+  const activeOrder = useRef(orderId);
+  const loadVersion = useRef(0);
   const sendTypingRef = useRef<(isTyping: boolean) => void>(() => undefined);
 
   const load = useCallback(
-    async (showLoading = true) => {
-      if (!orderId) return;
+    async (showLoading = true, force = true) => {
+      if (!orderId || activeOrder.current !== orderId) return;
+      const request = ++loadVersion.current;
 
       try {
         if (showLoading) setLoading(true);
         setError(null);
-        const freshWorkspace = await getProjectWorkspace(orderId);
+        const freshWorkspace = await readProjectCache(
+          `workspace:${orderId}`,
+          () => getProjectWorkspace(orderId),
+          force,
+        );
+        if (activeOrder.current !== orderId || request !== loadVersion.current)
+          return;
         setWorkspace((current) =>
-          showLoading || !current
+          showLoading || !current || current.orderId !== orderId
             ? freshWorkspace
             : {
                 ...freshWorkspace,
@@ -66,20 +79,34 @@ export function useProjectWorkspace(orderId: string) {
               },
         );
       } catch (cause) {
+        if (activeOrder.current !== orderId || request !== loadVersion.current)
+          return;
         setError(
           cause instanceof Error ? cause.message : "Failed to load project.",
         );
         if (showLoading) setWorkspace(null);
       } finally {
-        if (showLoading) setLoading(false);
+        if (activeOrder.current === orderId && request === loadVersion.current)
+          setLoading(false);
       }
     },
     [orderId],
   );
 
   useEffect(() => {
-    void load(true);
-  }, [load]);
+    activeOrder.current = orderId;
+    void load(true, false);
+    const refresh = () => {
+      if (document.visibilityState === "visible") void load(false, false);
+    };
+    const timer = window.setInterval(refresh, 15000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      activeOrder.current = "";
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [load, orderId]);
 
   useEffect(() => {
     const refreshMessages = () => {
@@ -99,6 +126,16 @@ export function useProjectWorkspace(orderId: string) {
 
     const channel = supabase
       .channel(`project-contract:${workspace.contractId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "service_orders",
+          filter: `order_id=eq.${orderId}`,
+        },
+        () => void load(false),
+      )
       .on(
         "postgres_changes",
         {
@@ -124,7 +161,7 @@ export function useProjectWorkspace(orderId: string) {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [load, workspace?.contractId]);
+  }, [load, orderId, workspace?.contractId]);
 
   useEffect(() => {
     if (!workspace?.conversationId) return;
@@ -142,6 +179,36 @@ export function useProjectWorkspace(orderId: string) {
       void supabase.removeChannel(typing.channel);
     };
   }, [workspace?.conversationId, workspace?.currentUserId]);
+
+  useEffect(() => {
+    if (!workspace?.projectId) return;
+    const channel = supabase
+      .channel("workspace-state:" + workspace.projectId)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "projects",
+          filter: "project_id=eq." + workspace.projectId,
+        },
+        () => void load(false),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "milestones",
+          filter: "project_id=eq." + workspace.projectId,
+        },
+        () => void load(false),
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [load, workspace?.projectId]);
 
   const sendTyping = useCallback(
     (isTyping: boolean) => sendTypingRef.current(isTyping),
@@ -166,7 +233,7 @@ export function useProjectWorkspace(orderId: string) {
     };
 
     setWorkspace((current) =>
-      current
+      current?.orderId === orderId
         ? {
             ...current,
             messages: mergeMessages(current.messages, [optimisticMessage]),
@@ -185,7 +252,7 @@ export function useProjectWorkspace(orderId: string) {
         attachment,
       );
       setWorkspace((current) =>
-        current
+        current?.orderId === orderId
           ? {
               ...current,
               messages: current.messages.map((item) =>
@@ -194,11 +261,12 @@ export function useProjectWorkspace(orderId: string) {
             }
           : current,
       );
+      clearProjectReadCache();
       await load(false);
       return true;
     } catch (cause) {
       setWorkspace((current) =>
-        current
+        current?.orderId === orderId
           ? {
               ...current,
               messages: current.messages.filter(
@@ -220,10 +288,13 @@ export function useProjectWorkspace(orderId: string) {
     try {
       setUpdatingApprovalKey(itemKey);
       await respondToProjectAgreementItem(orderId, itemKey, approved);
+      clearProjectReadCache();
       await load(false);
       return true;
     } catch (cause) {
-      console.error("Failed to update item approval:", cause);
+      setError(
+        cause instanceof Error ? cause.message : "Unable to update agreement.",
+      );
       return false;
     } finally {
       setUpdatingApprovalKey(null);
@@ -235,10 +306,13 @@ export function useProjectWorkspace(orderId: string) {
       setUpdatingAgreement(true);
       setError(null);
       await respondToProjectAgreement(orderId, accepted);
+      clearProjectReadCache();
       await load(false);
       return true;
     } catch (cause) {
-      console.error("Failed to update agreement:", cause);
+      setError(
+        cause instanceof Error ? cause.message : "Unable to update agreement.",
+      );
       return false;
     } finally {
       setUpdatingAgreement(false);
@@ -252,10 +326,13 @@ export function useProjectWorkspace(orderId: string) {
     try {
       setUpdatingApprovalKey(itemKey);
       await updateProjectAgreementItem(orderId, itemKey, value);
+      clearProjectReadCache();
       await load(false);
       return true;
     } catch (cause) {
-      console.error("Failed to update agreement item:", cause);
+      setError(
+        cause instanceof Error ? cause.message : "Unable to update agreement.",
+      );
       return false;
     } finally {
       setUpdatingApprovalKey(null);
@@ -267,10 +344,13 @@ export function useProjectWorkspace(orderId: string) {
       setUpdatingAgreement(true);
       setError(null);
       await updateProjectAgreementTerms(orderId, budget, deliveryDays);
+      clearProjectReadCache();
       await load(false);
       return true;
     } catch (cause) {
-      console.error("Failed to update agreement terms:", cause);
+      setError(
+        cause instanceof Error ? cause.message : "Unable to update agreement.",
+      );
       return false;
     } finally {
       setUpdatingAgreement(false);
@@ -278,14 +358,17 @@ export function useProjectWorkspace(orderId: string) {
   };
 
   return {
-    workspace,
-    loading,
+    workspace: workspace?.orderId === orderId ? workspace : null,
+    loading: loading || (!!workspace && workspace.orderId !== orderId),
     sending,
     updatingAgreement,
     updatingApprovalKey,
     isOtherParticipantTyping,
     error,
-    refresh: () => load(false),
+    refresh: () => {
+      clearProjectReadCache();
+      return load(false);
+    },
     sendMessage,
     sendTyping,
     respondToAgreement,

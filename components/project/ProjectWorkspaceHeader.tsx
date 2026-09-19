@@ -4,8 +4,10 @@ import { Activity, ArrowLeft, FolderKanban, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import type { WorkspaceProjectType } from "@/types/project/projectWorkspace";
+import { Badge } from "@/components/ui/badge";
 
 type Props = {
+  compact?: boolean;
   title: string;
   description: string;
   categoryName: string | null;
@@ -15,6 +17,7 @@ type Props = {
 };
 
 export function ProjectWorkspaceHeader({
+  compact = false,
   title,
   description,
   categoryName,
@@ -22,6 +25,49 @@ export function ProjectWorkspaceHeader({
   type,
   onBack,
 }: Props) {
+  if (compact)
+    return (
+      <header className="space-y-3 border-b pb-5">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="-ml-3 text-muted-foreground"
+          onClick={onBack}
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Projects
+        </Button>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <h1 className="min-w-0 flex-1 break-words text-2xl font-semibold tracking-tight sm:text-3xl">
+            {title}
+          </h1>
+          <Badge variant="secondary" className="capitalize">
+            {status}
+          </Badge>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5">
+            <FolderKanban className="h-4 w-4" />
+            {type === "milestone" ? "Milestone project" : "Standard project"}
+          </span>
+          {categoryName && (
+            <span className="inline-flex items-center gap-1.5">
+              <Tag className="h-4 w-4" />
+              {categoryName}
+            </span>
+          )}
+        </div>
+        <details className="text-sm">
+          <summary className="w-fit cursor-pointer text-muted-foreground">
+            Project description
+          </summary>
+          <p className="mt-2 max-w-4xl whitespace-pre-wrap leading-6">
+            {description || "No project description was provided."}
+          </p>
+        </details>
+      </header>
+    );
   return (
     <Card className="gap-0 overflow-hidden py-0">
       <CardContent className="p-0">

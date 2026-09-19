@@ -24,18 +24,18 @@ export function useProfile() {
       setLoading(true);
       setError(null);
 
-      const data = await getCurrentProfile();
+      const data = await getCurrentProfile(true);
 
       if (!data) {
         throw new Error("Profile not found.");
       }
 
       setProfile(data);
-    } catch (err: any) {
+    } catch (err) {
       console.error("Failed to load profile:", err);
 
       setProfile(null);
-      setError(err.message || "Failed to load profile");
+      setError(err instanceof Error ? err.message : "Failed to load profile");
     } finally {
       setLoading(false);
     }
@@ -45,16 +45,11 @@ export function useProfile() {
     loadProfile();
   }, []);
 
-  const saveProfile = async (
-    updates: UpdateProfilePayload
-  ) => {
+  const saveProfile = async (updates: UpdateProfilePayload) => {
     if (!profile) return false;
 
     try {
-      const updatedProfile = await updateProfile(
-        profile.user_id,
-        updates
-      );
+      const updatedProfile = await updateProfile(profile.user_id, updates);
 
       setProfile(updatedProfile);
 
@@ -65,16 +60,11 @@ export function useProfile() {
     }
   };
 
-  const updateAvatarImage = async (
-    file: File
-  ) => {
+  const updateAvatarImage = async (file: File) => {
     if (!profile) return false;
 
     try {
-      const avatarUrl = await uploadAvatar(
-        profile.user_id,
-        file
-      );
+      const avatarUrl = await uploadAvatar(profile.user_id, file);
 
       setProfile({
         ...profile,
@@ -88,16 +78,11 @@ export function useProfile() {
     }
   };
 
-  const updateBannerImage = async (
-    file: File
-  ) => {
+  const updateBannerImage = async (file: File) => {
     if (!profile) return false;
 
     try {
-      const bannerUrl = await uploadBanner(
-        profile.user_id,
-        file
-      );
+      const bannerUrl = await uploadBanner(profile.user_id, file);
 
       setProfile({
         ...profile,

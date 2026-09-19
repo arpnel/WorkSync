@@ -35,18 +35,19 @@ export default function AboutSection({ profile }: AboutSectionProps) {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <DollarSign className="h-5 w-5 text-primary" />
-            <div>
-              <p className="text-sm text-muted-foreground">Hourly Rate</p>
-              <p className="font-medium">
-                {profile.hourly_rate
-                  ? `$${profile.hourly_rate}/hr`
-                  : "Not specified"}
-              </p>
+          {profile.role === "freelancer" && (
+            <div className="flex items-center gap-3">
+              <DollarSign className="h-5 w-5 text-primary" />
+              <div>
+                <p className="text-sm text-muted-foreground">Hourly Rate</p>
+                <p className="font-medium">
+                  {profile.hourly_rate != null
+                    ? `PHP ${profile.hourly_rate.toLocaleString()}/hr`
+                    : "Not specified"}
+                </p>
+              </div>
             </div>
-          </div>
-
+          )}
           <div className="flex items-center gap-3">
             <CalendarDays className="h-5 w-5 text-primary" />
             <div>

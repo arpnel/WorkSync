@@ -1,275 +1,92 @@
 import { useRef, type ChangeEvent } from "react";
-
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-
-import { Upload, Shield, FolderOpen, Award } from "lucide-react";
-
 import type { FreelancerSetupValues } from "@/types/account-setup.types";
-
-type Props = {
-  values: FreelancerSetupValues;
-
-  errors: Partial<Record<keyof FreelancerSetupValues, string>>;
-
-  onChange: (
-    field: keyof FreelancerSetupValues,
-    value: FreelancerSetupValues[keyof FreelancerSetupValues],
-  ) => void;
-
-  onFileSelect: (
-    field: keyof FreelancerSetupValues,
-    event: ChangeEvent<HTMLInputElement>,
-  ) => void;
-
-  onMultiFileSelect: (
-    field: "portfolioSamples" | "certifications",
-    event: ChangeEvent<HTMLInputElement>,
-  ) => void;
-
-  onRemoveFile: (
-    field: "portfolioSamples" | "certifications",
-    index: number,
-  ) => void;
-};
-
+type Field = "portfolioSamples" | "certifications";
 export function VerificationSection({
   values,
   errors,
-  onChange,
-  onFileSelect,
   onMultiFileSelect,
   onRemoveFile,
-}: Props) {
-  const govIdInputRef = useRef<HTMLInputElement>(null);
-  const samplesInputRef = useRef<HTMLInputElement>(null);
-  const certsInputRef = useRef<HTMLInputElement>(null);
-
+}: {
+  values: FreelancerSetupValues;
+  errors: Partial<Record<keyof FreelancerSetupValues, string>>;
+  onMultiFileSelect: (
+    field: Field,
+    event: ChangeEvent<HTMLInputElement>,
+  ) => void;
+  onRemoveFile: (field: Field, index: number) => void;
+}) {
+  const samples = useRef<HTMLInputElement>(null);
+  const certificates = useRef<HTMLInputElement>(null);
   return (
-    <section className="rounded-2xl border bg-background p-6 shadow-sm">
-      <div className="mb-5 flex items-center gap-3">
-        <h3 className="text-sm font-semibold">Verification</h3>
-
-        <div className="h-px flex-1 bg-border" />
-      </div>
-
-      <div className="space-y-5">
-        {/* Government ID */}
-
-        <div className="space-y-2">
-          <Label>
-            Government ID <span className="text-destructive">*</span>
-          </Label>
-
-          <input
-            ref={govIdInputRef}
-            type="file"
-            accept="image/png,image/jpeg,image/webp,application/pdf"
-            className="hidden"
-            onChange={(event) => onFileSelect("governmentId", event)}
-          />
-
-          {values.governmentId ? (
-            <div className="flex items-center gap-3 rounded-lg border bg-muted/30 p-3">
-              <Shield className="size-5 text-muted-foreground" />
-
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">
-                  {values.governmentId.name}
-                </p>
-              </div>
-
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={() => onChange("governmentId", null)}
+    <section className="space-y-5 rounded-2xl border bg-background p-6 shadow-sm">
+      <h3 className="text-sm font-semibold">Professional documents</h3>
+      <p className="text-sm text-muted-foreground">
+        Add work samples and optional certificates. These do not verify your
+        identity.
+      </p>
+      {(["portfolioSamples", "certifications"] as const).map((field) => {
+        const ref = field === "portfolioSamples" ? samples : certificates;
+        const saved =
+          field === "portfolioSamples"
+            ? values.existingPortfolioSamples
+            : values.existingCertifications;
+        return (
+          <div key={field} className="space-y-2">
+            <h4 className="text-sm font-medium">
+              {field === "portfolioSamples"
+                ? "Portfolio samples (required)"
+                : "Certifications (optional)"}
+            </h4>
+            {!!saved?.length && (
+              <p className="text-xs text-muted-foreground">
+                {saved.length} saved file(s) will be kept.
+              </p>
+            )}
+            {values[field].map((file, index) => (
+              <div
+                key={`${file.name}-${index}`}
+                className="flex items-center justify-between gap-2 rounded-lg border p-2 text-sm"
               >
-                &times;
-              </Button>
-            </div>
-          ) : (
-            <button
+                <span className="truncate">{file.name}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label={`Remove ${file.name}`}
+                  onClick={() => onRemoveFile(field, index)}
+                >
+                  Remove
+                </Button>
+              </div>
+            ))}
+            <input
+              ref={ref}
+              type="file"
+              multiple
+              accept="image/png,image/jpeg,image/webp,application/pdf"
+              className="hidden"
+              onChange={(event) => onMultiFileSelect(field, event)}
+            />
+            <Button
               type="button"
-              onClick={() => govIdInputRef.current?.click()}
-              className="
-                flex
-                w-full
-                items-center
-                justify-center
-                gap-2
-                rounded-lg
-                border-2
-                border-dashed
-                p-4
-                text-sm
-                transition-colors
-                hover:bg-muted/40
-              "
+              variant="outline"
+              onClick={() => ref.current?.click()}
             >
-              <Upload className="size-5 text-muted-foreground" />
-
-              <span className="text-muted-foreground">
-                Upload Government ID
-              </span>
-            </button>
-          )}
-
-          {errors.governmentId && (
-            <p className="text-xs text-destructive">{errors.governmentId}</p>
-          )}
-        </div>
-
-        {/* Portfolio Samples */}
-
-        <div className="space-y-2">
-          <Label>
-            Portfolio Samples <span className="text-destructive">*</span>
-          </Label>
-
-          <input
-            ref={samplesInputRef}
-            type="file"
-            multiple
-            accept="image/png,image/jpeg,image/webp,application/pdf"
-            className="hidden"
-            onChange={(event) => onMultiFileSelect("portfolioSamples", event)}
-          />
-
-          <div className="flex flex-wrap gap-2">
-            {values.portfolioSamples.map((file, index) => (
-              <div
-                key={`${file.name}-${index}`}
-                className="
-                  flex
-                  items-center
-                  gap-2
-                  rounded-lg
-                  border
-                  bg-muted/30
-                  p-2
-                  text-sm
-                "
-              >
-                <FolderOpen className="size-4 text-muted-foreground" />
-
-                <span className="max-w-[200px] truncate">{file.name}</span>
-
-                <button
-                  type="button"
-                  onClick={() => onRemoveFile("portfolioSamples", index)}
-                  className="
-                    text-destructive
-                    hover:text-destructive/80
-                  "
-                >
-                  &times;
-                </button>
-              </div>
-            ))}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => samplesInputRef.current?.click()}
-            className="
-              flex
-              w-full
-              items-center
-              justify-center
-              gap-2
-              rounded-lg
-              border-2
-              border-dashed
-              p-4
-              text-sm
-              transition-colors
-              hover:bg-muted/40
-            "
-          >
-            <Upload className="size-5 text-muted-foreground" />
-
-            <span className="text-muted-foreground">Add portfolio sample</span>
-          </button>
-
-          {errors.portfolioSamples && (
-            <p className="text-xs text-destructive">
-              {errors.portfolioSamples}
+              Add{" "}
+              {field === "portfolioSamples" ? "work samples" : "certificates"}
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              JPG, PNG, WebP or PDF · Up to 10 MB each · 10 files maximum
             </p>
-          )}
-        </div>
-
-        {/* Certifications */}
-
-        <div className="space-y-2">
-          <Label>Certifications (Optional)</Label>
-
-          <input
-            ref={certsInputRef}
-            type="file"
-            multiple
-            accept="image/png,image/jpeg,image/webp,application/pdf"
-            className="hidden"
-            onChange={(event) => onMultiFileSelect("certifications", event)}
-          />
-
-          <div className="flex flex-wrap gap-2">
-            {values.certifications.map((file, index) => (
-              <div
-                key={`${file.name}-${index}`}
-                className="
-                  flex
-                  items-center
-                  gap-2
-                  rounded-lg
-                  border
-                  bg-muted/30
-                  p-2
-                  text-sm
-                "
-              >
-                <Award className="size-4 text-muted-foreground" />
-
-                <span className="max-w-[200px] truncate">{file.name}</span>
-
-                <button
-                  type="button"
-                  onClick={() => onRemoveFile("certifications", index)}
-                  className="
-                    text-destructive
-                    hover:text-destructive/80
-                  "
-                >
-                  &times;
-                </button>
-              </div>
-            ))}
+            {errors[field] && (
+              <p role="alert" className="text-xs text-destructive">
+                {errors[field]}
+              </p>
+            )}
           </div>
-
-          <button
-            type="button"
-            onClick={() => certsInputRef.current?.click()}
-            className="
-              flex
-              w-full
-              items-center
-              justify-center
-              gap-2
-              rounded-lg
-              border-2
-              border-dashed
-              p-4
-              text-sm
-              transition-colors
-              hover:bg-muted/40
-            "
-          >
-            <Upload className="size-5 text-muted-foreground" />
-
-            <span className="text-muted-foreground">Upload certifications</span>
-          </button>
-        </div>
-      </div>
+        );
+      })}
     </section>
   );
 }

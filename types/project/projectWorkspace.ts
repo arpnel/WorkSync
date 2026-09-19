@@ -1,3 +1,8 @@
+import type {
+  ContractStatus,
+  ServiceOrderStatus,
+  MilestoneStatus,
+} from "./status";
 export type WorkspaceProjectType = "standard" | "milestone";
 
 export interface WorkspaceMilestone {
@@ -6,7 +11,7 @@ export interface WorkspaceMilestone {
   description: string;
   amount: number;
   dueDate: string | null;
-  status: string;
+  status: MilestoneStatus;
   displayOrder: number;
 }
 
@@ -41,7 +46,7 @@ export interface ProjectWorkspace {
   categoryName: string | null;
   description: string;
   status: string;
-  orderStatus: string;
+  orderStatus: ServiceOrderStatus;
   clientName: string;
   freelancerName: string;
   createdAt: string;
@@ -51,7 +56,7 @@ export interface ProjectWorkspace {
   deliveryDays: number | null;
   revisions: number | null;
   terms: string | null;
-  contractStatus: string | null;
+  contractStatus: ContractStatus | null;
   clientSignedAt: string | null;
   freelancerSignedAt: string | null;
   milestones: WorkspaceMilestone[];

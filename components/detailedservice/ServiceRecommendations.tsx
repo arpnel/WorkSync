@@ -1,4 +1,5 @@
 "use client";
+import ContentSkeleton from "@/components/shared/ContentSkeleton";
 
 import { useEffect, useState } from "react";
 import { AlertTriangle } from "lucide-react";
@@ -218,24 +219,10 @@ export default function MarketplaceServiceDetails({
 
   if (loading || roleLoading) {
     return (
-      <div
-        className="
-        flex
-        min-h-[400px]
-        items-center
-        justify-center
-        px-4
-      "
-      >
-        <p
-          className="
-          text-sm
-          text-muted-foreground
-        "
-        >
-          Loading listing...
-        </p>
-      </div>
+      <ContentSkeleton
+        label="Loading recommendations"
+        variant="recommendation"
+      />
     );
   }
 
@@ -332,7 +319,6 @@ export default function MarketplaceServiceDetails({
 
   const description = service.description || "No description provided.";
 
-  const categoryName = service.category?.name || "Category";
 
   const price = Number(service.price ?? 0);
 

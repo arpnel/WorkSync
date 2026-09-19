@@ -1,7 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import CallButton from "@/components/calls/CallButton";
+import CallMessage from "@/components/calls/CallMessage";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   FileText,
   Loader2,
@@ -18,6 +20,8 @@ import { cn } from "@/lib/utils";
 import type { WorkspaceMessage } from "@/types/project/projectWorkspace";
 
 type Props = {
+  conversationId?: string | null;
+  headerActions?: ReactNode;
   className?: string;
   messages: WorkspaceMessage[];
   sending: boolean;
@@ -77,6 +81,8 @@ function MessageAttachment({ message }: { message: WorkspaceMessage }) {
 }
 
 export function ProjectChatPanel({
+  conversationId,
+  headerActions,
   className,
   messages,
   sending,
@@ -132,11 +138,15 @@ export function ProjectChatPanel({
         className,
       )}
     >
-      <CardHeader className="shrink-0 border-b">
+      <CardHeader className="flex shrink-0 flex-row flex-wrap items-center justify-between gap-2 border-b">
         <CardTitle className="flex items-center gap-2 text-base">
           <MessageSquare className="h-4 w-4" />
-          Project Chat
+          Project conversation
         </CardTitle>
+        <div className="flex items-center gap-1">
+          {conversationId && <CallButton conversationId={conversationId} />}
+          {headerActions}
+        </div>
       </CardHeader>
       <CardContent className="flex min-h-0 flex-1 flex-col p-0">
         <div
@@ -186,9 +196,9 @@ export function ProjectChatPanel({
                     }
                   >
                     {item.message && (
-                      <p className="whitespace-pre-wrap break-words">
-                        {item.message}
-                      </p>
+                      <div className="whitespace-pre-wrap break-words">
+                        <CallMessage content={item.message} />
+                      </div>
                     )}
                     <MessageAttachment message={item} />
                   </div>

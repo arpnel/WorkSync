@@ -1,47 +1,56 @@
 export type Profile = {
   /* ---------------- Users ---------------- */
 
-  user_id: string
-  email: string
-  role: "client" | "freelancer" | "admin"
+  user_id: string;
+  email: string;
+  role: "client" | "freelancer" | "admin";
 
   /* ---------------- profiles ---------------- */
 
-  first_name: string
-  last_name: string
+  first_name: string;
+  last_name: string;
 
-  avatar_url: string | null
-  bio: string | null
-  location: string | null
+  avatar_url: string | null;
+  bio: string | null;
+  location: string | null;
 
-  display_name: string | null
-  banner_url: string | null
+  display_name: string | null;
+  banner_url: string | null;
 
-  account_setup_completed: boolean
+  account_setup_completed: boolean;
 
-  province: string | null
-  city: string | null
-  english_proficiency: string | null
+  province: string | null;
+  city: string | null;
+  english_proficiency: string | null;
 
   /* ---------------- freelancer_profiles ---------------- */
 
-  headline: string | null
-  hourly_rate: number | null
-  verification_status: string | null
+  headline: string | null;
+  hourly_rate: number | null;
+  verification_status: string | null;
+  years_of_experience?: number | null;
+  employment_preference?: string | null;
+  portfolio_website?: string | null;
+  linkedin_url?: string | null;
+  github_url?: string | null;
+  skills?: { id: string; name: string }[];
+  industries?: { id: string; name: string }[];
+  services_count?: number;
+  portfolio_count?: number;
+  unavailable_details?: string[];
 
   /* ---------------- Computed data ---------------- */
 
-  rating: number | null
-  reviews_count: number
-  projects_completed: number
-  total_earnings: number | null
+  rating: number | null;
+  reviews_count: number;
+  projects_completed: number;
+  total_earnings: number | null;
 
   /* ---------------- Timestamps ---------------- */
 
-  created_at: string
-  updated_at: string
-}
-
+  created_at: string;
+  updated_at: string;
+};
 
 /**
  * Skill type
@@ -50,11 +59,10 @@ export type Profile = {
  * - skills
  */
 export type Skill = {
-  id: string
-  name: string
-  created_at?: string
-}
-
+  id: string;
+  name: string;
+  created_at?: string;
+};
 
 /**
  * Freelancer skill relationship
@@ -63,11 +71,10 @@ export type Skill = {
  * - freelancer_skills
  */
 export type FreelancerSkill = {
-  freelancer_id: string
-  skill_id: string
-  created_at: string
-}
-
+  freelancer_id: string;
+  skill_id: string;
+  created_at: string;
+};
 
 /**
  * Freelancer category relationship
@@ -76,11 +83,10 @@ export type FreelancerSkill = {
  * - freelancer_categories
  */
 export type FreelancerCategory = {
-  freelancer_id: string
-  category_id: string
-  created_at: string
-}
-
+  freelancer_id: string;
+  category_id: string;
+  created_at: string;
+};
 
 /**
  * Portfolio project type
@@ -89,18 +95,17 @@ export type FreelancerCategory = {
  * - portfolio
  */
 export type PortfolioProject = {
-  portfolio_id: string
-  freelancer_id: string
+  portfolio_id: string;
+  freelancer_id: string;
 
-  title: string
-  description: string | null
+  title: string;
+  description: string | null;
 
-  project_url: string | null
-  thumbnail_image_id: string | null
+  project_url: string | null;
+  thumbnail_image_id: string | null;
 
-  created_at: string
-}
-
+  created_at: string;
+};
 
 /**
  * Portfolio image type
@@ -109,15 +114,14 @@ export type PortfolioProject = {
  * - portfolio_images
  */
 export type PortfolioImage = {
-  id: string
-  portfolio_id: string
+  id: string;
+  portfolio_id: string;
 
-  image_url: string
-  display_order: number
+  image_url: string;
+  display_order: number;
 
-  created_at: string
-}
-
+  created_at: string;
+};
 
 /**
  * Service type
@@ -129,35 +133,34 @@ export type PortfolioImage = {
  * used by the profile UI.
  */
 export type Service = {
-  id: string
+  id: string;
 
-  freelancer_id?: string
-  category_id?: string
+  freelancer_id?: string;
+  category_id?: string;
 
-  title: string
-  description: string
+  title: string;
+  description: string;
 
-  price: number
-  pricing_mode?: string
+  price: number;
+  pricing_mode?: string;
 
-  deliveryTimeDays: number
-  revisionCount: number
+  deliveryTimeDays: number;
+  revisionCount: number;
 
-  service_type: string
-  status?: string
+  service_type: string;
+  status?: string;
 
-  slug?: string
-  cover_image_url: string | null
+  slug?: string;
+  cover_image_url: string | null;
 
-  category: string
+  category: string;
 
-  display_name: string | null
-  avatar_url: string | null
+  display_name: string | null;
+  avatar_url: string | null;
 
-  created_at: string
-  updated_at?: string
-}
-
+  created_at: string;
+  updated_at?: string;
+};
 
 /**
  * Service media type
@@ -166,16 +169,15 @@ export type Service = {
  * - service_media
  */
 export type ServiceMedia = {
-  media_id: string
-  service_id: string
+  media_id: string;
+  service_id: string;
 
-  media_url: string
-  media_type: string
-  display_order: number
+  media_url: string;
+  media_type: string;
+  display_order: number;
 
-  created_at: string
-}
-
+  created_at: string;
+};
 
 /**
  * Service milestone type
@@ -184,18 +186,17 @@ export type ServiceMedia = {
  * - service_milestones
  */
 export type ServiceMilestone = {
-  service_milestone_id: string
-  service_id: string
+  service_milestone_id: string;
+  service_id: string;
 
-  title: string
-  description: string | null
-  amount: number
+  title: string;
+  description: string | null;
+  amount: number;
 
-  display_order: number
+  display_order: number;
 
-  created_at: string
-}
-
+  created_at: string;
+};
 
 /**
  * Review type
@@ -207,20 +208,19 @@ export type ServiceMilestone = {
  * from Users/profiles when needed.
  */
 export type Review = {
-  review_id: string
+  review_id: string;
 
-  rating: number
-  comment: string | null
+  rating: number;
+  comment: string | null;
 
-  created_at: string
+  created_at: string;
 
-  project_id: string
-  client_id: string
-  freelancer_id: string
+  project_id: string;
+  client_id: string;
+  freelancer_id: string;
 
-  reviewer_role: string
-}
-
+  reviewer_role: string;
+};
 
 /**
  * Job category type
@@ -229,11 +229,10 @@ export type Review = {
  * - job_categories
  */
 export type JobCategory = {
-  id: string
-  name: string
-  created_at: string
-}
-
+  id: string;
+  name: string;
+  created_at: string;
+};
 
 /**
  * Category-skill relationship
@@ -242,10 +241,9 @@ export type JobCategory = {
  * - category_skills
  */
 export type CategorySkill = {
-  category_id: string
-  skill_id: string
-}
-
+  category_id: string;
+  skill_id: string;
+};
 
 /**
  * Update profile payload
@@ -256,24 +254,23 @@ export type CategorySkill = {
 export type UpdateProfilePayload = {
   /* ---------------- profiles ---------------- */
 
-  first_name?: string
-  last_name?: string
+  first_name?: string;
+  last_name?: string;
 
-  avatar_url?: string | null
-  banner_url?: string | null
+  avatar_url?: string | null;
+  banner_url?: string | null;
 
-  bio?: string | null
-  location?: string | null
+  bio?: string | null;
+  location?: string | null;
 
-  display_name?: string | null
+  display_name?: string | null;
 
-  province?: string | null
-  city?: string | null
-  english_proficiency?: string | null
+  province?: string | null;
+  city?: string | null;
+  english_proficiency?: string | null;
 
   /* ---------------- freelancer_profiles ---------------- */
 
-  headline?: string | null
-  hourly_rate?: number | null
-}
-
+  headline?: string | null;
+  hourly_rate?: number | null;
+};

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { Camera, Pencil, Star } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -37,17 +38,20 @@ export default function ProfileHeader({
     .toUpperCase();
 
   return (
-    <Card className="overflow-hidden rounded-2xl border shadow-sm">
+    <Card className="gap-0 overflow-hidden rounded-2xl border p-0 shadow-sm">
       {/* Banner */}
-      <div className="relative h-44 w-full overflow-hidden sm:h-[260px] md:h-52 lg:h-[320px]">
+      <div className="relative h-32 w-full overflow-hidden sm:h-44 lg:h-48">
         {profile.banner_url ? (
-          <img
+          <Image
+            fill
+            unoptimized
+            sizes="100vw"
             src={profile.banner_url}
             alt="Banner"
             className="absolute inset-0 h-full w-full object-cover object-center"
           />
         ) : (
-          <div className="absolute inset-0 bg-gradient-to-r from-emerald-500 via-cyan-500 to-blue-600" />
+          <div className="absolute inset-0 bg-primary/15" />
         )}
 
         {/* Dark overlay */}
@@ -56,6 +60,8 @@ export default function ProfileHeader({
         {isOwner && (
           <Button
             size="icon"
+            aria-label="Edit profile cover"
+            onClick={onEdit}
             variant="secondary"
             className="absolute right-5 top-5 z-10 rounded-full shadow-lg backdrop-blur"
           >
@@ -65,19 +71,19 @@ export default function ProfileHeader({
       </div>
 
       {/* Profile */}
-      <div className="px-6 pb-6 pt-0 sm:px-8 sm:pb-8">
+      <div className="px-4 pb-5 pt-0 sm:px-6 sm:pb-6">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
           {/* Left */}
           <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-end">
-            <Avatar className="-mt-20 h-25 w-25 border-4 border-background shadow-xl">
+            <Avatar className="-mt-10 h-24 w-24 shrink-0 border-4 border-background shadow-xl">
               <AvatarImage src={avatar} />
               <AvatarFallback className="text-5xl font-bold">
                 {initials}
               </AvatarFallback>
             </Avatar>
 
-            <div className="pb-1">
-              <h1 className="text-2xl font-semibold tracking-tight">
+            <div className="min-w-0 pb-1">
+              <h1 className="break-words text-2xl font-semibold tracking-tight">
                 {displayName}
               </h1>
 

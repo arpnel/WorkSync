@@ -1,5 +1,7 @@
 "use client";
 
+import { readProjectCache } from "@/lib/projectReadCache";
+import { projectProgress } from "@/lib/projectProgress";
 import * as React from "react";
 
 import type { Project } from "@/components/project/ProjectCard";
@@ -32,9 +34,22 @@ function getProjectTitle(record: ProjectRecord): string {
   const projectRecord = project as Record<string, unknown> | null;
 
   const serviceRecord = service as Record<string, unknown> | null;
+  const contract = getRelatedRecord(record.contract) as Record<
+    string,
+    unknown
+  > | null;
+  let requestedTitle: string | null = null;
+  if (typeof contract?.terms === "string") {
+    try {
+      const terms = JSON.parse(contract.terms) as Record<string, unknown>;
+      requestedTitle =
+        typeof terms.projectTitle === "string" ? terms.projectTitle : null;
+    } catch {}
+  }
 
   return (
     (typeof projectRecord?.title === "string" ? projectRecord.title : null) ||
+    requestedTitle ||
     (typeof serviceRecord?.title === "string" ? serviceRecord.title : null) ||
     "Untitled Project"
   );
@@ -82,7 +97,7 @@ function getClientName(record: ProjectRecord): string {
     return fullName;
   }
 
-  return "Client";
+  return "Profile unavailable";
 }
 
 /* ==========================================================
@@ -156,51 +171,11 @@ function getBudget(record: ProjectRecord): number {
 ========================================================== */
 
 function getDueDate(record: ProjectRecord): string | null {
-  const project = getRelatedRecord(record.project);
-
-  const contract = getRelatedRecord(record.contract);
-
-  const service = getRelatedRecord(record.service);
-
-  const projectRecord = project as Record<string, unknown> | null;
-
-  const contractRecord = contract as Record<string, unknown> | null;
-
-  const serviceRecord = service as Record<string, unknown> | null;
-
-  /* --------------------------------------------------------
-     Actual project due date
-  -------------------------------------------------------- */
-
-  const projectDueDate = projectRecord?.due_date;
-
-  if (typeof projectDueDate === "string" && projectDueDate) {
-    return projectDueDate;
-  }
-
-  /* --------------------------------------------------------
-     Contract does not have a due_date column.
-     It has delivery_time_days.
-
-     We therefore calculate a projected due date
-     from the order/project creation date.
-  -------------------------------------------------------- */
-
-  const deliveryDays = Number(
-    contractRecord?.delivery_time_days ?? serviceRecord?.delivery_time_days,
-  );
-
-  if (Number.isFinite(deliveryDays) && deliveryDays >= 0) {
-    const baseDate = new Date(record.created_at);
-
-    if (!Number.isNaN(baseDate.getTime())) {
-      baseDate.setDate(baseDate.getDate() + deliveryDays);
-
-      return baseDate.toISOString();
-    }
-  }
-
-  return null;
+  const project = getRelatedRecord(record.project) as Record<
+    string,
+    unknown
+  > | null;
+  return typeof project?.due_date === "string" ? project.due_date : null;
 }
 
 /* ==========================================================
@@ -217,25 +192,17 @@ function getDueDate(record: ProjectRecord): string | null {
 ========================================================== */
 
 function getProgress(record: ProjectRecord): number {
-  const milestones = record.milestones;
-
-  if (!milestones) {
-    return 0;
-  }
-
-  const milestoneArray = Array.isArray(milestones) ? milestones : [milestones];
-
-  if (milestoneArray.length === 0) {
-    return 0;
-  }
-
-  const completedCount = milestoneArray.filter((milestone) => {
-    const milestoneRecord = milestone as Record<string, unknown>;
-
-    return milestoneRecord.status === "completed";
-  }).length;
-
-  return Math.round((completedCount / milestoneArray.length) * 100);
+  const project = getRelatedRecord(record.project) as {
+    project_submissions?: { kind?: string; attachment_path?: string | null }[];
+  } | null;
+  return projectProgress({
+    completed: getProjectStatus(record) === "Completed",
+    milestone: getProjectType(record) === "Milestone",
+    milestones: (Array.isArray(record.milestones) ? record.milestones : []) as {
+      status?: string;
+    }[],
+    submissions: project?.project_submissions ?? [],
+  });
 }
 
 /* ==========================================================
@@ -260,118 +227,94 @@ function getMilestoneCount(record: ProjectRecord): number {
    PROJECT STATUS
 ========================================================== */
 
-function getProjectStatus(record: ProjectRecord): Project["status"] {
-  const project = getRelatedRecord(record.project);
-
-  const contract = getRelatedRecord(record.contract);
-
-  const projectRecord = project as Record<string, unknown> | null;
-
-  const contractRecord = contract as Record<string, unknown> | null;
-
-  const projectStatus = projectRecord?.status;
-
-  const contractStatus = contractRecord?.status;
-
-  /* --------------------------------------------------------
-     Project status has priority once a project exists.
-  -------------------------------------------------------- */
-
-  if (typeof projectStatus === "string") {
-    switch (projectStatus) {
-      case "active":
-        return "Active";
-
-      case "completed":
-        return "Completed";
-
-      case "cancelled":
-        return "Completed";
-
-      case "pending":
-        return "Request";
-
-      default:
-        break;
-    }
-  }
-
-  /* --------------------------------------------------------
-     Contract status
-  -------------------------------------------------------- */
-
-  if (typeof contractStatus === "string") {
-    switch (contractStatus) {
-      case "active":
-        return "Active";
-
-      case "completed":
-        return "Completed";
-
-      case "cancelled":
-      case "rejected":
-        return "Completed";
-
-      case "negotiating":
-      case "in_discussion":
-        return "In Discussion";
-
-      case "pending":
-      case "draft":
-      case "awaiting_client":
-      case "awaiting_freelancer":
-        return "Request";
-
-      default:
-        break;
-    }
-  }
-
-  /* --------------------------------------------------------
-     Service order status
-  -------------------------------------------------------- */
-
-  switch (record.status) {
-    case "negotiating":
-    case "in_discussion":
-      return "In Discussion";
-
-    case "pending":
-      return "Request";
-
-    case "accepted":
-    case "active":
-    case "in_progress":
-    case "converted":
-      return "Active";
-
-    case "completed":
-    case "cancelled":
-    case "rejected":
-      return "Completed";
-
-    default:
-      return "Request";
-  }
+export function getProjectStatus(record: ProjectRecord): Project["status"] {
+  const project = getRelatedRecord(record.project) as Record<
+    string,
+    unknown
+  > | null;
+  const status = String(project?.status ?? record.status).toLowerCase();
+  if (
+    ["cancelled", "canceled", "rejected"].includes(status) ||
+    ["cancelled", "canceled", "rejected"].includes(record.status)
+  )
+    return "Cancelled";
+  if (project?.status === "completed") return "Completed";
+  if (["active", "in_progress", "revision"].includes(status)) return "Active";
+  if (
+    ["accepted", "negotiating", "in_discussion", "converted"].includes(
+      record.status,
+    )
+  )
+    return "In Discussion";
+  return "Request";
 }
 
 /* ==========================================================
    MAP DATABASE RECORD → UI PROJECT
 ========================================================== */
 
-function mapProject(record: ProjectRecord): Project {
+export function mapProject(record: ProjectRecord): Project {
   const project = getRelatedRecord(record.project) as Record<
     string,
     unknown
   > | null;
+  const contract = getRelatedRecord(record.contract) as Record<
+    string,
+    unknown
+  > | null;
+  const client = getRelatedRecord(record.client_profile) as Record<
+    string,
+    unknown
+  > | null;
+  const freelancer = getRelatedRecord(record.freelancer_profile) as Record<
+    string,
+    unknown
+  > | null;
+  let requestDescription: string | null = null;
+  let requestCategoryName: string | null = null;
+  if (typeof contract?.terms === "string") {
+    try {
+      const terms = JSON.parse(contract.terms) as Record<string, unknown>;
+      requestDescription =
+        typeof terms.description === "string"
+          ? terms.description
+          : contract.terms;
+      requestCategoryName =
+        typeof terms.categoryName === "string" ? terms.categoryName : null;
+    } catch {
+      requestDescription = contract.terms;
+    }
+  }
 
   return {
     orderId: record.order_id,
+    applicationId: record.application_id ?? null,
+    clientSignedAt:
+      typeof contract?.client_signed_at === "string"
+        ? contract.client_signed_at
+        : null,
+    freelancerSignedAt:
+      typeof contract?.freelancer_signed_at === "string"
+        ? contract.freelancer_signed_at
+        : null,
+    currentUserId: record.current_user_id,
     projectId:
       typeof project?.project_id === "string" ? project.project_id : null,
     title: getProjectTitle(record),
 
     client: getClientName(record),
+    counterpartyName:
+      record.current_user_id === client?.user_id
+        ? getClientName({
+            ...record,
+            client_profile: record.freelancer_profile,
+          })
+        : getClientName(record),
+    counterpartyUserId: String(
+      (record.current_user_id === client?.user_id
+        ? freelancer?.user_id
+        : client?.user_id) ?? "",
+    ),
 
     type: getProjectType(record),
 
@@ -386,6 +329,25 @@ function mapProject(record: ProjectRecord): Project {
     progress: getProgress(record),
 
     milestones: getMilestoneCount(record),
+    currentParty:
+      freelancer?.user_id === record.current_user_id
+        ? "freelancer"
+        : client?.user_id === record.current_user_id
+          ? "client"
+          : null,
+    requestDescription:
+      typeof project?.description === "string"
+        ? project.description
+        : requestDescription,
+    deliveryDays:
+      typeof contract?.delivery_time_days === "number"
+        ? contract.delivery_time_days
+        : null,
+    revisions:
+      typeof contract?.revisions_count === "number"
+        ? contract.revisions_count
+        : null,
+    requestCategoryName,
   };
 }
 
@@ -404,33 +366,52 @@ export function useProjects() {
      LOAD PROJECTS
   ======================================================== */
 
-  const loadProjects = React.useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  const loadVersion = React.useRef(0);
+  const loadProjects = React.useCallback(
+    async (quiet = false, force = true) => {
+      const version = ++loadVersion.current;
+      try {
+        if (!quiet) setLoading(true);
+        setError(null);
 
-      const records = await getProjects();
+        const records = await readProjectCache("projects", getProjects, force);
+        if (version !== loadVersion.current) return;
 
-      const mappedProjects = records.map(mapProject);
+        const mappedProjects = records.map(mapProject);
 
-      setProjects(mappedProjects);
-    } catch (err) {
-      console.error("Failed to load projects:", err);
+        setProjects(mappedProjects);
+      } catch (err) {
+        if (version !== loadVersion.current) return;
+        console.error("Failed to load projects:", err);
 
-      setError(err instanceof Error ? err.message : "Failed to load projects.");
+        setError(
+          err instanceof Error ? err.message : "Failed to load projects.",
+        );
 
-      setProjects([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+        if (!quiet) setProjects([]);
+      } finally {
+        if (version === loadVersion.current) setLoading(false);
+      }
+    },
+    [],
+  );
 
   /* ========================================================
      INITIAL LOAD
   ======================================================== */
 
   React.useEffect(() => {
-    loadProjects();
+    void loadProjects(false, false);
+    const refresh = () => {
+      if (document.visibilityState === "visible")
+        void loadProjects(true, false);
+    };
+    const timer = window.setInterval(refresh, 10000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+    };
   }, [loadProjects]);
 
   /* ========================================================

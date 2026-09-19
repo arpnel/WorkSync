@@ -74,34 +74,25 @@ export async function getAccountRoleStatus(): Promise<AccountRoleStatus> {
      FK: user_id -> Users.user_id
   ======================================================== */
 
-  const {
-    data: clientProfile,
-    error: clientError,
-  } = await supabase
-    .from("client_profiles")
-    .select("client_id, user_id")
-    .eq("user_id", userId)
-    .maybeSingle();
+  const [clientResult, freelancerResult] = await Promise.all([
+    supabase
+      .from("client_profiles")
+      .select("client_id, user_id")
+      .eq("user_id", userId)
+      .maybeSingle(),
+    supabase
+      .from("freelancer_profiles")
+      .select("freelancer_id, user_id")
+      .eq("user_id", userId)
+      .maybeSingle(),
+  ]);
+
+  const { data: clientProfile, error: clientError } = clientResult;
+  const { data: freelancerProfile, error: freelancerError } = freelancerResult;
 
   if (clientError) {
     throw clientError;
   }
-
-  /* ========================================================
-     FREELANCER PROFILE
-
-     PK: freelancer_id
-     FK: user_id -> Users.user_id
-  ======================================================== */
-
-  const {
-    data: freelancerProfile,
-    error: freelancerError,
-  } = await supabase
-    .from("freelancer_profiles")
-    .select("freelancer_id, user_id")
-    .eq("user_id", userId)
-    .maybeSingle();
 
   if (freelancerError) {
     throw freelancerError;

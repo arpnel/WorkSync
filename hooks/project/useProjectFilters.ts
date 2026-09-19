@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { projectFilter } from "@/lib/projectNavigation";
 
 import type { Project } from "@/components/project/ProjectCard";
 import type { FilterType } from "@/components/project/ProjectTabs";
@@ -8,7 +10,17 @@ import type { SortMode } from "@/components/project/ProjectToolbar";
 
 export function useProjectFilters(projects: Project[]) {
   // Active status filter
-  const [activeFilter, setActiveFilter] = React.useState<FilterType>("All");
+  const router = useRouter();
+  const params = useSearchParams();
+  const activeFilter = projectFilter(params.get("status"));
+  const setActiveFilter = (filter: FilterType) => {
+    const next = new URLSearchParams(params.toString());
+    if (filter === "All") next.delete("status");
+    else next.set("status", filter);
+    router.replace(`/home/projects${next.size ? `?${next}` : ""}`, {
+      scroll: false,
+    });
+  };
 
   // Search
   const [search, setSearch] = React.useState("");
@@ -44,7 +56,8 @@ export function useProjectFilters(projects: Project[]) {
       result = result.filter(
         (project) =>
           project.title.toLowerCase().includes(query) ||
-          project.client.toLowerCase().includes(query),
+          project.client.toLowerCase().includes(query) ||
+          project.counterpartyName?.toLowerCase().includes(query),
       );
     }
 

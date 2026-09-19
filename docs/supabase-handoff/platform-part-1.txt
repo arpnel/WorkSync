@@ -1,0 +1,465 @@
+-- Prepared WorkSync migrations for Supabase AI REVIEW.
+-- Inspect deployed schema and reconcile compatibility before applying.
+-- Original migration bodies are preserved below in filename order.
+
+-- BEGIN FILE: 202609140001_core_workflows.sql
+-- PREPARATION ONLY. Reconcile with deployed WorkSync schema before applying.
+-- Existing assumptions: UUID identifiers; projects statuses active/completed;
+-- jobs open; applications pending; service_orders accepted/completed.
+-- Existing saved_services must expose (user_id, service_id).
+-- Apply after inspecting enum/check constraints and existing permissive policies.
+begin;
+-- contracts.order_id is already unique in the supplied schema.
+create or replace function public.worksync_contract_party(p_contract uuid) returns text
+language sql stable security definer set search_path='' as $$
+ select case when c.user_id=auth.uid() then 'client' when f.user_id=auth.uid() then 'freelancer' end
+ from public.contracts a join public.service_orders o using(order_id) join public.client_profiles c using(client_id) join public.freelancer_profiles f using(freelancer_id) where a.contract_id=p_contract;
+$$;
+revoke all on function public.worksync_contract_party(uuid) from public;
+grant execute on function public.worksync_contract_party(uuid) to authenticated;
+-- Reuse existing contract_item_approvals, including its timestamps and unique key.
+alter table public.contract_item_approvals enable row level security;
+create policy contract_approvals_participant on public.contract_item_approvals for all to authenticated using(public.worksync_contract_party(contract_id) is not null) with check(public.worksync_contract_party(contract_id) is not null);
+revoke all on public.contract_item_approvals from anon,authenticated;
+grant select,insert,update on public.contract_item_approvals to authenticated;
+
+create table if not exists public.admin_members (
+ user_id uuid primary key references public."Users"(user_id) on delete cascade,
+ created_at timestamptz not null default now()
+);
+alter table public.admin_members enable row level security;
+create or replace function public.worksync_is_admin() returns boolean
+language sql stable security definer set search_path = '' as $$
+ select exists(select 1 from public.admin_members where user_id = auth.uid());
+$$;
+revoke all on function public.worksync_is_admin() from public;
+grant execute on function public.worksync_is_admin() to authenticated;
+-- Membership is provisioned by trusted SQL/service role only, never user metadata.
+revoke all on public.admin_members from anon, authenticated;
+
+create table if not exists public.saved_jobs (
+ user_id uuid not null references public."Users"(user_id) on delete cascade,
+ job_id uuid not null references public.jobs(job_id) on delete cascade,
+ created_at timestamptz not null default now(), primary key(user_id,job_id)
+);
+alter table public.saved_jobs enable row level security;
+create policy saved_jobs_owner on public.saved_jobs for all to authenticated using(user_id=auth.uid()) with check(user_id=auth.uid());
+grant select,insert,delete on public.saved_jobs to authenticated;
+-- Do not recreate saved_services. Required unique key and own-row RLS are in setup notes.
+
+create table if not exists public.listing_reports (
+ report_id uuid primary key default gen_random_uuid(),
+ reporter_id uuid not null references public."Users"(user_id),
+ listing_type text not null check(listing_type in ('service','job')),
+ service_id uuid references public.services(service_id), job_id uuid references public.jobs(job_id),
+ owner_id uuid not null references public."Users"(user_id),
+ reason text not null check(reason in ('Scam','Spam','Misleading listing','Inappropriate content','Suspicious behavior','Payment concern','Intellectual property concern','Prohibited content','Other')),
+ description text not null default '' check(length(description)<=5000),
+ status text not null default 'pending' check(status in ('pending','under_review','resolved','dismissed')),
+ admin_notes text not null default '', reviewed_by uuid references public."Users"(user_id),
+ created_at timestamptz not null default now(), reviewed_at timestamptz,
+ check((listing_type='service' and service_id is not null and job_id is null) or (listing_type='job' and job_id is not null and service_id is null))
+);
+create index if not exists listing_reports_queue on public.listing_reports(status,created_at desc);
+create index if not exists listing_reports_reporter on public.listing_reports(reporter_id,created_at desc);
+alter table public.listing_reports enable row level security;
+create policy listing_reports_read on public.listing_reports for select to authenticated using(reporter_id=auth.uid() or public.worksync_is_admin());
+grant select on public.listing_reports to authenticated;
+
+create table if not exists public.admin_audit_log (
+ audit_id uuid primary key default gen_random_uuid(), admin_id uuid not null references public."Users"(user_id),
+ action text not null, target_id uuid not null, details jsonb not null default '{}', created_at timestamptz not null default now()
+);
+alter table public.admin_audit_log enable row level security;
+create policy admin_audit_read on public.admin_audit_log for select to authenticated using(public.worksync_is_admin());
+grant select on public.admin_audit_log to authenticated;
+
+create or replace function public.worksync_report_listing(p_kind text,p_listing uuid,p_reason text,p_description text) returns uuid
+language plpgsql security definer set search_path='' as $$
+declare owner uuid; result uuid;
+begin
+ if auth.uid() is null then raise exception 'Sign in required'; end if;
+ if p_kind='service' then select f.user_id into owner from public.services s join public.freelancer_profiles f using(freelancer_id) where s.service_id=p_listing;
+ elsif p_kind='job' then select c.user_id into owner from public.jobs j join public.client_profiles c using(client_id) where j.job_id=p_listing;
+ else raise exception 'Invalid listing type'; end if;
+ if owner is null or owner=auth.uid() then raise exception 'Listing unavailable or owned by you'; end if;
+ insert into public.listing_reports(reporter_id,listing_type,service_id,job_id,owner_id,reason,description)
+ values(auth.uid(),p_kind,case when p_kind='service' then p_listing end,case when p_kind='job' then p_listing end,owner,p_reason,coalesce(p_description,'')) returning report_id into result;
+ return result;
+end; $$;
+
+create or replace function public.worksync_apply_for_job(p_job uuid,p_proposal text,p_price numeric,p_days integer) returns uuid
+language plpgsql security definer set search_path='' as $$
+declare freelancer uuid; owner uuid; job_status text; result uuid;
+begin
+ select freelancer_id into freelancer from public.freelancer_profiles where user_id=auth.uid();
+ select c.user_id,j.status::text into owner,job_status from public.jobs j join public.client_profiles c using(client_id) where j.job_id=p_job for update of j;
+ if exists(select 1 from public.jobs where job_id=p_job and is_archived) or not public.worksync_listing_visible('job',p_job) then raise exception 'This listing is unavailable'; end if;
+ if freelancer is null or owner is null or owner=auth.uid() or job_status<>'open' then raise exception 'Only a freelancer may apply to an open job owned by another user'; end if;
+ if coalesce(length(trim(p_proposal)),0)=0 or length(p_proposal)>10000 or p_price<=0 or p_days<1 or p_price is null or p_days is null then raise exception 'Invalid proposal, price or delivery'; end if;
+ if exists(select 1 from public.job_applications where job_id=p_job and freelancer_id=freelancer) then raise exception 'You have already applied to this job'; end if;
+ insert into public.job_applications(job_id,freelancer_id,proposal,proposed_price,estimated_days,status)
+ values(p_job,freelancer,p_proposal,p_price,p_days,'pending') returning application_id into result;
+ insert into public.notifications(user_id,type,title,message,related_id,is_read) values(owner,'job_application','New job application','A freelancer applied to your job.',p_job,false);
+ return result;
+end; $$;
+
+create or replace function public.worksync_project_party(p_project uuid) returns text
+language sql stable security definer set search_path='' as $$
+ select case when c.user_id=auth.uid() then 'client' when f.user_id=auth.uid() then 'freelancer' end
+ from public.projects p join public.client_profiles c using(client_id) join public.freelancer_profiles f using(freelancer_id) where p.project_id=p_project;
+$$;
+create table if not exists public.project_submissions (
+ submission_id uuid primary key default gen_random_uuid(), project_id uuid not null references public.projects(project_id),
+ milestone_id uuid references public.milestones(milestone_id), author_id uuid not null references public."Users"(user_id),
+ body text not null default '' check(length(body)<=10000), link text check(link is null or link ~ '^https?://'),
+ attachment_path text, attachment_name text,
+ kind text not null check(kind in ('progress','delivery')),
+ status text not null default 'submitted' check(status in ('submitted','revision_requested','approved')),
+ created_at timestamptz not null default now(), reviewed_at timestamptz,
+ check(length(trim(body))>0 or link is not null or attachment_path is not null)
+);
+create index if not exists project_submissions_history on public.project_submissions(project_id,created_at desc);
+alter table public.project_submissions enable row level security;
+create policy project_submissions_read on public.project_submissions for select to authenticated using(public.worksync_project_party(project_id) is not null);
+grant select on public.project_submissions to authenticated;
+create table if not exists public.revision_requests (
+ revision_id uuid primary key default gen_random_uuid(), project_id uuid not null references public.projects(project_id),
+ submission_id uuid not null unique references public.project_submissions(submission_id),
+ requested_by uuid not null references public."Users"(user_id), instructions text not null check(length(trim(instructions)) between 1 and 5000),
+ status text not null default 'open' check(status in ('open','addressed')), created_at timestamptz not null default now()
+);
+create index if not exists revision_requests_project on public.revision_requests(project_id,created_at desc);
+alter table public.revision_requests enable row level security;
+create policy revision_requests_read on public.revision_requests for select to authenticated using(public.worksync_project_party(project_id) is not null);
+grant select on public.revision_requests to authenticated;
+
+create or replace function public.worksync_submit_work(p_id uuid,p_project uuid,p_milestone uuid,p_body text,p_link text,p_kind text,p_path text,p_name text) returns void
+language plpgsql security definer set search_path='' as $$
+declare p public.projects; recipient uuid; milestone_type boolean; locked uuid;
+begin
+ select * into p from public.projects where project_id=p_project;
+ select contract_id into locked from public.contracts where order_id=p.order_id for update;
+ select * into p from public.projects where project_id=p_project for update;
+ if p_link is not null and p_link !~ '^https?://' then raise exception 'Use an HTTP or HTTPS link'; end if;
+ if length(p_body)>10000 then raise exception 'Submission text is too long'; end if;
+ if p_kind='delivery' and public.worksync_order_on_hold(p.order_id) then raise exception 'Delivery is paused pending resolution'; end if;
+ if public.worksync_project_party(p_project) is distinct from 'freelancer' or p.status::text not in ('active','in_progress') then raise exception 'Only the project freelancer can submit active work'; end if;
+ select s.service_type::text='milestone' into milestone_type from public.service_orders o join public.services s using(service_id) where o.order_id=p.order_id;
+ if milestone_type and p_milestone is null then raise exception 'Choose a milestone'; end if;
+ if p_milestone is not null and not exists(select 1 from public.milestones where milestone_id=p_milestone and project_id=p_project and status::text<>'completed') then raise exception 'Milestone unavailable'; end if;
+ if p_kind='delivery' and exists(select 1 from public.project_submissions where project_id=p_project and milestone_id is not distinct from p_milestone and kind='delivery' and status='submitted') then raise exception 'Wait for the client to review your current delivery'; end if;
+ if p_path is not null and (p_path not like p_project::text||'/'||auth.uid()::text||'/'||p_id::text||'/%' or not exists(select 1 from storage.objects where bucket_id='project-attachments' and name=p_path)) then raise exception 'Invalid attachment'; end if;
+ insert into public.project_submissions(submission_id,project_id,milestone_id,author_id,body,link,kind,attachment_path,attachment_name) values(p_id,p_project,p_milestone,auth.uid(),p_body,p_link,p_kind,p_path,p_name);
+ if p_kind='delivery' then
+ update public.revision_requests r set status='addressed' from public.project_submissions s where r.submission_id=s.submission_id and r.project_id=p_project and s.milestone_id is not distinct from p_milestone and r.status='open';
+ end if;
+ select user_id into recipient from public.client_profiles where client_id=p.client_id;
+ insert into public.notifications(user_id,type,title,message,related_id,is_read) values(recipient,'project_update','Project work submitted','New work is ready in your project workspace.',p.order_id,false);
+end; $$;
+
+create or replace function public.worksync_review_submission(p_submission uuid,p_action text,p_instructions text) returns void
+language plpgsql security definer set search_path='' as $$
+declare s public.project_submissions; p public.projects; revision_limit integer; used integer; recipient uuid; locked uuid;
+begin
+ select * into s from public.project_submissions where submission_id=p_submission;
+ select * into p from public.projects where project_id=s.project_id;
+ select contract_id into locked from public.contracts where order_id=p.order_id for update;
+ select * into p from public.projects where project_id=s.project_id for update;
+ if public.worksync_order_on_hold(p.order_id) then raise exception 'Delivery decisions are paused pending resolution'; end if;
+ select * into s from public.project_submissions where submission_id=p_submission for update;
+ if public.worksync_project_party(s.project_id) is distinct from 'client' or p.status::text not in ('active','in_progress') or s.kind<>'delivery' or s.status<>'submitted' then raise exception 'Delivery cannot be reviewed'; end if;
+ if p_action='revision' then
+ select revisions_count into revision_limit from public.contracts where order_id=p.order_id;
+ select count(*) into used from public.revision_requests where project_id=s.project_id;
+ if revision_limit is null or used>=revision_limit then raise exception 'The agreed revision limit has been reached or is not set'; end if;
+ insert into public.revision_requests(project_id,submission_id,requested_by,instructions) values(s.project_id,s.submission_id,auth.uid(),p_instructions);
+ update public.project_submissions set status='revision_requested',reviewed_at=now() where submission_id=p_submission;
+ elsif p_action='approve' then
+ update public.project_submissions set status='approved',reviewed_at=now() where submission_id=p_submission;
+ if s.milestone_id is not null then update public.milestones set status='completed' where milestone_id=s.milestone_id and project_id=s.project_id; end if;
+ if s.milestone_id is null or not exists(select 1 from public.milestones where project_id=s.project_id and status::text<>'completed') then
+ update public.projects set status='completed',completed_at=now(),updated_at=now() where project_id=s.project_id;
+ update public.service_orders set status='completed',updated_at=now() where order_id=p.order_id;
+ update public.contracts set status='completed',updated_at=now() where order_id=p.order_id;
+ end if;
+ else raise exception 'Invalid review action'; end if;
+ select user_id into recipient from public.freelancer_profiles where freelancer_id=p.freelancer_id;
+ insert into public.notifications(user_id,type,title,message,related_id,is_read) values(recipient,'project_update',case when p_action='approve' then 'Delivery approved' else 'Revision requested' end,'Open the project workspace for details.',p.order_id,false);
+end; $$;
+
+create or replace function public.worksync_leave_review(p_project uuid,p_rating integer,p_comment text) returns void
+language plpgsql security definer set search_path='' as $$
+declare p public.projects; party text; recipient uuid;
+begin
+ select * into p from public.projects where project_id=p_project for update;
+ party:=public.worksync_project_party(p_project);
+ if party is null or p.status::text<>'completed' then raise exception 'Only participants may review a completed project'; end if;
+ if p_rating not between 1 and 5 or p_rating is null or length(p_comment)>5000 then raise exception 'Invalid rating or comment'; end if;
+ if exists(select 1 from public.reviews where project_id=p_project and reviewer_role::text=party) then raise exception 'You already reviewed this project'; end if;
+ if party='client' then
+ insert into public.reviews(project_id,client_id,freelancer_id,reviewer_role,rating,comment) values(p_project,p.client_id,p.freelancer_id,'client',p_rating,p_comment);
+ select user_id into recipient from public.freelancer_profiles where freelancer_id=p.freelancer_id;
+ else
+ insert into public.reviews(project_id,client_id,freelancer_id,reviewer_role,rating,comment) values(p_project,p.client_id,p.freelancer_id,'freelancer',p_rating,p_comment);
+ select user_id into recipient from public.client_profiles where client_id=p.client_id;
+ end if;
+ insert into public.notifications(user_id,type,title,message,related_id,is_read) values(recipient,'review','New project review','Your project partner left a review.',p.order_id,false);
+end; $$;
+
+-- Private submissions: no public URLs. Participant reads only; immutable linked files.
+insert into storage.buckets(id,name,public,file_size_limit) values('project-attachments','project-attachments',false,10485760) on conflict(id) do nothing;
+create policy project_files_read on storage.objects for select to authenticated using(bucket_id='project-attachments' and exists(select 1 from public.project_submissions s where s.attachment_path=name and public.worksync_project_party(s.project_id) is not null));
+create policy project_files_insert on storage.objects for insert to authenticated with check(bucket_id='project-attachments' and (storage.foldername(name))[2]=auth.uid()::text and exists(select 1 from public.projects p where p.project_id::text=(storage.foldername(name))[1] and public.worksync_project_party(p.project_id)='freelancer' and p.status::text in ('active','in_progress')));
+create policy project_files_cleanup on storage.objects for delete to authenticated using(bucket_id='project-attachments' and (storage.foldername(name))[2]=auth.uid()::text and not exists(select 1 from public.project_submissions s where s.attachment_path=name));
+
+-- All mutation routines run as definer but validate auth.uid() internally.
+revoke all on function public.worksync_report_listing(text,uuid,text,text),public.worksync_apply_for_job(uuid,text,numeric,integer),public.worksync_project_party(uuid),public.worksync_submit_work(uuid,uuid,uuid,text,text,text,text,text),public.worksync_review_submission(uuid,text,text),public.worksync_leave_review(uuid,integer,text) from public;
+grant execute on function public.worksync_report_listing(text,uuid,text,text),public.worksync_apply_for_job(uuid,text,numeric,integer),public.worksync_project_party(uuid),public.worksync_submit_work(uuid,uuid,uuid,text,text,text,text,text),public.worksync_review_submission(uuid,text,text),public.worksync_leave_review(uuid,integer,text) to authenticated;
+commit;
+
+-- END FILE: 202609140001_core_workflows.sql
+
+-- BEGIN FILE: 202609140002_contract_lifecycle.sql
+-- Requires core workflow preparation and the current projects/contracts tables.
+begin;
+create or replace function public.worksync_guard_contract() returns trigger
+language plpgsql security definer set search_path='' as $$
+declare client_user uuid; freelancer_user uuid; order_state text;
+begin
+ if auth.uid() is null then raise exception 'Sign in required'; end if;
+ select c.user_id,f.user_id,o.status::text into client_user,freelancer_user,order_state
+ from public.service_orders o join public.client_profiles c using(client_id) join public.freelancer_profiles f using(freelancer_id) where o.order_id=new.order_id;
+ if new.status::text='cancelled' and order_state='cancelled' and (to_jsonb(new)-'status'-'updated_at')=(to_jsonb(old)-'status'-'updated_at') and (
+ ((auth.uid()=client_user or auth.uid()=freelancer_user) and exists(select 1 from public.project_cancellations where order_id=new.order_id and status='accepted')) or
+ (public.worksync_is_admin() and exists(select 1 from public.project_disputes d join public.projects p using(project_id) where p.order_id=new.order_id and d.status='resolved' and d.resolution_action='cancel_project'))) then return new; end if;
+ if auth.uid() is distinct from client_user and auth.uid() is distinct from freelancer_user then raise exception 'Only contract participants may update an agreement'; end if;
+ if new.order_id is distinct from old.order_id or new.contract_id is distinct from old.contract_id then raise exception 'Contract identity cannot change'; end if;
+ if exists(select 1 from public.projects where order_id=new.order_id and status::text in ('active','in_progress','completed','cancelled')) then
+ if auth.uid()=client_user and new.status::text='completed' and exists(select 1 from public.projects where order_id=new.order_id and status::text='completed') and (to_jsonb(new)-'status'-'updated_at')=(to_jsonb(old)-'status'-'updated_at') then return new; end if;
+ raise exception 'This agreement is locked';
+ end if;
+ if new.status is distinct from old.status then raise exception 'Contract status is managed by the project workflow'; end if;
+ if not public.worksync_marketplace_active(client_user) or not public.worksync_marketplace_active(freelancer_user) then raise exception 'A participant is suspended from new agreements'; end if;
+ if public.worksync_order_on_hold(new.order_id) then raise exception 'Resolve the pending cancellation or dispute first'; end if;
+ if order_state<>'accepted' then raise exception 'Accept the request before agreeing to a contract'; end if;
+ if auth.uid()=client_user and new.freelancer_signed_at is distinct from old.freelancer_signed_at and new.freelancer_signed_at is not null then raise exception 'You cannot sign for the freelancer'; end if;
+ if auth.uid()=freelancer_user and new.client_signed_at is distinct from old.client_signed_at and new.client_signed_at is not null then raise exception 'You cannot sign for the client'; end if;
+ if (new.final_price,new.delivery_time_days,new.revisions_count,new.terms) is distinct from (old.final_price,old.delivery_time_days,old.revisions_count,old.terms) then
+ new.client_signed_at:=null; new.freelancer_signed_at:=null;
+ update public.contract_item_approvals set client_approved_at=null,freelancer_approved_at=null where contract_id=old.contract_id;
+ end if;
+ if new.client_signed_at is not null and new.freelancer_signed_at is not null and (new.final_price is null or new.final_price<=0 or new.delivery_time_days is null or new.delivery_time_days<1 or new.revisions_count is null or new.revisions_count<0) then raise exception 'Agree on a positive budget, delivery days and a revision limit'; end if;
+ if new.client_signed_at is not null and new.freelancer_signed_at is not null and exists(select 1 from (values('budget'),('delivery'),('revisions')) as required(key) where not exists(select 1 from public.contract_item_approvals a where a.contract_id=new.contract_id and a.item_key=required.key and a.client_approved_at is not null and a.freelancer_approved_at is not null)) then raise exception 'Both participants must approve all terms before final confirmation'; end if;
+ if new.client_signed_at is not null and new.freelancer_signed_at is not null and exists(select 1 from public.service_orders o join public.services s using(service_id) where o.order_id=new.order_id and s.service_type::text='milestone') then
+ if coalesce((select sum(m.amount) from public.milestones m join public.projects p using(project_id) where p.order_id=new.order_id),0)<>new.final_price then raise exception 'Milestones must add up to the agreed budget'; end if;
+ if exists(select 1 from public.milestones m join public.projects p using(project_id) where p.order_id=new.order_id and not exists(select 1 from public.contract_item_approvals a where a.contract_id=new.contract_id and a.item_key='milestone:'||m.milestone_id::text and a.client_approved_at is not null and a.freelancer_approved_at is not null)) then raise exception 'Both participants must approve every milestone before signing'; end if;
+ end if;
+ if new.client_signed_at is not null and new.freelancer_signed_at is not null then new.status:='active'; end if;
+ return new;
+end; $$;
+drop trigger if exists worksync_guard_contract on public.contracts;
+create trigger worksync_guard_contract before update on public.contracts for each row execute function public.worksync_guard_contract();
+
+create or replace function public.worksync_activate_contract() returns trigger
+language plpgsql security definer set search_path='' as $$
+declare o public.service_orders; s public.services; project_title text; project_description text; terms_json jsonb; pid uuid; recipient uuid;
+begin
+ if new.client_signed_at is null or new.freelancer_signed_at is null then return new; end if;
+ select * into o from public.service_orders where order_id=new.order_id for update;
+ select * into s from public.services where service_id=o.service_id;
+ begin terms_json:=new.terms::jsonb; exception when others then terms_json:='{}'::jsonb; end;
+ project_title:=coalesce(terms_json->>'projectTitle',s.title,'Project');
+ project_description:=coalesce(terms_json->>'projectDescription',terms_json->>'description',s.description,'');
+ select project_id into pid from public.projects where order_id=o.order_id;
+ if pid is null then
+ insert into public.projects(order_id,client_id,freelancer_id,title,description,budget,status,start_date,due_date)
+ values(o.order_id,o.client_id,o.freelancer_id,project_title,project_description,new.final_price,'active',now(),now()+make_interval(days=>new.delivery_time_days)) returning project_id into pid;
+ else
+ update public.projects set title=project_title,description=project_description,budget=new.final_price,status='active',start_date=now(),due_date=now()+make_interval(days=>new.delivery_time_days),updated_at=now() where project_id=pid;
+ end if;
+ update public.service_orders set status='active',updated_at=now() where order_id=o.order_id;
+ for recipient in select user_id from public.client_profiles where client_id=o.client_id union select user_id from public.freelancer_profiles where freelancer_id=o.freelancer_id loop
+ insert into public.notifications(user_id,type,title,message,related_id,is_read) values(recipient,'project_update','Project activated','Both participants confirmed the agreement.',o.order_id,false);
+ end loop;
+ return new;
+end; $$;
+drop trigger if exists worksync_activate_contract on public.contracts;
+create trigger worksync_activate_contract after update on public.contracts for each row
+when(new.client_signed_at is not null and new.freelancer_signed_at is not null and (old.client_signed_at is null or old.freelancer_signed_at is null)) execute function public.worksync_activate_contract();
+
+-- Guard reviews even if a legacy direct INSERT policy is present.
+create or replace function public.worksync_guard_review() returns trigger
+language plpgsql security definer set search_path='' as $$
+declare p public.projects; party text;
+begin
+ select * into p from public.projects where project_id=new.project_id for update;
+ party:=public.worksync_project_party(new.project_id);
+ if party is null or p.status::text<>'completed' or new.reviewer_role::text is distinct from party or new.client_id is distinct from p.client_id or new.freelancer_id is distinct from p.freelancer_id or new.rating is null or new.rating not between 1 and 5 then raise exception 'Invalid project review'; end if;
+ if exists(select 1 from public.reviews where project_id=new.project_id and reviewer_role::text=party) then raise exception 'Project already reviewed'; end if;
+ return new;
+end; $$;
+drop trigger if exists worksync_guard_review on public.reviews;
+create trigger worksync_guard_review before insert on public.reviews for each row execute function public.worksync_guard_review();
+-- Remove old direct UPDATE/DELETE review privileges when reconciling current policies.
+revoke execute on function public.worksync_guard_contract(),public.worksync_activate_contract(),public.worksync_guard_review() from public;
+commit;
+
+-- END FILE: 202609140002_contract_lifecycle.sql
+
+-- BEGIN FILE: 202609140003_admin_moderation.sql
+begin;
+create table if not exists public.listing_moderation (
+ listing_type text not null check(listing_type in ('job','service')), listing_id uuid not null,
+ hidden boolean not null default false, notes text not null, reviewed_by uuid not null references public."Users"(user_id),
+ updated_at timestamptz not null default now(), primary key(listing_type,listing_id)
+);
+alter table public.listing_moderation enable row level security;
+create or replace function public.worksync_listing_visible(p_kind text,p_id uuid) returns boolean
+language sql stable security definer set search_path='' as $$
+ select not exists(select 1 from public.listing_moderation where listing_type=p_kind and listing_id=p_id and hidden);
+$$;
+revoke all on function public.worksync_listing_visible(text,uuid) from public;
+grant execute on function public.worksync_listing_visible(text,uuid) to anon,authenticated;
+-- Restrictive policies supplement (never replace) deployed owner/public read policies.
+create policy services_moderation_visibility on public.services as restrictive for select to authenticated using(public.worksync_listing_visible('service',service_id) or public.worksync_is_admin() or exists(select 1 from public.freelancer_profiles f where f.freelancer_id=services.freelancer_id and f.user_id=auth.uid()));
+create policy jobs_moderation_visibility on public.jobs as restrictive for select to authenticated using(public.worksync_listing_visible('job',job_id) or public.worksync_is_admin() or exists(select 1 from public.client_profiles c where c.client_id=jobs.client_id and c.user_id=auth.uid()));
+create policy services_moderation_anon on public.services as restrictive for select to anon using(public.worksync_listing_visible('service',service_id));
+create policy jobs_moderation_anon on public.jobs as restrictive for select to anon using(public.worksync_listing_visible('job',job_id));
+
+create table if not exists public.verification_requests (
+ request_id uuid primary key default gen_random_uuid(), user_id uuid not null references public."Users"(user_id),
+ status text not null default 'pending' check(status in ('pending','approved','rejected')),
+ document_paths text[] not null check(cardinality(document_paths) between 1 and 3),
+ notes text not null default '', reviewed_by uuid references public."Users"(user_id),
+ created_at timestamptz not null default now(), reviewed_at timestamptz
+);
+create unique index if not exists verification_pending_user on public.verification_requests(user_id) where status='pending';
+alter table public.verification_requests enable row level security;
+create policy verification_read on public.verification_requests for select to authenticated using(user_id=auth.uid() or public.worksync_is_admin());
+create policy verification_create on public.verification_requests for insert to authenticated with check(user_id=auth.uid() and status='pending' and reviewed_by is null and reviewed_at is null and notes='');
+grant select,insert on public.verification_requests to authenticated;
+
+create or replace function public.worksync_admin_records(p_module text,p_search text default '',p_offset integer default 0) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare result jsonb; stats jsonb;
+begin
+ if not public.worksync_is_admin() then raise exception 'Administrator access required'; end if;
+ if p_module not in ('overview','users','jobs','services','projects','reports','verification','audit','transactions') then raise exception 'Unknown module'; end if;
+ with records as (
+ select u.user_id as id,coalesce(p.display_name,u.email,'User') as title,
+ case when public.worksync_marketplace_active(u.user_id) then 'active' else 'suspended' end as status,
+ u.created_at,concat('Role: ',u.role::text,E'\nEmail: ',u.email,E'\nModeration: ',m.reason,E'\nChanged: ',m.changed_at,E'\nExpires: ',m.expires_at) as detail,u.user_id as owner_id,null::text[] as document_paths
+ from public."Users" u left join public.profiles p using(user_id) left join public.account_moderation m using(user_id) where p_module='users'
+ union all
+ select j.job_id,j.title,case when not public.worksync_listing_visible('job',j.job_id) then 'hidden' else j.status::text end,j.created_at,concat(j.description,E'\nBudget: PHP ',j.budget_min,' - ',j.budget_max),c.user_id,null::text[] from public.jobs j join public.client_profiles c using(client_id) where p_module='jobs'
+ union all
+ select s.service_id,s.title,case when not public.worksync_listing_visible('service',s.service_id) then 'hidden' else s.status::text end,s.created_at,concat(s.description,E'\nPrice: PHP ',s.price),f.user_id,null::text[] from public.services s join public.freelancer_profiles f using(freelancer_id) where p_module='services'
+ union all
+ select p.project_id,p.title,p.status::text,p.created_at,concat('Budget: PHP ',p.budget,E'\nDeadline: ',p.due_date,E'\nOrder: ',p.order_id,E'\nClient profile: ',p.client_id,E'\nFreelancer profile: ',p.freelancer_id),null::uuid,null::text[] from public.projects p where p_module='projects'
+ union all
+ select r.report_id,concat(r.listing_type,' report: ',r.reason),r.status,r.created_at,concat('Listing: ',coalesce(r.service_id,r.job_id),E'\nReporter: ',r.reporter_id,E'\n',r.description,E'\nAdmin notes: ',r.admin_notes),r.owner_id,null::text[] from public.listing_reports r where p_module='reports'
+ union all
+ select v.request_id,coalesce(p.display_name,'Verification request'),v.status,v.created_at,concat('Applicant: ',v.user_id,E'\nReview notes: ',v.notes),v.user_id,v.document_paths from public.verification_requests v left join public.profiles p using(user_id) where p_module='verification'
+ union all
+ select a.audit_id,a.action,'recorded',a.created_at,concat('Admin: ',a.admin_id,E'\nTarget: ',a.target_id,E'\n',a.details::text),a.admin_id,null::text[] from public.admin_audit_log a where p_module in ('audit','overview')
+ union all
+ select t.payment_id,coalesce(t.transaction_reference,t.payment_id::text),coalesce(t.status::text,'unspecified'),t.created_at,concat('Recorded amount: PHP ',t.amount,E'\nMethod: ',t.payment_method,E'\nOrder: ',t.order_id,E'\nProject: ',t.project_id),t.payer_id,null::text[] from public.payments t where p_module='transactions'
+ ), filtered as (select * from records where coalesce(p_search,'')='' or title ilike '%'||p_search||'%' or status ilike '%'||p_search||'%' or id::text=p_search),
+ paged as (select * from filtered order by created_at desc nulls last,id limit 25 offset greatest(p_offset,0))
+ select jsonb_build_object('rows',coalesce((select jsonb_agg(to_jsonb(paged)) from paged),'[]'::jsonb),'total',(select count(*) from filtered)) into result;
+ if p_module='overview' then
+ select jsonb_build_object('users',(select count(*) from public."Users"),'clients',(select count(*) from public.client_profiles),'freelancers',(select count(*) from public.freelancer_profiles),'services',(select count(*) from public.services),'open_jobs',(select count(*) from public.jobs where status::text='open'),'active_projects',(select count(*) from public.projects where status::text in ('active','in_progress')),'completed_projects',(select count(*) from public.projects where status::text='completed'),'pending_reports',(select count(*) from public.listing_reports where status in ('pending','under_review'))) into stats;
+ result:=result||jsonb_build_object('stats',stats);
+ end if;
+ return result;
+end; $$;
+
+create or replace function public.worksync_admin_action(p_module text,p_id uuid,p_action text,p_notes text) returns void
+language plpgsql security definer set search_path='' as $$
+declare recipient uuid; current_state text;
+begin
+ if not public.worksync_is_admin() then raise exception 'Administrator access required'; end if;
+ if length(trim(p_notes)) not between 1 and 5000 then raise exception 'Review notes are required (up to 5000 characters)'; end if;
+ if p_module='reports' and p_action in ('under_review','resolved','dismissed') then
+ select reporter_id,status into recipient,current_state from public.listing_reports where report_id=p_id for update;
+ if recipient is null or current_state in ('resolved','dismissed') then raise exception 'Report unavailable or already closed'; end if;
+ update public.listing_reports set status=p_action,admin_notes=p_notes,reviewed_by=auth.uid(),reviewed_at=now() where report_id=p_id;
+ elsif p_module='verification' and p_action in ('approved','rejected') then
+ select user_id,status into recipient,current_state from public.verification_requests where request_id=p_id for update;
+ if recipient is null or current_state<>'pending' then raise exception 'Verification unavailable or already reviewed'; end if;
+ update public.verification_requests set status=p_action,notes=p_notes,reviewed_by=auth.uid(),reviewed_at=now() where request_id=p_id;
+ -- Reconcile freelancer_profiles.verification_status enum before applying this mapping.
+ if p_action='approved' then update public.freelancer_profiles set verification_status='verified' where user_id=recipient;
+ else update public.freelancer_profiles set verification_status='rejected' where user_id=recipient; end if;
+ elsif p_module in ('jobs','services') and p_action in ('hide','restore') then
+ if p_module='jobs' then select c.user_id into recipient from public.jobs j join public.client_profiles c using(client_id) where j.job_id=p_id;
+ else select f.user_id into recipient from public.services s join public.freelancer_profiles f using(freelancer_id) where s.service_id=p_id; end if;
+ if recipient is null then raise exception 'Listing not found'; end if;
+ insert into public.listing_moderation(listing_type,listing_id,hidden,notes,reviewed_by) values(case when p_module='jobs' then 'job' else 'service' end,p_id,p_action='hide',p_notes,auth.uid())
+ on conflict(listing_type,listing_id) do update set hidden=excluded.hidden,notes=excluded.notes,reviewed_by=excluded.reviewed_by,updated_at=now();
+ else raise exception 'Unsupported action'; end if;
+ insert into public.admin_audit_log(admin_id,action,target_id,details) values(auth.uid(),p_module||':'||p_action,p_id,jsonb_build_object('notes',p_notes,'previous_status',current_state));
+ insert into public.notifications(user_id,type,title,message,related_id,is_read) values(recipient,'admin_update','Review update',p_notes,p_id,false);
+end; $$;
+
+insert into storage.buckets(id,name,public,file_size_limit) values('verification-documents','verification-documents',false,10485760) on conflict(id) do nothing;
+create policy verification_files_read on storage.objects for select to authenticated using(bucket_id='verification-documents' and ((storage.foldername(name))[1]=auth.uid()::text or (public.worksync_is_admin() and exists(select 1 from public.verification_requests v where name=any(v.document_paths)))));
+create policy verification_files_insert on storage.objects for insert to authenticated with check(bucket_id='verification-documents' and (storage.foldername(name))[1]=auth.uid()::text);
+create policy verification_files_cleanup on storage.objects for delete to authenticated using(bucket_id='verification-documents' and (storage.foldername(name))[1]=auth.uid()::text and not exists(select 1 from public.verification_requests v where name=any(v.document_paths)));
+create or replace function public.worksync_guard_verification() returns trigger
+language plpgsql security definer set search_path='' as $$
+declare path text;
+begin
+ if new.user_id is distinct from auth.uid() then raise exception 'Own verification requests only'; end if;
+ foreach path in array new.document_paths loop
+ if path not like auth.uid()::text||'/%' or not exists(select 1 from storage.objects where bucket_id='verification-documents' and name=path) then raise exception 'Invalid verification document'; end if;
+ end loop;
+ return new;
+end; $$;
+create trigger worksync_guard_verification before insert on public.verification_requests for each row execute function public.worksync_guard_verification();
+revoke all on function public.worksync_admin_records(text,text,integer),public.worksync_admin_action(text,uuid,text,text),public.worksync_guard_verification() from public;
+grant execute on function public.worksync_admin_records(text,text,integer),public.worksync_admin_action(text,uuid,text,text) to authenticated;
+commit;
+
+-- END FILE: 202609140003_admin_moderation.sql
+
+-- BEGIN FILE: 202609140004_job_agreements.sql
+begin;
+-- Reuse orders/contracts/workspaces for job agreements; do not create a second project system.
+alter table public.service_orders alter column service_id drop not null;
+alter table public.service_orders add column if not exists job_id uuid references public.jobs(job_id);
+alter table public.service_orders add column if not exists application_id uuid references public.job_applications(application_id);
+create unique index if not exists service_orders_application_unique on public.service_orders(application_id) where application_id is not null;
+-- Existing supplied orders all have service_id; preserve them and constrain new job orders.
+alter table public.service_orders add constraint worksync_order_source check ((service_id is not null and job_id is null and application_id is null) or (service_id is null and job_id is not null and application_id is not null)) not valid;
+create or replace function public.worksync_job_agreement(p_application uuid) returns uuid
+language plpgsql security definer set search_path='' as $$
+declare a public.job_applications; j public.jobs; client_user uuid; freelancer_user uuid; result uuid; conversation uuid;
+begin
+ select * into a from public.job_applications where application_id=p_application for update;
+ select * into j from public.jobs where job_id=a.job_id;
+ select user_id into client_user from public.client_profiles where client_id=j.client_id;
+ select user_id into freelancer_user from public.freelancer_profiles where freelancer_id=a.freelancer_id;
+ if auth.uid() is null or (auth.uid() is distinct from client_user and auth.uid() is distinct from freelancer_user) then raise exception 'Only application participants can open an agreement'; end if;
+ select order_id into result from public.service_orders where application_id=p_application;
+ if result is not null then return result; end if;
+ if auth.uid()<>client_user then raise exception 'The client has not prepared an agreement yet'; end if;
+ if not public.worksync_marketplace_active(client_user) or not public.worksync_marketplace_active(freelancer_user) then raise exception 'A participant is suspended from new agreements'; end if;
+ if a.status::text<>'accepted' then raise exception 'Start a discussion before preparing an agreement'; end if;
+ insert into public.service_orders(job_id,application_id,client_id,freelancer_id,status) values(j.job_id,p_application,j.client_id,a.freelancer_id,'accepted') returning order_id into result;
+ insert into public.contracts(order_id,final_price,delivery_time_days,revisions_count,terms) values(result,coalesce(a.proposed_price,j.budget_max),coalesce(a.estimated_days,7),0,jsonb_build_object('projectTitle',j.title,'description',j.description,'categoryId',j.category_id)::text);
+ select c.conversation_id into conversation from public.conversations c where c.job_id=j.job_id and exists(select 1 from public.conversation_participants cp where cp.conversation_id=c.conversation_id and cp.user_id=client_user) and exists(select 1 from public.conversation_participants cp where cp.conversation_id=c.conversation_id and cp.user_id=freelancer_user) limit 1;
+ if conversation is not null then update public.conversations set order_id=result,job_id=null where conversation_id=conversation;
+ else
+ insert into public.conversations(order_id) values(result) returning conversation_id into conversation;
+ insert into public.conversation_participants(conversation_id,user_id) values(conversation,client_user),(conversation,freelancer_user);
+ end if;
+ insert into public.notifications(user_id,type,title,message,related_id,is_read) values(freelancer_user,'project_update','Agreement ready','The client prepared a draft agreement for your discussion.',result,false);
+ return result;
+end; $$;
+revoke all on function public.worksync_job_agreement(uuid) from public;
+grant execute on function public.worksync_job_agreement(uuid) to authenticated;
+commit;
+
+-- END FILE: 202609140004_job_agreements.sql

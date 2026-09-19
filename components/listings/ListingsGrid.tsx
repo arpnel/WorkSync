@@ -19,10 +19,11 @@ import type {
 
 interface ListingCardProps {
   listing: MarketplaceItem;
+  onEdit?: () => void;
   onArchive?: (listingId: string) => void;
 }
 
-export function ListingCard({ listing, onArchive }: ListingCardProps) {
+export function ListingCard({ listing, onArchive, onEdit }: ListingCardProps) {
   const isService = listing.listing_type === "service";
   const isJob = listing.listing_type === "job";
 
@@ -172,7 +173,14 @@ export function ListingCard({ listing, onArchive }: ListingCardProps) {
             </div>
           </div>
 
-          <div className="mt-4 flex justify-end border-t pt-3">
+          <div className="mt-4 flex justify-end gap-2 border-t pt-3">
+            <button
+              type="button"
+              className="rounded-md border px-3 text-sm"
+              onClick={onEdit}
+            >
+              Edit job
+            </button>
             <button
               type="button"
               className="flex h-9 items-center gap-2 rounded-md border px-3 text-sm transition hover:bg-muted"
@@ -372,6 +380,7 @@ export function ListingCard({ listing, onArchive }: ListingCardProps) {
               "
               onClick={(event) => {
                 event.stopPropagation();
+                onEdit?.();
               }}
               aria-label={isService ? "Edit service" : "Edit job"}
             >

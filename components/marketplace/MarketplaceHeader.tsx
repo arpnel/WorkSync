@@ -84,15 +84,15 @@ export default function MarketplaceHeader({
   onServiceChange,
 }: MarketplaceHeaderProps) {
   return (
-    <Card className="w-full rounded-2xl border p-6 shadow-sm">
+    <Card className="w-full rounded-2xl border p-4 shadow-sm sm:p-5">
       <div className="space-y-5">
         {/* ==================================================
             SEARCH + ACTIONS
         ================================================== */}
 
         <Field>
-          <div className="flex flex-col gap-3 lg:flex-row">
-            <div className="relative flex-1">
+          <div className="grid grid-cols-2 gap-2 lg:flex lg:gap-3">
+            <div className="relative col-span-2 min-w-0 flex-1">
               <Search
                 className="
                   absolute
@@ -106,9 +106,10 @@ export default function MarketplaceHeader({
               />
 
               <Input
+                aria-label="Search marketplace"
                 value={search}
                 onChange={(event) => onSearchChange(event.target.value)}
-                placeholder="Search freelancers, services, jobs, or skills..."
+                placeholder="Search services, jobs, or skills..."
                 className="h-11 rounded-xl pl-11"
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
@@ -121,9 +122,9 @@ export default function MarketplaceHeader({
             <Button
               type="button"
               onClick={onSearch}
-              className="h-11 rounded-xl px-6"
+              className="h-11 rounded-xl px-2 sm:px-6"
             >
-              <Search className="mr-2 h-4 w-4" />
+              <Search className="h-4 w-4" />
               Search
             </Button>
 
@@ -131,24 +132,17 @@ export default function MarketplaceHeader({
               type="button"
               variant="outline"
               onClick={onFilterClick}
-              className="
-                h-11
-                rounded-xl
-                border-border
-                bg-background
-                hover:bg-accent
-              "
+              className="h-11 rounded-xl"
             >
-              <SlidersHorizontal className="mr-2 h-4 w-4" />
+              <SlidersHorizontal className="size-4" />
               Filters
             </Button>
-
             <Button
               type="button"
               onClick={onCreateClick}
-              className="h-11 rounded-xl"
+              className="col-span-2 h-11 rounded-xl lg:col-span-1"
             >
-              <Plus className="mr-2 h-4 w-4" />
+              <Plus className="h-4 w-4" />
               Create
             </Button>
           </div>
@@ -191,7 +185,7 @@ export default function MarketplaceHeader({
                         onSearch();
                       }}
                     >
-                      <LayoutGrid className="mr-2 h-4 w-4" />
+                      <LayoutGrid className="h-4 w-4" />
                       All Listings
                       {selectedService === null && (
                         <Check className="ml-2 h-4 w-4" />
@@ -223,7 +217,7 @@ export default function MarketplaceHeader({
                               className="shrink-0 rounded-full"
                             >
                               {CategoryIcon && (
-                                <CategoryIcon className="mr-2 h-4 w-4" />
+                                <CategoryIcon className="h-4 w-4" />
                               )}
 
                               {category.name}
@@ -242,7 +236,7 @@ export default function MarketplaceHeader({
 
                           <PopoverContent
                             align="start"
-                            className="w-[320px] p-3"
+                            className="w-[320px] max-w-[calc(100vw-2rem)] p-3"
                           >
                             <div className="space-y-3">
                               <div>
@@ -332,7 +326,7 @@ export default function MarketplaceHeader({
         ================================================== */}
 
         {selectedService && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span>Selected service:</span>
 
             <span

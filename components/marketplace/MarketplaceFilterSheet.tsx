@@ -1,69 +1,64 @@
 "use client";
-
+import { useState } from "react";
 import {
   Sheet,
   SheetContent,
-  SheetDescription,
   SheetHeader,
   SheetTitle,
+  SheetDescription,
 } from "@/components/ui/sheet";
-
+import { Button } from "@/components/ui/button";
 import MarketplaceFilters, {
   type MarketplaceFiltersValue,
 } from "./MarketplaceFilters";
-
-interface MarketplaceFilterSheetProps {
+interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-
-  onApply: (
-    filters: MarketplaceFiltersValue,
-  ) => void;
-
-  initialFilters?: MarketplaceFiltersValue;
+  initialFilters: MarketplaceFiltersValue;
+  onApply: (filters: MarketplaceFiltersValue) => void;
 }
-
+function FilterForm({
+  initialFilters,
+  onApply,
+}: Pick<Props, "initialFilters" | "onApply">) {
+  const [draft, setDraft] = useState(initialFilters);
+  return (
+    <form
+      className="flex min-h-0 flex-1 flex-col"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onApply(draft);
+      }}
+    >
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+        <MarketplaceFilters filters={draft} onChange={setDraft} />
+      </div>
+      <div className="shrink-0 border-t p-5">
+        <Button type="submit" className="w-full">
+          Apply filters
+        </Button>
+      </div>
+    </form>
+  );
+}
 export default function MarketplaceFilterSheet({
   open,
   onOpenChange,
-  onApply,
   initialFilters,
-}: MarketplaceFilterSheetProps) {
+  onApply,
+}: Props) {
   return (
-    <Sheet
-      open={open}
-      onOpenChange={onOpenChange}
-    >
-      <SheetContent className="w-[420px] overflow-hidden p-0 sm:w-[480px]">
-        <div className="flex h-full flex-col">
-
-          {/* ==================================================
-              HEADER
-          ================================================== */}
-
-          <SheetHeader className="border-b px-6 py-5">
-            <SheetTitle>
-              Refine Results
-            </SheetTitle>
-
-            <SheetDescription>
-              Adjust filters to improve your
-              marketplace results.
-            </SheetDescription>
-          </SheetHeader>
-
-          {/* ==================================================
-              BODY
-          ================================================== */}
-
-          <div className="flex-1 overflow-y-auto px-6 py-6">
-            <MarketplaceFilters
-              initialFilters={initialFilters}
-              onApply={onApply}
-            />
-          </div>
-
-        </div>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-[420px]">
+        <SheetHeader className="border-b px-5 py-5">
+          <SheetTitle>Filters</SheetTitle>
+          <SheetDescription>
+            Choose listing type, saved listings, price, and rating.
+          </SheetDescription>
+        </SheetHeader>
+        {open && (
+          <FilterForm initialFilters={initialFilters} onApply={onApply} />
+        )}
       </SheetContent>
     </Sheet>
   );

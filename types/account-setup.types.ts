@@ -9,10 +9,12 @@ export interface ClientSetupValues {
   englishProficiency: string;
   profilePhoto: File | null;
   shortBio: string;
+  existingAvatarUrl?: string;
 }
 
 export interface FreelancerSetupValues extends ClientSetupValues {
-  primaryCategory: string;
+  headline?: string;
+  hourlyRate?: string;
   skills: string[];
   yearsOfExperience: number;
   industries: string[];
@@ -21,8 +23,9 @@ export interface FreelancerSetupValues extends ClientSetupValues {
   linkedIn: string;
   github: string;
   resume: File | null;
-  governmentId: File | null;
   portfolioSamples: File[];
   certifications: File[];
+  existingResumeUrl?: string;
+  existingPortfolioSamples?: string[];
+  existingCertifications?: string[];
 }
-

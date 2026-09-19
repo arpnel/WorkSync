@@ -1,322 +1,151 @@
 "use client";
 
-import { useState } from "react";
-
+import { RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Rating } from "@/components/ui/rating";
-import { cn } from "@/lib/utils";
-
-/* ==========================================================
-   TYPES
-========================================================== */
 
 export type SortOption = "latest" | "lowestPrice" | "highestRated";
-
 export type ListingType = "freelancer" | "client";
-
 export interface MarketplaceFiltersValue {
   sort: SortOption[];
   listingType: ListingType;
   minPrice: string;
   maxPrice: string;
   rating: number;
+  savedOnly: boolean;
 }
-
-export interface MarketplaceFiltersProps {
-  initialFilters?: MarketplaceFiltersValue;
-
-  onApply?: (filters: MarketplaceFiltersValue) => void;
+interface MarketplaceFiltersProps {
+  filters: MarketplaceFiltersValue;
+  onChange: (filters: MarketplaceFiltersValue) => void;
 }
-
-/* ==========================================================
-   DEFAULT FILTERS
-========================================================== */
-
-const DEFAULT_FILTERS: MarketplaceFiltersValue = {
-  sort: ["latest"],
-  listingType: "freelancer",
-  minPrice: "",
-  maxPrice: "",
-  rating: 0,
-};
-
-/* ==========================================================
-   COMPONENT
-========================================================== */
 
 export default function MarketplaceFilters({
-  initialFilters,
-  onApply,
+  filters,
+  onChange,
 }: MarketplaceFiltersProps) {
-  const [filters, setFilters] = useState<MarketplaceFiltersValue>(
-    initialFilters ?? DEFAULT_FILTERS,
+  const services = filters.listingType === "freelancer";
+  const hasFilters = Boolean(
+    filters.savedOnly ||
+    filters.listingType !== "freelancer" ||
+    filters.minPrice ||
+    filters.maxPrice ||
+    filters.rating,
   );
-
-  const [rating, setRating] = useState<number>(initialFilters?.rating ?? 0);
-
-  /* ========================================================
-     APPLY
-  ======================================================== */
-
-  function handleApply() {
-    onApply?.({
-      ...filters,
-      rating,
-    });
-  }
-
-  /* ========================================================
-     SORT
-  ======================================================== */
-
-  function toggleSort(option: SortOption) {
-    setFilters((previous: MarketplaceFiltersValue) => {
-      const exists = previous.sort.includes(option);
-
-      return {
-        ...previous,
-        sort: exists
-          ? previous.sort.filter((item: SortOption) => item !== option)
-          : [...previous.sort, option],
-      };
-    });
-  }
-
-  /* ========================================================
-     LISTING TYPE
-  ======================================================== */
-
-  function selectListingType(listingType: ListingType) {
-    setFilters((previous: MarketplaceFiltersValue) => ({
-      ...previous,
-      listingType,
-    }));
-  }
-
-  /* ========================================================
-     RESET
-  ======================================================== */
-
-  function handleReset() {
-    const reset: MarketplaceFiltersValue = {
-      ...DEFAULT_FILTERS,
-      sort: [...DEFAULT_FILTERS.sort],
-    };
-
-    setFilters(reset);
-    setRating(0);
-
-    onApply?.(reset);
-  }
-
-  /* ========================================================
-     RENDER
-  ======================================================== */
-
   return (
-    <div className="space-y-6 py-2">
-      {/* ====================================================
-          SORT
-      ==================================================== */}
-
-      <div>
-        <h3 className="mb-3 text-sm font-semibold">Sort & Refine</h3>
-
-        <div className="flex flex-wrap gap-2">
-          {[
-            {
-              key: "latest" as SortOption,
-              label: "Latest",
-            },
-            {
-              key: "lowestPrice" as SortOption,
-              label: "Lowest Price",
-            },
-            {
-              key: "highestRated" as SortOption,
-              label: "Highest Rated",
-            },
-          ].map((item) => {
-            const active = filters.sort.includes(item.key);
-
-            return (
-              <button
-                key={item.key}
-                type="button"
-                onClick={() => toggleSort(item.key)}
-                className={cn(
-                  "rounded-full border px-3 py-1 text-xs transition",
-                  active
-                    ? "bg-black text-white"
-                    : "bg-background hover:bg-muted",
-                )}
-              >
-                {item.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <hr />
-
-      {/* ====================================================
-          LISTING TYPE
-      ==================================================== */}
-
-      <div>
-        <h3 className="mb-3 text-sm font-semibold">Listing Type</h3>
-
-        <div role="radiogroup" aria-label="Listing Type" className="space-y-3">
-          {/* Freelancer Services */}
-
+    <div aria-label="Marketplace filters" className="space-y-6">
+      <fieldset className="space-y-2">
+        <legend className="mb-2 text-sm font-semibold">Listing type</legend>
+        {[
+          { value: "freelancer", label: "Services" },
+          { value: "client", label: "Jobs" },
+        ].map((option) => (
           <label
-            className={cn(
-              "flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-3 transition",
-              filters.listingType === "freelancer"
-                ? "border-primary bg-primary/5"
-                : "border-border hover:bg-muted/50",
-            )}
+            key={option.value}
+            className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm"
           >
             <input
               type="radio"
-              name="listingType"
-              value="freelancer"
-              checked={filters.listingType === "freelancer"}
-              onChange={() => selectListingType("freelancer")}
-              className="h-4 w-4 accent-primary"
+              name="marketplace-listing-type"
+              value={option.value}
+              checked={filters.listingType === option.value}
+              onChange={() =>
+                onChange({
+                  ...filters,
+                  listingType: option.value as ListingType,
+                })
+              }
+              className="size-4 accent-primary"
             />
-
-            <div className="min-w-0">
-              <p className="text-sm font-medium">Freelancer Services</p>
-
-              <p className="text-xs text-muted-foreground">
-                Browse services offered by freelancers.
-              </p>
-            </div>
+            {option.label}
           </label>
-
-          {/* Client Jobs */}
-
-          <label
-            className={cn(
-              "flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-3 transition",
-              filters.listingType === "client"
-                ? "border-primary bg-primary/5"
-                : "border-border hover:bg-muted/50",
-            )}
-          >
-            <input
-              type="radio"
-              name="listingType"
-              value="client"
-              checked={filters.listingType === "client"}
-              onChange={() => selectListingType("client")}
-              className="h-4 w-4 accent-primary"
-            />
-
-            <div className="min-w-0">
-              <p className="text-sm font-medium">Client Job Posts</p>
-
-              <p className="text-xs text-muted-foreground">
-                Browse jobs posted by clients.
-              </p>
-            </div>
-          </label>
-        </div>
-      </div>
-
-      <hr />
-
-      {/* ====================================================
-          PRICE
-      ==================================================== */}
-
-      <div>
-        <h3 className="mb-3 text-sm font-semibold">Price Range</h3>
-
-        <FieldGroup className="grid grid-cols-2 gap-3">
-          <Field>
-            <FieldLabel>Minimum</FieldLabel>
-
-            <Input
-              type="number"
-              min="0"
-              value={filters.minPrice}
-              onChange={(event) => {
-                const value = event.target.value;
-
-                setFilters((previous: MarketplaceFiltersValue) => ({
-                  ...previous,
-                  minPrice: value,
-                }));
-              }}
-              placeholder="0"
-            />
-          </Field>
-
-          <Field>
-            <FieldLabel>Maximum</FieldLabel>
-
-            <Input
-              type="number"
-              min="0"
-              value={filters.maxPrice}
-              onChange={(event) => {
-                const value = event.target.value;
-
-                setFilters((previous: MarketplaceFiltersValue) => ({
-                  ...previous,
-                  maxPrice: value,
-                }));
-              }}
-              placeholder="10000"
-            />
-          </Field>
-        </FieldGroup>
-      </div>
-
-      <hr />
-
-      {/* ====================================================
-          RATING
-      ==================================================== */}
-
-      <div>
-        <h3 className="mb-3 text-sm font-semibold">Minimum Rating</h3>
-
-        <Rating
-          rating={rating}
-          editable
-          showValue
-          onRatingChange={(value) => {
-            setRating(value);
-          }}
+        ))}
+      </fieldset>
+      <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm">
+        <input
+          type="checkbox"
+          checked={filters.savedOnly}
+          onChange={(event) =>
+            onChange({ ...filters, savedOnly: event.target.checked })
+          }
+          className="size-4 accent-primary"
         />
-      </div>
-
-      <hr />
-
-      {/* ====================================================
-          ACTIONS
-      ==================================================== */}
-
-      <div className="flex gap-3">
-        <Button className="flex-1" type="button" onClick={handleApply}>
-          Apply
-        </Button>
-
+        Saved listings only
+      </label>
+      <fieldset className="grid min-w-0 grid-cols-2 gap-2">
+        <legend className="mb-2 text-xs font-medium text-muted-foreground">
+          {services ? "Price" : "Budget"} range (PHP)
+        </legend>
+        <label className="min-w-0 space-y-1 text-xs text-muted-foreground">
+          <span>Minimum</span>
+          <Input
+            type="number"
+            min="0"
+            step="any"
+            inputMode="decimal"
+            placeholder="No minimum"
+            value={filters.minPrice}
+            onChange={(event) =>
+              onChange({ ...filters, minPrice: event.target.value })
+            }
+            className="bg-card"
+          />
+        </label>
+        <label className="min-w-0 space-y-1 text-xs text-muted-foreground">
+          <span>Maximum</span>
+          <Input
+            type="number"
+            min={filters.minPrice || "0"}
+            step="any"
+            inputMode="decimal"
+            placeholder="No maximum"
+            value={filters.maxPrice}
+            onChange={(event) =>
+              onChange({ ...filters, maxPrice: event.target.value })
+            }
+            className="bg-card"
+          />
+        </label>
+      </fieldset>
+      {services && (
+        <label className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
+          <span>Minimum rating</span>
+          <select
+            className="h-11 w-full rounded-lg border bg-card px-3 text-sm text-foreground"
+            value={filters.rating}
+            onChange={(event) =>
+              onChange({ ...filters, rating: Number(event.target.value) })
+            }
+          >
+            <option value="0">Any rating</option>
+            {[1, 2, 3, 4, 5].map((rating) => (
+              <option key={rating} value={rating}>
+                {rating} {rating === 1 ? "star" : "stars"}
+                {rating < 5 ? " & up" : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {hasFilters && (
         <Button
-          variant="outline"
-          className="flex-1"
           type="button"
-          onClick={handleReset}
+          variant="ghost"
+          className="w-full"
+          onClick={() =>
+            onChange({
+              ...filters,
+              listingType: "freelancer",
+              savedOnly: false,
+              minPrice: "",
+              maxPrice: "",
+              rating: 0,
+            })
+          }
         >
-          Reset
+          <RotateCcw className="size-4" />
+          Reset filters
         </Button>
-      </div>
+      )}
     </div>
   );
 }

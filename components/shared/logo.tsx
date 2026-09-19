@@ -21,8 +21,7 @@ export const LogoIcon = ({ className }: { className?: string }) => {
             alt="Logo"
             width={120}
             height={40}
-            className={cn("object-contain", className)}
-            priority
+            className={cn("h-auto w-auto object-contain", className)}
         />
     )
 }

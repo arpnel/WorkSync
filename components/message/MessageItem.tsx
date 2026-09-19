@@ -1,13 +1,9 @@
 "use client";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-  Message,
-  MessageAvatar,
-  MessageContent,
-  MessageFooter,
-  MessageHeader,
-} from "@/components/ui/message";
+import MessageAttachment from "./MessageAttachment";
+import CallMessage from "@/components/calls/CallMessage";
+import { cn } from "@/lib/utils";
 
 export interface MessageItemProps {
   id: string;
@@ -17,6 +13,8 @@ export interface MessageItemProps {
   content: string;
   timestamp: string;
   seen?: boolean;
+  attachmentUrl?: string | null;
+  attachmentType?: string | null;
 }
 
 export default function MessageItem({
@@ -26,6 +24,8 @@ export default function MessageItem({
   content,
   timestamp,
   seen = false,
+  attachmentUrl,
+  attachmentType,
 }: MessageItemProps) {
   const initials = senderName
     .split(" ")
@@ -37,32 +37,48 @@ export default function MessageItem({
   const isMe = sender === "me";
 
   return (
-    <Message align={isMe ? "end" : "start"}>
-      <MessageAvatar>
-        <Avatar className="h-8 w-8">
-          <AvatarImage src={avatar} alt={senderName} />
-          <AvatarFallback>{initials}</AvatarFallback>
-        </Avatar>
-      </MessageAvatar>
-
-      <MessageContent>
-        <MessageHeader>{senderName}</MessageHeader>
-
+    <div
+      className={cn(
+        "flex min-w-0 items-start gap-2",
+        isMe && "flex-row-reverse",
+      )}
+    >
+      <Avatar className="mt-5 h-8 w-8 shrink-0">
+        <AvatarImage src={avatar} alt={senderName} />
+        <AvatarFallback>{initials}</AvatarFallback>
+      </Avatar>
+      <div
+        className={cn(
+          "flex min-w-0 max-w-[calc(100%-2.5rem)] flex-col gap-1 sm:max-w-[75%] lg:max-w-[65%]",
+          isMe ? "items-end" : "items-start",
+        )}
+      >
+        <p className="max-w-full px-2 text-xs font-medium break-words text-muted-foreground">
+          {senderName}
+        </p>
         <div
-          className={`max-w-xl rounded-2xl px-4 py-3 text-sm shadow-sm ${
-            isMe ? "bg-primary text-primary-foreground" : "bg-muted"
-          }`}
+          className={cn(
+            "w-fit max-w-full rounded-3xl px-4 py-2.5 text-sm whitespace-pre-wrap [overflow-wrap:anywhere]",
+            isMe ? "bg-blue-500 text-white" : "bg-muted",
+          )}
         >
-          {content}
+          <CallMessage content={content} />
+          {attachmentUrl && (
+            <div className="mt-2">
+              <MessageAttachment path={attachmentUrl} type={attachmentType} />
+            </div>
+          )}
         </div>
-
-        <MessageFooter>
-          <span>
-            {timestamp}
-            {isMe && seen && " • Seen"}
-          </span>
-        </MessageFooter>
-      </MessageContent>
-    </Message>
+        <p
+          className={cn(
+            "max-w-full px-2 text-[11px] text-muted-foreground",
+            isMe && "text-right",
+          )}
+        >
+          {timestamp}
+          {isMe && seen && " \u00b7 Seen"}
+        </p>
+      </div>
+    </div>
   );
 }

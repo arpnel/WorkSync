@@ -1,27 +1,32 @@
 "use client";
 
-import { Briefcase, MoreVertical } from "lucide-react";
+import type { ReactNode } from "react";
+import { ArrowLeft, Briefcase } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 interface ChatHeaderProps {
+  actions?: ReactNode;
   name: string;
   role?: string;
   project?: string;
   avatar?: string;
   online?: boolean;
+  onBack?: () => void;
   onViewProject?: () => void;
 }
 
 export default function ChatHeader({
+  actions,
   name,
   role,
   project,
   avatar,
   online,
   onViewProject,
+  onBack,
 }: ChatHeaderProps) {
   const initials = name
     .split(" ")
@@ -31,8 +36,19 @@ export default function ChatHeader({
     .toUpperCase();
 
   return (
-    <header className="flex shrink-0 items-center justify-between border-b px-6 py-4">
-      <div className="flex items-center gap-4">
+    <header className="flex shrink-0 items-center justify-between gap-2 border-b px-3 py-4 sm:px-6">
+      <div className="flex min-w-0 items-center gap-3">
+        {onBack && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="shrink-0 md:hidden"
+            aria-label="Back to conversations"
+            onClick={onBack}
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+        )}
         <div className="relative">
           <Avatar className="h-12 w-12">
             <AvatarImage src={avatar} alt={name} />
@@ -44,9 +60,9 @@ export default function ChatHeader({
           )}
         </div>
 
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold">{name}</h2>
+        <div className="min-w-0 space-y-1">
+          <div className="flex shrink-0 items-center gap-2">
+            <h2 className="truncate text-lg font-semibold">{name}</h2>
 
             {typeof online === "boolean" && (
               <Badge
@@ -72,16 +88,13 @@ export default function ChatHeader({
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="ml-auto flex shrink-0 items-center gap-2">
         {project && onViewProject && (
           <Button variant="outline" onClick={onViewProject}>
             View Project
           </Button>
         )}
-
-        <Button variant="ghost" size="icon" aria-label="Conversation options">
-          <MoreVertical className="h-5 w-5" />
-        </Button>
+        {actions}
       </div>
     </header>
   );

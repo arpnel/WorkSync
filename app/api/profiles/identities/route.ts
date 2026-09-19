@@ -29,7 +29,24 @@ export async function POST(request: Request) {
     const {
       data: { user },
       error,
-    } = await db.auth.getUser(token);
+    } = await createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { auth: { persistSession: false, autoRefreshToken: false } },
+    ).auth.getUser(token);
+    if (error && /api.?key/i.test(error.message))
+      return json(
+        {
+          error:
+            "Server authentication is misconfigured. Check the Supabase environment variables in Vercel.",
+        },
+        503,
+      );
+    if (error && ![400, 401, 403].includes(error.status ?? 0))
+      return json(
+        { error: "Unable to verify your session. Please try again shortly." },
+        503,
+      );
     if (error || !user)
       return json({ error: "Your session expired. Sign in again." }, 401);
     const { clientIds, freelancerIds, userIds } = parsed.data;

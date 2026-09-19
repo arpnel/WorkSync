@@ -91,19 +91,17 @@ export async function callUser(request: Request) {
     .get("authorization")
     ?.match(/^Bearer (.+)$/i)?.[1];
   if (!bearer) throw new CallError("Sign in to use video calling.", 401);
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY)
+  if (
+    !process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  )
     throw new CallError("Video calling is not configured yet.", 503);
   const db = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY,
     { auth: { persistSession: false, autoRefreshToken: false } },
   );
-  const {
-    data: { user },
-    error,
-  } = await db.auth.getUser(bearer);
-  if (error || !user)
-    throw new CallError("Your session expired. Sign in again.", 401);
   const client = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -112,6 +110,24 @@ export async function callUser(request: Request) {
       auth: { persistSession: false, autoRefreshToken: false },
     },
   );
+  const {
+    data: { user },
+    error,
+  } = await client.auth.getUser(bearer);
+  if (error) {
+    if (/api.?key/i.test(error.message))
+      throw new CallError(
+        "Server authentication is misconfigured. Check the Supabase environment variables in Vercel.",
+        503,
+      );
+    if (error.status === 400 || error.status === 401 || error.status === 403)
+      throw new CallError("Your session expired. Sign in again.", 401);
+    throw new CallError(
+      "Unable to verify your session. Please try again shortly.",
+      503,
+    );
+  }
+  if (!user) throw new CallError("Your session expired. Sign in again.", 401);
   return { db, client, user };
 }
 type Context = Awaited<ReturnType<typeof callUser>>;

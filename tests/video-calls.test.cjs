@@ -317,3 +317,80 @@ test("history preserves ordinary messages and labels missed calls without exposi
     "Video call · Missed",
   );
 });
+
+test("call requests refresh an expired token once before retrying the same action", async () => {
+  const sent = [];
+  let refreshed = 0;
+  const api = load(
+    "services/calls/callService.ts",
+    {
+      "@/lib/supabaseClient": {
+        supabase: {
+          auth: {
+            getSession: async () => ({
+              data: { session: { access_token: "old", user: { id: caller } } },
+            }),
+            refreshSession: async () => {
+              refreshed++;
+              return {
+                data: {
+                  session: { access_token: "new", user: { id: caller } },
+                },
+              };
+            },
+          },
+        },
+      },
+    },
+    {
+      fetch: async (_url, options) => {
+        sent.push(options);
+        return sent.length === 1
+          ? { status: 401 }
+          : { status: 200, ok: true, json: async () => ({ saved: true }) };
+      },
+    },
+  );
+  await api.callRequest({
+    action: "start",
+    callId,
+    conversationId: conversation,
+  });
+  assert.equal(refreshed, 1);
+  assert.equal(sent[1].headers.Authorization, "Bearer new");
+  assert.equal(sent[0].body, sent[1].body);
+});
+
+test("call requests never replay an action after switching accounts", async () => {
+  let requests = 0;
+  const api = load(
+    "services/calls/callService.ts",
+    {
+      "@/lib/supabaseClient": {
+        supabase: {
+          auth: {
+            getSession: async () => ({
+              data: { session: { access_token: "old", user: { id: caller } } },
+            }),
+            refreshSession: async () => ({
+              data: {
+                session: { access_token: "new", user: { id: outsider } },
+              },
+            }),
+          },
+        },
+      },
+    },
+    {
+      fetch: async () => {
+        requests++;
+        return { status: 401 };
+      },
+    },
+  );
+  await assert.rejects(
+    api.callRequest({ action: "start", callId }),
+    /Sign in again/,
+  );
+  assert.equal(requests, 1);
+});

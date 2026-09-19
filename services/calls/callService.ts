@@ -14,16 +14,24 @@ export async function callRequest<T>(body?: {
     data: { session },
   } = await supabase.auth.getSession();
   if (!session) throw new Error("Sign in to use video calling.");
-  const response = await fetch("/api/calls", {
-    method: body ? "POST" : "GET",
-    cache: "no-store",
-    headers: {
-      Authorization: `Bearer ${session.access_token}`,
-      "Content-Type": "application/json",
-    },
-    body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(45000),
-  });
+  const send = (token: string) =>
+    fetch("/api/calls", {
+      method: body ? "POST" : "GET",
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(45000),
+    });
+  let response = await send(session.access_token);
+  if (response.status === 401) {
+    const { data, error } = await supabase.auth.refreshSession();
+    if (error || !data.session || data.session.user.id !== session.user.id)
+      throw new Error("Your session expired. Sign in again.");
+    response = await send(data.session.access_token);
+  }
   const data = await response.json();
   if (!response.ok)
     throw new Error(data.error || "Unable to connect the call.");

@@ -17,7 +17,10 @@ export async function POST(request: Request) {
   if (!parsed.success) return json({ error: "Invalid profile request." }, 400);
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY)
     return json(
-      { error: "Marketplace profile lookup is not configured." },
+      {
+        error: "Marketplace profile lookup is not configured.",
+        code: "IDENTITIES_CONFIG_MISSING",
+      },
       503,
     );
   try {
@@ -39,12 +42,17 @@ export async function POST(request: Request) {
         {
           error:
             "Server authentication is misconfigured. Check the Supabase environment variables in Vercel.",
+          code: "IDENTITIES_AUTH_API_KEY",
         },
         503,
       );
     if (error && ![400, 401, 403].includes(error.status ?? 0))
       return json(
-        { error: "Unable to verify your session. Please try again shortly." },
+        {
+          error: "Unable to verify your session. Please try again shortly.",
+          code: "IDENTITIES_AUTH_UNAVAILABLE",
+          upstreamStatus: error.status ?? null,
+        },
         503,
       );
     if (error || !user)
@@ -84,7 +92,14 @@ export async function POST(request: Request) {
             )
         : Promise.resolve({ data: [], error: null }),
     ]);
-    if (clients.error || freelancers.error) throw new Error("Lookup failed");
+    if (clients.error || freelancers.error)
+      return json(
+        {
+          error: "Marketplace role profiles could not be loaded.",
+          code: "IDENTITIES_ROLE_LOOKUP_FAILED",
+        },
+        503,
+      );
     const relatedIds = [
       ...new Set([
         ...userIds,
@@ -100,7 +115,14 @@ export async function POST(request: Request) {
           )
           .in("user_id", relatedIds)
       : { data: [], error: null };
-    if (profiles.error) throw new Error("Lookup failed");
+    if (profiles.error)
+      return json(
+        {
+          error: "Marketplace profiles could not be loaded.",
+          code: "IDENTITIES_PROFILE_LOOKUP_FAILED",
+        },
+        503,
+      );
     return json({
       profiles: profiles.data ?? [],
       clients: clients.data ?? [],
@@ -108,7 +130,10 @@ export async function POST(request: Request) {
     });
   } catch {
     return json(
-      { error: "Marketplace profiles could not be loaded. Please retry." },
+      {
+        error: "Marketplace profiles could not be loaded. Please retry.",
+        code: "IDENTITIES_UNEXPECTED_FAILURE",
+      },
       503,
     );
   }

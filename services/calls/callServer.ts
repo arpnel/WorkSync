@@ -12,6 +12,7 @@ export class CallError extends Error {
   constructor(
     message: string,
     public status = 400,
+    public code?: string,
   ) {
     super(message);
   }
@@ -24,7 +25,12 @@ export function validCallId(value: unknown): asserts value is string {
 }
 function dailyKey() {
   const key = process.env.DAILY_API_KEY?.trim();
-  if (!key) throw new CallError("Video calling is not configured yet.", 503);
+  if (!key)
+    throw new CallError(
+      "Video calling is not configured yet.",
+      503,
+      "CALLS_DAILY_CONFIG_MISSING",
+    );
   return key;
 }
 export function signCall(call: VideoCall) {
@@ -96,7 +102,11 @@ export async function callUser(request: Request) {
     !process.env.NEXT_PUBLIC_SUPABASE_URL ||
     !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   )
-    throw new CallError("Video calling is not configured yet.", 503);
+    throw new CallError(
+      "Video calling is not configured yet.",
+      503,
+      "CALLS_SUPABASE_CONFIG_MISSING",
+    );
   const db = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY,
@@ -119,12 +129,14 @@ export async function callUser(request: Request) {
       throw new CallError(
         "Server authentication is misconfigured. Check the Supabase environment variables in Vercel.",
         503,
+        "CALLS_AUTH_API_KEY",
       );
     if (error.status === 400 || error.status === 401 || error.status === 403)
       throw new CallError("Your session expired. Sign in again.", 401);
     throw new CallError(
       "Unable to verify your session. Please try again shortly.",
       503,
+      "CALLS_AUTH_UNAVAILABLE",
     );
   }
   if (!user) throw new CallError("Your session expired. Sign in again.", 401);
@@ -166,7 +178,12 @@ export async function listCalls(ctx: Context) {
     .from("conversation_participants")
     .select("conversation_id")
     .eq("user_id", ctx.user.id);
-  if (error) throw new CallError("Unable to load calls.", 503);
+  if (error)
+    throw new CallError(
+      "Unable to load calls.",
+      503,
+      "CALLS_MEMBERSHIP_LOOKUP_FAILED",
+    );
   const ids = (memberships ?? []).map((m) => m.conversation_id);
   if (!ids.length) return [];
   const { data: blocks, error: blockError } = await ctx.db
@@ -174,7 +191,11 @@ export async function listCalls(ctx: Context) {
     .select("blocker_id,blocked_id")
     .or(`blocker_id.eq.${ctx.user.id},blocked_id.eq.${ctx.user.id}`);
   if (blockError && !["42P01", "PGRST205"].includes(blockError.code))
-    throw new CallError("Unable to check calling permissions.", 503);
+    throw new CallError(
+      "Unable to check calling permissions.",
+      503,
+      "CALLS_BLOCK_LOOKUP_FAILED",
+    );
   const blocked = new Set(
     (blocks ?? []).map((b) =>
       b.blocker_id === ctx.user.id ? b.blocked_id : b.blocker_id,
@@ -188,7 +209,12 @@ export async function listCalls(ctx: Context) {
     .gte("created_at", new Date(Date.now() - 3600000).toISOString())
     .order("created_at", { ascending: false })
     .limit(50);
-  if (readError) throw new CallError("Unable to load calls.", 503);
+  if (readError)
+    throw new CallError(
+      "Unable to load calls.",
+      503,
+      "CALLS_HISTORY_LOOKUP_FAILED",
+    );
   return (data ?? []).flatMap((row) => {
     const call = verifiedCall(row);
     return call &&

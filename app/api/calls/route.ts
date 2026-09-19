@@ -11,6 +11,8 @@ const headers = { "Cache-Control": "no-store" };
 function failure(error: unknown) {
   return NextResponse.json(
     {
+      code:
+        error instanceof CallError ? error.code : "CALLS_UNEXPECTED_FAILURE",
       error:
         error instanceof CallError
           ? error.message

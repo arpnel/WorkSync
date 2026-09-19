@@ -139,7 +139,9 @@ export default function MarketplacePage() {
     return (
       (!savedOnly || saved.has(listingKey(listing.listing_type, id))) &&
       (!selectedService ||
-        listing.category?.name.toLowerCase() === selectedService.toLowerCase())
+        (typeof listing.category?.name === "string" &&
+          listing.category.name.toLowerCase() ===
+            selectedService.toLowerCase()))
     );
   });
   return (

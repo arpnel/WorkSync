@@ -357,3 +357,59 @@ test("save failure does not return an unsaved score and can be retried", async (
   assert.equal(f.application.screening_id, null);
   assert.equal(f.calls.saves, 2);
 });
+
+test("Gemini adapter can load without credentials and checks them only when screening", async () => {
+  const adapter = load(
+    "lib/ai/gemini.ts",
+    {
+      "server-only": {},
+      "@google/genai": { GoogleGenAI: class {} },
+      "./screening": rubric,
+    },
+    { process: { env: {} } },
+  );
+  assert.equal(typeof adapter.screeningModel, "function");
+  assert.equal(typeof adapter.evaluateApplicant, "function");
+  await assert.rejects(
+    adapter.evaluateApplicant({}),
+    /SCREENING_CONFIGURATION/,
+  );
+});
+
+test("Gemini adapter validates structured output and computes the score locally", async () => {
+  let request;
+  const adapter = load(
+    "lib/ai/gemini.ts",
+    {
+      "server-only": {},
+      "@google/genai": {
+        GoogleGenAI: class {
+          models = {
+            generateContent: async (input) => {
+              request = input;
+              return {
+                text: JSON.stringify({
+                  dimensions: Object.fromEntries(
+                    Object.keys(rubric.weights).map((key) => [key, 80]),
+                  ),
+                  strengths: ["Relevant skills"],
+                  weaknesses: [],
+                  recommendation: "Review the proposal.",
+                }),
+              };
+            },
+          };
+        },
+      },
+      "./screening": rubric,
+    },
+    {
+      process: { env: { GEMINI_API_KEY: "test", GEMINI_MODEL: "test-model" } },
+    },
+  );
+  const result = await adapter.evaluateApplicant({ proposal: "Example" });
+  assert.equal(request.model, "test-model");
+  assert.equal(request.config.responseMimeType, "application/json");
+  assert.equal(result.score, 80);
+  assert.equal(result.result, "Strong Match");
+});

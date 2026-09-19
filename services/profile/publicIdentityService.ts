@@ -42,6 +42,7 @@ export async function getPublicIdentities(input: {
     input.freelancerIds?.length ?? 0,
   );
   for (let offset = 0; offset < length; offset += 40) {
+    const started = Date.now();
     const response = await fetch("/api/profiles/identities", {
       method: "POST",
       headers: {
@@ -55,11 +56,34 @@ export async function getPublicIdentities(input: {
       }),
       cache: "no-store",
     });
-    const data = await response.json();
-    if (!response.ok)
+    const data = await response
+      .json()
+      .catch(() => ({
+        error: "The profile server returned an unreadable response.",
+        code: "NON_JSON_RESPONSE",
+      }));
+    if (!response.ok) {
+      console.error(
+        "[WorkSync API] " +
+          JSON.stringify({
+            endpoint: "/api/profiles/identities",
+            method: "POST",
+            status: response.status,
+            code:
+              typeof data?.code === "string" && /^[A-Z_]{1,80}$/.test(data.code)
+                ? data.code
+                : "UNCLASSIFIED_ERROR",
+            upstreamStatus:
+              typeof data?.upstreamStatus === "number"
+                ? data.upstreamStatus
+                : null,
+            elapsedMs: Date.now() - started,
+          }),
+      );
       throw new Error(
         data.error || "Marketplace profiles could not be loaded.",
       );
+    }
     result.profiles.push(...data.profiles);
     result.clients.push(...data.clients);
     result.freelancers.push(...data.freelancers);

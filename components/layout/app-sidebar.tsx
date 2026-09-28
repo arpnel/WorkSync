@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/sidebar";
 
 import {
+  MoreHorizontal,
   Home,
   ShoppingCart,
   Briefcase,
@@ -78,17 +79,6 @@ export function AppSidebar() {
 
   return (
     <>
-      <aside
-        aria-label="Compact navigation"
-        className="flex w-14 shrink-0 flex-col border-r bg-sidebar md:hidden"
-      >
-        <div className="flex justify-center border-b py-2">
-          <SidebarTrigger className="size-11" />
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-1">
-          {navigation(true)}
-        </div>
-      </aside>
       <Sidebar collapsible="icon" className="top-16 h-[calc(100dvh-4rem)]">
         <SidebarHeader
           className={cn("border-b py-2", collapsed ? "px-0" : "px-3")}
@@ -107,12 +97,62 @@ export function AppSidebar() {
             )}
           </div>
         </SidebarHeader>
-        <SidebarContent>
+        <SidebarContent className="group-data-[collapsible=icon]:overflow-y-auto">
           <SidebarGroup className={collapsed ? "p-0.5" : "p-3"}>
             {navigation(collapsed)}
           </SidebarGroup>
         </SidebarContent>
       </Sidebar>
     </>
+  );
+}
+
+export function MobileNavigation() {
+  const pathname = usePathname();
+  const { setOpenMobile, openMobile } = useSidebar();
+  const primary = NAV_ITEMS.slice(0, 4);
+  const isActive = (href: string) =>
+    pathname === href || pathname.startsWith(`${href}/`);
+  return (
+    <nav
+      aria-label="Phone navigation"
+      className="z-30 grid shrink-0 grid-cols-5 border-t bg-card px-1 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] md:hidden"
+    >
+      {primary.map(({ href, label, icon: Icon }) => (
+        <Link
+          key={href}
+          href={href}
+          aria-current={isActive(href) ? "page" : undefined}
+          className={cn(
+            "flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-medium focus-visible:outline-2 focus-visible:outline-primary",
+            isActive(href)
+              ? "bg-primary/10 text-primary"
+              : "text-muted-foreground",
+          )}
+        >
+          <Icon className="size-5" aria-hidden="true" />
+          {label === "Dashboard"
+            ? "Home"
+            : label === "Marketplace"
+              ? "Explore"
+              : label}
+        </Link>
+      ))}
+      <button
+        type="button"
+        aria-expanded={openMobile}
+        aria-label="More navigation options"
+        onClick={() => setOpenMobile(true)}
+        className={cn(
+          "flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-medium focus-visible:outline-2 focus-visible:outline-primary",
+          !primary.some((item) => isActive(item.href))
+            ? "bg-primary/10 text-primary"
+            : "text-muted-foreground",
+        )}
+      >
+        <MoreHorizontal className="size-5" aria-hidden="true" />
+        More
+      </button>
+    </nav>
   );
 }

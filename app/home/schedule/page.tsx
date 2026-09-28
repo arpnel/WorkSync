@@ -1,4 +1,5 @@
 import ScheduleBoard from "@/components/schedule/ScheduleBoard";
+import { WorkspacePageHeader } from "@/components/shared/WorkspacePageHeader";
 
 export default async function Page({
   searchParams,
@@ -16,14 +17,11 @@ export default async function Page({
       : undefined;
   return (
     <div className="min-w-0 space-y-6">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-          Schedule
-        </h1>
-        <p className="text-sm text-muted-foreground sm:text-base">
-          Plan your work, organize tasks, and stay on top of deadlines.
-        </p>
-      </header>
+      <WorkspacePageHeader
+        title="Schedule"
+        description="Organize your tasks, plan your week, and keep deadlines in view."
+      />
+
       <ScheduleBoard
         key={[board, card, date].join(":")}
         initialBoardId={board}

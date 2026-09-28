@@ -1,7 +1,8 @@
 import ModerationNotice from "@/components/account/ModerationNotice";
+import { WorkspaceDesign } from "@/components/layout/WorkspaceDesign";
 import CallProvider from "@/components/calls/CallProvider";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import { AppSidebar } from "@/components/layout/app-sidebar";
+import { AppSidebar, MobileNavigation } from "@/components/layout/app-sidebar";
 import { DashboardHeader } from "@/components/layout/dashboard-header";
 import { ThemeProvider } from "@/components/theme-provider";
 
@@ -36,12 +37,13 @@ export default function DashboardLayout({
               <main
                 id="main-content"
                 tabIndex={-1}
-                className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-background p-3 sm:p-5 lg:p-6"
+                className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-background p-4 sm:p-5 lg:p-6"
               >
                 <ModerationNotice />
-                {children}
+                <WorkspaceDesign>{children}</WorkspaceDesign>
               </main>
             </div>
+            <MobileNavigation />
           </div>
         </SidebarProvider>
       </CallProvider>

@@ -69,7 +69,7 @@ export default function ScheduleCalendar({
   }).format(month);
   return (
     <div className="@container min-w-0 space-y-6">
-      <div className="grid overflow-hidden rounded-3xl border border-border/70 bg-card shadow-sm @min-[900px]:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="grid overflow-hidden rounded-lg border border-border bg-card shadow-sm @min-[900px]:grid-cols-[minmax(0,1fr)_300px]">
         <header className="flex flex-wrap items-center justify-between gap-4 border-b border-border/60 p-5 sm:px-7 sm:py-6 @min-[900px]:col-span-2">
           <div>
             <h2
@@ -86,7 +86,7 @@ export default function ScheduleCalendar({
                   : "Schedule unavailable"}
             </p>
           </div>
-          <div className="flex items-center gap-1 rounded-xl border bg-background/60 p-1">
+          <div className="flex items-center gap-1 rounded-md border bg-background/60 p-1">
             <Button
               variant="ghost"
               size="icon"
@@ -127,7 +127,7 @@ export default function ScheduleCalendar({
               </span>
             ))}
           </div>
-          <div className="grid grid-cols-7 gap-1.5">
+          <div className="grid grid-cols-7 gap-px overflow-hidden rounded-md border bg-border">
             {Array.from({ length: cellCount }, (_, index) => {
               const date = new Date(
                 month.getFullYear(),
@@ -154,12 +154,12 @@ export default function ScheduleCalendar({
                       );
                   }}
                   className={cn(
-                    "relative flex min-h-16 min-w-0 flex-col items-center gap-1 rounded-xl p-1.5 text-left transition-colors focus-visible:z-10 sm:min-h-24 sm:items-start sm:p-2.5",
+                    "relative flex min-h-16 min-w-0 flex-col items-center gap-1 p-1.5 text-left transition-colors focus-visible:z-10 sm:min-h-24 sm:items-start sm:p-2.5",
                     selected === key
-                      ? "bg-primary/10 ring-1 ring-inset ring-primary/40"
+                      ? "bg-accent ring-1 ring-inset ring-primary/40"
                       : inMonth
                         ? "bg-card hover:bg-accent/50"
-                        : "bg-muted/30 text-muted-foreground/40",
+                        : "bg-muted text-muted-foreground/50",
                   )}
                 >
                   <span

@@ -46,7 +46,7 @@ export function canRequestCancellation(
   );
 }
 export function canOpenDispute(status: string) {
-  return ["active"].includes(status.toLowerCase());
+  return ["active", "in_progress", "revision"].includes(status.toLowerCase());
 }
 export function validateReason(value: string) {
   if (!value.trim() || value.length > 5000)

@@ -1,5 +1,6 @@
 "use client";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
+import { WorkspacePageHeader } from "@/components/shared/WorkspacePageHeader";
 
 import { useCallback, useEffect, useState } from "react";
 import { Archive, Loader2 } from "lucide-react";
@@ -149,11 +150,10 @@ export default function Page() {
 
   return (
     <div className="min-w-0 space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-          My Listings
-        </h1>
-      </div>
+      <WorkspacePageHeader
+        title="My listings"
+        description="Manage your services and opportunities, all in one place."
+      />
       {/* ==================================================
               TOOLBAR
           ================================================== */}

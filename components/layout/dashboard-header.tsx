@@ -238,14 +238,14 @@ export function DashboardHeader() {
   return (
     <>
       <header className="relative z-30 flex h-16 min-w-0 items-center border-b bg-card px-3 sm:px-4 lg:px-6">
-        <div className="flex min-w-0 items-center gap-1 sm:gap-3">
+        <div className="flex min-w-0 flex-1 items-center gap-1 sm:gap-3">
           <Link
             href="/home/dashboard"
-            className="flex shrink-0 items-center gap-2 rounded-lg"
+            className="flex min-w-0 items-center gap-2 rounded-lg"
             aria-label="WorkSync dashboard"
           >
             <LogoIcon className="h-8 w-8 shrink-0" />
-            <span className="text-base font-bold tracking-tight sm:text-xl">
+            <span className="truncate text-base font-bold tracking-tight sm:text-xl">
               WorkSync
             </span>
           </Link>
@@ -255,7 +255,7 @@ export function DashboardHeader() {
             RIGHT SECTION
         =================================================== */}
 
-        <div className="ml-auto flex shrink-0 items-center gap-1 pl-2 sm:gap-2 sm:pl-6">
+        <div className="ml-auto flex shrink-0 items-center gap-0 pl-2 sm:gap-2 sm:pl-6">
           {/* =================================================
               ROLE SWITCHER
           ================================================= */}
@@ -265,7 +265,7 @@ export function DashboardHeader() {
               <button
                 disabled={roleLoading}
                 className="
-                  flex h-9 items-center gap-2
+                  flex h-11 min-w-11 justify-center items-center gap-2
                   rounded-md
                   border border-primary/30
                   bg-primary/10
@@ -333,7 +333,7 @@ export function DashboardHeader() {
           <Link
             href="/home/messages"
             className="
-              flex h-9 w-9 shrink-0
+              hidden md:flex h-9 w-9 shrink-0
               items-center justify-center
               rounded-md transition
               hover:bg-accent

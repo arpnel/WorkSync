@@ -1,3 +1,4 @@
+import { readPageCache, invalidatePageReads } from "@/lib/pageReadCache";
 import { getPublicIdentities } from "@/services/profile/publicIdentityService";
 import { supabase } from "@/lib/supabaseClient";
 import { getFreelancerDetails } from "./profileDetails";
@@ -34,8 +35,15 @@ const PORTFOLIO_BUCKET = "portfolio_images";
    PROFILE
 ========================================================== */
 
-export async function getCurrentProfile(
+export function getCurrentProfile(
   includeDetails = false,
+): Promise<Profile | null> {
+  return readPageCache("profile:" + includeDetails, () =>
+    fetchCurrentProfile(includeDetails),
+  );
+}
+async function fetchCurrentProfile(
+  includeDetails: boolean,
 ): Promise<Profile | null> {
   const {
     data: { user },
@@ -282,6 +290,40 @@ export async function updateProfile(
     (!Number.isFinite(updates.hourly_rate) || updates.hourly_rate <= 0)
   )
     throw new Error("Enter an hourly rate greater than zero.");
+  if (
+    ("first_name" in updates && !updates.first_name?.trim()) ||
+    ("last_name" in updates && !updates.last_name?.trim())
+  )
+    throw new Error("First and last name are required.");
+  if (
+    updates.years_of_experience != null &&
+    (!Number.isInteger(updates.years_of_experience) ||
+      updates.years_of_experience < 0 ||
+      updates.years_of_experience > 50)
+  )
+    throw new Error("Experience must be a whole number from 0 to 50.");
+  for (const value of [
+    updates.portfolio_website,
+    updates.linkedin_url,
+    updates.github_url,
+  ]) {
+    if (value && !["http:", "https:"].includes(new URL(value).protocol))
+      throw new Error("Use complete http or https website links.");
+  }
+  for (const [ids, table, maximum] of [
+    [updates.skill_ids, "skills", 25],
+    [updates.category_ids, "job_categories", 10],
+  ] as const) {
+    if (!ids) continue;
+    if (!ids.length || ids.length > maximum || new Set(ids).size !== ids.length)
+      throw new Error("Select a valid number of " + table + ".");
+    const result = await supabase.from(table).select("id").in("id", ids);
+    if (result.error) throw result.error;
+    if (result.data.length !== ids.length)
+      throw new Error(
+        "Some selected skills or industries are no longer available.",
+      );
+  }
   /* ---------------- profiles ---------------- */
 
   const profileUpdates: Record<string, unknown> = {};
@@ -330,7 +372,9 @@ export async function updateProfile(
     const { error } = await supabase
       .from(PROFILES_TABLE)
       .update(profileUpdates)
-      .eq("user_id", userId);
+      .eq("user_id", userId)
+      .select("user_id")
+      .single();
 
     if (error) {
       throw error;
@@ -340,6 +384,15 @@ export async function updateProfile(
   /* ---------------- freelancer_profiles ---------------- */
 
   const freelancerUpdates: Record<string, unknown> = {};
+  for (const key of [
+    "years_of_experience",
+    "employment_preference",
+    "portfolio_website",
+    "linkedin_url",
+    "github_url",
+  ] as const) {
+    if (key in updates) freelancerUpdates[key] = updates[key];
+  }
 
   if ("headline" in updates) {
     freelancerUpdates.headline = updates.headline;
@@ -353,7 +406,9 @@ export async function updateProfile(
     const { error } = await supabase
       .from(FREELANCER_TABLE)
       .update(freelancerUpdates)
-      .eq("user_id", userId);
+      .eq("user_id", userId)
+      .select("user_id")
+      .single();
 
     if (error) {
       throw error;
@@ -361,7 +416,47 @@ export async function updateProfile(
   }
 
   /* ---------------- Reload Profile ---------------- */
+  for (const [desired, table, column] of [
+    [updates.skill_ids, "freelancer_skills", "skill_id"],
+    [updates.category_ids, "freelancer_categories", "category_id"],
+  ] as const) {
+    if (!desired) continue;
+    const freelancer = await supabase
+      .from(FREELANCER_TABLE)
+      .select("freelancer_id")
+      .eq("user_id", userId)
+      .single();
+    if (freelancer.error) throw freelancer.error;
+    const id = freelancer.data.freelancer_id;
+    const current = await supabase
+      .from(table)
+      .select(column)
+      .eq("freelancer_id", id);
+    if (current.error) throw current.error;
+    const existing = new Set(
+      (current.data ?? []).map((row) =>
+        String((row as unknown as Record<string, unknown>)[column]),
+      ),
+    );
+    const added = desired.filter((key) => !existing.has(key));
+    const removed = [...existing].filter((key) => !desired.includes(key));
+    if (added.length) {
+      const result = await supabase
+        .from(table)
+        .insert(added.map((key) => ({ freelancer_id: id, [column]: key })));
+      if (result.error) throw result.error;
+    }
+    if (removed.length) {
+      const result = await supabase
+        .from(table)
+        .delete()
+        .eq("freelancer_id", id)
+        .in(column, removed);
+      if (result.error) throw result.error;
+    }
+  }
 
+  invalidatePageReads();
   const profile = await getCurrentProfile(true);
 
   if (!profile) {
@@ -430,6 +525,7 @@ export async function uploadAvatar(
     }
   }
 
+  invalidatePageReads();
   return data.publicUrl;
 }
 
@@ -490,6 +586,7 @@ export async function uploadBanner(
     }
   }
 
+  invalidatePageReads();
   return data.publicUrl;
 }
 
@@ -497,7 +594,14 @@ export async function uploadBanner(
    PORTFOLIO
 ========================================================== */
 
-export async function getPortfolioProjects(
+export function getPortfolioProjects(
+  userId: string,
+): Promise<PortfolioProject[]> {
+  return readPageCache("getPortfolioProjects:" + userId, () =>
+    fetchgetPortfolioProjects(userId),
+  );
+}
+async function fetchgetPortfolioProjects(
   userId: string,
 ): Promise<PortfolioProject[]> {
   const { data: freelancer, error: freelancerError } = await supabase
@@ -537,7 +641,22 @@ export async function getPortfolioProjects(
     throw error;
   }
 
-  return (data ?? []) as PortfolioProject[];
+  if (!data?.length) return [];
+  const images = await supabase
+    .from("portfolio_images")
+    .select("id,portfolio_id,image_url,display_order,created_at")
+    .in(
+      "portfolio_id",
+      data.map((row) => row.portfolio_id),
+    )
+    .order("display_order");
+  if (images.error) throw images.error;
+  return data.map((project) => ({
+    ...project,
+    images: (images.data ?? []).filter(
+      (image) => image.portfolio_id === project.portfolio_id,
+    ),
+  }));
 }
 
 export async function addPortfolioProject(
@@ -586,6 +705,7 @@ export async function addPortfolioProject(
     throw error;
   }
 
+  invalidatePageReads();
   return data as PortfolioProject;
 }
 
@@ -627,6 +747,7 @@ export async function deletePortfolioProject(
     return false;
   }
 
+  invalidatePageReads();
   return data?.length === 1;
 }
 
@@ -650,6 +771,7 @@ export async function uploadPortfolioImage(
     .from(PORTFOLIO_BUCKET)
     .getPublicUrl(filePath);
 
+  invalidatePageReads();
   return data.publicUrl;
 }
 
@@ -657,7 +779,10 @@ export async function uploadPortfolioImage(
    SERVICES
 ========================================================== */
 
-export async function getServices(userId: string): Promise<Service[]> {
+export function getServices(userId: string): Promise<Service[]> {
+  return readPageCache("getServices:" + userId, () => fetchgetServices(userId));
+}
+async function fetchgetServices(userId: string): Promise<Service[]> {
   const { data: freelancer, error: freelancerError } = await supabase
     .from(FREELANCER_TABLE)
     .select("freelancer_id")

@@ -1,3 +1,5 @@
+import { invalidatePageReads } from "@/lib/pageReadCache";
+import { clearProjectReadCache } from "@/lib/projectReadCache";
 import { supabase } from "@/lib/supabaseClient";
 
 export type UserRole = "client" | "freelancer";
@@ -43,10 +45,7 @@ export async function getAccountRoleStatus(): Promise<AccountRoleStatus> {
      PK: user_id
   ======================================================== */
 
-  const {
-    data: userData,
-    error: userError,
-  } = await supabase
+  const { data: userData, error: userError } = await supabase
     .from("Users")
     .select("user_id, role")
     .eq("user_id", userId)
@@ -60,10 +59,7 @@ export async function getAccountRoleStatus(): Promise<AccountRoleStatus> {
     throw new Error("User account not found.");
   }
 
-  if (
-    userData.role !== "client" &&
-    userData.role !== "freelancer"
-  ) {
+  if (userData.role !== "client" && userData.role !== "freelancer") {
     throw new Error("Invalid user role.");
   }
 
@@ -120,9 +116,7 @@ export async function getCurrentUserRole(): Promise<UserRole> {
    SWITCH CURRENT USER ROLE
 ========================================================== */
 
-export async function switchUserRole(
-  role: UserRole,
-): Promise<void> {
+export async function switchUserRole(role: UserRole): Promise<void> {
   const userId = await getCurrentUserId();
 
   const { error } = await supabase
@@ -135,6 +129,8 @@ export async function switchUserRole(
   if (error) {
     throw error;
   }
+  invalidatePageReads();
+  clearProjectReadCache();
 }
 
 /* ==========================================================
@@ -146,10 +142,7 @@ export async function createClientProfile(): Promise<void> {
 
   /* Check whether the profile already exists */
 
-  const {
-    data: existingProfile,
-    error: checkError,
-  } = await supabase
+  const { data: existingProfile, error: checkError } = await supabase
     .from("client_profiles")
     .select("client_id")
     .eq("user_id", userId)
@@ -185,10 +178,7 @@ export async function createClientProfile(): Promise<void> {
 export async function activateClientRole(): Promise<void> {
   const userId = await getCurrentUserId();
 
-  const {
-    data: clientProfile,
-    error,
-  } = await supabase
+  const { data: clientProfile, error } = await supabase
     .from("client_profiles")
     .select("client_id, user_id")
     .eq("user_id", userId)
@@ -212,10 +202,7 @@ export async function activateClientRole(): Promise<void> {
 export async function activateFreelancerRole(): Promise<void> {
   const userId = await getCurrentUserId();
 
-  const {
-    data: freelancerProfile,
-    error,
-  } = await supabase
+  const { data: freelancerProfile, error } = await supabase
     .from("freelancer_profiles")
     .select("freelancer_id, user_id")
     .eq("user_id", userId)
@@ -226,11 +213,8 @@ export async function activateFreelancerRole(): Promise<void> {
   }
 
   if (!freelancerProfile) {
-    throw new Error(
-      "Freelancer profile does not exist.",
-    );
+    throw new Error("Freelancer profile does not exist.");
   }
 
   await switchUserRole("freelancer");
 }
-

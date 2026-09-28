@@ -56,12 +56,10 @@ export async function getPublicIdentities(input: {
       }),
       cache: "no-store",
     });
-    const data = await response
-      .json()
-      .catch(() => ({
-        error: "The profile server returned an unreadable response.",
-        code: "NON_JSON_RESPONSE",
-      }));
+    const data = await response.json().catch(() => ({
+      error: "The profile server returned an unreadable response.",
+      code: "NON_JSON_RESPONSE",
+    }));
     if (!response.ok) {
       console.error(
         "[WorkSync API] " +
@@ -78,6 +76,11 @@ export async function getPublicIdentities(input: {
                 ? data.upstreamStatus
                 : null,
             elapsedMs: Date.now() - started,
+            databaseCode:
+              typeof data?.databaseCode === "string" &&
+              /^(?:[0-9A-Z]{5}|PGRST\d{3})$/.test(data.databaseCode)
+                ? data.databaseCode
+                : null,
           }),
       );
       throw new Error(

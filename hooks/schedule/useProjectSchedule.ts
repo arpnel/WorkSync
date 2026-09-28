@@ -1,5 +1,6 @@
 ﻿"use client";
 import { useEffect, useState } from "react";
+import { clearProjectReadCache } from "@/lib/projectReadCache";
 import { supabase } from "@/lib/supabaseClient";
 import {
   getProjectDeadlines,
@@ -43,7 +44,10 @@ export function useProjectSchedule() {
       channel.on(
         "postgres_changes",
         { event: "*", schema: "public", table },
-        () => void refresh(),
+        () => {
+          clearProjectReadCache();
+          void refresh();
+        },
       );
     channel.subscribe();
     const interval = window.setInterval(() => {

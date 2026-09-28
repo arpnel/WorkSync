@@ -38,7 +38,7 @@ export default function ScheduleCard({
         if (id) onMove(id, card.id);
       }}
       onClick={onOpen}
-      className="group w-full cursor-grab space-y-3 rounded-xl border border-border/60 bg-card p-4 text-left shadow-sm transition hover:border-primary/40 hover:shadow-md focus-visible:outline-2 focus-visible:outline-primary active:cursor-grabbing"
+      className="group w-full cursor-grab space-y-3 rounded-lg border border-border bg-card p-4 text-left shadow-sm transition hover:border-primary/40 hover:shadow-sm focus-visible:outline-2 focus-visible:outline-primary active:cursor-grabbing"
       aria-label={"Edit task: " + card.title}
     >
       <div className="flex items-center justify-between gap-2">

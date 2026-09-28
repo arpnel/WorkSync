@@ -1,6 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  getMarketplaceService,
+  type MarketplaceService,
+} from "@/services/marketplace/MarketplaceServices";
+import { ListingEditDialog } from "@/components/listings/ListingEditDialog";
 import { Settings2 } from "lucide-react";
 
 import type { Service } from "../../types/profile/profile";
@@ -23,6 +28,7 @@ import { Label } from "@/components/ui/label";
 interface ServicesSectionProps {
   userId: string;
   isOwner?: boolean;
+  editable?: boolean;
 }
 
 function getDisplayStorageKey(userId: string) {
@@ -32,9 +38,14 @@ function getDisplayStorageKey(userId: string) {
 export default function ServicesSection({
   userId,
   isOwner = true,
+  editable = false,
 }: ServicesSectionProps) {
+  const [editingService, setEditingService] =
+    useState<MarketplaceService | null>(null);
+  const [openingService, setOpeningService] = useState(false);
   const [services, setServices] = useState<Service[]>([]);
   const [displayedIds, setDisplayedIds] = useState<string[]>([]);
+  const [draftIds, setDraftIds] = useState<string[]>([]);
   const [manageOpen, setManageOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -98,38 +109,38 @@ export default function ServicesSection({
   }, [displayedIds, services]);
 
   const setServiceDisplayed = (serviceId: string, displayed: boolean) => {
-    setDisplayedIds((current) => {
-      const next = displayed
+    setDraftIds((current) =>
+      displayed
         ? [...new Set([...current, serviceId])]
-        : current.filter((id) => id !== serviceId);
-
-      try {
-        window.localStorage.setItem(
-          getDisplayStorageKey(userId),
-          JSON.stringify(next),
-        );
-      } catch {
-        /* Keep the current view usable when storage is unavailable. */
-      }
-
-      return next;
-    });
+        : current.filter((id) => id !== serviceId),
+    );
+  };
+  const openManage = () => {
+    setDraftIds(displayedIds);
+    setManageOpen(true);
   };
 
   return (
     <Card className="rounded-2xl shadow-sm">
+      {editingService && (
+        <ListingEditDialog
+          listing={editingService}
+          onClose={() => setEditingService(null)}
+          onSaved={loadServices}
+        />
+      )}
       <CardHeader className="flex flex-row items-center justify-between gap-3 pb-4">
         <CardTitle className="text-xl font-semibold">Services</CardTitle>
 
         <div className="flex flex-wrap justify-end gap-2">
-          {isOwner && services.length > 0 && (
-            <Button variant="outline" onClick={() => setManageOpen(true)}>
+          {isOwner && editable && services.length > 0 && (
+            <Button variant="outline" onClick={openManage}>
               <Settings2 className="h-4 w-4" />
               Customize my view
             </Button>
           )}
 
-          {isOwner && (
+          {isOwner && editable && (
             <ServiceCreateDialogLauncher onCreated={() => loadServices()} />
           )}
         </div>
@@ -172,7 +183,7 @@ export default function ServicesSection({
                 ? "Create your first service to start receiving orders."
                 : "This freelancer has no available services."}
             </p>
-            {isOwner && (
+            {isOwner && editable && (
               <div className="mt-5">
                 <ServiceCreateDialogLauncher onCreated={() => loadServices()} />
               </div>
@@ -184,11 +195,7 @@ export default function ServicesSection({
             <p className="mt-2 text-sm text-muted-foreground">
               Choose which existing services appear on your profile.
             </p>
-            <Button
-              className="mt-5"
-              variant="outline"
-              onClick={() => setManageOpen(true)}
-            >
+            <Button className="mt-5" variant="outline" onClick={openManage}>
               <Settings2 className="h-4 w-4" />
               Select services
             </Button>
@@ -229,6 +236,32 @@ export default function ServicesSection({
                     </p>
                   </div>
 
+                  {isOwner && editable && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={openingService}
+                      onClick={async () => {
+                        setOpeningService(true);
+                        try {
+                          const listing = await getMarketplaceService(
+                            service.id,
+                          );
+                          if (!listing)
+                            throw new Error("Service no longer available.");
+                          setEditingService(listing);
+                        } catch {
+                          setLoadError(
+                            "Unable to open the service editor. Please retry.",
+                          );
+                        } finally {
+                          setOpeningService(false);
+                        }
+                      }}
+                    >
+                      Edit service
+                    </Button>
+                  )}
                   <h3 className="line-clamp-2 text-sm font-semibold">
                     {service.title}
                   </h3>
@@ -261,7 +294,7 @@ export default function ServicesSection({
         )}
       </CardContent>
 
-      {isOwner && (
+      {isOwner && editable && (
         <Dialog open={manageOpen} onOpenChange={setManageOpen}>
           <DialogContent className="sm:max-w-lg">
             <DialogHeader>
@@ -275,7 +308,7 @@ export default function ServicesSection({
             <div className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
               {services.map((service) => {
                 const checkboxId = `profile-service-${service.id}`;
-                const checked = displayedIds.includes(service.id);
+                const checked = draftIds.includes(service.id);
 
                 return (
                   <Label
@@ -310,6 +343,27 @@ export default function ServicesSection({
                   </Label>
                 );
               })}
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setManageOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  setDisplayedIds(draftIds);
+                  try {
+                    window.localStorage.setItem(
+                      getDisplayStorageKey(userId),
+                      JSON.stringify(draftIds),
+                    );
+                  } catch {
+                    /* Optional browser preference. */
+                  }
+                  setManageOpen(false);
+                }}
+              >
+                Save
+              </Button>
             </div>
           </DialogContent>
         </Dialog>

@@ -84,7 +84,7 @@ export default function MarketplaceHeader({
   onServiceChange,
 }: MarketplaceHeaderProps) {
   return (
-    <Card className="w-full rounded-2xl border p-4 shadow-sm sm:p-5">
+    <Card className="w-full rounded-lg border-0 bg-transparent p-0 shadow-none md:border md:bg-card md:p-5">
       <div className="space-y-5">
         {/* ==================================================
             SEARCH + ACTIONS
@@ -110,19 +110,28 @@ export default function MarketplaceHeader({
                 value={search}
                 onChange={(event) => onSearchChange(event.target.value)}
                 placeholder="Search services, jobs, or skills..."
-                className="h-11 rounded-xl pl-11"
+                className="h-12 rounded-xl pl-11 pr-14 lg:pr-3"
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     onSearch();
                   }
                 }}
               />
+              <Button
+                type="button"
+                size="icon"
+                onClick={onSearch}
+                aria-label="Search marketplace"
+                className="absolute right-1 top-1 size-10 rounded-lg lg:hidden"
+              >
+                <Search className="size-4" />
+              </Button>
             </div>
 
             <Button
               type="button"
               onClick={onSearch}
-              className="h-11 rounded-xl px-2 sm:px-6"
+              className="hidden h-12 rounded-xl px-6 lg:inline-flex"
             >
               <Search className="h-4 w-4" />
               Search
@@ -132,7 +141,7 @@ export default function MarketplaceHeader({
               type="button"
               variant="outline"
               onClick={onFilterClick}
-              className="h-11 rounded-xl"
+              className="h-10 rounded-md"
             >
               <SlidersHorizontal className="size-4" />
               Filters
@@ -140,7 +149,8 @@ export default function MarketplaceHeader({
             <Button
               type="button"
               onClick={onCreateClick}
-              className="col-span-2 h-11 rounded-xl lg:col-span-1"
+              variant="outline"
+              className="h-10 rounded-md"
             >
               <Plus className="h-4 w-4" />
               Create
@@ -152,7 +162,27 @@ export default function MarketplaceHeader({
             MARKETPLACE CATEGORIES
         ================================================== */}
 
-        <div className="relative w-full">
+        <label className="block min-w-0 space-y-2 md:hidden">
+          <span className="text-sm font-medium">Browse services</span>
+          <select
+            aria-label="Browse marketplace services"
+            value={selectedService ?? ""}
+            onChange={(event) => onServiceChange(event.target.value || null)}
+            className="h-12 w-full min-w-0 rounded-xl border bg-card px-3 text-base"
+          >
+            <option value="">All listings</option>
+            {marketplaceCategories.map((category) => (
+              <optgroup key={category.name} label={category.name}>
+                {category.services.map((service) => (
+                  <option key={service} value={service}>
+                    {service}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </label>
+        <div className="relative hidden w-full min-w-0 md:block">
           <Carousel
             opts={{
               align: "start",
@@ -163,6 +193,7 @@ export default function MarketplaceHeader({
             <div className="flex items-center gap-2">
               <CarouselPrevious
                 className="
+                  hidden md:flex
                   static
                   translate-y-0
                   shrink-0
@@ -312,6 +343,7 @@ export default function MarketplaceHeader({
 
               <CarouselNext
                 className="
+                  hidden md:flex
                   static
                   translate-y-0
                   shrink-0

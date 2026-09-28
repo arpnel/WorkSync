@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Image from "next/image";
 import { Plus, Pencil, Trash2, ExternalLink } from "lucide-react";
 
 import type { PortfolioProject } from "../../types/profile/profile";
@@ -17,11 +18,13 @@ import PortfolioEditor from "./PortfolioEditor";
 interface PortfolioSectionProps {
   userId: string;
   isOwner?: boolean;
+  editable?: boolean;
 }
 
 export default function PortfolioSection({
   userId,
   isOwner = true,
+  editable = false,
 }: PortfolioSectionProps) {
   const [projects, setProjects] = useState<PortfolioProject[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,7 +71,7 @@ export default function PortfolioSection({
       <CardHeader className="flex flex-row items-center justify-between pb-4">
         <CardTitle className="text-xl font-semibold">Portfolio</CardTitle>
 
-        {isOwner && (
+        {isOwner && editable && (
           <Button onClick={() => setEditing(null)}>
             <Plus className="mr-2 h-4 w-4" />
             Add Project
@@ -119,7 +122,7 @@ export default function PortfolioSection({
                 : "This freelancer has not added portfolio projects yet."}
             </p>
 
-            {isOwner && (
+            {isOwner && editable && (
               <Button className="mt-6" onClick={() => setEditing(null)}>
                 <Plus className="mr-2 h-4 w-4" />
                 Add First Project
@@ -134,9 +137,7 @@ export default function PortfolioSection({
                 className="overflow-hidden rounded-xl transition hover:shadow-md"
               >
                 <div className="relative aspect-[16/10] bg-muted">
-                  <div className="flex h-full items-center justify-center text-muted-foreground">
-                    No Image
-                  </div>
+                  <PortfolioCover project={project} />
                 </div>
 
                 <CardContent className="space-y-3 p-5">
@@ -165,7 +166,7 @@ export default function PortfolioSection({
                       <div />
                     )}
 
-                    {isOwner && (
+                    {isOwner && editable && (
                       <div className="flex gap-2">
                         <Button
                           size="icon"
@@ -204,5 +205,34 @@ export default function PortfolioSection({
         />
       )}
     </Card>
+  );
+}
+
+function PortfolioCover({ project }: { project: PortfolioProject }) {
+  const image =
+    project.images?.find((image) => image.id === project.thumbnail_image_id) ??
+    project.images?.[0];
+  if (!image)
+    return (
+      <div className="flex h-full items-center justify-center text-muted-foreground">
+        No image
+      </div>
+    );
+  return (
+    <a
+      href={image.image_url}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={"Enlarge " + project.title}
+    >
+      <Image
+        fill
+        unoptimized
+        sizes="(max-width: 768px) 100vw, 400px"
+        className="object-cover"
+        src={image.image_url}
+        alt={project.title}
+      />
+    </a>
   );
 }

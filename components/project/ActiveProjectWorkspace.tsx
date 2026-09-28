@@ -1,5 +1,6 @@
 "use client";
-import { useState, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
+import { projectIsOverdue } from "@/lib/projectSettlement";
 import { LockKeyhole, CheckCircle2 } from "lucide-react";
 import type { ProjectPayment } from "@/services/payments/paymentService";
 import type { ProjectWorkspace } from "@/types/project/projectWorkspace";
@@ -30,12 +31,19 @@ export function ActiveProjectWorkspace({
   onBack: () => void;
   error: string | null;
 }) {
+  const [mobileSection, setMobileSection] = useState("work");
   const [payment, setPayment] = useState<ProjectPayment | null>(null);
   const paid =
     payment?.status === "paid" && Number(payment.amount) === project.budget;
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const overdue = projectIsOverdue(project.status, project.dueDate, now);
   const completed = project.status.toLowerCase() === "completed";
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6">
+    <div className="mx-auto w-full max-w-[1440px] space-y-4 sm:space-y-6">
       <ProjectWorkspaceHeader
         compact
         title={project.title}
@@ -50,8 +58,45 @@ export function ActiveProjectWorkspace({
           {error}
         </p>
       )}
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(340px,0.8fr)] xl:grid-cols-[minmax(0,1fr)_440px]">
-        <main className="min-w-0 space-y-5">
+      <nav
+        aria-label="Project sections"
+        className="grid grid-cols-3 gap-1 rounded-xl bg-muted p-1 md:hidden"
+      >
+        {[
+          ["work", "Work"],
+          ["messages", "Messages"],
+          ["payment", "Payment"],
+        ].map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={mobileSection === value}
+            onClick={() => setMobileSection(value)}
+            className={`min-h-11 rounded-lg text-sm font-medium ${mobileSection === value ? "bg-card text-primary shadow-sm" : "text-muted-foreground"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+      <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_440px] sm:gap-6">
+        <section
+          aria-label="Project work"
+          className={`min-w-0 space-y-5 ${mobileSection === "work" ? "" : "hidden md:block"}`}
+        >
+          {overdue && (
+            <section
+              role="status"
+              className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4"
+            >
+              <h2 className="text-sm font-semibold">Delivery is overdue</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {project.currentParty === "freelancer"
+                  ? "The agreed deadline has passed. Share an update with your client and submit the outstanding work."
+                  : "The agreed deadline has passed. The project remains open while you discuss the next steps."}{" "}
+                A missed deadline does not cancel the project.
+              </p>
+            </section>
+          )}
           {completed && (
             <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-50">
               <h2 className="flex items-center gap-2 text-lg font-semibold">
@@ -59,9 +104,9 @@ export function ActiveProjectWorkspace({
                 Project completed
               </h2>
               <p className="mt-2 text-sm">
-                The client has approved the final work. Your deliveries,
-                feedback, agreement, and conversation remain available here.
-                Leave a review below to finish your project experience.
+                The final work has been approved. Your deliveries, feedback,
+                agreement, and conversation remain available here. Leave a
+                review below to finish your project experience.
               </p>
             </section>
           )}
@@ -77,6 +122,7 @@ export function ActiveProjectWorkspace({
                 </p>
                 <a
                   href="#project-payment"
+                  onClick={() => setMobileSection("payment")}
                   className="inline-block font-medium underline underline-offset-4"
                 >
                   View payment
@@ -89,6 +135,7 @@ export function ActiveProjectWorkspace({
             project={project}
             onRefresh={onRefresh}
             paid={paid}
+            autoReleaseEnabled={payment?.autoReleaseEnabled ?? false}
             actions={
               <Dialog>
                 <DialogTrigger asChild>
@@ -96,7 +143,7 @@ export function ActiveProjectWorkspace({
                     Project resolution
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
+                <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-3xl">
                   <DialogHeader>
                     <DialogTitle>Project resolution</DialogTitle>
                     <DialogDescription>
@@ -158,21 +205,21 @@ export function ActiveProjectWorkspace({
               </ol>
             </details>
           )}
-        </main>
+        </section>
         <aside
-          className="min-w-0 space-y-5"
+          className={`min-w-0 space-y-5 ${mobileSection === "work" ? "hidden md:block" : ""}`}
           aria-label="Project payment and messages"
         >
           <section
             id="project-payment"
-            className="scroll-mt-6"
+            className={`scroll-mt-6 ${mobileSection === "payment" ? "" : "hidden md:block"}`}
             aria-label="Project payment"
           >
             <ProjectPaymentPanel project={project} onPayment={setPayment} />
           </section>
           <section
             id="project-conversation"
-            className="scroll-mt-6"
+            className={`scroll-mt-6 ${mobileSection === "messages" ? "" : "hidden md:block"}`}
             aria-label="Project conversation"
           >
             {chat}

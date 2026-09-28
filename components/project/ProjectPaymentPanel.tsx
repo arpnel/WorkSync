@@ -84,6 +84,10 @@ export function PaymentPanel({
   }, [projectId, onPayment]);
   useEffect(() => {
     void refresh();
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refresh();
+    }, 30000);
+    return () => window.clearInterval(timer);
   }, [refresh]);
   async function pay() {
     if (busy) return;
@@ -125,7 +129,7 @@ export function PaymentPanel({
       }[payment.status];
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-2">
+      <CardHeader className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
         <CardTitle>Project payment</CardTitle>
         <div className="flex items-center gap-2">
           {payment?.mode === "test" && (
@@ -139,12 +143,43 @@ export function PaymentPanel({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {payment?.status === "paid" && (
+          <div className="rounded-xl border bg-muted/20 p-3 text-sm">
+            <p className="font-medium">Freelancer payout</p>
+            <p className="mt-1 text-muted-foreground">
+              {(
+                {
+                  awaiting_account:
+                    "Add a payout account in Settings to receive this payment.",
+                  ready: "Approved payment is queued for transfer.",
+                  processing:
+                    "Transfer is being submitted. Do not send another payment.",
+                  pending: "PayMongo is processing the transfer.",
+                  paid: "PayMongo confirmed the transfer to the freelancer.",
+                  failed: "Transfer failed. Contact support before retrying.",
+                  needs_review:
+                    "Transfer needs support review. No duplicate transfer will be sent automatically.",
+                  unavailable: "Payout tracking is not available yet.",
+                } as Record<string, string>
+              )[payment.payout?.status ?? ""] ??
+                "Client payment received. Payout follows approval of all project work."}
+            </p>
+            {payment.payout?.status === "awaiting_account" && !client && (
+              <a
+                href="/home/settings"
+                className="mt-2 inline-block text-primary underline"
+              >
+                Set up payout account
+              </a>
+            )}
+          </div>
+        )}
         <dl className="space-y-3 text-sm" aria-label="Payment breakdown">
-          <div className="flex justify-between gap-3">
+          <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
             <dt className="text-muted-foreground">Agreed total</dt>
             <dd className="font-medium tabular-nums">{money(total)}</dd>
           </div>
-          <div className="flex justify-between gap-3">
+          <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
             <dt className="text-muted-foreground">Amount paid</dt>
             <dd className="font-medium tabular-nums">{money(paidAmount)}</dd>
           </div>

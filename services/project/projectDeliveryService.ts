@@ -18,6 +18,7 @@ export interface WorkSubmission {
   kind: "progress" | "delivery";
   status: "submitted" | "revision_requested" | "approved";
   created_at: string;
+  auto_reviewed_at?: string | null;
 }
 export interface RevisionRequest {
   revision_id: string;

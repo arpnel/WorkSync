@@ -92,14 +92,21 @@ export async function POST(request: Request) {
             )
         : Promise.resolve({ data: [], error: null }),
     ]);
-    if (clients.error || freelancers.error)
+    if (clients.error || freelancers.error) {
+      const failed = clients.error ? clients : freelancers;
+      const databaseCode = failed.error?.code ?? "";
       return json(
         {
           error: "Marketplace role profiles could not be loaded.",
           code: "IDENTITIES_ROLE_LOOKUP_FAILED",
+          upstreamStatus: "status" in failed ? failed.status : null,
+          databaseCode: /^(?:[0-9A-Z]{5}|PGRST\d{3})$/.test(databaseCode)
+            ? databaseCode
+            : null,
         },
         503,
       );
+    }
     const relatedIds = [
       ...new Set([
         ...userIds,

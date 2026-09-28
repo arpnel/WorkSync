@@ -1,6 +1,12 @@
 "use client";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
+import { useNotifications } from "@/hooks/notification/useNotifications";
+import { NotificationDetailDialog } from "@/components/notifications/NotificationDetailDialog";
+import {
+  markNotificationRead,
+  type NotificationRecord,
+} from "@/services/notification/notificationService";
 import { projectHref } from "@/lib/projectNavigation";
 import {
   BriefcaseBusiness,
@@ -78,10 +84,14 @@ export default function ActivityOverview({
   charts?: (activity: ReactNode) => ReactNode;
   tools?: ReactNode;
 }) {
+  const { items: notificationItems } = useNotifications();
+  const [selectedNotification, setSelectedNotification] =
+    useState<NotificationRecord | null>(null);
   const [data, setData] = useState<DashboardActivity | null>(null);
   const [error, setError] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [phoneView, setPhoneView] = useState("work");
   const load = useCallback(async () => {
     try {
       const next = await getDashboardActivity();
@@ -285,8 +295,24 @@ export default function ActivityOverview({
         </CardTitle>
       </CardHeader>
       <CardContent className="divide-y">
-        {data.notifications.slice(0, 5).map((n) => (
-          <div key={n.id} className="py-3">
+        {selectedNotification && (
+          <NotificationDetailDialog
+            key={selectedNotification.id}
+            item={selectedNotification}
+            onClose={() => setSelectedNotification(null)}
+          />
+        )}
+        {notificationItems.slice(0, 5).map((n) => (
+          <button
+            type="button"
+            key={n.id}
+            className="w-full rounded-md py-3 text-left transition hover:bg-muted/60 focus-visible:outline-2 focus-visible:outline-primary"
+            onClick={() => {
+              setSelectedNotification(n);
+              if (n.unread)
+                void markNotificationRead(n.id).catch(() => undefined);
+            }}
+          >
             <p className="text-[clamp(0.875rem,0.75rem+0.3vw,1rem)] font-medium">
               {n.title}
             </p>
@@ -296,9 +322,9 @@ export default function ActivityOverview({
             <time className="text-[clamp(0.8125rem,0.75rem+0.2vw,0.9375rem)] text-muted-foreground">
               {new Date(n.createdAt).toLocaleString()}
             </time>
-          </div>
+          </button>
         ))}
-        {!data.notifications.length && (
+        {!notificationItems.length && (
           <p className="text-[clamp(0.875rem,0.75rem+0.3vw,1rem)] text-muted-foreground">
             No activity yet.
           </p>
@@ -352,7 +378,7 @@ export default function ActivityOverview({
       )}
       <section
         aria-label="Workspace summary"
-        className="col-span-12 grid gap-4 @min-[560px]:grid-cols-2 @min-[1200px]:grid-cols-4 @min-[900px]:col-span-1 @min-[900px]:col-start-1"
+        className="col-span-12 grid grid-cols-2 gap-3 @min-[1200px]:grid-cols-4 @min-[900px]:col-span-1 @min-[900px]:col-start-1"
       >
         {stats.map((stat) => (
           <Link
@@ -360,14 +386,14 @@ export default function ActivityOverview({
             href={stat.href}
             className="group rounded-2xl outline-offset-4 focus-visible:outline-2 focus-visible:outline-primary"
           >
-            <Card className="h-full shadow-sm transition-colors group-hover:bg-accent/50">
+            <Card className="h-full py-5 transition-colors group-hover:border-primary/30">
               <CardContent>
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-[clamp(0.875rem,0.625rem+0.6vw,1.125rem)] leading-snug font-medium dark:text-muted-foreground">
+                <div className="flex flex-wrap-reverse items-center justify-between gap-2">
+                  <p className="text-sm leading-snug font-medium text-muted-foreground">
                     {stat.title}
                   </p>
                   <span
-                    className={`flex size-9 shrink-0 items-center justify-center rounded-xl ${stat.tone}`}
+                    className={`flex size-9 shrink-0 items-center justify-center rounded-md ${stat.tone}`}
                   >
                     <stat.icon
                       aria-hidden="true"
@@ -383,8 +409,39 @@ export default function ActivityOverview({
           </Link>
         ))}
       </section>
+      {tools && (
+        <>
+          <nav
+            aria-label="Home sections"
+            className="col-span-12 grid grid-cols-3 gap-1 rounded-xl bg-muted p-1 md:hidden"
+          >
+            {[
+              ["work", "My work"],
+              ["performance", "Insights"],
+              ["planner", "My day"],
+            ].map(([value, label]) => (
+              <button
+                type="button"
+                key={value}
+                aria-pressed={phoneView === value}
+                onClick={() => setPhoneView(value)}
+                className={`min-h-11 rounded-lg text-sm font-medium ${phoneView === value ? "bg-card text-primary shadow-sm" : "text-muted-foreground"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+          <div
+            className={`col-span-12 min-w-0 space-y-4 md:hidden ${phoneView === "work" ? "" : "hidden"}`}
+          >
+            {projectActivity}
+          </div>
+        </>
+      )}
       {charts && (
-        <div className="col-span-12 min-w-0 @min-[900px]:col-span-1 @min-[900px]:col-start-1">
+        <div
+          className={`col-span-12 min-w-0 @min-[900px]:col-span-1 @min-[900px]:col-start-1 ${tools && phoneView !== "performance" ? "hidden md:block" : ""}`}
+        >
           {charts(projectActivity)}
         </div>
       )}
@@ -392,7 +449,7 @@ export default function ActivityOverview({
       {tools && (
         <aside
           aria-label="Schedule, quick actions, and recent notifications"
-          className="col-span-12 min-w-0 space-y-5 @min-[900px]:col-span-1 @min-[900px]:col-start-2 @min-[900px]:row-start-1 @min-[900px]:row-span-2"
+          className={`col-span-12 min-w-0 space-y-5 @min-[900px]:col-span-1 @min-[900px]:col-start-2 @min-[900px]:row-start-1 @min-[900px]:row-span-2 ${phoneView !== "planner" ? "hidden md:block" : ""}`}
         >
           {tools}
           {recentNotifications}

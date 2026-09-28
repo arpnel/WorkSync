@@ -1,0 +1,174 @@
+/* Page layout styling inherits the shared color palette. */
+.workspace-design [data-slot="card"] {
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  box-shadow: var(--shadow-sm);
+  --tw-ring-shadow: 0 0 #0000;
+}
+.workspace-design [data-slot="card-title"] {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+.workspace-design [data-slot="card-header"],
+.workspace-design [data-slot="card-content"] {
+  padding-inline: clamp(1rem, 1.6vw, 1.5rem);
+}
+.workspace-design .metric-card [data-slot="card-content"] {
+  padding: 0;
+}
+.workspace-design .metric-card {
+  gap: 0;
+  padding: 0;
+}
+.workspace-design .recharts-cartesian-axis-line,
+.workspace-design .recharts-cartesian-axis-tick-line {
+  stroke: transparent;
+}
+.workspace-design .recharts-cartesian-grid-horizontal line,
+.workspace-design .recharts-cartesian-grid-vertical line {
+  stroke: var(--border);
+  stroke-dasharray: 3 3;
+}
+.workspace-design table thead {
+  background: var(--muted);
+}
+.workspace-design table th {
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+.workspace-design table tbody tr:hover {
+  background: color-mix(in srgb, var(--muted) 55%, transparent);
+}
+.workspace-design [data-slot="tabs-list"] {
+  border-radius: 0.5rem;
+}
+.workspace-design [data-slot="tabs-trigger"][data-state="active"] {
+  background: color-mix(in srgb, var(--primary) 10%, var(--card));
+  color: var(--primary);
+}
+/* Phone layouts reflow content instead of squeezing desktop rows. */
+@media (max-width: 767px) {
+  .workspace-design {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .workspace-design [data-slot="card-header"],
+  .workspace-design [data-slot="card-content"] {
+    min-width: 0;
+    padding-inline: 1rem;
+  }
+  .workspace-design [data-slot="card-title"] {
+    font-size: 1rem;
+    line-height: 1.4;
+  }
+  .workspace-design [data-slot="card-header"]:has([data-slot="card-action"]) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .workspace-design [data-slot="card-action"] {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: start;
+  }
+  .workspace-design [data-slot="card-footer"] {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+  .workspace-design [data-slot="tabs-list"] {
+    height: auto;
+    gap: 0.25rem;
+  }
+  .workspace-design [data-slot="tabs-trigger"] {
+    min-width: 0;
+    min-height: 2.75rem;
+    white-space: normal;
+    line-height: 1.35;
+    padding: 0.5rem 0.625rem;
+  }
+  :is(
+      .workspace-design,
+      [data-slot="dialog-content"],
+      [data-slot="sheet-content"]
+    )
+    [data-slot="button"]:is(
+      [data-size="default"],
+      [data-size="sm"],
+      [data-size="lg"]
+    ) {
+    min-width: 0;
+    max-width: 100%;
+    min-height: 2.75rem;
+    height: auto;
+    padding-block: 0.625rem;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.35;
+  }
+  .workspace-design .metric-card > div:first-child {
+    padding: 1rem 0.75rem 0.5rem;
+  }
+  .workspace-design [data-slot="card"] {
+    border-radius: 1rem;
+    box-shadow: none;
+    gap: 1rem;
+  }
+  .workspace-design [data-slot="card"].bg-transparent {
+    border: 0;
+  }
+  .workspace-design :is(input, textarea, select),
+  [data-slot="dialog-content"] :is(input, textarea, select),
+  [data-slot="sheet-content"] :is(input, textarea, select) {
+    font-size: 1rem;
+  }
+  .workspace-design [data-slot="card-description"] {
+    line-height: 1.6;
+  }
+  [data-slot="dialog-content"] {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(100dvh - 1rem);
+    translate: none;
+    border-radius: 1.25rem 1.25rem 0 0;
+    padding: 1.5rem 1rem max(1.25rem, env(safe-area-inset-bottom));
+    scroll-padding-block: 1rem;
+    overscroll-behavior: contain;
+  }
+  [data-slot="dialog-header"] {
+    padding-right: 2rem;
+  }
+  [data-slot="dialog-close"] {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+  .workspace-design .phone-records,
+  .workspace-design .phone-records tbody {
+    display: block;
+    width: 100%;
+  }
+  .workspace-design .phone-records thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .workspace-design .phone-records tr {
+    display: block;
+    padding-block: 0.75rem;
+  }
+  .workspace-design .phone-records td {
+    display: grid;
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+    gap: 1rem;
+    padding: 0.5rem 0;
+    overflow-wrap: anywhere;
+  }
+  .workspace-design .phone-records td::before {
+    content: attr(data-label);
+    color: var(--muted-foreground);
+    font-weight: 400;
+  }
+}

@@ -1,3 +1,4 @@
+import { readPageCache } from "@/lib/pageReadCache";
 import { getPublicIdentities } from "@/services/profile/publicIdentityService";
 import { platformAction } from "@/services/platform/platformService";
 import { supabase } from "@/lib/supabaseClient";
@@ -312,10 +313,15 @@ async function getCategoryData(
 
 async function buildMarketplaceService(
   service: ServiceRow,
+  related?: RelatedListings,
 ): Promise<MarketplaceService> {
   const [freelancer, category] = await Promise.all([
-    getFreelancerData(service.freelancer_id),
-    getCategoryData(service.category_id),
+    related
+      ? (related.freelancers.get(service.freelancer_id ?? "") ?? null)
+      : getFreelancerData(service.freelancer_id),
+    related
+      ? (related.categories.get(service.category_id) ?? null)
+      : getCategoryData(service.category_id),
   ]);
 
   return {
@@ -360,10 +366,17 @@ async function buildMarketplaceService(
    BUILD JOB
 ========================================================== */
 
-async function buildMarketplaceJob(job: JobRow): Promise<MarketplaceJob> {
+async function buildMarketplaceJob(
+  job: JobRow,
+  related?: RelatedListings,
+): Promise<MarketplaceJob> {
   const [client, category] = await Promise.all([
-    getClientData(job.client_id),
-    getCategoryData(job.category_id),
+    related
+      ? (related.clients.get(job.client_id ?? "") ?? null)
+      : getClientData(job.client_id),
+    related
+      ? (related.categories.get(job.category_id) ?? null)
+      : getCategoryData(job.category_id),
   ]);
 
   return {
@@ -492,7 +505,9 @@ async function getServices(
     return [];
   }
 
-  return Promise.all((data as ServiceRow[]).map(buildMarketplaceService));
+  const rows = data as ServiceRow[];
+  const related = await loadRelatedListings(rows, []);
+  return Promise.all(rows.map((row) => buildMarketplaceService(row, related)));
 }
 
 /* ==========================================================
@@ -584,15 +599,24 @@ async function getJobs(query: MarketplaceQuery): Promise<MarketplaceJob[]> {
     return [];
   }
 
-  return Promise.all((data as JobRow[]).map(buildMarketplaceJob));
+  const rows = data as JobRow[];
+  const related = await loadRelatedListings([], rows);
+  return Promise.all(rows.map((row) => buildMarketplaceJob(row, related)));
 }
 
 /* ==========================================================
    GET MARKETPLACE
 ========================================================== */
 
-export async function getMarketplaceServices(
+export function getMarketplaceServices(
   query: MarketplaceQuery = {},
+): Promise<MarketplaceItem[]> {
+  return readPageCache("marketplace:" + JSON.stringify(query), () =>
+    fetchMarketplaceServices(query),
+  );
+}
+async function fetchMarketplaceServices(
+  query: MarketplaceQuery,
 ): Promise<MarketplaceItem[]> {
   const listingType = query.listingType ?? null;
 
@@ -619,7 +643,10 @@ export async function getMarketplaceServices(
    GET MY MARKETPLACE LISTINGS
 ========================================================== */
 
-export async function getMyMarketplaceListings(): Promise<MarketplaceItem[]> {
+export function getMyMarketplaceListings(): Promise<MarketplaceItem[]> {
+  return readPageCache("my-listings", fetchMyMarketplaceListings);
+}
+async function fetchMyMarketplaceListings(): Promise<MarketplaceItem[]> {
   const {
     data: { user },
     error: authError,
@@ -1249,4 +1276,58 @@ export async function getCurrentClientProfileId(): Promise<string> {
   }
 
   return data.client_id;
+}
+
+type RelatedListings = {
+  freelancers: Map<string, MarketplaceFreelancer>;
+  clients: Map<string, MarketplaceClient>;
+  categories: Map<string, MarketplaceCategory>;
+};
+async function loadRelatedListings(
+  services: ServiceRow[],
+  jobs: JobRow[],
+): Promise<RelatedListings> {
+  const freelancerIds = [
+    ...new Set(
+      services.flatMap((row) => (row.freelancer_id ? [row.freelancer_id] : [])),
+    ),
+  ];
+  const clientIds = [
+    ...new Set(jobs.flatMap((row) => (row.client_id ? [row.client_id] : []))),
+  ];
+  const categoryIds = [
+    ...new Set(
+      [...services, ...jobs].map((row) => row.category_id).filter(Boolean),
+    ),
+  ];
+  const [identities, categories] = await Promise.all([
+    getPublicIdentities({ freelancerIds, clientIds }),
+    categoryIds.length
+      ? supabase.from(CATEGORY_TABLE).select("id,name").in("id", categoryIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (categories.error) throw categories.error;
+  const profiles = new Map(
+    identities.profiles.map((row) => [row.user_id, row]),
+  );
+  return {
+    freelancers: new Map(
+      identities.freelancers.map((row) => [
+        row.freelancer_id,
+        { ...row, profile: profiles.get(row.user_id) ?? null },
+      ]),
+    ),
+    clients: new Map(
+      identities.clients.map((row) => [
+        row.client_id,
+        { ...row, profile: profiles.get(row.user_id) ?? null },
+      ]),
+    ),
+    categories: new Map(
+      (categories.data ?? []).map((row) => [
+        row.id,
+        { category_id: row.id, name: row.name },
+      ]),
+    ),
+  };
 }

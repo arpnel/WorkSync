@@ -36,8 +36,8 @@ export default function ChatHeader({
     .toUpperCase();
 
   return (
-    <header className="flex shrink-0 items-center justify-between gap-2 border-b px-3 py-4 sm:px-6">
-      <div className="flex min-w-0 items-center gap-3">
+    <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-2 py-3 sm:px-6">
+      <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
         {onBack && (
           <Button
             variant="ghost"
@@ -49,8 +49,8 @@ export default function ChatHeader({
             <ArrowLeft className="h-5 w-5" />
           </Button>
         )}
-        <div className="relative">
-          <Avatar className="h-12 w-12">
+        <div className="relative shrink-0">
+          <Avatar className="h-9 w-9 sm:h-12 sm:w-12">
             <AvatarImage src={avatar} alt={name} />
             <AvatarFallback>{initials}</AvatarFallback>
           </Avatar>
@@ -60,38 +60,47 @@ export default function ChatHeader({
           )}
         </div>
 
-        <div className="min-w-0 space-y-1">
-          <div className="flex shrink-0 items-center gap-2">
-            <h2 className="truncate text-lg font-semibold">{name}</h2>
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h2 className="truncate text-base font-semibold sm:text-lg">
+              {name}
+            </h2>
 
             {typeof online === "boolean" && (
               <Badge
                 variant={online ? "default" : "secondary"}
-                className="rounded-full"
+                className="hidden rounded-full sm:inline-flex"
               >
                 {online ? "Online" : "Offline"}
               </Badge>
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <div className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground sm:flex-wrap sm:text-sm">
             {role && <span>{role}</span>}
             {role && project && <span aria-hidden="true">/</span>}
 
             {project && (
               <>
                 <Briefcase className="h-4 w-4" />
-                <span>{project}</span>
+                <span className="truncate" title={project}>
+                  {project}
+                </span>
               </>
             )}
           </div>
         </div>
       </div>
 
-      <div className="ml-auto flex shrink-0 items-center gap-2">
+      <div className="ml-auto flex shrink-0 items-center gap-0 sm:gap-2">
         {project && onViewProject && (
-          <Button variant="outline" onClick={onViewProject}>
-            View Project
+          <Button
+            variant="outline"
+            onClick={onViewProject}
+            aria-label="View project"
+          >
+            <Briefcase className="size-4 sm:hidden" />
+            <span className="hidden sm:inline">View Project</span>
           </Button>
         )}
         {actions}

@@ -1,3 +1,4 @@
+import { readPageCache } from "@/lib/pageReadCache";
 import { supabase } from "@/lib/supabaseClient";
 import type {
   ChatMessage,
@@ -22,7 +23,15 @@ async function getCurrentUserId(): Promise<string> {
   return user.id;
 }
 
-async function getParticipants(
+function getParticipants(
+  userIds: string[],
+): Promise<Map<string, MessageParticipant>> {
+  const ids = [...new Set(userIds)].sort();
+  return readPageCache("message-participants:" + ids.join(","), () =>
+    fetchParticipants(ids),
+  );
+}
+async function fetchParticipants(
   userIds: string[],
 ): Promise<Map<string, MessageParticipant>> {
   if (userIds.length === 0) {
@@ -140,7 +149,6 @@ export async function getMessageConversations(): Promise<{
       (participantsResult.data ?? []).map((participant) => participant.user_id),
     ),
   ];
-  const participantProfiles = await getParticipants(otherUserIds);
 
   const projectIds = [
     ...new Set(
@@ -150,12 +158,15 @@ export async function getMessageConversations(): Promise<{
     ),
   ];
 
-  const projectsResult = projectIds.length
-    ? await supabase
-        .from("projects")
-        .select("project_id, title")
-        .in("project_id", projectIds)
-    : { data: [], error: null };
+  const [participantProfiles, projectsResult] = await Promise.all([
+    getParticipants(otherUserIds),
+    projectIds.length
+      ? supabase
+          .from("projects")
+          .select("project_id, title")
+          .in("project_id", projectIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
 
   if (projectsResult.error) {
     throw projectsResult.error;

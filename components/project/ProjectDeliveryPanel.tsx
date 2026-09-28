@@ -10,9 +10,11 @@ import {
   readProjectCache,
   clearProjectReadCache,
 } from "@/lib/projectReadCache";
+import { automaticReviewAt } from "@/lib/projectSettlement";
 import { projectProgress } from "@/lib/projectProgress";
 import { reviewableDeliveryIds } from "@/lib/projectDelivery";
-import { Plus, X } from "lucide-react";
+import { Plus } from "lucide-react";
+import { SubmissionInbox } from "./SubmissionInbox";
 import { SubmissionImage } from "./SubmissionImage";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
@@ -40,11 +42,13 @@ export function ProjectDeliveryPanel({
   project,
   onRefresh,
   paid = false,
+  autoReleaseEnabled = false,
   actions,
 }: {
   project: ProjectWorkspace;
   onRefresh: () => Promise<void>;
   paid?: boolean;
+  autoReleaseEnabled?: boolean;
   actions?: ReactNode;
 }) {
   const [history, setHistory] = useState<Awaited<
@@ -65,12 +69,24 @@ export function ProjectDeliveryPanel({
     submission: WorkSubmission;
     action: "approve" | "revision";
   } | null>(null);
-  const [feedbackId, setFeedbackId] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState("");
   const [instructions, setInstructions] = useState("");
   const [rating, setRating] = useState("5");
   const [comment, setComment] = useState("");
   const loadVersion = useRef(0);
+  const automaticRefresh = useRef("");
+  useEffect(() => {
+    const latest = (history?.submissions ?? [])
+      .filter((s) => s.auto_reviewed_at)
+      .map((s) => s.submission_id)
+      .sort()
+      .join(",");
+    if (latest && latest !== automaticRefresh.current) {
+      automaticRefresh.current = latest;
+      void onRefresh().catch(() => {
+        automaticRefresh.current = "";
+      });
+    }
+  }, [history, onRefresh]);
   const load = useCallback(
     async (force = true) => {
       if (!project.projectId) return;
@@ -176,8 +192,46 @@ export function ProjectDeliveryPanel({
   );
   return (
     <div className="space-y-5">
+      {active && (
+        <details className="rounded-xl border bg-card p-4 text-sm">
+          <summary className="cursor-pointer font-medium">
+            How review and payment work
+          </summary>
+          <p className="mt-1 text-muted-foreground">
+            {autoReleaseEnabled
+              ? "Submitted deliveries are automatically approved at the project deadline or seven days after submission, whichever comes first. A late delivery is eligible immediately after submission. Disputes and pending cancellation requests pause this process."
+              : "Automatic review and payout are not activated in this environment yet. Review submitted work manually."}
+          </p>
+          {autoReleaseEnabled &&
+            (history?.submissions ?? [])
+              .filter((s) => reviewable.has(s.submission_id))
+              .map((s) => {
+                const at = automaticReviewAt(s.created_at, project.dueDate);
+                return (
+                  at && (
+                    <p key={s.submission_id} className="mt-2 text-xs">
+                      {s.milestone_id
+                        ? project.milestones.find(
+                            (m) => m.id === s.milestone_id,
+                          )?.title
+                        : "Final delivery"}
+                      : automatic review eligible{" "}
+                      {new Date(at).toLocaleString()}. Open resolution requests
+                      pause release.
+                    </p>
+                  )
+                );
+              })}
+          {project.type === "milestone" && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              The full project payout is queued after all milestones are
+              approved.
+            </p>
+          )}
+        </details>
+      )}
       <section
-        className="space-y-2 rounded-lg bg-muted/30 p-4"
+        className="space-y-2 rounded-lg bg-muted/30 p-3 sm:p-4"
         aria-label="Project progress"
       >
         <div className="flex items-center justify-between text-sm">
@@ -185,7 +239,7 @@ export function ProjectDeliveryPanel({
             {completed
               ? "Completed"
               : project.type === "milestone"
-                ? "Client-approved milestones"
+                ? "Approved milestones"
                 : "Work activity"}
           </span>
           <strong>{progress}%</strong>
@@ -205,7 +259,7 @@ export function ProjectDeliveryPanel({
         </div>
         <p className="text-xs text-muted-foreground">
           {completed
-            ? "The client approved the final delivery."
+            ? "The final delivery was approved."
             : project.type === "milestone"
               ? project.milestones.filter((m) => m.status === "approved")
                   .length +
@@ -221,7 +275,7 @@ export function ProjectDeliveryPanel({
             <CardTitle>
               {completed ? "Completed work & reviews" : "Project work"}
             </CardTitle>
-            <div className="ml-auto flex flex-wrap items-center gap-2">
+            <div className="grid w-full grid-cols-1 gap-2 sm:ml-auto sm:flex sm:w-auto sm:flex-wrap sm:items-center">
               {actions}
               {active && project.currentParty === "freelancer" && (
                 <Dialog
@@ -237,12 +291,12 @@ export function ProjectDeliveryPanel({
                     <Button
                       type="button"
                       size="sm"
-                      aria-label="Upload project work"
+                      aria-label="Submit project work"
                       title="Upload project work"
                       disabled={busy || !history || !paid}
                     >
                       <Plus className="h-4 w-4" />
-                      Upload
+                      Submit work
                     </Button>
                   </DialogTrigger>
                   <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
@@ -381,13 +435,14 @@ export function ProjectDeliveryPanel({
             </div>
           </div>
           <p className="text-sm text-muted-foreground">
-            Share screenshots, files, and notes. Review feedback stays with each
-            delivery.
+            {project.currentParty === "client"
+              ? "Review submitted work and let your freelancer know what comes next."
+              : "Send finished work for approval, or share an update while you are working."}
           </p>
           <p className="text-sm font-medium">
             {remaining == null
               ? "Revision allowance unavailable"
-              : `${remaining} of ${project.revisions} revisions remaining`}
+              : `${remaining} change requests remaining`}
           </p>
         </CardHeader>
         <CardContent className="space-y-5">
@@ -422,197 +477,133 @@ export function ProjectDeliveryPanel({
                     : "Share a progress update or submit your finished work for client approval."}
             </p>
           )}
-          {history?.submissions.map((submission) => (
-            <article
-              key={submission.submission_id}
-              className="space-y-2 rounded-lg border p-4"
-            >
-              <div className="flex flex-wrap justify-between gap-2 text-sm">
-                <strong>
-                  {submission.kind === "delivery"
-                    ? "Delivery"
-                    : "Progress update"}
-                </strong>
-                <span className="capitalize">
-                  {submission.status.replaceAll("_", " ")}
-                </span>
-              </div>
-              <time className="text-xs text-muted-foreground">
-                {new Date(submission.created_at).toLocaleString()}
-              </time>
-              {submission.milestone_id && (
-                <p className="text-xs">
-                  Milestone:{" "}
-                  {project.milestones.find(
-                    (m) => m.id === submission.milestone_id,
-                  )?.title ?? "Milestone"}
-                </p>
-              )}
-              <p className="whitespace-pre-wrap text-sm">{submission.body}</p>
-              {submission.link && /^https?:\/\//i.test(submission.link) && (
-                <a
-                  className="block break-all text-sm underline"
-                  href={submission.link}
-                  target="_blank"
-                  rel="noopener noreferrer"
+          {history && (
+            <SubmissionInbox
+              submissions={history.submissions}
+              milestones={project.milestones}
+              reviewable={reviewable}
+              isClient={project.currentParty === "client"}
+              renderSubmission={(submission) => (
+                <article
+                  key={submission.submission_id}
+                  className="min-w-0 space-y-4"
                 >
-                  Open submitted link
-                </a>
-              )}
-              {submission.attachment_path && (
-                <SubmissionImage
-                  path={submission.attachment_path}
-                  name={submission.attachment_name ?? "Submitted screenshot"}
-                />
-              )}
-              <div className="flex flex-wrap items-center gap-2">
-                {submission.attachment_path && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      void act(
-                        () =>
-                          openProjectAttachment(submission.attachment_path!),
-                        "",
-                      )
-                    }
-                  >
-                    {submission.attachment_name ?? "Open attachment"}
-                  </Button>
-                )}
-                {active &&
-                  project.currentParty === "client" &&
-                  submission.kind === "delivery" &&
-                  reviewable.has(submission.submission_id) && (
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="outline"
-                      aria-label="Add revision feedback"
-                      title="Add revision feedback"
-                      disabled={busy || remaining == null || remaining === 0}
-                      onClick={() => {
-                        setFeedbackId(
-                          feedbackId === submission.submission_id
-                            ? null
-                            : submission.submission_id,
-                        );
-                        setFeedback("");
-                      }}
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  )}
-              </div>
-              {feedbackId === submission.submission_id && (
-                <form
-                  className="space-y-2 rounded-lg border bg-muted/30 p-3"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    if (!feedback.trim() || !remaining || busy) return;
-                    void act(async () => {
-                      await reviewSubmission(
-                        submission.submission_id,
-                        "revision",
-                        feedback,
-                      );
-                      setFeedbackId(null);
-                      setFeedback("");
-                    }, "Revision requested. Feedback saved with this delivery.");
-                  }}
-                >
-                  <label
-                    className="text-sm font-medium"
-                    htmlFor={"feedback-" + submission.submission_id}
-                  >
-                    What needs changing?
-                  </label>
-                  <Textarea
-                    id={"feedback-" + submission.submission_id}
-                    autoFocus
-                    rows={2}
-                    maxLength={5000}
-                    required
-                    value={feedback}
-                    onChange={(event) => setFeedback(event.target.value)}
-                    placeholder="Describe the change to this screenshot or file?"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Sending requests changes and uses 1 revision. {remaining}{" "}
-                    remaining.
-                  </p>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      disabled={busy || !feedback.trim() || !remaining}
-                    >
-                      Send revision request
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      disabled={busy}
-                      onClick={() => setFeedbackId(null)}
-                    >
-                      <X className="h-4 w-4" />
-                      Cancel
-                    </Button>
+                  <div className="flex flex-wrap justify-between gap-2 text-sm">
+                    <strong>
+                      {submission.kind === "delivery"
+                        ? "Submitted work"
+                        : "Progress update"}
+                    </strong>
+                    <span className="capitalize">
+                      {submission.auto_reviewed_at
+                        ? "Automatically approved"
+                        : submission.status.replaceAll("_", " ")}
+                    </span>
                   </div>
-                </form>
-              )}
-              {history.revisions
-                .filter((r) => r.submission_id === submission.submission_id)
-                .map((r) => (
-                  <div
-                    key={r.revision_id}
-                    className="rounded-md bg-muted p-3 text-sm"
-                  >
-                    <p className="font-medium">
-                      Revision requested · {r.status}
+                  <time className="text-xs text-muted-foreground">
+                    {new Date(submission.created_at).toLocaleString()}
+                  </time>
+                  {submission.milestone_id && (
+                    <p className="text-xs">
+                      Milestone:{" "}
+                      {project.milestones.find(
+                        (m) => m.id === submission.milestone_id,
+                      )?.title ?? "Milestone"}
                     </p>
-                    <p className="whitespace-pre-wrap">{r.instructions}</p>
-                    <time className="text-xs">
-                      {new Date(r.created_at).toLocaleString()}
-                    </time>
-                  </div>
-                ))}
-              {active &&
-                project.currentParty === "client" &&
-                submission.kind === "delivery" &&
-                reviewable.has(submission.submission_id) && (
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      disabled={busy}
-                      onClick={() =>
-                        setReviewing({ submission, action: "approve" })
+                  )}
+                  <p className="whitespace-pre-wrap break-words text-sm">
+                    {submission.body}
+                  </p>
+                  {submission.link && /^https?:\/\//i.test(submission.link) && (
+                    <a
+                      className="block break-all text-sm underline"
+                      href={submission.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Open submitted link
+                    </a>
+                  )}
+                  {submission.attachment_path && (
+                    <SubmissionImage
+                      path={submission.attachment_path}
+                      name={
+                        submission.attachment_name ?? "Submitted screenshot"
                       }
-                    >
-                      {project.type === "standard" ||
-                      project.milestones.filter((m) => m.status !== "approved")
-                        .length === 1
-                        ? "Approve & complete project"
-                        : "Approve milestone"}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={busy || remaining == null || remaining === 0}
-                      onClick={() => {
-                        setInstructions("");
-                        setReviewing({ submission, action: "revision" });
-                      }}
-                    >
-                      Request revision
-                    </Button>
+                    />
+                  )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {submission.attachment_path && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          void act(
+                            () =>
+                              openProjectAttachment(
+                                submission.attachment_path!,
+                              ),
+                            "",
+                          )
+                        }
+                      >
+                        {submission.attachment_name ?? "Open attachment"}
+                      </Button>
+                    )}
                   </div>
-                )}
-            </article>
-          ))}
-          {history && !history.submissions.length && (
-            <p className="text-sm text-muted-foreground">No submissions yet.</p>
+                  {history.revisions
+                    .filter((r) => r.submission_id === submission.submission_id)
+                    .map((r) => (
+                      <div
+                        key={r.revision_id}
+                        className="rounded-md bg-muted p-3 text-sm"
+                      >
+                        <p className="font-medium">
+                          Revision requested · {r.status}
+                        </p>
+                        <p className="whitespace-pre-wrap">{r.instructions}</p>
+                        <time className="text-xs">
+                          {new Date(r.created_at).toLocaleString()}
+                        </time>
+                      </div>
+                    ))}
+                  {active &&
+                    project.currentParty === "client" &&
+                    submission.kind === "delivery" &&
+                    reviewable.has(submission.submission_id) && (
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          disabled={busy}
+                          onClick={() =>
+                            setReviewing({ submission, action: "approve" })
+                          }
+                        >
+                          {project.type === "standard" ||
+                          project.milestones.filter(
+                            (m) => m.status !== "approved",
+                          ).length === 1
+                            ? "Approve & complete project"
+                            : "Approve milestone"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={
+                            busy || remaining == null || remaining === 0
+                          }
+                          onClick={() => {
+                            setInstructions("");
+                            setReviewing({ submission, action: "revision" });
+                          }}
+                        >
+                          Ask for changes
+                        </Button>
+                      </div>
+                    )}
+                </article>
+              )}
+            />
           )}
           {completed && history && !ownReview && (
             <form
@@ -670,7 +661,7 @@ export function ProjectDeliveryPanel({
                 <DialogTitle>
                   {reviewing?.action === "approve"
                     ? "Approve this delivery?"
-                    : "Request a revision"}
+                    : "Ask for changes"}
                 </DialogTitle>
                 <DialogDescription>
                   {reviewing?.action === "approve"
@@ -680,7 +671,7 @@ export function ProjectDeliveryPanel({
               </DialogHeader>
               {reviewing?.action === "revision" && (
                 <label className="text-sm">
-                  Revision instructions
+                  What should be changed?
                   <Textarea
                     maxLength={5000}
                     value={instructions}
@@ -712,7 +703,7 @@ export function ProjectDeliveryPanel({
                   ? "Saving…"
                   : reviewing?.action === "approve"
                     ? "Confirm approval"
-                    : "Send revision request"}
+                    : "Send change request"}
               </Button>
             </DialogContent>
           </Dialog>

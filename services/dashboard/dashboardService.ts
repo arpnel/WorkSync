@@ -1,4 +1,5 @@
-﻿import { getProjects } from "@/services/project/projectService";
+import { readProjectCache } from "@/lib/projectReadCache";
+import { getProjects } from "@/services/project/projectService";
 import { getMyMarketplaceListings } from "@/services/marketplace/MarketplaceServices";
 import { getNotifications } from "@/services/notification/notificationService";
 const record = (value: unknown): Record<string, unknown> => {
@@ -14,7 +15,7 @@ export async function getDashboardActivity() {
   return { projects, listings, notifications };
 }
 export async function getDashboardProjects() {
-  const orders = await getProjects();
+  const orders = await readProjectCache("projects", getProjects);
   return orders
     .filter(
       (order) =>

@@ -27,45 +27,26 @@ export function ProjectWorkspaceHeader({
 }: Props) {
   if (compact)
     return (
-      <header className="space-y-3 border-b pb-5">
+      <header className="flex items-start gap-3 border-b pb-4">
         <Button
           type="button"
           variant="ghost"
-          size="sm"
-          className="-ml-3 text-muted-foreground"
+          size="icon"
+          className="shrink-0"
+          aria-label="Back to projects"
+          title="Back to projects"
           onClick={onBack}
         >
-          <ArrowLeft className="h-4 w-4" />
-          Projects
+          <ArrowLeft className="size-5" />
         </Button>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <h1 className="min-w-0 flex-1 break-words text-2xl font-semibold tracking-tight sm:text-3xl">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-3 pt-1">
+          <h1 className="min-w-0 flex-1 break-words text-xl font-semibold leading-tight tracking-tight sm:text-3xl">
             {title}
           </h1>
-          <Badge variant="secondary" className="capitalize">
+          <Badge variant="outline" className="capitalize">
             {status}
           </Badge>
         </div>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
-          <span className="inline-flex items-center gap-1.5">
-            <FolderKanban className="h-4 w-4" />
-            {type === "milestone" ? "Milestone project" : "Standard project"}
-          </span>
-          {categoryName && (
-            <span className="inline-flex items-center gap-1.5">
-              <Tag className="h-4 w-4" />
-              {categoryName}
-            </span>
-          )}
-        </div>
-        <details className="text-sm">
-          <summary className="w-fit cursor-pointer text-muted-foreground">
-            Project description
-          </summary>
-          <p className="mt-2 max-w-4xl whitespace-pre-wrap leading-6">
-            {description || "No project description was provided."}
-          </p>
-        </details>
       </header>
     );
   return (

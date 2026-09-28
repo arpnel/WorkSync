@@ -44,9 +44,9 @@ export default function ScheduleList({
         const id = event.dataTransfer.getData("application/worksync-card");
         if (id) onMove(id);
       }}
-      className="flex w-full min-w-0 flex-col rounded-2xl border border-border/60 bg-muted/50 p-2.5"
+      className="flex w-full min-w-0 flex-col rounded-lg border border-border bg-muted/40 p-3"
     >
-      <div className="flex items-center justify-between gap-2 px-2 py-2">
+      <div className="flex items-center justify-between gap-2 px-1 py-2.5">
         {editing ? (
           <form
             className="flex min-w-0 flex-1 flex-wrap gap-1"
@@ -82,7 +82,7 @@ export default function ScheduleList({
             <h2 className="min-w-0 truncate text-sm font-semibold">
               {list.title}
             </h2>
-            <span className="mr-auto rounded-md bg-card px-2 py-0.5 text-xs font-medium tabular-nums text-muted-foreground">
+            <span className="mr-auto rounded-full bg-card px-2 py-0.5 text-xs font-medium tabular-nums text-muted-foreground">
               {total}
             </span>
           </>

@@ -1,4 +1,5 @@
-﻿"use client";
+"use client";
+import { invalidatePageReads } from "@/lib/pageReadCache";
 import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { requireUser } from "@/services/platform/platformService";
@@ -105,6 +106,7 @@ export function ListingEditDialog({
                 .maybeSingle();
               if (error) throw error;
               if (!data) throw new Error("The listing could not be updated.");
+              invalidatePageReads();
               await onSaved();
               onClose();
             } catch (cause) {

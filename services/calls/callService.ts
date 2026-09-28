@@ -42,12 +42,10 @@ export async function callRequest<T>(body?: {
     }
     response = await send(data.session.access_token);
   }
-  const data = await response
-    .json()
-    .catch(() => ({
-      error: "The call server returned an unreadable response.",
-      code: "NON_JSON_RESPONSE",
-    }));
+  const data = await response.json().catch(() => ({
+    error: "The call server returned an unreadable response.",
+    code: "NON_JSON_RESPONSE",
+  }));
   if (!response.ok) {
     console.error(
       "[WorkSync API] " +
@@ -60,6 +58,15 @@ export async function callRequest<T>(body?: {
               ? data.code
               : "UNCLASSIFIED_ERROR",
           elapsedMs: Date.now() - started,
+          upstreamStatus:
+            typeof data?.upstreamStatus === "number"
+              ? data.upstreamStatus
+              : null,
+          databaseCode:
+            typeof data?.databaseCode === "string" &&
+            /^(?:[0-9A-Z]{5}|PGRST\d{3})$/.test(data.databaseCode)
+              ? data.databaseCode
+              : null,
         }),
     );
     throw new Error(data.error || "Unable to connect the call.");

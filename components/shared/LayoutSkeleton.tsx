@@ -65,7 +65,7 @@ function Toolbar() {
 }
 function Stats() {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
       {[0, 1, 2, 3].map((i) => (
         <Panel key={i}>
           <Skeleton className="h-4 w-24 max-w-full" />

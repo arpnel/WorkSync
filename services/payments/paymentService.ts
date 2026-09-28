@@ -4,6 +4,8 @@ export interface ProjectPayment {
   mode: "test" | "live";
   amount?: number;
   paidAt?: string | null;
+  autoReleaseEnabled?: boolean;
+  payout?: { status: string; paid_at?: string | null; amount?: number } | null;
 }
 async function requestPayment(projectId: string, checkout: boolean) {
   const {

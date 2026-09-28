@@ -1,14 +1,25 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { readPageCache, invalidatePageReads } from "@/lib/pageReadCache";
 import { supabase } from "@/lib/supabaseClient";
+import { DocumentPreview } from "./DocumentPreview";
+import { DocumentsEditor } from "./DocumentsEditor";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 type Document = { label: string; path: string; bucket: string };
 
 /** Owner-only supporting files; these are separate from published portfolio projects. */
-export function SetupDocuments({ userId }: { userId: string }) {
+export function SetupDocuments({
+  userId,
+  editable = false,
+}: {
+  userId: string;
+  editable?: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [revision, setRevision] = useState(0);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -16,12 +27,19 @@ export function SetupDocuments({ userId }: { userId: string }) {
     let active = true;
     async function load() {
       try {
-        const { data, error } = await supabase
-          .from("freelancer_profiles")
-          .select("resume_url,portfolio_sample_urls,certification_urls")
-          .eq("user_id", userId)
-          .maybeSingle();
-        if (error) throw new Error(error.message);
+        setError("");
+        const data = await readPageCache(
+          "supporting-documents:" + userId,
+          async () => {
+            const result = await supabase
+              .from("freelancer_profiles")
+              .select("resume_url,portfolio_sample_urls,certification_urls")
+              .eq("user_id", userId)
+              .maybeSingle();
+            if (result.error) throw new Error(result.error.message);
+            return result.data;
+          },
+        );
         if (!active) return;
         setDocuments([
           ...(data?.resume_url
@@ -63,34 +81,36 @@ export function SetupDocuments({ userId }: { userId: string }) {
     return () => {
       active = false;
     };
-  }, [userId]);
+  }, [userId, revision]);
 
-  async function open(document: Document) {
-    const tab = window.open("about:blank", "_blank");
-    if (!tab) {
-      setError("Allow a new tab to open this document.");
-      return;
-    }
-    tab.opener = null;
-    try {
-      setError("");
-      // Setup stores private paths. Let Storage authorize each signed URL.
-      const { data, error } = await supabase.storage
-        .from(document.bucket)
-        .createSignedUrl(document.path, 60);
-      if (error) throw new Error(error.message);
-      tab.location.replace(data.signedUrl);
-    } catch (cause) {
-      tab.close();
-      setError(
-        cause instanceof Error ? cause.message : "Unable to open this file.",
-      );
-    }
-  }
   return (
     <Card>
+      {editing && (
+        <DocumentsEditor
+          userId={userId}
+          documents={documents}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            invalidatePageReads();
+            setEditing(false);
+            setRevision((value) => value + 1);
+          }}
+        />
+      )}
       <CardHeader>
-        <CardTitle>Your setup documents</CardTitle>
+        <div className="flex items-center justify-between gap-3">
+          <CardTitle>Your setup documents</CardTitle>
+          {editable && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={loading || !!error}
+              onClick={() => setEditing(true)}
+            >
+              Edit documents
+            </Button>
+          )}
+        </div>
         <p className="text-sm text-muted-foreground">
           Supporting files saved during setup. Publish portfolio projects
           separately in the Portfolio tab.
@@ -107,15 +127,12 @@ export function SetupDocuments({ userId }: { userId: string }) {
             Loading documents…
           </p>
         ) : (
-          <div className="flex flex-wrap gap-2">
+          <div className="grid gap-4 sm:grid-cols-2">
             {documents.map((document) => (
-              <Button
+              <DocumentPreview
                 key={`${document.bucket}/${document.path}`}
-                variant="outline"
-                onClick={() => void open(document)}
-              >
-                {document.label}
-              </Button>
+                {...document}
+              />
             ))}
           </div>
         )}

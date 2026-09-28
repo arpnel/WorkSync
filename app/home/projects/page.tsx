@@ -1,4 +1,6 @@
 "use client";
+import { useSearchParams } from "next/navigation";
+import { WorkspacePageHeader } from "@/components/shared/WorkspacePageHeader";
 import { Suspense } from "react";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 
@@ -26,7 +28,22 @@ export default function Page() {
 
 function ProjectsPage() {
   const { projects, loading, error, refetch } = useProjects();
-  const requestState = useProjectRequests();
+  const allRequests = useProjectRequests();
+  const jobId = useSearchParams().get("job");
+  const requestState = {
+    ...allRequests,
+    requests: {
+      received: allRequests.requests.received.filter(
+        (row) => !jobId || row.jobId === jobId,
+      ),
+      sent: allRequests.requests.sent.filter(
+        (row) => !jobId || row.jobId === jobId,
+      ),
+      discussions: allRequests.requests.discussions.filter(
+        (row) => !jobId || row.jobId === jobId,
+      ),
+    },
+  };
   const {
     activeFilter,
     setActiveFilter,
@@ -77,13 +94,40 @@ function ProjectsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-        Projects
-      </h1>
-      <p className="text-sm text-muted-foreground">
-        Manage requests, agree on the work, and follow each project through
-        delivery and completion.
-      </p>
+      <WorkspacePageHeader
+        title="Projects"
+        description="Manage requests, agree on the work, and follow delivery through to completion."
+      />
+      {!loading && (
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+          {(
+            [
+              ["All projects", projects.length],
+              ["Active", projects.filter((p) => p.status === "Active").length],
+              [
+                "In discussion",
+                projects.filter((p) => p.status === "In Discussion").length +
+                  discussions.length,
+              ],
+              [
+                "Completed",
+                projects.filter((p) => p.status === "Completed").length,
+              ],
+            ] as const
+          ).map(([label, count]) => (
+            <Card key={label} className="gap-0 py-5">
+              <CardContent>
+                <p className="text-xs font-medium text-muted-foreground">
+                  {label}
+                </p>
+                <p className="mt-2 text-2xl font-semibold tabular-nums">
+                  {count}
+                </p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
       {(error || (activeFilter === "In Discussion" && requestState.error)) && (
         <div
           role="alert"

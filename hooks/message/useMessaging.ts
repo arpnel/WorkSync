@@ -142,6 +142,15 @@ export function useMessaging() {
       if (request !== conversationRequest.current) return;
       setCurrentUserId(result.currentUserId);
       setConversations(result.conversations);
+      const requested = new URLSearchParams(window.location.search).get(
+        "conversation",
+      );
+      if (
+        !selectedRef.current &&
+        requested &&
+        result.conversations.some((c) => c.conversationId === requested)
+      )
+        selectConversation(requested);
       setError(null);
 
       if (

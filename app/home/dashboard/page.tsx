@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { WorkspacePageHeader } from "@/components/shared/WorkspacePageHeader";
 
 import { ArrowUpRight, MessageCircle, Plus, Search } from "lucide-react";
 import WorkAnalytics from "@/components/dashboard/WorkAnalytics";
@@ -74,17 +75,22 @@ function DashboardTools() {
 export default function DashboardPage() {
   return (
     <div className="@container mx-auto w-full max-w-[1600px]">
-      <header className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-            Dashboard
-          </h1>
-          <p className="mt-1 text-[clamp(0.875rem,0.75rem+0.3vw,1rem)] text-muted-foreground">
-            Your workspace at a glance. Keep track of work and plan what comes
-            next.
-          </p>
-        </div>
-      </header>
+      <div className="mb-6">
+        <WorkspacePageHeader
+          title="Dashboard"
+          description="Your projects, performance, and upcoming work in one place."
+          actions={
+            <Link
+              href="/home/my-listings"
+              className="inline-flex h-10 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground"
+            >
+              <Plus className="size-4" />
+              Create a listing
+            </Link>
+          }
+        />
+      </div>
+
       <ActivityOverview
         charts={(activity) => <WorkAnalytics projectActivity={activity} />}
         tools={<DashboardTools />}

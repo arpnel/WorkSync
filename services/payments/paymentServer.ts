@@ -178,6 +178,12 @@ export async function getProjectPayment(
     )
       paidAt = new Date(timestamp * 1000).toISOString();
   }
+  const payout = await db
+    .from("project_payouts")
+    .select("status,paid_at,amount")
+    .eq("project_id", projectId)
+    .eq("mode", paymentMode())
+    .maybeSingle();
   return {
     status: paid
       ? "paid"
@@ -185,6 +191,9 @@ export async function getProjectPayment(
         ? "pending"
         : "processing",
     amount: row.amount,
+    payout: payout.error ? { status: "unavailable" } : payout.data,
+    autoReleaseEnabled:
+      process.env.PROJECT_SETTLEMENT_ENABLED === "true" && !payout.error,
     paidAt,
     mode: paymentMode(),
   };

@@ -2,6 +2,9 @@
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
+import { MetricTrendCard } from "./MetricTrendCard";
+import { StatusRadialChart } from "./StatusRadialChart";
+import { WorkspacePageHeader } from "@/components/shared/WorkspacePageHeader";
 import {
   Activity,
   ArrowDownLeft,
@@ -17,12 +20,9 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
   Legend,
   Line,
   LineChart,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -60,12 +60,12 @@ const money = (value: number) =>
     maximumFractionDigits: 0,
   }).format(value);
 const palette = {
-  active: "#60a5fa",
-  completed: "#34d399",
-  waiting: "#fbbf24",
-  closed: "#fb7185",
+  active: "var(--chart-1)",
+  completed: "var(--chart-2)",
+  waiting: "var(--chart-3)",
+  closed: "var(--chart-5)",
   neutral: "#94a3b8",
-  spending: "#a78bfa",
+  spending: "var(--chart-4)",
 };
 const tooltipStyle = {
   background: "var(--popover)",
@@ -117,7 +117,7 @@ function Panel({
   children: ReactNode;
 }) {
   return (
-    <Card className={`min-w-0 shadow-sm ${className}`}>
+    <Card className={`min-w-0 gap-6 py-5 ${className}`}>
       <CardHeader>
         <CardTitle>{title}</CardTitle>
         <CardDescription>{description}</CardDescription>
@@ -219,6 +219,8 @@ export default function AnalyticsPage() {
   }));
   const stats = [
     {
+      key: "started" as const,
+      color: palette.active,
       title: "Projects started",
       value: String(summary.started),
       detail: growth(summary.started, baseline.started),
@@ -226,6 +228,8 @@ export default function AnalyticsPage() {
       financial: false,
     },
     {
+      key: "completed" as const,
+      color: palette.completed,
       title: "Projects completed",
       value: String(summary.completed),
       detail: growth(summary.completed, baseline.completed),
@@ -233,6 +237,8 @@ export default function AnalyticsPage() {
       financial: false,
     },
     {
+      key: "earnings" as const,
+      color: palette.waiting,
       title: "Gross earnings",
       value: financialReady ? money(summary.earnings) : financialStatus,
       detail: financialReady
@@ -242,6 +248,8 @@ export default function AnalyticsPage() {
       financial: true,
     },
     {
+      key: "spending" as const,
+      color: palette.spending,
       title: "Client spending",
       value: financialReady ? money(summary.spending) : financialStatus,
       detail: financialReady
@@ -253,15 +261,11 @@ export default function AnalyticsPage() {
   ];
   return (
     <div className="@container mx-auto w-full max-w-[1600px] space-y-6">
-      <header className="flex flex-col justify-between gap-4 @min-[900px]:flex-row @min-[900px]:items-start">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-            Analytics
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Track your projects and confirmed payments over time.
-          </p>
-        </div>
+      <div className="flex flex-col justify-between gap-4 @min-[900px]:flex-row @min-[900px]:items-start">
+        <WorkspacePageHeader
+          title="Analytics"
+          description="Track your projects and confirmed payments over time."
+        />
         <div className="space-y-2 @min-[900px]:text-right">
           <div className="flex flex-wrap gap-2">
             <label className="min-w-0 flex-1 @min-[900px]:flex-none">
@@ -321,7 +325,7 @@ export default function AnalyticsPage() {
             {from} – {to}
           </p>
         </div>
-      </header>
+      </div>
       {!valid ? (
         <p
           role="alert"
@@ -346,33 +350,28 @@ export default function AnalyticsPage() {
         <>
           <section aria-label="Summary" className="space-y-3">
             <div className="grid grid-cols-12 gap-4">
-              {stats.map(({ title, value, detail, Icon, financial }) => (
-                <Card
-                  key={title}
-                  className="col-span-12 gap-3 shadow-sm @min-[560px]:col-span-6 @min-[1100px]:col-span-3"
-                >
-                  <CardContent className="space-y-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm text-muted-foreground">{title}</p>
-                      <Icon
-                        className="size-4 text-muted-foreground"
-                        aria-hidden="true"
-                      />
-                    </div>
-                    {financial && paymentLoading ? (
-                      <Skeleton
-                        className="h-9 w-32"
-                        aria-label="Loading payment total"
-                      />
-                    ) : (
-                      <p className="break-words text-[clamp(1.5rem,2.3vw,2rem)] font-semibold tracking-tight tabular-nums">
-                        {value}
-                      </p>
-                    )}
-                    <p className="text-xs text-muted-foreground">{detail}</p>
-                  </CardContent>
-                </Card>
-              ))}
+              {stats.map(
+                ({ key, color, title, value, detail, Icon, financial }) => (
+                  <div
+                    key={key}
+                    className="col-span-12 @min-[480px]:col-span-6 @min-[1100px]:col-span-3"
+                  >
+                    <MetricTrendCard
+                      title={title}
+                      value={value}
+                      detail={detail}
+                      icon={Icon}
+                      color={color}
+                      points={trend.map((point) => ({
+                        date: point.month,
+                        value: point[key],
+                      }))}
+                      loading={financial && paymentLoading}
+                      unavailable={financial && !financialReady}
+                    />
+                  </div>
+                ),
+              )}
             </div>
             <p className="text-xs text-muted-foreground">
               Compared with {previous.from} – {previous.to}. Earnings are gross
@@ -452,56 +451,7 @@ export default function AnalyticsPage() {
               className="col-span-12 @min-[1000px]:col-span-4"
             >
               {statuses.length ? (
-                <>
-                  <div className="relative h-44">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={statuses}
-                          dataKey="value"
-                          nameKey="name"
-                          innerRadius="65%"
-                          outerRadius="90%"
-                          paddingAngle={2}
-                          isAnimationActive={false}
-                        >
-                          {statuses.map((s) => (
-                            <Cell key={s.name} fill={s.color} />
-                          ))}
-                        </Pie>
-                        <Tooltip contentStyle={tooltipStyle} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                      <strong className="text-2xl tabular-nums">
-                        {cohort.length}
-                      </strong>
-                      <span className="text-xs text-muted-foreground">
-                        requests
-                      </span>
-                    </div>
-                  </div>
-                  <ul className="mt-4 space-y-2.5">
-                    {statuses.map((s) => (
-                      <li
-                        key={s.name}
-                        className="flex items-center justify-between gap-3 text-sm"
-                      >
-                        <span className="flex items-center gap-2">
-                          <span
-                            className="size-2 rounded-full"
-                            style={{ backgroundColor: s.color }}
-                            aria-hidden="true"
-                          />
-                          {s.name}
-                        </span>
-                        <strong className="font-medium tabular-nums">
-                          {s.value}
-                        </strong>
-                      </li>
-                    ))}
-                  </ul>
-                </>
+                <StatusRadialChart statuses={statuses} total={cohort.length} />
               ) : (
                 <Empty>No requests created in this period.</Empty>
               )}

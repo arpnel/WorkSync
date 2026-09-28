@@ -206,12 +206,12 @@ function ApprovalRow({
         </div>
       )}
 
-      <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+      <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 text-xs">
         <span className="text-muted-foreground">
           Client:{" "}
           {clientApproved ? "Agreed" : needsReview ? "Needs review" : "Waiting"}
         </span>
-        <span className="text-right text-muted-foreground">
+        <span className="text-left sm:text-right text-muted-foreground">
           Freelancer:{" "}
           {freelancerApproved
             ? "Agreed"
@@ -221,7 +221,7 @@ function ApprovalRow({
         </span>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-2">
+      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
         <Button
           type="button"
           size="sm"
@@ -368,7 +368,7 @@ export function ProjectAgreementCard({
               {freelancerAccepted ? "Confirmed" : "Pending"}
             </Badge>
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <Button
               type="button"
               disabled={

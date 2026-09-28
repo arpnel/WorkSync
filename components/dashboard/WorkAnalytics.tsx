@@ -44,11 +44,11 @@ const money = (value: number) =>
     maximumFractionDigits: 0,
   }).format(value);
 const colors = [
-  "#60a5fa",
-  "#34d399",
-  "#fbbf24",
-  "#a78bfa",
-  "#fb7185",
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
   "#94a3b8",
 ];
 const tooltipStyle = {
@@ -195,7 +195,7 @@ export default function WorkAnalytics({
         <>
           {reports && (
             <>
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
                 {[
                   {
                     title: "Gross earnings",
@@ -280,9 +280,9 @@ export default function WorkAnalytics({
                             data={statuses}
                             dataKey="value"
                             nameKey="name"
-                            innerRadius="50%"
-                            outerRadius="75%"
-                            paddingAngle={3}
+                            innerRadius="65%"
+                            outerRadius="90%"
+                            paddingAngle={2}
                             cursor="pointer"
                             onClick={(entry) =>
                               router.push(projectHref(String(entry.name ?? "")))
@@ -398,6 +398,8 @@ export default function WorkAnalytics({
                         )}
                       />
                       <Bar
+                        radius={[3, 3, 0, 0]}
+                        maxBarSize={28}
                         dataKey="requests"
                         cursor="pointer"
                         onClick={() => router.push(projectHref("request"))}
@@ -406,6 +408,8 @@ export default function WorkAnalytics({
                         isAnimationActive={false}
                       />
                       <Bar
+                        radius={[3, 3, 0, 0]}
+                        maxBarSize={28}
                         dataKey="started"
                         cursor="pointer"
                         onClick={() => router.push(projectHref("active"))}
@@ -414,6 +418,8 @@ export default function WorkAnalytics({
                         isAnimationActive={false}
                       />
                       <Bar
+                        radius={[3, 3, 0, 0]}
+                        maxBarSize={28}
                         dataKey="completed"
                         cursor="pointer"
                         onClick={() => router.push(projectHref("completed"))}
@@ -513,6 +519,8 @@ export default function WorkAnalytics({
                           )}
                         />
                         <Bar
+                          radius={[3, 3, 0, 0]}
+                          maxBarSize={28}
                           dataKey="earnings"
                           cursor="pointer"
                           onClick={() => router.push("/home/analytics")}
@@ -521,6 +529,8 @@ export default function WorkAnalytics({
                           isAnimationActive={false}
                         />
                         <Bar
+                          radius={[3, 3, 0, 0]}
+                          maxBarSize={28}
                           dataKey="spending"
                           cursor="pointer"
                           onClick={() => router.push("/home/analytics")}
@@ -560,7 +570,7 @@ export default function WorkAnalytics({
                       : `${summary.completionRate.toFixed(1)}% of these requests are now completed.`}
                   </p>
                   <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm 2xl:text-base">
+                    <table className="phone-records w-full text-left text-sm 2xl:text-base">
                       <caption className="sr-only">
                         Monthly work and payment breakdown
                       </caption>
@@ -586,16 +596,24 @@ export default function WorkAnalytics({
                       <tbody>
                         {months.map((m) => (
                           <tr key={m.month} className="border-b">
-                            <td className="p-3">{m.month}</td>
-                            <td className="p-3">{m.requests}</td>
-                            <td className="p-3">{m.started}</td>
-                            <td className="p-3">{m.completed}</td>
-                            <td className="p-3">
+                            <td data-label="Month" className="p-3">
+                              {m.month}
+                            </td>
+                            <td data-label="Requests" className="p-3">
+                              {m.requests}
+                            </td>
+                            <td data-label="Started" className="p-3">
+                              {m.started}
+                            </td>
+                            <td data-label="Completed" className="p-3">
+                              {m.completed}
+                            </td>
+                            <td data-label="Earnings" className="p-3">
                               {financialReady
                                 ? money(m.earnings)
                                 : "Unavailable"}
                             </td>
-                            <td className="p-3">
+                            <td data-label="Spending" className="p-3">
                               {financialReady
                                 ? money(m.spending)
                                 : "Unavailable"}
@@ -618,7 +636,7 @@ export default function WorkAnalytics({
                 </CardHeader>
                 <CardContent>
                   <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm 2xl:text-base">
+                    <table className="phone-records w-full text-left text-sm 2xl:text-base">
                       <thead>
                         <tr className="border-b">
                           {[
@@ -642,7 +660,10 @@ export default function WorkAnalytics({
                           const payment = payments[p.id];
                           return (
                             <tr key={p.id} className="border-b">
-                              <td className="min-w-48 p-3">
+                              <td
+                                data-label="Project"
+                                className="min-w-0 p-3 md:min-w-48"
+                              >
                                 <Link
                                   className="font-medium text-primary hover:underline"
                                   href={`/home/projects/${p.type}/${p.id}`}
@@ -650,14 +671,21 @@ export default function WorkAnalytics({
                                   {p.title}
                                 </Link>
                               </td>
-                              <td className="p-3 capitalize">{p.party}</td>
-                              <td className="p-3">{statusName(p.status)}</td>
-                              <td className="p-3">
+                              <td
+                                data-label="Your role"
+                                className="p-3 capitalize"
+                              >
+                                {p.party}
+                              </td>
+                              <td data-label="Status" className="p-3">
+                                {statusName(p.status)}
+                              </td>
+                              <td data-label="Agreed budget" className="p-3">
                                 {p.agreedBudget === null
                                   ? "Not agreed"
                                   : money(p.agreedBudget)}
                               </td>
-                              <td className="p-3">
+                              <td data-label="Payment" className="p-3">
                                 {paymentLoading && p.projectId
                                   ? "Loading"
                                   : payment?.status === "paid"

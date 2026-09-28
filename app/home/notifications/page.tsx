@@ -1,7 +1,10 @@
 "use client";
+import { WorkspacePageHeader } from "@/components/shared/WorkspacePageHeader";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 
-import Link from "next/link";
+import { useState } from "react";
+import { NotificationDetailDialog } from "@/components/notifications/NotificationDetailDialog";
+import type { NotificationRecord } from "@/services/notification/notificationService";
 import { formatDistanceToNow, isToday } from "date-fns";
 import {
   BellRing,
@@ -14,7 +17,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  getNotificationHref,
   getNotificationKind,
   type NotificationKind,
 } from "@/components/notifications/notification-data";
@@ -36,18 +38,24 @@ const kindLabels: Record<NotificationKind, string> = {
 };
 
 export default function NotificationsPage() {
+  const [selected, setSelected] = useState<NotificationRecord | null>(null);
   const { items, loading, error, unreadCount, markRead, markAllRead } =
     useNotifications();
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-6">
-      <header className="flex flex-col gap-4 border-b pb-5 sm:flex-row sm:items-end sm:justify-between">
-        <div className="space-y-2">
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-            Notifications
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Keep track of requests, agreements, projects, and messages.
-          </p>
+    <div className="mx-auto w-full max-w-5xl space-y-6">
+      {selected && (
+        <NotificationDetailDialog
+          key={selected.id}
+          item={selected}
+          onClose={() => setSelected(null)}
+        />
+      )}
+      <div className="flex flex-col gap-4 pb-2 sm:flex-row sm:items-end sm:justify-between">
+        <div className="space-y-3">
+          <WorkspacePageHeader
+            title="Notifications"
+            description="Stay up to date with requests, projects, and conversations."
+          />
           <div className="mt-2 flex items-center gap-2">
             <Badge variant="secondary">{unreadCount} unread</Badge>
             <span className="text-xs text-muted-foreground">
@@ -65,7 +73,7 @@ export default function NotificationsPage() {
           <CheckCheck className="h-4 w-4" />
           Mark all as read
         </Button>
-      </header>
+      </div>
       {error && (
         <p className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
           {error}
@@ -96,7 +104,7 @@ export default function NotificationsPage() {
         return (
           <section key={group}>
             <h2 className="mb-3 text-sm font-semibold">{group}</h2>
-            <div className="space-y-2">
+            <div className="overflow-hidden rounded-lg border bg-card">
               {grouped.map((item) => {
                 const kind = getNotificationKind(item.type);
                 const Icon = kindIcons[kind];
@@ -104,7 +112,7 @@ export default function NotificationsPage() {
                   <article
                     key={item.id}
                     id={item.id}
-                    className={`scroll-mt-24 rounded-lg border p-4 ${item.unread ? "border-primary/20 bg-primary/[0.03]" : "bg-card"}`}
+                    className={`scroll-mt-24 border-b p-4 transition-colors last:border-b-0 hover:bg-muted/40 sm:p-5 ${item.unread ? "border-border bg-primary/[0.025]" : "bg-card"}`}
                   >
                     <div className="flex gap-4">
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted">
@@ -129,18 +137,16 @@ export default function NotificationsPage() {
                         </p>
                         <div className="mt-3 flex items-center justify-between">
                           <Badge variant="outline">{kindLabels[kind]}</Badge>
-                          <Button asChild variant="ghost" size="sm">
-                            <Link
-                              href={getNotificationHref(
-                                item.type,
-                                item.relatedId,
-                              )}
-                              onClick={() =>
-                                item.unread && void markRead(item.id)
-                              }
-                            >
-                              View details
-                            </Link>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setSelected(item);
+                              if (item.unread)
+                                void markRead(item.id).catch(() => undefined);
+                            }}
+                          >
+                            View details
                           </Button>
                         </div>
                       </div>

@@ -1,4 +1,5 @@
 "use client";
+import { ProjectProgressRing } from "./ProjectProgressRing";
 
 import { ProjectResolutionPanel } from "@/components/project/ProjectResolutionPanel";
 import { Badge } from "@/components/ui/badge";
@@ -292,12 +293,80 @@ export function ProjectCard({ project, onChanged }: ProjectCardProps) {
     <>
       <button
         type="button"
-        className="block w-full text-left"
+        onClick={openProject}
+        className="block w-full rounded-2xl border bg-card p-4 text-left focus-visible:outline-2 focus-visible:outline-primary md:hidden"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-xs font-medium text-primary">
+            {project.status}
+          </span>
+          <span className="text-xs text-muted-foreground">{project.type}</span>
+        </div>
+        <h2 className="mt-2 break-words text-base font-semibold leading-snug">
+          {project.title}
+        </h2>
+        <p className="mt-1 truncate text-sm text-muted-foreground">
+          {project.counterpartyName ?? project.client}
+        </p>
+        {(project.status === "Active" || project.status === "Completed") && (
+          <div className="mt-4">
+            <div className="mb-1.5 flex justify-between text-xs text-muted-foreground">
+              <span>Progress</span>
+              <span>{project.progress}%</span>
+            </div>
+            <div
+              role="progressbar"
+              aria-label="Project progress"
+              aria-valuenow={project.progress}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              className="h-1.5 overflow-hidden rounded-full bg-muted"
+            >
+              <div
+                className="h-full rounded-full bg-primary"
+                style={{
+                  width: `${Math.min(100, Math.max(0, project.progress))}%`,
+                }}
+              />
+            </div>
+          </div>
+        )}
+        <div className="mt-4 flex flex-wrap items-end justify-between gap-3 border-t pt-3">
+          <div>
+            <p className="text-xs text-muted-foreground">Budget</p>
+            <p className="mt-1 text-sm font-semibold">
+              PHP {project.budget.toLocaleString()}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-muted-foreground">
+              {project.due ? "Deadline" : "Delivery"}
+            </p>
+            <p className="mt-1 text-sm">
+              {project.due ||
+                (project.deliveryDays == null
+                  ? "Not agreed"
+                  : `${project.deliveryDays} days`)}
+            </p>
+          </div>
+          <ArrowRight
+            className="size-4 shrink-0 text-primary"
+            aria-hidden="true"
+          />
+        </div>
+      </button>
+      <button
+        type="button"
+        className="hidden w-full text-left md:block"
         onClick={openProject}
       >
-        <Card className="transition hover:border-primary/30 hover:shadow-sm">
+        <Card className="gap-0 py-0 transition hover:border-primary/40 hover:shadow-sm">
           <CardContent className="p-4 sm:p-5">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+              {(project.status === "Active" ||
+                project.status === "Completed") && (
+                <ProjectProgressRing value={project.progress} />
+              )}
               {/* Project Info */}
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
@@ -377,27 +446,6 @@ export function ProjectCard({ project, onChanged }: ProjectCardProps) {
                     </span>
                   </div>
                 )}
-                {/* Progress */}
-                {(project.status === "Active" ||
-                  project.status === "Completed") && (
-                  <div className="mt-4 max-w-xl">
-                    <div className="mb-1.5 flex items-center justify-between text-xs text-muted-foreground">
-                      <span>Project progress</span>
-
-                      <span>{project.progress}%</span>
-                    </div>
-
-                    <div className="h-2 overflow-hidden rounded-full bg-muted">
-                      <div
-                        className="h-full rounded-full bg-primary transition-all"
-                        style={{
-                          width: `${project.progress}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
-
                 {/* Request */}
                 {project.status === "Request" && (
                   <div className="mt-3 space-y-1.5">

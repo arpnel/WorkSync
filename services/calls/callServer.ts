@@ -13,6 +13,8 @@ export class CallError extends Error {
     message: string,
     public status = 400,
     public code?: string,
+    public upstreamStatus?: number,
+    public databaseCode?: string,
   ) {
     super(message);
   }
@@ -174,7 +176,11 @@ async function checkBlocks(ctx: Context, ids: string[]) {
 }
 export async function listCalls(ctx: Context) {
   dailyKey();
-  const { data: memberships, error } = await ctx.db
+  const {
+    data: memberships,
+    error,
+    status,
+  } = await ctx.db
     .from("conversation_participants")
     .select("conversation_id")
     .eq("user_id", ctx.user.id);
@@ -183,6 +189,10 @@ export async function listCalls(ctx: Context) {
       "Unable to load calls.",
       503,
       "CALLS_MEMBERSHIP_LOOKUP_FAILED",
+      status,
+      /^(?:[0-9A-Z]{5}|PGRST\d{3})$/.test(error.code ?? "")
+        ? error.code
+        : undefined,
     );
   const ids = (memberships ?? []).map((m) => m.conversation_id);
   if (!ids.length) return [];

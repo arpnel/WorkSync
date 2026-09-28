@@ -1,3 +1,4 @@
+import { readPageCache, invalidatePageReads } from "@/lib/pageReadCache";
 import { supabase } from "@/lib/supabaseClient";
 import { CALL_PREFIX } from "@/lib/calls/callMessage";
 
@@ -21,7 +22,10 @@ async function currentUserId() {
   return user.id;
 }
 
-export async function getNotifications(): Promise<NotificationRecord[]> {
+export function getNotifications(): Promise<NotificationRecord[]> {
+  return readPageCache("notifications", fetchNotifications);
+}
+async function fetchNotifications(): Promise<NotificationRecord[]> {
   const userId = await currentUserId();
   const { data, error } = await supabase
     .from("notifications")
@@ -31,9 +35,9 @@ export async function getNotifications(): Promise<NotificationRecord[]> {
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
-  const { data: auth } = await supabase.auth.getUser();
+  const { data: auth } = await supabase.auth.getSession();
   const preferences: unknown =
-    auth.user?.user_metadata?.hidden_notification_groups;
+    auth.session?.user.user_metadata?.hidden_notification_groups;
   const hidden = Array.isArray(preferences) ? preferences : [];
   return (data ?? [])
     .filter((item) => {
@@ -68,6 +72,7 @@ export async function markNotificationRead(notificationId: string) {
     .eq("notification_id", notificationId)
     .eq("user_id", userId);
   if (error) throw new Error(error.message);
+  invalidatePageReads();
 }
 
 export async function markAllNotificationsRead() {
@@ -78,6 +83,7 @@ export async function markAllNotificationsRead() {
     .eq("user_id", userId)
     .eq("is_read", false);
   if (error) throw new Error(error.message);
+  invalidatePageReads();
 }
 
 export async function subscribeToNotifications(onChange: () => void) {
@@ -92,7 +98,10 @@ export async function subscribeToNotifications(onChange: () => void) {
         table: "notifications",
         filter: `user_id=eq.${userId}`,
       },
-      onChange,
+      () => {
+        invalidatePageReads();
+        onChange();
+      },
     )
     .subscribe();
   return () => {

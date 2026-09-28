@@ -42,12 +42,12 @@ export default function MarketplaceCard({ listing, onClick, rating }: Props) {
     return (
       <button
         type="button"
-        className="block h-full w-full rounded-2xl text-left focus-visible:outline-2 focus-visible:outline-primary"
+        className="block h-full w-full rounded-lg text-left focus-visible:outline-2 focus-visible:outline-primary"
         onClick={onClick}
         disabled={!onClick}
       >
-        <Card className="flex h-full min-h-[280px] w-full flex-col gap-0 overflow-hidden rounded-2xl border border-border bg-card p-0 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md">
-          <div className="flex items-start justify-between gap-3 border-b bg-primary/5 p-4">
+        <Card className="flex h-full min-h-[280px] w-full flex-col gap-0 overflow-hidden rounded-lg border border-border bg-card p-0 shadow-sm transition hover:border-primary/40 hover:shadow-sm">
+          <div className="flex items-start justify-between gap-3 border-b bg-muted/35 p-4">
             <div className="flex min-w-0 items-center gap-3">
               <Avatar className="h-10 w-10 shrink-0">
                 <AvatarImage
@@ -86,22 +86,22 @@ export default function MarketplaceCard({ listing, onClick, rating }: Props) {
               {listing.description}
             </p>
 
-            <div className="mt-auto grid grid-cols-2 gap-3 border-t pt-4">
+            <div className="mt-auto grid grid-cols-1 sm:grid-cols-2 gap-3 border-t pt-4">
               <div className="min-w-0">
                 <p className="flex items-center gap-1.5 text-xs uppercase text-muted-foreground">
                   <Wallet className="h-3.5 w-3.5" />
                   Budget
                 </p>
-                <p className="mt-1 truncate text-sm font-semibold">
+                <p className="mt-1 break-words text-sm font-semibold">
                   {priceLabel}
                 </p>
               </div>
-              <div className="min-w-0 text-right">
-                <p className="flex items-center justify-end gap-1.5 text-xs uppercase text-muted-foreground">
+              <div className="min-w-0 sm:text-right">
+                <p className="flex items-center sm:justify-end gap-1.5 text-xs uppercase text-muted-foreground">
                   <CalendarDays className="h-3.5 w-3.5" />
                   Deadline
                 </p>
-                <p className="mt-1 truncate text-sm font-medium">
+                <p className="mt-1 break-words text-sm font-medium">
                   {listing.deadline
                     ? new Date(listing.deadline).toLocaleDateString("en-PH")
                     : "Flexible"}
@@ -117,11 +117,11 @@ export default function MarketplaceCard({ listing, onClick, rating }: Props) {
   return (
     <button
       type="button"
-      className="block h-full w-full rounded-2xl text-left focus-visible:outline-2 focus-visible:outline-primary"
+      className="block h-full w-full rounded-lg text-left focus-visible:outline-2 focus-visible:outline-primary"
       onClick={onClick}
       disabled={!onClick}
     >
-      <Card className="w-full gap-0 overflow-hidden rounded-2xl border bg-card p-0 transition hover:-translate-y-0.5 hover:shadow-md">
+      <Card className="w-full gap-0 overflow-hidden rounded-lg border bg-card p-0 transition hover:-translate-y-0.5 hover:shadow-md">
         <div className="relative aspect-[1.7/1] w-full overflow-hidden bg-muted">
           {isService && listing.cover_image_url ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -157,7 +157,7 @@ export default function MarketplaceCard({ listing, onClick, rating }: Props) {
             </div>
           </div>
 
-          <h3 className="line-clamp-2 text-sm font-medium leading-[1.35]">
+          <h3 className="line-clamp-2 text-base font-semibold leading-snug">
             {listing.title}
           </h3>
 

@@ -1,3 +1,4 @@
+import { invalidatePageReads } from "@/lib/pageReadCache";
 import { supabase } from "@/lib/supabaseClient";
 import type {
   CreateListingPayload,
@@ -307,7 +308,7 @@ async function createClientJob(
   }
 }
 
-export async function createListing(
+async function createListingUncached(
   payload: CreateListingPayload,
 ): Promise<CreateListingResult> {
   const user = await getAuthenticatedUser();
@@ -320,4 +321,11 @@ export async function createListing(
   return createClientJob(user.id, payload);
 }
 
+export async function createListing(
+  ...args: Parameters<typeof createListingUncached>
+) {
+  const result = await createListingUncached(...args);
+  invalidatePageReads();
+  return result;
+}
 export const createService = createListing;

@@ -103,6 +103,7 @@ export type PortfolioProject = {
 
   project_url: string | null;
   thumbnail_image_id: string | null;
+  images?: PortfolioImage[];
 
   created_at: string;
 };
@@ -252,6 +253,13 @@ export type CategorySkill = {
  * that can be edited through the profile UI.
  */
 export type UpdateProfilePayload = {
+  years_of_experience?: number;
+  employment_preference?: string | null;
+  portfolio_website?: string | null;
+  linkedin_url?: string | null;
+  github_url?: string | null;
+  skill_ids?: string[];
+  category_ids?: string[];
   /* ---------------- profiles ---------------- */
 
   first_name?: string;

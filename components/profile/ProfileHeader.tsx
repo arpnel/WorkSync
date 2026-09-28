@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { Camera, Pencil, Star } from "lucide-react";
+import { Camera, Pencil, Star, MapPin, BriefcaseBusiness } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -40,7 +40,7 @@ export default function ProfileHeader({
   return (
     <Card className="gap-0 overflow-hidden rounded-2xl border p-0 shadow-sm">
       {/* Banner */}
-      <div className="relative h-32 w-full overflow-hidden sm:h-44 lg:h-48">
+      <div className="relative h-32 w-full overflow-hidden sm:h-40 lg:h-44">
         {profile.banner_url ? (
           <Image
             fill
@@ -51,11 +51,11 @@ export default function ProfileHeader({
             className="absolute inset-0 h-full w-full object-cover object-center"
           />
         ) : (
-          <div className="absolute inset-0 bg-primary/15" />
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-primary/5 to-muted" />
         )}
 
         {/* Dark overlay */}
-        <div className="absolute inset-0 bg-black/30" />
+        <div className="absolute inset-0 bg-black/5" />
 
         {isOwner && (
           <Button
@@ -75,15 +75,15 @@ export default function ProfileHeader({
         <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
           {/* Left */}
           <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-end">
-            <Avatar className="-mt-10 h-24 w-24 shrink-0 border-4 border-background shadow-xl">
+            <Avatar className="-mt-10 h-24 w-24 shrink-0 border-4 border-card shadow-sm">
               <AvatarImage src={avatar} />
-              <AvatarFallback className="text-5xl font-bold">
+              <AvatarFallback className="text-3xl font-semibold">
                 {initials}
               </AvatarFallback>
             </Avatar>
 
             <div className="min-w-0 pb-1">
-              <h1 className="break-words text-2xl font-semibold tracking-tight">
+              <h1 className="break-words text-xl sm:text-2xl font-semibold tracking-tight">
                 {displayName}
               </h1>
 
@@ -91,6 +91,18 @@ export default function ProfileHeader({
                 <p className="mt-1 text-muted-foreground">{profile.headline}</p>
               )}
 
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5 capitalize">
+                  <BriefcaseBusiness className="size-3.5" />
+                  {profile.role}
+                </span>
+                {profile.location && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <MapPin className="size-3.5" />
+                    {profile.location}
+                  </span>
+                )}
+              </div>
               {profile.rating !== null && (
                 <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
                   <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
@@ -107,9 +119,14 @@ export default function ProfileHeader({
 
           {/* Right */}
           {isOwner && (
-            <Button variant="outline" size="sm" onClick={onEdit}>
-              <Pencil className="mr-2 h-4 w-4" />
-              Edit Profile
+            <Button
+              variant="outline"
+              size="icon"
+              className="rounded-full"
+              aria-label="Edit profile"
+              onClick={onEdit}
+            >
+              <Pencil className="h-4 w-4" />
             </Button>
           )}
         </div>

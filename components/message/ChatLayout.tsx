@@ -12,7 +12,7 @@ export default function ChatLayout({
   mobileChatOpen = false,
 }: ChatLayoutProps) {
   return (
-    <div className="flex h-[calc(100dvh-6rem)] min-h-0 sm:h-[calc(100dvh-7rem)] w-full flex-col overflow-hidden rounded-xl border bg-background">
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-xl border bg-background">
       <div className="flex min-h-0 min-w-0 flex-1">
         <div
           className={cn(

@@ -1,4 +1,6 @@
-﻿import { supabase } from "@/lib/supabaseClient";
+import { clearProjectReadCache } from "@/lib/projectReadCache";
+import { invalidatePageReads } from "@/lib/pageReadCache";
+import { supabase } from "@/lib/supabaseClient";
 
 export function databaseError(error: {
   code?: string;
@@ -40,5 +42,7 @@ export async function platformAction(
     );
   }
   if (error) throw databaseError(error);
+  invalidatePageReads();
+  clearProjectReadCache();
   return data;
 }

@@ -2,6 +2,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  ShieldCheck,
+  MessageSquareWarning,
+  CircleX,
+  Loader2,
+  Paperclip,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -96,11 +103,19 @@ export function ProjectResolutionPanel({
     setReason("");
     setError("");
     setFile(undefined);
+    setCategory("delivery");
+    setMilestone("");
   };
   return (
-    <Card>
+    <Card className="border-0 bg-transparent shadow-none">
       <CardHeader>
-        <CardTitle className="text-base">Project resolution</CardTitle>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <ShieldCheck className="size-5 text-primary" /> Find a way forward
+        </CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Discuss an issue or agree to end the project. Your request and
+          responses stay in the project history.
+        </p>
       </CardHeader>
       <CardContent className="space-y-3">
         {held && (
@@ -117,7 +132,7 @@ export function ProjectResolutionPanel({
             </Button>
           </p>
         )}
-        <div className="flex flex-wrap gap-2">
+        <div className="grid gap-3 sm:grid-cols-2">
           {canRequestCancellation(
             orderStatus ?? status,
             projectId ? status : null,
@@ -125,18 +140,32 @@ export function ProjectResolutionPanel({
             <Button
               variant="outline"
               disabled={busy || !!held || !data}
+              className="h-auto items-start justify-start gap-3 whitespace-normal rounded-xl p-4 text-left"
               onClick={() => begin("cancel")}
             >
-              Request cancellation
+              <CircleX className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+              <span>
+                Request cancellation
+                <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                  Ask the other participant to end the agreement.
+                </span>
+              </span>
             </Button>
           )}
           {projectId && canOpenDispute(status) && (
             <Button
               variant="outline"
               disabled={busy || !!held || !data}
+              className="h-auto items-start justify-start gap-3 whitespace-normal rounded-xl p-4 text-left"
               onClick={() => begin("dispute")}
             >
-              Open dispute
+              <MessageSquareWarning className="mt-0.5 size-5 shrink-0 text-primary" />
+              <span>
+                Open dispute
+                <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                  Ask for help resolving a delivery or agreement issue.
+                </span>
+              </span>
             </Button>
           )}
         </div>
@@ -203,8 +232,8 @@ export function ProjectResolutionPanel({
             if (!open && !busy) setMode(null);
           }}
         >
-          <DialogContent>
-            <DialogHeader>
+          <DialogContent className="flex max-h-[92dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+            <DialogHeader className="shrink-0 border-b bg-muted/20 px-6 py-5 pr-12">
               <DialogTitle>
                 {mode === "dispute"
                   ? "Open a dispute"
@@ -213,13 +242,13 @@ export function ProjectResolutionPanel({
                     : "Respond to cancellation"}
               </DialogTitle>
               <DialogDescription>
-                Unconfirmed requests can end immediately. Signed work requires
-                the other participant&apos;s approval. No refund or payment
-                release occurs here.
+                {mode === "dispute"
+                  ? "Tell us what happened and what would help resolve it. Delivery decisions and automatic release eligibility pause while the dispute is open."
+                  : "Signed work requires the other participant’s approval to cancel. Requesting cancellation pauses delivery decisions and automatic release eligibility. Refunds require separate payment processing."}
               </DialogDescription>
             </DialogHeader>
             <form
-              className="space-y-3"
+              className="min-h-0 space-y-5 overflow-y-auto overscroll-contain p-6"
               onSubmit={async (e) => {
                 e.preventDefault();
                 if (busy) return;
@@ -258,13 +287,11 @@ export function ProjectResolutionPanel({
             >
               {mode === "dispute" && (
                 <>
-                  <label className="block text-sm">
-                    Category
-                    <select
-                      className="w-full rounded-md border bg-background p-2"
-                      value={category}
-                      onChange={(e) => setCategory(e.target.value)}
-                    >
+                  <fieldset disabled={busy} className="space-y-3">
+                    <legend className="text-sm font-medium">
+                      What is the issue?
+                    </legend>
+                    <div className="grid grid-cols-1 gap-2 min-[400px]:grid-cols-2 sm:grid-cols-3">
                       {[
                         "delivery",
                         "scope",
@@ -272,31 +299,63 @@ export function ProjectResolutionPanel({
                         "communication",
                         "other",
                       ].map((c) => (
-                        <option key={c}>{c}</option>
+                        <label
+                          key={c}
+                          className="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-3 text-sm capitalize transition-colors has-checked:border-primary has-checked:bg-primary/5 has-checked:text-primary"
+                        >
+                          <input
+                            type="radio"
+                            name="dispute-category"
+                            value={c}
+                            checked={category === c}
+                            onChange={() => setCategory(c)}
+                            className="accent-primary"
+                          />
+                          {c}
+                        </label>
                       ))}
-                    </select>
-                  </label>
+                    </div>
+                  </fieldset>
                   {milestones.length > 0 && (
-                    <label className="block text-sm">
-                      Related milestone
-                      <select
-                        className="w-full rounded-md border bg-background p-2"
-                        value={milestone}
-                        onChange={(e) => setMilestone(e.target.value)}
-                      >
-                        <option value="">Overall project</option>
-                        {milestones.map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {m.title}
-                          </option>
+                    <fieldset disabled={busy} className="space-y-2">
+                      <legend className="text-sm font-medium">
+                        Related work
+                      </legend>
+                      <div className="max-h-40 space-y-1 overflow-y-auto rounded-xl border p-2">
+                        {[
+                          { id: "", title: "Overall project" },
+                          ...milestones,
+                        ].map((m) => (
+                          <label
+                            key={m.id}
+                            className="flex cursor-pointer items-start gap-3 rounded-lg p-2 text-sm has-checked:bg-primary/5"
+                          >
+                            <input
+                              type="radio"
+                              name="dispute-milestone"
+                              checked={milestone === m.id}
+                              onChange={() => setMilestone(m.id)}
+                              className="mt-1 accent-primary"
+                            />
+                            <span className="min-w-0 break-words">
+                              {m.title}
+                            </span>
+                          </label>
                         ))}
-                      </select>
-                    </label>
+                      </div>
+                    </fieldset>
                   )}
                   <label className="block text-sm">
-                    Evidence (optional, 10 MB)
+                    <span className="mb-2 flex items-center gap-2 font-medium">
+                      <Paperclip className="size-4" />
+                      Evidence{" "}
+                      <span className="font-normal text-muted-foreground">
+                        Optional, up to 10 MB
+                      </span>
+                    </span>
                     <Input
                       type="file"
+                      disabled={busy}
                       onChange={(e) => setFile(e.target.files?.[0])}
                     />
                   </label>
@@ -306,6 +365,10 @@ export function ProjectResolutionPanel({
                 Reason / response
                 <Textarea
                   required
+                  disabled={busy}
+                  rows={5}
+                  className="mt-2 resize-y"
+                  placeholder="Describe the issue, what you have tried, and the outcome you are asking for."
                   maxLength={5000}
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
@@ -316,7 +379,28 @@ export function ProjectResolutionPanel({
                   {error}
                 </p>
               )}
-              <Button disabled={busy || !reason.trim()}>Confirm</Button>
+              <div className="flex flex-wrap justify-end gap-2 border-t pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => setMode(null)}
+                >
+                  Back
+                </Button>
+                <Button disabled={busy || !reason.trim()}>
+                  {busy && <Loader2 className="size-4 animate-spin" />}
+                  {busy
+                    ? "Sending..."
+                    : mode === "dispute"
+                      ? "Submit dispute"
+                      : mode === "cancel"
+                        ? "Send cancellation request"
+                        : mode === "accept"
+                          ? "Accept cancellation"
+                          : "Decline cancellation"}
+                </Button>
+              </div>
             </form>
           </DialogContent>
         </Dialog>

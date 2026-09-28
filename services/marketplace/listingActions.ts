@@ -1,4 +1,5 @@
-﻿import { supabase } from "@/lib/supabaseClient";
+import { readPageCache, invalidatePageReads } from "@/lib/pageReadCache";
+import { supabase } from "@/lib/supabaseClient";
 import {
   databaseError,
   platformAction,
@@ -6,7 +7,10 @@ import {
 } from "@/services/platform/platformService";
 export type ListingKind = "service" | "job";
 export const listingKey = (kind: ListingKind, id: string) => `${kind}:${id}`;
-export async function getSavedListings(): Promise<Set<string>> {
+export function getSavedListings(): Promise<Set<string>> {
+  return readPageCache("saved-listings", fetchSavedListings);
+}
+async function fetchSavedListings(): Promise<Set<string>> {
   const user = await requireUser();
   const results = await Promise.all([
     supabase.from("saved_services").select("service_id").eq("user_id", user.id),
@@ -38,6 +42,7 @@ export async function saveListing(
         )
     : await supabase.from(table).delete().eq("user_id", user.id).eq(column, id);
   if (result.error) throw databaseError(result.error);
+  invalidatePageReads();
 }
 export const reportReasons = [
   "Scam",
@@ -102,7 +107,15 @@ export async function applyForJob(
     );
   return result.applicationId as string;
 }
-export async function getFreelancerRatings(
+export function getFreelancerRatings(
+  ids: string[],
+): Promise<Map<string, number>> {
+  const unique = [...new Set(ids)].sort();
+  return readPageCache("ratings:" + unique.join(","), () =>
+    fetchFreelancerRatings(unique),
+  );
+}
+async function fetchFreelancerRatings(
   ids: string[],
 ): Promise<Map<string, number>> {
   if (!ids.length) return new Map();

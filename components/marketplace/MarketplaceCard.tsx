@@ -161,7 +161,7 @@ export default function MarketplaceCard({ listing, onClick, rating }: Props) {
             {listing.title}
           </h3>
 
-          {listing.freelancer?.verification_status === "verified" && (
+          {listing.freelancer?.verification_status === "approved" && (
             <p className="flex items-center gap-1.5 text-xs font-medium text-primary">
               <ShieldCheck className="size-3.5" aria-hidden="true" />
               Verified freelancer

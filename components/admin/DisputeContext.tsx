@@ -1,51 +1,30 @@
 ﻿"use client";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import { useEffect, useState } from "react";
-import { platformAction } from "@/services/platform/platformService";
-import {
-  openProjectAttachment,
-  type WorkSubmission,
-  type RevisionRequest,
-} from "@/services/project/projectDeliveryService";
+import { getAdminDisputeContext } from "@/services/admin/adminService";
+import type { AdminDisputeContext } from "@/services/admin/adminResponses";
+import { openProjectAttachment } from "@/services/project/projectDeliveryService";
 import { Button } from "@/components/ui/button";
-type Context = {
-  project: {
-    title: string;
-    status: string;
-    budget: number | null;
-    due_date: string | null;
-  };
-  contract: {
-    final_price: number;
-    delivery_time_days: number;
-    revisions_count: number;
-    terms: string;
-    status: string;
-  } | null;
-  dispute: { evidence_path: string | null; resolution: string | null };
-  parties: { role: string; display_name: string | null; user_id: string }[];
-  milestones: { milestone_id: string; title: string; status: string }[];
-  submissions: WorkSubmission[];
-  revisions: RevisionRequest[];
-  messages: {
-    message_id: string;
-    sender_id: string;
-    message: string | null;
-    created_at: string;
-  }[];
-};
 export default function DisputeContext({ id }: { id: string }) {
-  const [data, setData] = useState<Context | null>(null),
+  const [data, setData] = useState<AdminDisputeContext | null>(null),
     [error, setError] = useState(""),
     [retry, setRetry] = useState(0);
   useEffect(() => {
     let alive = true;
-    void platformAction("worksync_dispute_context", { p_id: id })
+    void getAdminDisputeContext(id)
       .then((result) => {
-        if (alive) setData(result);
+        if (alive) {
+          setData(result);
+          setError("");
+        }
       })
       .catch((e) => {
-        if (alive) setError(e.message);
+        if (alive) {
+          setData(null);
+          setError(
+            e instanceof Error ? e.message : "Unable to load dispute context.",
+          );
+        }
       });
     return () => {
       alive = false;
@@ -70,10 +49,12 @@ export default function DisputeContext({ id }: { id: string }) {
         </p>
       )}
       {!data ? (
-        <ContentSkeleton
-          label="Loading dispute context"
-          variant="verification-settings"
-        />
+        error ? null : (
+          <ContentSkeleton
+            label="Loading dispute context"
+            variant="verification-settings"
+          />
+        )
       ) : (
         <>
           <h3 className="font-semibold">

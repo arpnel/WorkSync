@@ -109,7 +109,6 @@ export function DocumentsEditor({
         .select("freelancer_id")
         .single();
       if (result.error) throw result.error;
-      onSaved();
     } catch (cause) {
       await Promise.all(
         uploaded.map((file) =>
@@ -119,8 +118,17 @@ export function DocumentsEditor({
       setError(
         cause instanceof Error ? cause.message : "Unable to save documents.",
       );
+      return;
     } finally {
       setBusy(false);
+    }
+    // A refresh callback failure must not delete files already saved to the profile.
+    try {
+      await onSaved();
+    } catch {
+      setError(
+        "Documents were saved, but the profile could not refresh. Reload the page to see your changes.",
+      );
     }
   }
   return (

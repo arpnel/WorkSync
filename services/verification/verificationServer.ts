@@ -6,11 +6,16 @@ import {
   VerificationError,
   decisionSchema,
   diditRequest,
-  hasApprovedDocument,
+  verificationStatusFor,
   verificationUrl,
 } from "@/lib/verification/didit";
+import {
+  ensureVerificationRequest,
+  findVerificationRequest,
+  persistVerificationResult,
+} from "./verificationPersistence";
 
-// Temporary persistence adapter until the user supplies the table/column map.
+// Compatibility/session association only; verification_requests owns workflow state.
 // app_metadata is admin-writable; NEVER read a decision from user_metadata.
 const stateSchema = z.object({
   session_id: z.string().uuid(),
@@ -58,6 +63,8 @@ async function freshUser(id: string) {
     data: { user },
     error,
   } = await admin().auth.admin.getUserById(id);
+  if (error?.status === 404 || (!error && (!user || user.id !== id)))
+    throw new VerificationError("Unknown WorkSync verification account.", 404);
   if (error || !user)
     throw new VerificationError("Verification account could not be loaded.");
   return user;
@@ -96,11 +103,15 @@ export async function getVerification(user: User) {
       canStart: !!process.env.DIDIT_API_KEY,
     };
   const decision = await decisionFor(user.id, state);
+  const request = await findVerificationRequest(admin(), user.id, state);
   // A browser callback/poll can show progress, but only the signed webhook
   // can grant verified status. Revocation is reflected immediately on reads.
   return {
     status: decision.status,
-    verified: state.verified && hasApprovedDocument(decision),
+    verified:
+      request?.is_current === true &&
+      request.status === "approved" &&
+      verificationStatusFor(decision).profileStatus === "approved",
     canStart: true,
   };
 }
@@ -122,7 +133,17 @@ export function startVerification(userId: string) {
     const user = await freshUser(userId);
     const state = stateOf(user);
     if (state) {
+      await ensureVerificationRequest(admin(), user.id, state);
       const decision = await decisionFor(userId, state);
+      if (decision.status !== "Approved") {
+        await persistVerificationResult(
+          admin(),
+          user.id,
+          state,
+          decision.status,
+          verificationStatusFor(decision, false),
+        );
+      }
       if (decision.status === "Approved")
         throw new VerificationError(
           "Your verification has been submitted. Refresh its status to confirm the result.",
@@ -148,6 +169,24 @@ export function startVerification(userId: string) {
           429,
         );
     }
+    const conflicts = await admin()
+      .from("verification_requests")
+      .select("request_id,provider,status,is_current")
+      .eq("user_id", user.id)
+      .or("is_current.eq.true,status.eq.pending");
+    if (conflicts.error)
+      throw new VerificationError(
+        "Existing verification requests could not be checked.",
+      );
+    if (
+      conflicts.data?.some(
+        (row) => row.status === "pending" || row.provider !== "didit",
+      )
+    )
+      throw new VerificationError(
+        "An existing verification request must be resolved before starting another.",
+        409,
+      );
     const callback = process.env.APP_URL
       ? new URL("/verify/done", process.env.APP_URL).toString()
       : undefined;
@@ -161,14 +200,26 @@ export function startVerification(userId: string) {
         }),
       );
     const url = verificationUrl(session.url);
-    await save(user, {
+    const nextState: State = {
       session_id: session.session_id,
       workflow_id: DIDIT_WORKFLOW_ID,
       url,
       status: "Not Started",
       verified: false,
       created_at: Date.now(),
-    });
+    };
+    // Persist association first so a failed table write is recoverable on retry.
+    await save(user, nextState);
+    await persistVerificationResult(
+      admin(),
+      user.id,
+      nextState,
+      "Not Started",
+      {
+        requestStatus: "pending",
+        profileStatus: "pending",
+      },
+    );
     return { url, session_id: session.session_id };
   });
 }
@@ -178,13 +229,17 @@ export const eventSchema = z.object({
   session_id: z.string().uuid(),
   vendor_data: z.string().uuid(),
   workflow_id: z.string().uuid().optional(),
-  timestamp: z.number(),
-  environment: z.string().optional(),
+  timestamp: z.number().finite().int().nonnegative(),
+  created_at: z.number().finite().int().nonnegative().optional(),
+  environment: z.enum(["live", "sandbox"]).optional(),
   sandbox_scenario: z.unknown().optional(),
 });
 export async function applyVerificationEvent(
   event: z.infer<typeof eventSchema>,
 ) {
+  event = eventSchema.parse(event);
+  if (event.webhook_type !== "status.updated")
+    throw new VerificationError("Unsupported verification event.", 400);
   return serial(event.vendor_data, async () => {
     let user = await freshUser(event.vendor_data);
     let state = stateOf(user);
@@ -193,11 +248,11 @@ export async function applyVerificationEvent(
       state.session_id !== event.session_id ||
       (event.workflow_id && event.workflow_id !== DIDIT_WORKFLOW_ID)
     )
-      return;
-    if (
-      state.last_event_id === event.event_id ||
-      (state.last_event_at ?? 0) > event.timestamp
-    )
+      throw new VerificationError(
+        "Unknown or mismatched verification session.",
+        409,
+      );
+    if ((state.last_event_at ?? 0) > (event.created_at ?? event.timestamp))
       return;
     const decision = await decisionFor(user.id, state);
     // Re-read after the network call so an old session cannot replace a new one.
@@ -206,20 +261,34 @@ export async function applyVerificationEvent(
     if (
       !state ||
       state.session_id !== event.session_id ||
-      (state.last_event_at ?? 0) > event.timestamp
+      (state.last_event_at ?? 0) > (event.created_at ?? event.timestamp)
+    )
+      return;
+    const mapped = verificationStatusFor(
+      decision,
+      event.environment !== "sandbox" && !event.sandbox_scenario,
+    );
+    await persistVerificationResult(
+      admin(),
+      user.id,
+      state,
+      decision.status,
+      mapped,
+    );
+    if (
+      state.last_event_id === event.event_id &&
+      state.status === decision.status &&
+      state.verified === (mapped.profileStatus === "approved")
     )
       return;
     await save(user, {
       ...state,
       status: decision.status,
-      verified:
-        hasApprovedDocument(decision) &&
-        event.environment !== "sandbox" &&
-        !event.sandbox_scenario,
+      verified: mapped.profileStatus === "approved",
       last_event_id: event.event_id,
-      last_event_at: event.timestamp,
+      last_event_at: event.created_at ?? event.timestamp,
     });
-    // Event marker and decision share one write: failed persistence stays retryable.
+    // Metadata decision/event marker are last: failed table persistence stays retryable.
   });
 }
 export function verificationResponse(error: unknown) {

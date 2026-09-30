@@ -123,8 +123,8 @@ export async function reviewSubmission(
   if (action === "revision" && !instructions.trim())
     throw new Error("Explain the changes needed within the agreed scope.");
   await platformAction("worksync_review_submission", {
-    p_submission: id,
-    p_action: action,
+    p_submission_id: id,
+    p_approve: action === "approve",
     p_instructions: instructions.trim(),
   });
 }

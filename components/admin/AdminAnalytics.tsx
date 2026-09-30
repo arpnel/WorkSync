@@ -1,7 +1,7 @@
 ﻿"use client";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { platformAction } from "@/services/platform/platformService";
+import { getAdminAnalytics } from "@/services/admin/adminService";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -47,11 +47,11 @@ export default function AdminAnalytics() {
         throw new Error("Choose a valid date range.");
       const end = new Date(`${to}T00:00:00`);
       end.setDate(end.getDate() + 1);
-      const result = await platformAction("worksync_admin_analytics", {
-        p_from: new Date(`${from}T00:00:00`).toISOString(),
-        p_to: end.toISOString(),
-        p_status: status,
-      });
+      const result = await getAdminAnalytics(
+        new Date(`${from}T00:00:00`).toISOString(),
+        end.toISOString(),
+        status,
+      );
       if (id === version.current) setData(result);
     } catch (e) {
       if (id === version.current) {

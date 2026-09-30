@@ -2,10 +2,8 @@
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import {
-  databaseError,
-  platformAction,
-} from "@/services/platform/platformService";
+import { databaseError } from "@/services/platform/platformService";
+import { saveProjectMeeting } from "@/services/project/projectMeetingService";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -73,21 +71,23 @@ export default function ProjectMeetings({
     d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
     return d.toISOString().slice(0, 16);
   };
-  const save = async (cancelId?: string) => {
+  const save = async (cancelledMeeting?: Meeting) => {
     setBusy(true);
     setError("");
     try {
-      if (!cancelId && link && !/^https?:\/\//i.test(link))
+      if (!cancelledMeeting && link && !/^https?:\/\//i.test(link))
         throw new Error("Use an HTTP or HTTPS meeting link.");
-      await platformAction("worksync_save_meeting", {
-        p_id: cancelId ?? editing,
-        p_project: projectId,
-        p_title: title,
-        p_start: cancelId ? null : new Date(start).toISOString(),
-        p_end: cancelId ? null : new Date(end).toISOString(),
-        p_link: link || null,
-        p_cancel: !!cancelId,
-      });
+      await saveProjectMeeting(
+        projectId,
+        cancelledMeeting ?? {
+          meeting_id: editing === false ? null : editing,
+          title,
+          starts_at: new Date(start).toISOString(),
+          ends_at: new Date(end).toISOString(),
+          link: link || null,
+        },
+        cancelledMeeting ? "cancelled" : "scheduled",
+      );
       setEditing(false);
       await load();
     } catch (e) {
@@ -165,7 +165,7 @@ export default function ProjectMeetings({
                   variant="ghost"
                   size="sm"
                   disabled={busy}
-                  onClick={() => void save(m.meeting_id)}
+                  onClick={() => void save(m)}
                 >
                   Cancel meeting
                 </Button>

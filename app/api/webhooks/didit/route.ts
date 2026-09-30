@@ -30,6 +30,13 @@ export async function POST(request: Request) {
     await applyVerificationEvent(event.data);
     return Response.json({ received: true });
   } catch (error) {
+    console.warn("Didit webhook processing failed", {
+      status: error instanceof VerificationError ? error.status : 503,
+      reason:
+        error instanceof VerificationError
+          ? error.message
+          : "Unexpected verification processing failure",
+    });
     return verificationResponse(error);
   }
 }

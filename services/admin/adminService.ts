@@ -1,4 +1,37 @@
 ﻿import { platformAction } from "@/services/platform/platformService";
+import { supabase } from "@/lib/supabaseClient";
+import {
+  parseAdminAnalytics,
+  parseAdminRecords,
+  parseAdminDisputeContext,
+} from "./adminResponses";
+
+async function adminRead(name: string, args: Record<string, unknown>) {
+  const { data, error } = await supabase.rpc(name, args);
+  if (error)
+    throw new Error(
+      `Unable to load admin data (${name}, ${error.code || "unknown"}): ${error.message}`,
+    );
+  return data;
+}
+export async function getAdminDisputeContext(id: string) {
+  return parseAdminDisputeContext(
+    await adminRead("worksync_dispute_context", { p_id: id }),
+  );
+}
+export async function getAdminAnalytics(
+  from: string,
+  to: string,
+  status: string,
+) {
+  return parseAdminAnalytics(
+    await adminRead("worksync_admin_analytics", {
+      p_from: from,
+      p_to: to,
+      p_status: status,
+    }),
+  );
+}
 export type AdminModule =
   | "transactions"
   | "disputes"
@@ -29,16 +62,16 @@ export async function getAdminRecords(
   search: string,
   page: number,
 ): Promise<AdminResult> {
-  if (module === "disputes")
-    return platformAction("worksync_list_disputes", {
+  const rpc =
+    module === "disputes" ? "worksync_list_disputes" : "worksync_admin_records";
+  return parseAdminRecords(
+    await adminRead(rpc, {
+      ...(module === "disputes" ? {} : { p_module: module }),
       p_search: search.trim(),
       p_offset: page * 25,
-    });
-  return platformAction("worksync_admin_records", {
-    p_module: module,
-    p_search: search.trim(),
-    p_offset: page * 25,
-  }) as Promise<AdminResult>;
+    }),
+    rpc,
+  );
 }
 export async function reviewAdminRecord(
   module: AdminModule,

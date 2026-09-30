@@ -50,6 +50,18 @@ export function hasApprovedDocument(decision: DiditDecision) {
     )
   );
 }
+export function verificationStatusFor(
+  decision: DiditDecision,
+  allowApproval = true,
+) {
+  if (decision.status === "Declined")
+    return { requestStatus: "rejected", profileStatus: "rejected" } as const;
+  if (["Expired", "Kyc Expired", "Abandoned"].includes(decision.status))
+    return { requestStatus: "expired", profileStatus: "pending" } as const;
+  if (allowApproval && hasApprovedDocument(decision))
+    return { requestStatus: "approved", profileStatus: "approved" } as const;
+  return { requestStatus: "pending", profileStatus: "pending" } as const;
+}
 export async function diditRequest(
   path: string,
   body?: Record<string, unknown>,

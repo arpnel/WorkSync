@@ -57,10 +57,12 @@ export default function AdminRecords({
       const result = await getAdminRecords(module, search, page);
       if (request === sequence.current) setData(result);
     } catch (cause) {
-      if (request === sequence.current)
+      if (request === sequence.current) {
+        setData(null);
         setError(
           cause instanceof Error ? cause.message : "Unable to load records.",
         );
+      }
     } finally {
       if (request === sequence.current) setLoading(false);
     }
@@ -176,7 +178,7 @@ export default function AdminRecords({
               </TableBody>
             </Table>
           )}
-          {!loading && !data?.rows.length && (
+          {!loading && !error && data?.rows.length === 0 && (
             <p className="py-4 text-sm text-muted-foreground">
               No matching records.
             </p>
@@ -235,7 +237,7 @@ export default function AdminRecords({
               variant="outline"
               onClick={async () => {
                 const { data, error } = await supabase.storage
-                  .from("verification-documents")
+                  .from("verification")
                   .createSignedUrl(path, 60);
                 if (error) setError(error.message);
                 else

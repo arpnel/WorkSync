@@ -37,6 +37,9 @@ function load(path, modules = {}, extra = {}) {
   return exports;
 }
 const didit = load("lib/verification/didit.ts");
+const persistence = load("services/verification/verificationPersistence.ts", {
+  "@/lib/verification/didit": didit,
+});
 const userId = "11111111-1111-4111-a111-111111111111";
 const sessionId = "22222222-2222-4222-a222-222222222222";
 const eventId = "33333333-3333-4333-a333-333333333333";
@@ -132,6 +135,7 @@ function verificationHarness({
   vendor = userId,
   status = "Approved",
   verified = false,
+  noSession = false,
 } = {}) {
   let saves = 0;
   const user = {
@@ -150,6 +154,7 @@ function verificationHarness({
     },
   };
   const db = {
+    ...require("./helpers/verification-db.cjs")(),
     auth: {
       admin: {
         getUserById: async () => ({ data: { user }, error: null }),
@@ -162,19 +167,27 @@ function verificationHarness({
       },
     },
   };
+  if (noSession) delete user.app_metadata.worksync_didit;
   const server = load("services/verification/verificationServer.ts", {
+    "./verificationPersistence": persistence,
     "@supabase/supabase-js": { createClient: () => db },
     "@/lib/verification/didit": {
       ...didit,
-      diditRequest: async () => ({
-        session_id: sessionId,
-        workflow_id: didit.DIDIT_WORKFLOW_ID,
-        vendor_data: vendor,
-        status,
-        id_verifications: [
-          { status: "Approved", verification_method: "document" },
-        ],
-      }),
+      diditRequest: async (path) =>
+        path === "session/"
+          ? {
+              session_id: eventId,
+              url: "https://verify.didit.me/new-session",
+            }
+          : {
+              session_id: sessionId,
+              workflow_id: didit.DIDIT_WORKFLOW_ID,
+              vendor_data: vendor,
+              status,
+              id_verifications: [
+                { status: "Approved", verification_method: "document" },
+              ],
+            },
     },
   });
   const event = {
@@ -186,7 +199,7 @@ function verificationHarness({
     timestamp: 1234,
     environment: "live",
   };
-  return { user, server, event, saves: () => saves };
+  return { user, server, event, db, saves: () => saves };
 }
 test("browser status poll cannot grant approval from SDK/user metadata", async () => {
   const h = verificationHarness();
@@ -212,7 +225,10 @@ test("failed persistence stays retryable without consuming event ID", async () =
 test("old sessions, wrong workflow/vendor, and sandbox events cannot approve", async () => {
   for (const changes of [{ session_id: eventId }, { workflow_id: eventId }]) {
     const h = verificationHarness();
-    await h.server.applyVerificationEvent({ ...h.event, ...changes });
+    await assert.rejects(
+      h.server.applyVerificationEvent({ ...h.event, ...changes }),
+      /session/,
+    );
     assert.equal(h.saves(), 0);
   }
   const wrong = verificationHarness({ vendor: "another-user" });
@@ -232,6 +248,149 @@ test("expired or declined decisions revoke a previously verified identity", asyn
     await h.server.applyVerificationEvent(h.event);
     assert.equal(h.user.app_metadata.worksync_didit.verified, false);
   }
+});
+
+test("provider results synchronize the request and freelancer using only supported statuses", async () => {
+  for (const [status, requestStatus, profileStatus] of [
+    ["Approved", "approved", "approved"],
+    ["Declined", "rejected", "rejected"],
+    ["In Review", "pending", "pending"],
+    ["In Progress", "pending", "pending"],
+    ["Expired", "expired", "pending"],
+    ["Kyc Expired", "expired", "pending"],
+  ]) {
+    const h = verificationHarness({ status });
+    h.db.profiles.push({ user_id: userId, verification_status: "pending" });
+    await h.server.applyVerificationEvent(h.event);
+    await h.server.applyVerificationEvent(h.event);
+    assert.equal(h.db.requests.length, 1);
+    assert.equal(h.db.requests[0].provider, "didit");
+    assert.equal(h.db.requests[0].provider_session_id, sessionId);
+    assert.equal(h.db.requests[0].provider_status, status);
+    assert.equal(h.db.requests[0].status, requestStatus);
+    assert.equal(h.db.requests[0].is_current, true);
+    assert.equal(h.db.profiles[0].verification_status, profileStatus);
+  }
+});
+test("profile failure is retryable without another request or consumed metadata event", async () => {
+  const h = verificationHarness();
+  h.db.profiles.push({ user_id: userId, verification_status: "pending" });
+  h.db.failures.push({
+    table: "freelancer_profiles",
+    op: "update",
+    code: "42501",
+  });
+  await assert.rejects(
+    h.server.applyVerificationEvent(h.event),
+    /synchronized/,
+  );
+  assert.equal(h.user.app_metadata.worksync_didit.last_event_id, undefined);
+  await h.server.applyVerificationEvent(h.event);
+  assert.equal(h.db.requests.length, 1);
+  assert.equal(h.db.profiles[0].verification_status, "approved");
+  assert.equal(h.saves(), 1);
+});
+test("request failure never changes freelancer status or marks rejection", async () => {
+  const h = verificationHarness();
+  h.db.profiles.push({ user_id: userId, verification_status: "pending" });
+  h.db.failures.push({
+    table: "verification_requests",
+    op: "insert",
+    code: "23514",
+  });
+  await assert.rejects(
+    h.server.applyVerificationEvent(h.event),
+    /synchronized/,
+  );
+  assert.equal(h.db.requests.length, 0);
+  assert.equal(h.db.profiles[0].verification_status, "pending");
+  assert.equal(h.saves(), 0);
+});
+test("new sessions are tracked and pending sessions are reused", async () => {
+  const h = verificationHarness({ noSession: true });
+  h.db.profiles.push({ user_id: userId, verification_status: "rejected" });
+  await h.server.startVerification(userId);
+  assert.equal(h.db.requests[0].provider_session_id, eventId);
+  assert.equal(h.db.requests[0].status, "pending");
+  assert.equal(h.db.profiles[0].verification_status, "pending");
+  const resumed = verificationHarness({ status: "In Progress" });
+  await resumed.server.startVerification(userId);
+  await resumed.server.startVerification(userId);
+  assert.equal(resumed.db.requests.length, 1);
+});
+test("expired sessions release the current slot and a pending manual review is preserved", async () => {
+  const h = verificationHarness({ status: "Expired" });
+  await h.server.startVerification(userId);
+  assert.equal(h.db.requests.length, 2);
+  assert.equal(h.db.requests[0].status, "expired");
+  assert.equal(h.db.requests[0].is_current, false);
+  assert.equal(h.db.requests[1].is_current, true);
+  const blocked = verificationHarness({ noSession: true });
+  blocked.db.requests.push({
+    user_id: userId,
+    provider: "manual",
+    status: "pending",
+    is_current: true,
+  });
+  await assert.rejects(
+    blocked.server.startVerification(userId),
+    /existing verification/,
+  );
+  assert.equal(blocked.saves(), 0);
+  assert.equal(blocked.db.requests.length, 1);
+});
+test("concurrent registration uses the session unique key and rejects a mismatched owner", async () => {
+  const db = require("./helpers/verification-db.cjs")();
+  const session = {
+    session_id: sessionId,
+    workflow_id: didit.DIDIT_WORKFLOW_ID,
+    url: "https://verify.didit.me/session",
+  };
+  await Promise.all([
+    persistence.ensureVerificationRequest(db, userId, session),
+    persistence.ensureVerificationRequest(db, userId, session),
+  ]);
+  assert.equal(db.requests.length, 1);
+  await assert.rejects(
+    persistence.ensureVerificationRequest(db, eventId, session),
+    /association/,
+  );
+});
+test("unknown sessions and unsupported events never write verification data", async () => {
+  const h = verificationHarness({ noSession: true });
+  await assert.rejects(h.server.applyVerificationEvent(h.event), /session/);
+  await assert.rejects(
+    h.server.applyVerificationEvent({ ...h.event, webhook_type: "other" }),
+    /Unsupported/,
+  );
+  assert.equal(h.db.requests.length, 0);
+});
+test("signed malformed and invalid-signature webhook requests are rejected at the route", async () => {
+  const h = verificationHarness();
+  const route = load("app/api/webhooks/didit/route.ts", {
+    "@/lib/verification/didit": didit,
+    "@/services/verification/verificationServer": h.server,
+  });
+  const timestamp = Math.floor(Date.now() / 1000);
+  const body = { timestamp, webhook_type: "status.updated" };
+  const signature = crypto
+    .createHmac("sha256", "signing-secret")
+    .update(didit.canonicalJson(body))
+    .digest("hex");
+  for (const [signed, expected] of [
+    [signature, 400],
+    ["0".repeat(64), 401],
+  ]) {
+    const response = await route.POST(
+      new Request("https://example.com/api/webhooks/didit", {
+        method: "POST",
+        body: JSON.stringify(body),
+        headers: { "x-signature-v2": signed, "x-timestamp": String(timestamp) },
+      }),
+    );
+    assert.equal(response.status, expected);
+  }
+  assert.equal(h.db.requests.length, 0);
 });
 const constants = load("constants/account-setup.constants.ts");
 const validation = load("lib/validation/account-setup.validation.ts", {

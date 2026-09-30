@@ -16,7 +16,7 @@ import { SigninDialog } from "../auth/login/SigninDialog"
 
 const menuItems = [
     { name: 'Features', href: '#features' },
-    { name: 'Marketplace', href: '/home/marketplace' },
+    { name: 'Marketplace', href: '/#marketplace' },
     { name: 'About', href: '#about' },
 ]
 

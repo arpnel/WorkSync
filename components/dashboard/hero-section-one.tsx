@@ -35,7 +35,7 @@ export default function HeroSection() {
                                             size="lg"
                                             variant="outline"
                                             className="pl-5">
-                                            <Link href="/home/marketplace">Explore Freelancers</Link>
+                                            <Link href="/#marketplace">Explore Freelancers</Link>
                                         </Button>
                                     </div>
                                 </div>

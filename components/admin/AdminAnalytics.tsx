@@ -18,8 +18,8 @@ import {
 } from "@/components/ui/table";
 import {
   ResponsiveContainer,
-  BarChart,
-  Bar,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   Tooltip,
@@ -171,6 +171,7 @@ export default function AdminAnalytics() {
                   <AdminStatusChart
                     key={name}
                     title={`${name === "reports" ? "Reports" : "Disputes"} by status`}
+                    variant={name === "reports" ? "bar" : "donut"}
                     counts={counts}
                     description="Matching records for the selected dates and status."
                   />
@@ -192,20 +193,24 @@ export default function AdminAnalytics() {
                 ) : (
                   <div className="h-72 min-w-0">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={data.activity} accessibilityLayer>
+                      <LineChart data={data.activity} accessibilityLayer>
                         <XAxis dataKey="month" />
                         <YAxis allowDecimals={false} />
                         <Tooltip />
                         <Legend />
-                        <Bar
+                        <Line
+                          type="linear"
+                          strokeWidth={2.5}
                           dataKey="users"
-                          fill="var(--color-chart-1, #64748b)"
+                          stroke="var(--chart-1)"
                         />
-                        <Bar
+                        <Line
+                          type="linear"
+                          strokeWidth={2.5}
                           dataKey="projects"
-                          fill="var(--color-chart-2, #0d9488)"
+                          stroke="var(--chart-2)"
                         />
-                      </BarChart>
+                      </LineChart>
                     </ResponsiveContainer>
                   </div>
                 )}

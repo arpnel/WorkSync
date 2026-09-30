@@ -112,6 +112,24 @@ export default function AdminRecords({
     },
     {},
   );
+  // Only observed months from this loaded page; never claim platform-wide history.
+  const monthCounts = (data?.rows ?? []).reduce<Record<string, number>>(
+    (counts, row) => {
+      const date = new Date(row.created_at);
+      if (Number.isFinite(date.getTime())) {
+        const month =
+          date.getFullYear() +
+          "-" +
+          String(date.getMonth() + 1).padStart(2, "0");
+        counts[month] = (counts[month] ?? 0) + 1;
+      }
+      return counts;
+    },
+    {},
+  );
+  const timeline = Object.fromEntries(
+    Object.entries(monthCounts).sort(([a], [b]) => a.localeCompare(b)),
+  );
   return (
     <div className="min-w-0 space-y-6">
       <AdminPageHeader title={title} />
@@ -212,13 +230,47 @@ export default function AdminRecords({
           loaded page.
         </p>
       </div>
-      {!loading && data && (
-        <AdminStatusChart
-          title="Status snapshot"
-          description="Status counts for the loaded page, before page filters."
-          counts={statusCounts}
-        />
-      )}
+      {!loading &&
+        data &&
+        (module === "overview" ? (
+          <div className="grid items-start gap-4 xl:grid-cols-2">
+            <AdminStatusChart
+              title="Platform overview"
+              description="Current platform totals. Categories may overlap."
+              counts={data.stats ?? {}}
+              variant="bar"
+            />
+            <AdminStatusChart
+              title="Recent moderation activity"
+              description="Records by month on this loaded page only; not complete monthly totals."
+              counts={timeline}
+              variant="line"
+            />
+          </div>
+        ) : (
+          <AdminStatusChart
+            title={
+              module === "audit" || module === "transactions"
+                ? "Records over time"
+                : "Status breakdown"
+            }
+            description="Loaded page only, before page filters."
+            counts={
+              module === "audit" || module === "transactions"
+                ? timeline
+                : statusCounts
+            }
+            variant={
+              module === "audit" || module === "transactions"
+                ? "line"
+                : module === "verification" || module === "users"
+                  ? "donut"
+                  : module === "disputes" || module === "reports"
+                    ? "pie"
+                    : "bar"
+            }
+          />
+        ))}
       {error && (
         <div
           role="alert"

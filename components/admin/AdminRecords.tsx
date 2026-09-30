@@ -1,4 +1,7 @@
 ﻿"use client";
+import AdminPageHeader from "./AdminPageHeader";
+import { Badge } from "@/components/ui/badge";
+import { Search } from "lucide-react";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
@@ -89,8 +92,8 @@ export default function AdminRecords({
               ? ["hide", "restore"]
               : [];
   return (
-    <div className="space-y-5">
-      <h2 className="text-xl font-semibold">{title}</h2>
+    <div className="min-w-0 space-y-6">
+      <AdminPageHeader title={title} />
       {data?.stats && (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {Object.entries(data.stats).map(([label, value]) => (
@@ -99,26 +102,38 @@ export default function AdminRecords({
                 <p className="text-sm capitalize text-muted-foreground">
                   {label.replaceAll("_", " ")}
                 </p>
-                <p className="text-2xl font-semibold">{value}</p>
+                <p className="text-3xl font-semibold tracking-tight tabular-nums">
+                  {value}
+                </p>
               </CardContent>
             </Card>
           ))}
         </div>
       )}
       {module !== "overview" && (
-        <Input
-          aria-label="Search records"
-          placeholder="Search records…"
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setOffset(0);
-            setPreviousOffsets([]);
-          }}
-        />
+        <div className="relative max-w-xl">
+          <Search
+            aria-hidden="true"
+            className="pointer-events-none absolute left-3 top-3 size-4 text-muted-foreground"
+          />
+          <Input
+            className="h-10 rounded-xl bg-card pl-10"
+            aria-label="Search records"
+            placeholder="Search records…"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setOffset(0);
+              setPreviousOffsets([]);
+            }}
+          />
+        </div>
       )}
       {error && (
-        <div role="alert" className="text-sm text-destructive">
+        <div
+          role="alert"
+          className="rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive"
+        >
           {error}
           <Button variant="ghost" onClick={() => void load()}>
             Retry
@@ -141,7 +156,7 @@ export default function AdminRecords({
             <ContentSkeleton label="Loading records" variant="table" />
           ) : (
             <Table>
-              <TableHeader>
+              <TableHeader className="hidden md:table-header-group">
                 <TableRow>
                   <TableHead>Name / reference</TableHead>
                   <TableHead>Status</TableHead>
@@ -151,17 +166,27 @@ export default function AdminRecords({
               </TableHeader>
               <TableBody>
                 {data?.rows.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell>{row.title}</TableCell>
-                    <TableCell className="capitalize">
-                      {row.status.replaceAll("_", " ")}
+                  <TableRow
+                    key={row.id}
+                    className="grid grid-cols-2 gap-2 py-4 md:table-row md:py-0"
+                  >
+                    <TableCell className="col-span-2 whitespace-normal break-words font-medium md:max-w-sm">
+                      {row.title}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="capitalize">
+                      <Badge
+                        variant="secondary"
+                        className="rounded-full font-medium"
+                      >
+                        {row.status.replaceAll("_", " ")}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right text-xs text-muted-foreground md:text-left md:text-sm">
                       {row.created_at
                         ? new Date(row.created_at).toLocaleDateString()
                         : "—"}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="col-span-2 md:text-right">
                       <Button
                         variant="outline"
                         size="sm"
@@ -181,12 +206,12 @@ export default function AdminRecords({
             </Table>
           )}
           {!loading && !error && data?.rows.length === 0 && (
-            <p className="py-4 text-sm text-muted-foreground">
+            <p className="rounded-xl border border-dashed bg-muted/20 px-4 py-12 text-center text-sm text-muted-foreground">
               No matching records.
             </p>
           )}
           {module !== "overview" && (
-            <div className="mt-4 flex items-center gap-3">
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t pt-4">
               <Button
                 variant="outline"
                 disabled={loading || previousOffsets.length === 0}
@@ -222,7 +247,7 @@ export default function AdminRecords({
           if (!open && !busy) setSelected(null);
         }}
       >
-        <DialogContent className="max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-h-[85vh] overflow-y-auto rounded-2xl sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{selected?.title}</DialogTitle>
             <DialogDescription>Reference: {selected?.id}</DialogDescription>

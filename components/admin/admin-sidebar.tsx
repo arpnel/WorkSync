@@ -6,32 +6,36 @@ import {
   SidebarContent,
   SidebarHeader,
   SidebarGroup,
+  SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { LogoIcon } from "@/components/shared/logo";
 import { cn } from "@/lib/utils";
 import { ADMIN_NAV_ITEMS } from "./admin-navigation";
 export default function AdminSidebar() {
   const pathname = usePathname();
-  const { setOpenMobile } = useSidebar();
+  const { setOpenMobile, isMobile, state } = useSidebar();
+  const collapsed = !isMobile && state === "collapsed";
   return (
-    <Sidebar>
-      <SidebarHeader className="px-4 py-4">
-        <Link
-          href="/admin"
-          onClick={() => setOpenMobile(false)}
-          className="flex items-center justify-center gap-2 rounded-md px-2 py-2"
+    <Sidebar collapsible="icon" className="top-16 h-[calc(100dvh-4rem)]">
+      <SidebarHeader
+        className={cn("border-b py-2", collapsed ? "px-0" : "px-3")}
+      >
+        <div
+          className={cn(
+            "flex items-center",
+            collapsed ? "justify-center" : "gap-2",
+          )}
         >
-          <LogoIcon className="h-7 w-auto" />
-          <span className="text-lg font-bold tracking-tight">WorkSync</span>
-        </Link>
-        <p className="text-center text-xs font-medium text-muted-foreground">
-          Admin workspace
-        </p>
+          <SidebarTrigger className="size-11 shrink-0" />
+          {!collapsed && (
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Workspace
+            </span>
+          )}
+        </div>
       </SidebarHeader>
-      <div className="mx-4 border-b" />
-      <SidebarContent>
-        <SidebarGroup>
+      <SidebarContent className="group-data-[collapsible=icon]:overflow-y-auto">
+        <SidebarGroup className={collapsed ? "p-0.5" : "p-3"}>
           <nav aria-label="Admin navigation" className="space-y-1">
             {ADMIN_NAV_ITEMS.map((item) => (
               <Link
@@ -39,14 +43,17 @@ export default function AdminSidebar() {
                 href={item.href}
                 onClick={() => setOpenMobile(false)}
                 aria-current={pathname === item.href ? "page" : undefined}
+                title={collapsed ? item.label : undefined}
                 className={cn(
-                  "flex items-center gap-3 min-h-11 rounded-xl px-3 py-2.5 text-sm transition hover:bg-accent hover:text-accent-foreground",
-                  pathname === item.href &&
-                    "bg-primary/10 font-medium text-primary",
+                  "flex min-h-11 items-center rounded-xl py-2.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary hover:bg-accent hover:text-accent-foreground",
+                  collapsed ? "justify-center px-0" : "gap-3 px-3",
+                  pathname === item.href && "bg-primary/10 text-primary",
                 )}
               >
-                <item.icon className="h-5 w-5 shrink-0" aria-hidden="true" />
-                {item.label}
+                <item.icon className="size-5 shrink-0" aria-hidden="true" />
+                <span className={collapsed ? "sr-only" : undefined}>
+                  {item.label}
+                </span>
               </Link>
             ))}
           </nav>

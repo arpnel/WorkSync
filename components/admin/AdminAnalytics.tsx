@@ -1,4 +1,5 @@
 ﻿"use client";
+import AdminPageHeader from "./AdminPageHeader";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getAdminAnalytics } from "@/services/admin/adminService";
@@ -64,9 +65,9 @@ export default function AdminAnalytics() {
     };
   }, [load]);
   return (
-    <div className="space-y-5">
-      <h2 className="text-xl font-semibold">Platform analytics</h2>
-      <div className="flex flex-wrap items-end gap-3">
+    <div className="min-w-0 space-y-6">
+      <AdminPageHeader title="Platform analytics" />
+      <div className="grid gap-4 rounded-2xl border bg-card p-4 sm:flex sm:flex-wrap sm:items-end sm:p-5">
         <label className="text-sm">
           From
           <Input
@@ -145,7 +146,9 @@ export default function AdminAnalytics() {
                     <p className="text-sm capitalize text-muted-foreground">
                       {key.replaceAll("_", " ")}
                     </p>
-                    <p className="text-2xl font-semibold">{value}</p>
+                    <p className="text-3xl font-semibold tracking-tight tabular-nums">
+                      {value}
+                    </p>
                   </CardContent>
                 </Card>
               ))}

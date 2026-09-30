@@ -22,19 +22,12 @@ import {
   Tooltip,
   Legend,
 } from "recharts";
-type Analytics = {
-  counts: Record<string, number>;
-  completion_rate: number | null;
-  average_project_value: number | null;
-  average_rating: number | null;
-  categories: { name: string; jobs: number; services: number }[];
-  activity: { month: string; users: number; projects: number }[];
-};
+import type { AdminAnalyticsResult } from "@/services/admin/adminResponses";
 export default function AdminAnalytics() {
   const [from, setFrom] = useState(() => `${new Date().getFullYear()}-01-01`),
     [to, setTo] = useState(() => new Date().toISOString().slice(0, 10)),
     [status, setStatus] = useState("all");
-  const [data, setData] = useState<Analytics | null>(null),
+  const [data, setData] = useState<AdminAnalyticsResult | null>(null),
     [error, setError] = useState(""),
     [loading, setLoading] = useState(true);
   const version = useRef(0);
@@ -91,13 +84,26 @@ export default function AdminAnalytics() {
           />
         </label>
         <label className="text-sm">
-          Project status
+          Status
           <select
             className="block rounded-md border bg-background p-2"
             value={status}
             onChange={(e) => setStatus(e.target.value)}
           >
-            {["all", "pending", "active", "completed", "cancelled"].map((s) => (
+            {Array.from(
+              new Set([
+                "all",
+                status,
+                ...(data?.scope === "moderation"
+                  ? [
+                      "suspended",
+                      "hidden",
+                      ...Object.keys(data.moderation.reports),
+                      ...Object.keys(data.moderation.disputes),
+                    ]
+                  : ["pending", "active", "completed", "cancelled"]),
+              ]),
+            ).map((s) => (
               <option key={s}>{s}</option>
             ))}
           </select>
@@ -107,9 +113,9 @@ export default function AdminAnalytics() {
         </Button>
       </div>
       <p className="text-sm text-muted-foreground">
-        Dates filter record creation. Project status applies to project metrics
-        and the project chart only. Project values are agreed budgets;
-        transaction records are available in Transactions.
+        {data?.scope === "moderation"
+          ? "Dates filter users, reports, disputes and audit actions. Suspended accounts and hidden listings are current totals. Status filters reports, disputes, suspended accounts and hidden listings; it does not filter users or audit actions."
+          : "Dates filter record creation. Project status applies to project metrics and the project chart only. Project values are agreed budgets; transaction records are available in Transactions."}
       </p>
       {error && (
         <p role="alert" className="text-destructive">
@@ -144,27 +150,60 @@ export default function AdminAnalytics() {
                 </Card>
               ))}
             </div>
+            {data.moderation && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                {Object.entries(data.moderation).map(([name, counts]) => (
+                  <Card key={name}>
+                    <CardContent className="pt-4">
+                      <h3 className="font-semibold capitalize">
+                        {name} by status
+                      </h3>
+                      {Object.keys(counts).length === 0 ? (
+                        <p>No matching records.</p>
+                      ) : (
+                        Object.entries(counts).map(([status, count]) => (
+                          <p key={status}>
+                            {status.replaceAll("_", " ")}: {count}
+                          </p>
+                        ))
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+            {data.scope === "moderation" && (
+              <p role="status" className="text-sm text-muted-foreground">
+                Project completion, average project value, ratings, monthly
+                activity and category activity are unavailable from the current
+                analytics service.
+              </p>
+            )}
             <Card>
               <CardContent className="pt-4">
                 <h3 className="mb-4 font-semibold">Activity by month</h3>
-                <div className="h-72 min-w-0">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={data.activity} accessibilityLayer>
-                      <XAxis dataKey="month" />
-                      <YAxis allowDecimals={false} />
-                      <Tooltip />
-                      <Legend />
-                      <Bar
-                        dataKey="users"
-                        fill="var(--color-chart-1, #64748b)"
-                      />
-                      <Bar
-                        dataKey="projects"
-                        fill="var(--color-chart-2, #0d9488)"
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                {data.activity === null ? (
+                  <p>Monthly activity unavailable.</p>
+                ) : (
+                  <div className="h-72 min-w-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={data.activity} accessibilityLayer>
+                        <XAxis dataKey="month" />
+                        <YAxis allowDecimals={false} />
+                        <Tooltip />
+                        <Legend />
+                        <Bar
+                          dataKey="users"
+                          fill="var(--color-chart-1, #64748b)"
+                        />
+                        <Bar
+                          dataKey="projects"
+                          fill="var(--color-chart-2, #0d9488)"
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
               </CardContent>
             </Card>
             <h3 className="font-semibold">Category activity</h3>
@@ -177,13 +216,21 @@ export default function AdminAnalytics() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.categories.map((c) => (
-                  <TableRow key={c.name}>
-                    <TableCell>{c.name}</TableCell>
-                    <TableCell>{c.jobs}</TableCell>
-                    <TableCell>{c.services}</TableCell>
+                {data.categories === null ? (
+                  <TableRow>
+                    <TableCell colSpan={3}>
+                      Category activity unavailable.
+                    </TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  data.categories.map((c) => (
+                    <TableRow key={c.name}>
+                      <TableCell>{c.name}</TableCell>
+                      <TableCell>{c.jobs}</TableCell>
+                      <TableCell>{c.services}</TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </>

@@ -30,7 +30,7 @@ export async function getAdminAnalytics(
     await adminRead("worksync_admin_analytics", {
       p_from: from,
       p_to: to,
-      p_status: status,
+      p_status: status === "all" ? null : status,
     }),
   );
 }

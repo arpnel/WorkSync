@@ -219,11 +219,82 @@ test("pagination uses returned limits without requiring or fabricating totals", 
     { records: [row, row], limit: 1, offset: 0 },
   ])
     assert.throws(() => parse(value), /incompatible response/);
-  const disputes = api.parseAdminRecords(
-    { rows: [row], total: 26 },
-    "worksync_list_disputes",
-    25,
-  );
+  const disputes = api.parseAdminRecords([], "worksync_list_disputes", 25);
   assert.equal(disputes.hasNext, false);
   assert.equal(disputes.offset, 25);
+});
+
+test("deployed SETOF disputes preserves action IDs and uses 100-row pagination", () => {
+  const row = {
+    dispute_id: "dispute",
+    project_id: "project",
+    status: "open",
+    category: "delivery",
+    description: "Details",
+    created_at: null,
+    opened_by: "user",
+    admin_notes: null,
+    evidence_name: "evidence.pdf",
+  };
+  const parse = (rows) =>
+    api.parseAdminRecords(rows, "worksync_list_disputes", 100);
+  const result = parse([row]);
+  assert.equal(result.rows[0].id, "dispute");
+  assert.equal(result.rows[0].owner_id, "user");
+  assert.match(result.rows[0].title, /project/);
+  assert.match(result.rows[0].detail, /evidence.pdf/);
+  assert.equal(result.limit, 100);
+  assert.equal(result.offset, 100);
+  assert.equal(result.hasNext, false);
+  assert.equal(parse(Array(100).fill(row)).hasNext, true);
+  for (const rows of [
+    null,
+    {},
+    [{}],
+    { rows: [], total: 0 },
+    Array(101).fill(row),
+  ])
+    assert.throws(() => parse(rows), /incompatible response/);
+});
+test("deployed moderation analytics preserves real counts and marks absent metrics unavailable", () => {
+  const valid = {
+    from: "2026-09-01",
+    to: "2026-10-01",
+    status: null,
+    users: 3,
+    listing_reports: 2,
+    listing_reports_by_status: { pending: 2 },
+    disputes: 1,
+    disputes_by_status: { open: 1 },
+    suspended_accounts: 4,
+    hidden_listings: 5,
+    audit_actions: 6,
+  };
+  const result = api.parseAdminAnalytics(valid);
+  assert.equal(result.scope, "moderation");
+  assert.equal(result.counts.users, 3);
+  assert.equal(result.counts.hidden_listings, 5);
+  assert.equal(result.moderation.reports.pending, 2);
+  assert.equal(result.moderation.disputes.open, 1);
+  assert.equal(result.activity, null);
+  assert.equal(result.categories, null);
+  assert.equal(result.completion_rate, null);
+  assert.equal(result.average_project_value, null);
+  for (const key of Object.keys(valid)) {
+    const missing = { ...valid };
+    delete missing[key];
+    assert.throws(
+      () => api.parseAdminAnalytics(missing),
+      /incompatible response/,
+    );
+  }
+  for (const users of ["3", -1, NaN, Infinity])
+    assert.throws(
+      () => api.parseAdminAnalytics({ ...valid, users }),
+      /incompatible response/,
+    );
+  assert.equal(
+    api.parseAdminAnalytics({ ...valid, status: "open" }).scope,
+    "moderation",
+  );
 });

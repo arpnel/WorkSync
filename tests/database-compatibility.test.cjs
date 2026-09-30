@@ -91,7 +91,7 @@ test("admin reads preserve live arguments, validate payloads, and retain databas
   await api.getAdminAnalytics("from", "to", "all");
   assert.deepEqual(calls[1], {
     name: "worksync_admin_analytics",
-    args: { p_from: "from", p_to: "to", p_status: "all" },
+    args: { p_from: "from", p_to: "to", p_status: null },
   });
   for (const adminModule of [
     "overview",
@@ -111,7 +111,7 @@ test("admin reads preserve live arguments, validate payloads, and retain databas
       args: { p_module: adminModule, p_search: "", p_offset: 100 },
     });
   }
-  result = { data: { rows: [], total: 0 }, error: null };
+  result = { data: [], error: null };
   await api.getAdminRecords("disputes", "", 0);
   assert.deepEqual(calls.at(-1), {
     name: "worksync_list_disputes",

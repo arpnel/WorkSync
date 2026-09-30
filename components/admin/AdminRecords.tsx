@@ -39,7 +39,8 @@ export default function AdminRecords({
 }) {
   const [data, setData] = useState<AdminResult | null>(null);
   const [search, setSearch] = useState("");
-  const [page, setPage] = useState(0);
+  const [offset, setOffset] = useState(0);
+  const [previousOffsets, setPreviousOffsets] = useState<number[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<AdminRow | null>(null);
@@ -54,7 +55,7 @@ export default function AdminRecords({
     setLoading(true);
     setError("");
     try {
-      const result = await getAdminRecords(module, search, page);
+      const result = await getAdminRecords(module, search, offset);
       if (request === sequence.current) setData(result);
     } catch (cause) {
       if (request === sequence.current) {
@@ -66,7 +67,7 @@ export default function AdminRecords({
     } finally {
       if (request === sequence.current) setLoading(false);
     }
-  }, [module, search, page]);
+  }, [module, search, offset]);
   useEffect(() => {
     const requests = sequence;
     const timer = setTimeout(() => void load(), 200);
@@ -111,7 +112,8 @@ export default function AdminRecords({
           value={search}
           onChange={(e) => {
             setSearch(e.target.value);
-            setPage(0);
+            setOffset(0);
+            setPreviousOffsets([]);
           }}
         />
       )}
@@ -187,18 +189,26 @@ export default function AdminRecords({
             <div className="mt-4 flex items-center gap-3">
               <Button
                 variant="outline"
-                disabled={loading || page === 0}
-                onClick={() => setPage(page - 1)}
+                disabled={loading || previousOffsets.length === 0}
+                onClick={() => {
+                  setOffset(previousOffsets[previousOffsets.length - 1] ?? 0);
+                  setPreviousOffsets(previousOffsets.slice(0, -1));
+                }}
               >
                 Previous
               </Button>
               <span className="text-sm">
-                Page {page + 1} · {data?.total ?? 0} records
+                Page {previousOffsets.length + 1}: {data?.rows.length ?? 0}{" "}
+                records on this page
               </span>
               <Button
                 variant="outline"
-                disabled={loading || (page + 1) * 25 >= (data?.total ?? 0)}
-                onClick={() => setPage(page + 1)}
+                disabled={loading || !data?.hasNext}
+                onClick={() => {
+                  if (!data) return;
+                  setPreviousOffsets([...previousOffsets, offset]);
+                  setOffset(data.offset + data.limit);
+                }}
               >
                 Next
               </Button>

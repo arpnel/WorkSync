@@ -1,4 +1,6 @@
-﻿import { platformAction } from "@/services/platform/platformService";
+import { ADMIN_RECORD_MODULES, type AdminModule } from "./adminModules";
+export type { AdminModule } from "./adminModules";
+import { platformAction } from "@/services/platform/platformService";
 import { supabase } from "@/lib/supabaseClient";
 import {
   parseAdminAnalytics,
@@ -32,17 +34,6 @@ export async function getAdminAnalytics(
     }),
   );
 }
-export type AdminModule =
-  | "transactions"
-  | "disputes"
-  | "overview"
-  | "users"
-  | "jobs"
-  | "services"
-  | "projects"
-  | "reports"
-  | "verification"
-  | "audit";
 export type AdminRow = {
   id: string;
   title: string;
@@ -54,23 +45,28 @@ export type AdminRow = {
 };
 export interface AdminResult {
   rows: AdminRow[];
-  total: number;
+  limit: number;
+  offset: number;
+  hasNext: boolean;
   stats?: Record<string, number>;
 }
 export async function getAdminRecords(
   module: AdminModule,
   search: string,
-  page: number,
+  offset: number,
 ): Promise<AdminResult> {
   const rpc =
     module === "disputes" ? "worksync_list_disputes" : "worksync_admin_records";
   return parseAdminRecords(
     await adminRead(rpc, {
-      ...(module === "disputes" ? {} : { p_module: module }),
+      ...(module === "disputes"
+        ? {}
+        : { p_module: ADMIN_RECORD_MODULES[module] }),
       p_search: search.trim(),
-      p_offset: page * 25,
+      p_offset: offset,
     }),
     rpc,
+    offset,
   );
 }
 export async function reviewAdminRecord(

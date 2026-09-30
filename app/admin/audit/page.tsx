@@ -1,4 +1,7 @@
+import { ADMIN_MODULES } from "@/services/admin/adminModules";
 import AdminRecords from "@/components/admin/AdminRecords";
 export default function Page() {
-  return <AdminRecords module="audit" title="Admin audit history" />;
+  return (
+    <AdminRecords module={ADMIN_MODULES.audit} title="Admin audit history" />
+  );
 }

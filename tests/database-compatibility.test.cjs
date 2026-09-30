@@ -59,9 +59,10 @@ test("admin reads preserve live arguments, validate payloads, and retain databas
   const responses = load("services/admin/adminResponses.ts", [], {
     zod: require("zod"),
   });
-  let result = { data: { rows: [], total: 0 }, error: null };
+  let result = { data: { records: [], limit: 25, offset: 50 }, error: null };
   const api = load("services/admin/adminService.ts", [], {
     "./adminResponses": responses,
+    "./adminModules": load("services/admin/adminModules.ts", []),
     "@/lib/supabaseClient": {
       supabase: {
         rpc: async (name, args) => {
@@ -71,7 +72,7 @@ test("admin reads preserve live arguments, validate payloads, and retain databas
       },
     },
   });
-  await api.getAdminRecords("users", "  sample  ", 2);
+  await api.getAdminRecords("users", "  sample  ", 50);
   assert.deepEqual(calls[0], {
     name: "worksync_admin_records",
     args: { p_module: "users", p_search: "sample", p_offset: 50 },
@@ -91,6 +92,30 @@ test("admin reads preserve live arguments, validate payloads, and retain databas
   assert.deepEqual(calls[1], {
     name: "worksync_admin_analytics",
     args: { p_from: "from", p_to: "to", p_status: "all" },
+  });
+  for (const adminModule of [
+    "overview",
+    "users",
+    "jobs",
+    "services",
+    "projects",
+    "reports",
+    "verification",
+    "audit",
+    "transactions",
+  ]) {
+    result = { data: { records: [], limit: 50, offset: 100 }, error: null };
+    await api.getAdminRecords(adminModule, "", 100);
+    assert.deepEqual(calls.at(-1), {
+      name: "worksync_admin_records",
+      args: { p_module: adminModule, p_search: "", p_offset: 100 },
+    });
+  }
+  result = { data: { rows: [], total: 0 }, error: null };
+  await api.getAdminRecords("disputes", "", 0);
+  assert.deepEqual(calls.at(-1), {
+    name: "worksync_list_disputes",
+    args: { p_search: "", p_offset: 0 },
   });
   result = { data: {}, error: null };
   await assert.rejects(

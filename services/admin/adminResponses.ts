@@ -1,30 +1,96 @@
 import { z } from "zod";
 
 const count = z.number().finite().int().nonnegative();
-const recordsSchema = z.object({
-  rows: z.array(
-    z.object({
-      id: z.string(),
-      title: z.string(),
-      status: z.string(),
-      detail: z.string(),
-      created_at: z
-        .string()
-        .nullable()
-        .transform((value) => value ?? ""),
-      owner_id: z
-        .string()
-        .nullish()
-        .transform((value) => value ?? undefined),
-      document_paths: z
-        .array(z.string())
-        .nullish()
-        .transform((value) => value ?? undefined),
-    }),
-  ),
-  total: count,
-  stats: z.record(count).optional(),
-});
+const recordRows = z.array(
+  z.object({
+    id: z.string(),
+    title: z.string(),
+    status: z.string(),
+    detail: z.string(),
+    created_at: z
+      .string()
+      .nullable()
+      .transform((value) => value ?? ""),
+    owner_id: z
+      .string()
+      .nullish()
+      .transform((value) => value ?? undefined),
+    document_paths: z
+      .array(z.string())
+      .nullish()
+      .transform((value) => value ?? undefined),
+  }),
+);
+const recordsSchema = z
+  .object({
+    records: z.array(
+      z.union([
+        recordRows.element,
+        z
+          .object({
+            record_type: z.literal("listing_report"),
+            report: z.object({
+              report_id: z.string(),
+              listing_type: z.string(),
+              reason: z.string(),
+              status: z.string(),
+              created_at: z.string().nullable(),
+              owner_id: z.string().nullable(),
+              description: z.string().nullish(),
+              admin_notes: z.string().nullish(),
+              reporter_id: z.string(),
+              service_id: z.string().nullish(),
+              job_id: z.string().nullish(),
+            }),
+          })
+          .transform(({ report: r }) => ({
+            id: r.report_id,
+            title: r.listing_type + " report: " + r.reason,
+            status: r.status,
+            created_at: r.created_at ?? "",
+            owner_id: r.owner_id ?? undefined,
+            detail: [
+              "Listing: " + (r.service_id ?? r.job_id ?? ""),
+              "Reporter: " + r.reporter_id,
+              r.description,
+              r.admin_notes,
+            ]
+              .filter(Boolean)
+              .join("\n"),
+          })),
+        z
+          .object({
+            record_type: z.literal("audit"),
+            audit: z.object({
+              audit_id: z.string(),
+              action: z.string(),
+              created_at: z.string().nullable(),
+              admin_id: z.string().nullable(),
+              target_id: z.string().nullish(),
+              details: z.unknown(),
+            }),
+          })
+          .transform(({ audit: a }) => ({
+            id: a.audit_id,
+            title: a.action,
+            status: "recorded",
+            created_at: a.created_at ?? "",
+            owner_id: a.admin_id ?? undefined,
+            detail: [
+              "Admin: " + (a.admin_id ?? ""),
+              "Target: " + (a.target_id ?? ""),
+              JSON.stringify(a.details),
+            ].join("\n"),
+          })),
+      ]),
+    ),
+    limit: count.positive(),
+    offset: count,
+    stats: z.record(count).optional(),
+  })
+  .refine((value) => value.records.length <= value.limit);
+// The separate disputes RPC retains its checked-in rows/total contract.
+const disputesSchema = z.object({ rows: recordRows, total: count });
 const analyticsSchema = z.object({
   counts: z.record(count),
   completion_rate: z.number().finite().nullable(),
@@ -108,8 +174,24 @@ function parseResponse<S extends z.ZodTypeAny>(
     );
   return result.data;
 }
-export function parseAdminRecords(value: unknown, rpc: string) {
-  return parseResponse(recordsSchema, value, rpc);
+export function parseAdminRecords(value: unknown, rpc: string, offset = 0) {
+  if (rpc === "worksync_list_disputes") {
+    const result = parseResponse(disputesSchema, value, rpc);
+    return {
+      rows: result.rows,
+      limit: 25,
+      offset,
+      hasNext: offset + 25 < result.total,
+    };
+  }
+  const result = parseResponse(recordsSchema, value, rpc);
+  return {
+    rows: result.records,
+    limit: result.limit,
+    offset: result.offset,
+    hasNext: result.records.length === result.limit,
+    stats: result.stats,
+  };
 }
 export function parseAdminAnalytics(value: unknown) {
   return parseResponse(analyticsSchema, value, "worksync_admin_analytics");

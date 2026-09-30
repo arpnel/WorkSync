@@ -1,4 +1,7 @@
+import { ADMIN_MODULES } from "@/services/admin/adminModules";
 import AdminRecords from "@/components/admin/AdminRecords";
 export default function Page() {
-  return <AdminRecords module="overview" title="Platform overview" />;
+  return (
+    <AdminRecords module={ADMIN_MODULES.overview} title="Platform overview" />
+  );
 }

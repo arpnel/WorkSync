@@ -33,15 +33,17 @@ test("records reject incompatible successful RPC payloads before rendering", () 
     );
   }
   assert.equal(
-    api.parseAdminRecords({ rows: [], total: 0 }, "worksync_admin_records").rows
-      .length,
+    api.parseAdminRecords(
+      { records: [], limit: 25, offset: 0 },
+      "worksync_admin_records",
+    ).rows.length,
     0,
   );
 });
 test("records accept the SQL nullable fields", () => {
   const result = api.parseAdminRecords(
     {
-      rows: [
+      records: [
         {
           id: "id",
           title: "Title",
@@ -52,7 +54,8 @@ test("records accept the SQL nullable fields", () => {
           document_paths: null,
         },
       ],
-      total: 1,
+      limit: 25,
+      offset: 0,
     },
     "worksync_admin_records",
   );
@@ -150,4 +153,77 @@ test("analytics never treats invalid numeric metrics as business values", () => 
       );
     }
   }
+});
+
+test("deployed report and audit envelopes normalize without losing inspection fields", () => {
+  const result = api.parseAdminRecords(
+    {
+      records: [
+        {
+          record_type: "listing_report",
+          report: {
+            report_id: "report",
+            listing_type: "job",
+            reason: "spam",
+            status: "pending",
+            created_at: null,
+            owner_id: "owner",
+            reporter_id: "reporter",
+            job_id: "job",
+            description: "description",
+            admin_notes: "notes",
+          },
+        },
+        {
+          record_type: "audit",
+          audit: {
+            audit_id: "audit",
+            action: "review",
+            created_at: null,
+            admin_id: "admin",
+            target_id: "target",
+            details: { action: "approved" },
+          },
+        },
+      ],
+      limit: 50,
+      offset: 100,
+    },
+    "worksync_admin_records",
+  );
+  assert.equal(result.rows[0].id, "report");
+  assert.equal(result.rows[0].owner_id, "owner");
+  assert.match(result.rows[0].detail, /description/);
+  assert.equal(result.rows[1].id, "audit");
+  assert.match(result.rows[1].detail, /approved/);
+  assert.equal(result.offset, 100);
+  assert.equal(result.limit, 50);
+  assert.equal(result.hasNext, false);
+});
+test("pagination uses returned limits without requiring or fabricating totals", () => {
+  const row = {
+    id: "id",
+    title: "Title",
+    status: "active",
+    detail: "",
+    created_at: null,
+  };
+  const parse = (value) =>
+    api.parseAdminRecords(value, "worksync_admin_records");
+  assert.equal(parse({ records: [row], limit: 1, offset: 12 }).hasNext, true);
+  assert.equal(parse({ records: [], limit: 50, offset: 50 }).hasNext, false);
+  for (const value of [
+    { records: [], limit: 0, offset: 0 },
+    { records: [], limit: 50, offset: -1 },
+    { rows: [], total: 0 },
+    { records: [row, row], limit: 1, offset: 0 },
+  ])
+    assert.throws(() => parse(value), /incompatible response/);
+  const disputes = api.parseAdminRecords(
+    { rows: [row], total: 26 },
+    "worksync_list_disputes",
+    25,
+  );
+  assert.equal(disputes.hasNext, false);
+  assert.equal(disputes.offset, 25);
 });

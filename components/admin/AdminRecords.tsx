@@ -1,4 +1,5 @@
 ﻿"use client";
+import { ADMIN_PAGE_GUIDANCE } from "./admin-page-guidance";
 import AdminMetricCard from "./AdminMetricCard";
 import AdminStatusChart from "./AdminStatusChart";
 import { filterAdminPage } from "@/services/admin/adminRecordFilters";
@@ -133,6 +134,21 @@ export default function AdminRecords({
   return (
     <div className="min-w-0 space-y-6">
       <AdminPageHeader title={title} />
+      <div className="flex flex-col justify-between gap-3 rounded-xl border border-primary/15 bg-primary/5 p-4 sm:flex-row sm:items-center">
+        <div className="max-w-3xl">
+          <h2 className="text-sm font-semibold">
+            {ADMIN_PAGE_GUIDANCE[module].title}
+          </h2>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            {ADMIN_PAGE_GUIDANCE[module].description}
+          </p>
+        </div>
+        <Button asChild variant="outline" className="shrink-0">
+          <Link href={ADMIN_PAGE_GUIDANCE[module].href}>
+            {ADMIN_PAGE_GUIDANCE[module].link}
+          </Link>
+        </Button>
+      </div>
       {data?.stats && (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {Object.entries(data.stats).map(([label, value], index) => (

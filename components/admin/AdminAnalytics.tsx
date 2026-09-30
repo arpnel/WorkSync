@@ -1,4 +1,6 @@
 ﻿"use client";
+import AdminMetricCard from "./AdminMetricCard";
+import AdminStatusChart from "./AdminStatusChart";
 import AdminPageHeader from "./AdminPageHeader";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -32,6 +34,7 @@ export default function AdminAnalytics() {
     [error, setError] = useState(""),
     [loading, setLoading] = useState(true);
   const version = useRef(0);
+  const [knownStatuses, setKnownStatuses] = useState<string[]>([]);
   const load = useCallback(async () => {
     const id = ++version.current;
     setLoading(true);
@@ -46,7 +49,19 @@ export default function AdminAnalytics() {
         end.toISOString(),
         status,
       );
-      if (id === version.current) setData(result);
+      if (id === version.current) {
+        setData(result);
+        if (result.moderation)
+          setKnownStatuses((previous) =>
+            Array.from(
+              new Set([
+                ...previous,
+                ...Object.keys(result.moderation!.reports),
+                ...Object.keys(result.moderation!.disputes),
+              ]),
+            ),
+          );
+      }
     } catch (e) {
       if (id === version.current) {
         setError(e instanceof Error ? e.message : "Unable to load analytics.");
@@ -95,6 +110,7 @@ export default function AdminAnalytics() {
               new Set([
                 "all",
                 status,
+                ...knownStatuses,
                 ...(data?.scope === "moderation"
                   ? [
                       "suspended",
@@ -140,38 +156,24 @@ export default function AdminAnalytics() {
                   data.average_project_value === null
                     ? "—"
                     : `PHP ${data.average_project_value.toLocaleString()}`,
-              }).map(([key, value]) => (
-                <Card key={key}>
-                  <CardContent className="pt-4">
-                    <p className="text-sm capitalize text-muted-foreground">
-                      {key.replaceAll("_", " ")}
-                    </p>
-                    <p className="text-3xl font-semibold tracking-tight tabular-nums">
-                      {value}
-                    </p>
-                  </CardContent>
-                </Card>
+              }).map(([key, value], index) => (
+                <AdminMetricCard
+                  key={key}
+                  label={key}
+                  value={value}
+                  index={index}
+                />
               ))}
             </div>
             {data.moderation && (
               <div className="grid gap-4 sm:grid-cols-2">
                 {Object.entries(data.moderation).map(([name, counts]) => (
-                  <Card key={name}>
-                    <CardContent className="pt-4">
-                      <h3 className="font-semibold capitalize">
-                        {name} by status
-                      </h3>
-                      {Object.keys(counts).length === 0 ? (
-                        <p>No matching records.</p>
-                      ) : (
-                        Object.entries(counts).map(([status, count]) => (
-                          <p key={status}>
-                            {status.replaceAll("_", " ")}: {count}
-                          </p>
-                        ))
-                      )}
-                    </CardContent>
-                  </Card>
+                  <AdminStatusChart
+                    key={name}
+                    title={`${name === "reports" ? "Reports" : "Disputes"} by status`}
+                    counts={counts}
+                    description="Matching records for the selected dates and status."
+                  />
                 ))}
               </div>
             )}

@@ -8,8 +8,11 @@ export default function AdminPageHeader({ title }: { title: string }) {
     <WorkspacePageHeader
       title={title}
       description={
-        ADMIN_NAV_ITEMS.find((item) => item.href === pathname)?.description ??
-        "Manage your admin workspace."
+        ADMIN_NAV_ITEMS.find(
+          (item) =>
+            item.href === pathname ||
+            (item.href !== "/admin" && pathname.startsWith(item.href + "/")),
+        )?.description ?? "Manage your admin workspace."
       }
     />
   );

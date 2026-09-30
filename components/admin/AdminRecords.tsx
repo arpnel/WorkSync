@@ -1,4 +1,7 @@
 ﻿"use client";
+import AdminMetricCard from "./AdminMetricCard";
+import AdminStatusChart from "./AdminStatusChart";
+import { filterAdminPage } from "@/services/admin/adminRecordFilters";
 import AdminPageHeader from "./AdminPageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Search } from "lucide-react";
@@ -42,6 +45,10 @@ export default function AdminRecords({
 }) {
   const [data, setData] = useState<AdminResult | null>(null);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [sort, setSort] = useState("newest");
   const [offset, setOffset] = useState(0);
   const [previousOffsets, setPreviousOffsets] = useState<number[]>([]);
   const [error, setError] = useState("");
@@ -91,22 +98,32 @@ export default function AdminRecords({
             : module === "services" || module === "jobs"
               ? ["hide", "restore"]
               : [];
+  const visibleRows = filterAdminPage(
+    data?.rows ?? [],
+    statusFilter,
+    fromDate,
+    toDate,
+    sort,
+  );
+  const statusCounts = (data?.rows ?? []).reduce<Record<string, number>>(
+    (counts, row) => {
+      counts[row.status] = (counts[row.status] ?? 0) + 1;
+      return counts;
+    },
+    {},
+  );
   return (
     <div className="min-w-0 space-y-6">
       <AdminPageHeader title={title} />
       {data?.stats && (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {Object.entries(data.stats).map(([label, value]) => (
-            <Card key={label}>
-              <CardContent className="pt-4">
-                <p className="text-sm capitalize text-muted-foreground">
-                  {label.replaceAll("_", " ")}
-                </p>
-                <p className="text-3xl font-semibold tracking-tight tabular-nums">
-                  {value}
-                </p>
-              </CardContent>
-            </Card>
+          {Object.entries(data.stats).map(([label, value], index) => (
+            <AdminMetricCard
+              key={label}
+              label={label}
+              value={value}
+              index={index}
+            />
           ))}
         </div>
       )}
@@ -128,6 +145,79 @@ export default function AdminRecords({
             }}
           />
         </div>
+      )}
+      <div className="flex flex-wrap items-end gap-3 rounded-xl border bg-card p-4">
+        <label className="space-y-1 text-sm">
+          Page status
+          <select
+            className="block h-10 rounded-md border bg-background px-3"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            {Array.from(
+              new Set(["all", statusFilter, ...Object.keys(statusCounts)]),
+            ).map((value) => (
+              <option key={value} value={value}>
+                {value === "all" ? "All statuses" : value.replaceAll("_", " ")}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="space-y-1 text-sm">
+          From
+          <Input
+            type="date"
+            value={fromDate}
+            max={toDate || undefined}
+            onChange={(e) => setFromDate(e.target.value)}
+          />
+        </label>
+        <label className="space-y-1 text-sm">
+          Through
+          <Input
+            type="date"
+            value={toDate}
+            min={fromDate || undefined}
+            onChange={(e) => setToDate(e.target.value)}
+          />
+        </label>
+        <label className="space-y-1 text-sm">
+          Sort page
+          <select
+            className="block h-10 rounded-md border bg-background px-3"
+            value={sort}
+            onChange={(e) => setSort(e.target.value)}
+          >
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="name">Name A?Z</option>
+          </select>
+        </label>
+        <Button
+          variant="ghost"
+          onClick={() => {
+            setStatusFilter("all");
+            setFromDate("");
+            setToDate("");
+            setSort("newest");
+            setSearch("");
+            setOffset(0);
+            setPreviousOffsets([]);
+          }}
+        >
+          Reset filters
+        </Button>
+        <p className="w-full text-xs text-muted-foreground">
+          Search checks all records. Status, dates and sorting apply to the
+          loaded page.
+        </p>
+      </div>
+      {!loading && data && (
+        <AdminStatusChart
+          title="Status snapshot"
+          description="Status counts for the loaded page, before page filters."
+          counts={statusCounts}
+        />
       )}
       {error && (
         <div
@@ -165,7 +255,7 @@ export default function AdminRecords({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data?.rows.map((row) => (
+                {visibleRows.map((row) => (
                   <TableRow
                     key={row.id}
                     className="grid grid-cols-2 gap-2 py-4 md:table-row md:py-0"
@@ -205,9 +295,10 @@ export default function AdminRecords({
               </TableBody>
             </Table>
           )}
-          {!loading && !error && data?.rows.length === 0 && (
+          {!loading && !error && !!data && visibleRows.length === 0 && (
             <p className="rounded-xl border border-dashed bg-muted/20 px-4 py-12 text-center text-sm text-muted-foreground">
-              No matching records.
+              No records match this selection. Reset page filters or try another
+              page.
             </p>
           )}
           {module !== "overview" && (
@@ -224,7 +315,7 @@ export default function AdminRecords({
               </Button>
               <span className="text-sm">
                 Page {previousOffsets.length + 1}: {data?.rows.length ?? 0}{" "}
-                records on this page
+                records loaded; {visibleRows.length} shown
               </span>
               <Button
                 variant="outline"
@@ -261,7 +352,7 @@ export default function AdminRecords({
           {selected?.owner_id && (
             <Link
               className="text-sm underline"
-              href={`/home/profile/${selected.owner_id}`}
+              href={`/admin/users/${encodeURIComponent(selected.owner_id)}`}
             >
               View profile
             </Link>

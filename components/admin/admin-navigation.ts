@@ -5,7 +5,11 @@ import {
   Flag,
   ShieldCheck,
   Users,
-  ListChecks,
+  FolderKanban,
+  ScrollText,
+  Scale,
+  ChartNoAxesCombined,
+  Store,
 } from "lucide-react";
 export const ADMIN_NAV_ITEMS = [
   {
@@ -47,31 +51,31 @@ export const ADMIN_NAV_ITEMS = [
   {
     href: "/admin/services",
     label: "Services",
-    icon: Briefcase,
+    icon: Store,
     description: "Inspect and moderate services.",
   },
   {
     href: "/admin/projects",
     label: "Projects",
-    icon: ListChecks,
+    icon: FolderKanban,
     description: "Monitor projects and contracts.",
   },
   {
     href: "/admin/audit",
     label: "Audit history",
-    icon: ListChecks,
+    icon: ScrollText,
     description: "Review recorded administrator actions.",
   },
   {
     href: "/admin/disputes",
     label: "Disputes",
-    icon: Flag,
+    icon: Scale,
     description: "Review project disputes and resolution evidence.",
   },
   {
     href: "/admin/analytics",
     label: "Analytics",
-    icon: ListChecks,
+    icon: ChartNoAxesCombined,
     description: "Explore platform activity and project outcomes.",
   },
 ] as const;

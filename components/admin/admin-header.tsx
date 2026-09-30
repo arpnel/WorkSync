@@ -21,8 +21,11 @@ export default function AdminHeader() {
       </Link>
       <span className="mx-2 hidden h-5 border-l sm:block" aria-hidden="true" />
       <span className="hidden min-w-0 truncate text-sm text-muted-foreground sm:block">
-        {ADMIN_NAV_ITEMS.find((item) => item.href === pathname)?.label ??
-          "Workspace"}
+        {ADMIN_NAV_ITEMS.find(
+          (item) =>
+            item.href === pathname ||
+            (item.href !== "/admin" && pathname.startsWith(item.href + "/")),
+        )?.label ?? "Workspace"}
       </span>
       <Badge variant="secondary" className="ml-auto rounded-full px-3 py-1">
         Admin workspace

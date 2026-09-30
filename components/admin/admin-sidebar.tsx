@@ -42,12 +42,21 @@ export default function AdminSidebar() {
                 key={item.href}
                 href={item.href}
                 onClick={() => setOpenMobile(false)}
-                aria-current={pathname === item.href ? "page" : undefined}
+                aria-current={
+                  pathname === item.href ||
+                  (item.href !== "/admin" &&
+                    pathname.startsWith(item.href + "/"))
+                    ? "page"
+                    : undefined
+                }
                 title={collapsed ? item.label : undefined}
                 className={cn(
                   "flex min-h-11 items-center rounded-xl py-2.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary hover:bg-accent hover:text-accent-foreground",
                   collapsed ? "justify-center px-0" : "gap-3 px-3",
-                  pathname === item.href && "bg-primary/10 text-primary",
+                  (pathname === item.href ||
+                    (item.href !== "/admin" &&
+                      pathname.startsWith(item.href + "/"))) &&
+                    "bg-primary/10 text-primary",
                 )}
               >
                 <item.icon className="size-5 shrink-0" aria-hidden="true" />

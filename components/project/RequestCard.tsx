@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Star } from "lucide-react";
 import type { ProjectRequest } from "@/services/project/projectRequestService";
+import { screeningState } from "@/lib/ai/screening";
 
 export function RequestCard({
   request,
@@ -38,7 +39,8 @@ export function RequestCard({
       <TableCell>
         {typeof score === "number" ? (
           <span className="font-semibold text-primary">
-            AI Match: {score}%
+            AI Match: {score}/100
+            {screeningState(request.screening, request.createdAt) === "expired" && <span className="ml-1 text-xs font-normal text-muted-foreground">(expired)</span>}
             {request.screening?.expiresAt && (
               <span className="block text-xs font-normal text-muted-foreground">
                 Valid until{" "}

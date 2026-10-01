@@ -1,6 +1,7 @@
 import { getPublicIdentities } from "@/services/profile/publicIdentityService";
 import { platformAction } from "@/services/platform/platformService";
 import { supabase } from "@/lib/supabaseClient";
+import { assertFreelancerAvailable } from "@/services/marketplace/freelancerAvailability";
 
 export interface ProjectRecord {
   current_user_id: string;
@@ -236,6 +237,11 @@ export async function respondToServiceRequest(
   orderId: string,
   accepted: boolean,
 ): Promise<void> {
+  if (accepted) {
+    const { data, error } = await supabase.from("service_orders").select("freelancer_id,status").eq("order_id", orderId).single();
+    if (error) throw error;
+    if (data.status === "pending") await assertFreelancerAvailable(data.freelancer_id);
+  }
   await platformAction("worksync_respond_service", {
     p_order: orderId,
     p_accept: accepted,

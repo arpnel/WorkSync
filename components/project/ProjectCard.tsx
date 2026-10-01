@@ -294,7 +294,7 @@ export function ProjectCard({ project, onChanged }: ProjectCardProps) {
       <button
         type="button"
         onClick={openProject}
-        className="block w-full rounded-2xl border bg-card p-4 text-left focus-visible:outline-2 focus-visible:outline-primary md:hidden"
+        className="navigation-card block w-full rounded-2xl border bg-card p-4 text-left focus-visible:outline-2 focus-visible:outline-primary md:hidden"
       >
         <div className="flex items-center justify-between gap-3">
           <span className="text-xs font-medium text-primary">
@@ -357,7 +357,7 @@ export function ProjectCard({ project, onChanged }: ProjectCardProps) {
       </button>
       <button
         type="button"
-        className="hidden w-full text-left md:block"
+        className="navigation-card hidden w-full rounded-2xl text-left md:block"
         onClick={openProject}
       >
         <Card className="gap-0 py-0 transition hover:border-primary/40 hover:shadow-sm">

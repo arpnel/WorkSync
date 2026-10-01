@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ContractSummary } from "./ContractSummary";
 import { Check, Loader2, PencilLine, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +35,7 @@ type Props = {
 };
 
 type ConfirmationDialogProps = {
+  project: ProjectWorkspace;
   open: boolean;
   action: "agree" | "cancel";
   subject: string;
@@ -43,6 +45,7 @@ type ConfirmationDialogProps = {
 };
 
 function ConfirmationDialog({
+  project,
   open,
   action,
   subject,
@@ -54,7 +57,7 @@ function ConfirmationDialog({
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="max-w-sm">
+      <AlertDialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
         <AlertDialogHeader>
           <AlertDialogTitle>
             {agreeing ? `Confirm ${subject}?` : `Cancel ${subject} agreement?`}
@@ -65,6 +68,7 @@ function ConfirmationDialog({
               : "This removes only your final confirmation. The other party's confirmation and all agreed terms remain unchanged."}
           </AlertDialogDescription>
         </AlertDialogHeader>
+        {agreeing && <ContractSummary project={project} />}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={processing}>Go back</AlertDialogCancel>
           <AlertDialogAction
@@ -395,6 +399,7 @@ export function ProjectAgreementCard({
         </div>
 
         <ConfirmationDialog
+          project={project}
           open={pendingFinalResponse !== null}
           action={pendingFinalResponse === false ? "cancel" : "agree"}
           subject="the complete contract"

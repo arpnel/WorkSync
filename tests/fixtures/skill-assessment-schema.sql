@@ -1,0 +1,17 @@
+create role anon;
+create role authenticated;
+create role service_role;
+create schema auth;
+create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
+grant usage on schema auth,public to anon,authenticated,service_role;
+create table public."Users"(user_id uuid primary key,role text not null,created_at timestamptz not null);
+create table public.profiles(user_id uuid primary key references public."Users",display_name text);
+create table public.freelancer_profiles(freelancer_id uuid primary key,user_id uuid unique references public."Users");
+create table public.job_categories(id uuid primary key,name text not null);
+create table public.skills(id uuid primary key,name text);
+create table public.category_skills(category_id uuid references public.job_categories,skill_id uuid references public.skills,primary key(category_id,skill_id));
+create table public.freelancer_categories(freelancer_id uuid references public.freelancer_profiles,category_id uuid references public.job_categories,primary key(freelancer_id,category_id));
+create table public.test_suspended(user_id uuid primary key);
+create table public.notifications(notification_id uuid primary key default gen_random_uuid(),user_id uuid references public."Users",type text,title text,message text,related_id uuid,is_read boolean,created_at timestamptz default now());
+create function public.worksync_is_admin() returns boolean language sql stable security definer as $$ select exists(select 1 from public."Users" where user_id=auth.uid() and role='admin') $$;
+create function public.worksync_marketplace_active(p_user uuid) returns boolean language sql stable security definer as $$ select not exists(select 1 from public.test_suspended where user_id=p_user) $$;

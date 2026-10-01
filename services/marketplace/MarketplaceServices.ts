@@ -2,6 +2,7 @@ import { readPageCache } from "@/lib/pageReadCache";
 import { getPublicIdentities } from "@/services/profile/publicIdentityService";
 import { platformAction } from "@/services/platform/platformService";
 import { supabase } from "@/lib/supabaseClient";
+import { assertFreelancerAvailable } from "./freelancerAvailability";
 
 /* ==========================================================
    TABLES
@@ -31,6 +32,8 @@ export type MarketplaceListingType = "service" | "job";
 export type MarketplaceRole = "freelancer" | "client";
 
 export interface MarketplaceQuery {
+  /** Public browsing omits authenticated member identity enrichment. */
+  guest?: boolean;
   search?: string;
 
   categoryId?: string | null;
@@ -506,7 +509,7 @@ async function getServices(
   }
 
   const rows = data as ServiceRow[];
-  const related = await loadRelatedListings(rows, []);
+  const related = await loadRelatedListings(rows, [], query.guest);
   return Promise.all(rows.map((row) => buildMarketplaceService(row, related)));
 }
 
@@ -600,7 +603,7 @@ async function getJobs(query: MarketplaceQuery): Promise<MarketplaceJob[]> {
   }
 
   const rows = data as JobRow[];
-  const related = await loadRelatedListings([], rows);
+  const related = await loadRelatedListings([], rows, query.guest);
   return Promise.all(rows.map((row) => buildMarketplaceJob(row, related)));
 }
 
@@ -868,6 +871,7 @@ export async function getMarketplaceListingsByClient(
 
 export async function getMarketplaceService(
   serviceId: string,
+  guest = false,
 ): Promise<MarketplaceService | null> {
   if (!serviceId) {
     return null;
@@ -907,7 +911,12 @@ export async function getMarketplaceService(
     return null;
   }
 
-  return buildMarketplaceService(data as ServiceRow);
+  return buildMarketplaceService(
+    data as ServiceRow,
+    guest
+      ? await loadRelatedListings([data as ServiceRow], [], true)
+      : undefined,
+  );
 }
 
 /* ==========================================================
@@ -916,6 +925,7 @@ export async function getMarketplaceService(
 
 export async function getMarketplaceJob(
   jobId: string,
+  guest = false,
 ): Promise<MarketplaceJob | null> {
   if (!jobId) {
     return null;
@@ -952,7 +962,10 @@ export async function getMarketplaceJob(
     return null;
   }
 
-  return buildMarketplaceJob(data as JobRow);
+  return buildMarketplaceJob(
+    data as JobRow,
+    guest ? await loadRelatedListings([], [data as JobRow], true) : undefined,
+  );
 }
 
 /* ==========================================================
@@ -1241,6 +1254,7 @@ export async function createMarketplaceOrder(
     throw new Error("Service owner information does not match.");
   }
 
+  await assertFreelancerAvailable(freelancerId);
   return platformAction("worksync_request_service", {
     p_service: serviceId,
     p_details: details,
@@ -1286,6 +1300,7 @@ type RelatedListings = {
 async function loadRelatedListings(
   services: ServiceRow[],
   jobs: JobRow[],
+  guest = false,
 ): Promise<RelatedListings> {
   const freelancerIds = [
     ...new Set(
@@ -1301,7 +1316,9 @@ async function loadRelatedListings(
     ),
   ];
   const [identities, categories] = await Promise.all([
-    getPublicIdentities({ freelancerIds, clientIds }),
+    guest
+      ? Promise.resolve({ profiles: [], freelancers: [], clients: [] })
+      : getPublicIdentities({ freelancerIds, clientIds }),
     categoryIds.length
       ? supabase.from(CATEGORY_TABLE).select("id,name").in("id", categoryIds)
       : Promise.resolve({ data: [], error: null }),

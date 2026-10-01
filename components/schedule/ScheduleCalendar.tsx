@@ -1,5 +1,20 @@
-﻿"use client";
+"use client";
 
+import {
+  ContextMenu,
+  ContextMenuTrigger,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+} from "@/components/ui/context-menu";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import { isOnScheduleDate } from "./schedule-range";
 import { useState } from "react";
 import {
   ArrowUpRight,
@@ -28,11 +43,17 @@ interface Props {
   cards: ScheduleCard[];
   initialDate?: string;
   status?: "ready" | "loading" | "unavailable";
+  onCreateDeadline?: (date: string) => void;
+  onOpenPlanner?: () => void;
+  onViewPlanner?: (card: ScheduleCard) => void;
   onOpen: (card: ScheduleCard) => void;
 }
 export default function ScheduleCalendar({
   cards,
   initialDate,
+  onCreateDeadline,
+  onOpenPlanner,
+  onViewPlanner,
   onOpen,
   status = "ready",
 }: Props) {
@@ -55,8 +76,24 @@ export default function ScheduleCalendar({
     .filter((card) => card.dueDate.startsWith(dateKey(month).slice(0, 7)))
     .sort(compareDeadlines);
   const selectedCards = cards
-    .filter((card) => card.dueDate === selected)
+    .filter((card) => isOnScheduleDate(card, selected))
     .sort(compareDeadlines);
+  const gridStart = dateKey(
+    new Date(month.getFullYear(), month.getMonth(), 1 - firstWeekday),
+  );
+  const gridEnd = dateKey(
+    new Date(month.getFullYear(), month.getMonth(), cellCount - firstWeekday),
+  );
+  const rangedCards = cards
+    .filter(
+      (card) =>
+        card.startDate &&
+        card.dueDate &&
+        card.startDate <= card.dueDate &&
+        card.startDate <= gridEnd &&
+        card.dueDate >= gridStart,
+    )
+    .sort((a, b) => a.id.localeCompare(b.id));
   const undated = cards.filter((card) => !card.dueDate).length;
   function changeMonth(offset: number) {
     const next = new Date(month.getFullYear(), month.getMonth() + offset, 1);
@@ -137,74 +174,237 @@ export default function ScheduleCalendar({
               const key = dateKey(date);
               const inMonth = date.getMonth() === month.getMonth();
               const due = cards
-                .filter((card) => card.dueDate === key)
+                .filter((card) => isOnScheduleDate(card, key))
                 .sort(compareDeadlines);
+              const weekStart = dateKey(
+                new Date(
+                  month.getFullYear(),
+                  month.getMonth(),
+                  Math.floor(index / 7) * 7 - firstWeekday + 1,
+                ),
+              );
+              const weekEnd = dateKey(
+                new Date(
+                  month.getFullYear(),
+                  month.getMonth(),
+                  Math.floor(index / 7) * 7 - firstWeekday + 7,
+                ),
+              );
+              const weekRanges = rangedCards.filter(
+                (card) =>
+                  card.startDate! <= weekEnd && card.dueDate >= weekStart,
+              );
+              const singleDay = due.filter(
+                (card) => !rangedCards.includes(card),
+              );
               return (
-                <button
-                  key={key}
-                  type="button"
-                  aria-label={`${new Intl.DateTimeFormat("en", { dateStyle: "full" }).format(date)}: ${due.length} tasks due`}
-                  aria-pressed={selected === key}
-                  aria-current={key === today ? "date" : undefined}
-                  onClick={() => {
-                    setSelected(key);
-                    if (!inMonth)
-                      setMonth(
-                        new Date(date.getFullYear(), date.getMonth(), 1),
-                      );
-                  }}
-                  className={cn(
-                    "relative flex min-h-16 min-w-0 flex-col items-center gap-1 p-1.5 text-left transition-colors focus-visible:z-10 sm:min-h-24 sm:items-start sm:p-2.5",
-                    selected === key
-                      ? "bg-accent ring-1 ring-inset ring-primary/40"
-                      : inMonth
-                        ? "bg-card hover:bg-accent/50"
-                        : "bg-muted text-muted-foreground/50",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-medium sm:text-sm",
-                      key === today && "bg-primary text-primary-foreground",
-                    )}
-                  >
-                    {date.getDate()}
-                  </span>
-                  <div className="hidden w-full space-y-1 sm:block">
-                    {due.slice(0, 2).map((card) => (
+                <ContextMenu key={key}>
+                  <ContextMenuTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={`${new Intl.DateTimeFormat("en", { dateStyle: "full" }).format(date)}: ${due.length} scheduled tasks`}
+                      aria-pressed={selected === key}
+                      aria-current={key === today ? "date" : undefined}
+                      onClick={() => {
+                        setSelected(key);
+                        if (!inMonth)
+                          setMonth(
+                            new Date(date.getFullYear(), date.getMonth(), 1),
+                          );
+                      }}
+                      className={cn(
+                        "relative flex min-h-16 min-w-0 flex-col items-center gap-1 p-1.5 text-left transition-colors focus-visible:z-10 sm:min-h-24 sm:items-start sm:p-2.5",
+                        selected === key
+                          ? "bg-accent ring-1 ring-inset ring-primary/40"
+                          : inMonth
+                            ? "bg-card hover:bg-accent/50"
+                            : "bg-muted text-muted-foreground/50",
+                      )}
+                    >
                       <span
-                        key={card.id}
                         className={cn(
-                          "block truncate rounded px-1.5 py-1 text-[11px] font-medium",
-                          priorityStyles[card.priority],
+                          "flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-medium sm:text-sm",
+                          key === today && "bg-primary text-primary-foreground",
                         )}
                       >
-                        {card.title}
+                        {date.getDate()}
                       </span>
-                    ))}
-                    {due.length > 2 && (
-                      <span className="block px-1 text-[10px] text-muted-foreground">
-                        +{due.length - 2} more
-                      </span>
-                    )}
-                  </div>
-                  <span className="flex gap-1 sm:hidden">
-                    {due.slice(0, 3).map((card) => (
-                      <span
-                        key={card.id}
-                        className={cn(
-                          "size-1 rounded-full",
-                          dots[card.priority],
+                      {weekRanges.length > 0 && (
+                        <span
+                          className="-mx-1.5 block w-[calc(100%+0.75rem)] space-y-1 sm:-mx-2.5 sm:w-[calc(100%+1.25rem)]"
+                          aria-hidden="true"
+                        >
+                          {weekRanges.map((card) => {
+                            const active = isOnScheduleDate(card, key);
+                            const starts = card.startDate === key;
+                            const ends = card.dueDate === key;
+                            return (
+                              <span
+                                key={card.id}
+                                className={cn(
+                                  "relative block h-6 text-[10px] font-medium leading-6 sm:text-[11px]",
+                                  active
+                                    ? priorityStyles[card.priority]
+                                    : "invisible",
+                                  starts ? "ml-1 rounded-l-md" : "",
+                                  ends
+                                    ? "mr-1 rounded-r-md"
+                                    : index % 7 !== 6
+                                      ? "-mr-px"
+                                      : "",
+                                )}
+                                title={
+                                  card.title +
+                                  ": " +
+                                  card.startDate +
+                                  " to " +
+                                  card.dueDate
+                                }
+                              >
+                                <span
+                                  className={cn(
+                                    "block truncate px-1.5",
+                                    ends && !starts && "text-right",
+                                  )}
+                                >
+                                  {starts || ends ? card.title : "\u00a0"}
+                                </span>
+                              </span>
+                            );
+                          })}
+                        </span>
+                      )}
+                      <div className="hidden w-full space-y-1 sm:block">
+                        {singleDay.slice(0, 2).map((card) => (
+                          <span
+                            key={card.id}
+                            className={cn(
+                              "block truncate rounded px-1.5 py-1 text-[11px] font-medium",
+                              priorityStyles[card.priority],
+                            )}
+                          >
+                            {card.title}
+                          </span>
+                        ))}
+                        {singleDay.length > 2 && (
+                          <span className="block px-1 text-[10px] text-muted-foreground">
+                            +{singleDay.length - 2} more
+                          </span>
                         )}
-                      />
-                    ))}
-                  </span>
-                </button>
+                      </div>
+                      <span className="flex gap-1 sm:hidden">
+                        {singleDay.slice(0, 3).map((card) => (
+                          <span
+                            key={card.id}
+                            className={cn(
+                              "size-1 rounded-full",
+                              dots[card.priority],
+                            )}
+                          />
+                        ))}
+                      </span>
+                    </button>
+                  </ContextMenuTrigger>
+                  <ContextMenuContent className="w-56">
+                    <ContextMenuLabel>
+                      {date.toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
+                    </ContextMenuLabel>
+                    {onCreateDeadline && (
+                      <ContextMenuItem
+                        disabled={status !== "ready"}
+                        onSelect={() => {
+                          setSelected(key);
+                          onCreateDeadline(key);
+                        }}
+                      >
+                        Create deadline
+                      </ContextMenuItem>
+                    )}
+                    <ContextMenuItem
+                      onSelect={() => {
+                        setSelected(key);
+                        setMonth(
+                          new Date(date.getFullYear(), date.getMonth(), 1),
+                        );
+                      }}
+                    >
+                      View day&apos;s tasks ({due.length})
+                    </ContextMenuItem>
+                    {onOpenPlanner && (
+                      <ContextMenuItem onSelect={onOpenPlanner}>
+                        Create a plan
+                      </ContextMenuItem>
+                    )}
+                    {onViewPlanner &&
+                      due
+                        .filter((card) => card.entryType === "plan")
+                        .map((card) => (
+                          <ContextMenuItem
+                            key={card.id}
+                            onSelect={() => onViewPlanner(card)}
+                          >
+                            View planner: {card.title}
+                          </ContextMenuItem>
+                        ))}
+                    <ContextMenuSeparator />
+                    <ContextMenuItem
+                      onSelect={() => {
+                        const now = new Date();
+                        setMonth(
+                          new Date(now.getFullYear(), now.getMonth(), 1),
+                        );
+                        setSelected(dateKey(now));
+                      }}
+                    >
+                      Go to today
+                    </ContextMenuItem>
+                  </ContextMenuContent>
+                </ContextMenu>
               );
             })}
           </div>
           <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border/50 px-2 pt-4 mt-4 text-xs text-muted-foreground">
-            <span>Select a day to see its tasks</span>
+            <span>
+              Lines show start-to-end dates. Select a day to see tasks;
+              right-click for options.
+            </span>
+            {onCreateDeadline && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    Date options
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem
+                    disabled={status !== "ready"}
+                    onSelect={() => onCreateDeadline(selected)}
+                  >
+                    Create deadline for {selected}
+                  </DropdownMenuItem>
+                  {onOpenPlanner && (
+                    <DropdownMenuItem onSelect={onOpenPlanner}>
+                      Create a plan
+                    </DropdownMenuItem>
+                  )}
+                  {onViewPlanner &&
+                    selectedCards
+                      .filter((card) => card.entryType === "plan")
+                      .map((card) => (
+                        <DropdownMenuItem
+                          key={card.id}
+                          onSelect={() => onViewPlanner(card)}
+                        >
+                          View planner: {card.title}
+                        </DropdownMenuItem>
+                      ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             <div className="flex gap-3">
               {(["high", "medium", "low"] as const).map((priority) => (
                 <span
@@ -296,6 +496,19 @@ export default function ScheduleCalendar({
               </div>
             )}
           </div>
+          {onViewPlanner &&
+            selectedCards
+              .filter((card) => card.entryType === "plan")
+              .map((card) => (
+                <Button
+                  key={card.id}
+                  variant="outline"
+                  className="mx-5 mb-3"
+                  onClick={() => onViewPlanner(card)}
+                >
+                  View planner: {card.title}
+                </Button>
+              ))}
           {undated > 0 && (
             <p className="border-t bg-muted/30 px-5 py-4 text-xs leading-5 text-muted-foreground">
               {undated} undated tasks in Planner. Set due dates to include them

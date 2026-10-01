@@ -10,6 +10,7 @@ import {
   Scale,
   ChartNoAxesCombined,
   Store,
+  ClipboardCheck,
 } from "lucide-react";
 export const ADMIN_NAV_ITEMS = [
   {
@@ -41,6 +42,12 @@ export const ADMIN_NAV_ITEMS = [
     label: "Verification",
     icon: ShieldCheck,
     description: "Review submitted identity and address documents.",
+  },
+  {
+    href: "/admin/assessments",
+    label: "Assessments",
+    icon: ClipboardCheck,
+    description: "Manage category knowledge assessments and results.",
   },
   {
     href: "/admin/users",

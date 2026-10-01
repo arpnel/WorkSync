@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ProfileAssessments } from "@/components/assessments/ProfileAssessments";
 import type { Profile } from "@/types/profile/profile";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -155,6 +156,9 @@ export default function AboutSection({ profile }: { profile: Profile }) {
               </div>
             )}
           </>
+        )}
+        {profile.role === "freelancer" && (
+          <ProfileAssessments userId={profile.user_id} />
         )}
         <p className="border-t pt-4 text-xs text-muted-foreground">
           Member since{" "}

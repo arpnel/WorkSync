@@ -24,6 +24,10 @@ export function getNotificationHref(
   type: string | null,
   relatedId: string | null,
 ) {
+  if (type === "skill_assessment")
+    return relatedId
+      ? `/home/assessments?opening=${encodeURIComponent(relatedId)}`
+      : "/home/assessments";
   if (type?.includes("message")) return "/home/messages";
   if (
     type?.includes("service_request") ||

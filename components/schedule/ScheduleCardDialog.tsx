@@ -19,6 +19,7 @@ import type {
 } from "@/types/schedule/schedule";
 export default function ScheduleCardDialog({
   card,
+  initialDueDate,
   listId,
   lists,
   onClose,
@@ -26,6 +27,7 @@ export default function ScheduleCardDialog({
   onDelete,
 }: {
   card?: ScheduleCard;
+  initialDueDate?: string;
   listId: string;
   lists: ScheduleList[];
   onClose: () => void;
@@ -35,9 +37,11 @@ export default function ScheduleCardDialog({
   const [draft, setDraft] = useState<ScheduleCardDraft>(
     card ?? {
       listId,
+      entryType: initialDueDate ? "deadline" : "plan",
       title: "",
       description: "",
-      dueDate: "",
+      startDate: "",
+      dueDate: initialDueDate ?? "",
       dueTime: "",
       priority: "medium",
     },
@@ -53,7 +57,13 @@ export default function ScheduleCardDialog({
     >
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{card ? "Card details" : "Add a card"}</DialogTitle>
+          <DialogTitle>
+            {card
+              ? "Card details"
+              : initialDueDate
+                ? "Create a deadline"
+                : "Add a card"}
+          </DialogTitle>
           <DialogDescription>
             Plan the work, set a deadline, and choose its list.
           </DialogDescription>
@@ -62,6 +72,13 @@ export default function ScheduleCardDialog({
           className="space-y-4"
           onSubmit={(event) => {
             event.preventDefault();
+            if (
+              draft.startDate &&
+              (!draft.dueDate || draft.startDate > draft.dueDate)
+            ) {
+              setSaveError(true);
+              return;
+            }
             if (onSave(draft, card?.id)) onClose();
             else setSaveError(true);
           }}
@@ -91,12 +108,28 @@ export default function ScheduleCardDialog({
               }
             />
           </label>
+          <label className="block space-y-2 text-sm font-medium">
+            <span>Start date</span>
+            <Input
+              type="date"
+              value={draft.startDate ?? ""}
+              max={draft.dueDate || undefined}
+              onChange={(event) =>
+                setDraft({ ...draft, startDate: event.target.value })
+              }
+            />
+            <span className="block text-xs font-normal text-muted-foreground">
+              Optional. Add a start and end date to show a calendar span.
+            </span>
+          </label>
           <div className="grid grid-cols-2 gap-4">
             <label className="block space-y-2 text-sm font-medium">
-              <span>Due date</span>
+              <span>End date / deadline</span>
               <Input
                 type="date"
                 value={draft.dueDate}
+                required={!!draft.startDate}
+                min={draft.startDate || undefined}
                 onChange={(event) =>
                   setDraft({
                     ...draft,

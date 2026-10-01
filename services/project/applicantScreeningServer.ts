@@ -27,7 +27,7 @@ async function loadInput(
   const { data: application, error: applicationError } = await db
     .from("job_applications")
     .select(
-      "application_id,job_id,freelancer_id,proposal,proposed_price,estimated_days,created_at,updated_at,screening_id",
+      "application_id,job_id,freelancer_id,status,proposal,proposed_price,estimated_days,created_at,updated_at,screening_id",
     )
     .eq("application_id", applicationId)
     .maybeSingle();
@@ -53,10 +53,15 @@ async function loadInput(
       "Only the job owner can screen this application.",
       403,
     );
+  if (["rejected", "withdrawn", "cancelled"].includes(application.status))
+    throw new ScreeningError(
+      "This application is no longer open for assessment.",
+      409,
+    );
   const [freelancer, required, offered, category] = await Promise.all([
     db
       .from("freelancer_profiles")
-      .select("headline,years_of_experience,employment_preference")
+      .select("user_id,headline,years_of_experience,employment_preference")
       .eq("freelancer_id", application.freelancer_id)
       .single(),
     db.from("job_skills").select("skill_id").eq("job_id", job.job_id),
@@ -90,6 +95,42 @@ async function loadInput(
       .filter(Boolean)
       .sort();
   const text = redactScreeningText;
+  let assessment: Record<string, unknown> | null = null;
+  if (freelancer.data?.user_id && job.category_id) {
+    const evidence = await db.rpc("worksync_skill_assessment_evidence", {
+      p_user: freelancer.data.user_id,
+      p_category: job.category_id,
+    });
+    // Deployment may precede the prepared migration; keep existing screening usable.
+    if (evidence.error && !["PGRST202", "42883"].includes(evidence.error.code))
+      throw new ScreeningError("Assessment evidence could not be loaded.");
+    if (!evidence.error) {
+      if (!Array.isArray(evidence.data))
+        throw new ScreeningError("Invalid assessment evidence.");
+      const row = evidence.data.find((r) => r.category_id === job.category_id);
+      if (row) {
+        if (
+          row.passed !== true ||
+          typeof row.percentage !== "number" ||
+          !Number.isFinite(row.percentage) ||
+          row.percentage < 0 ||
+          row.percentage > 100 ||
+          !Number.isInteger(row.version) ||
+          row.version < 1 ||
+          typeof row.completed_at !== "string" ||
+          !Number.isFinite(Date.parse(row.completed_at))
+        )
+          throw new ScreeningError("Invalid assessment evidence.");
+        assessment = {
+          category: text(category.data?.name, 120),
+          passed: true,
+          percentage: row.percentage,
+          version: row.version,
+          completedAt: row.completed_at,
+        };
+      }
+    }
+  }
   const input = {
     job: {
       title: text(job.title, 300),
@@ -109,6 +150,7 @@ async function loadInput(
       submittedAt: application.created_at,
     },
     freelancer: {
+      assessment,
       headline: text(freelancer.data?.headline, 300),
       skills: skills(offered.data || []),
       yearsOfExperience: freelancer.data?.years_of_experience,
@@ -120,6 +162,7 @@ async function loadInput(
       JSON.stringify({
         version: RUBRIC_VERSION,
         model: screeningModel(),
+        applicationStatus: application.status,
         input,
       }),
     )

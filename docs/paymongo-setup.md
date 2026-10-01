@@ -1,10 +1,12 @@
 # PayMongo payments
 
+> Follow-up: separate milestone payouts, 3/7-day delivery review, client auto-accept and cancellation refunds are implemented locally in [milestone-payment-release.md](milestone-payment-release.md). The NEW `202609300004_milestone_settlement.sql` migration is PREPARED, NOT APPLIED. Earlier full-project-only and no-automatic-refund descriptions below are historical. Production readiness is still unverified.
+
 Implemented: authenticated hosted checkout, full signed project amount in PHP, one durable checkout reservation per project and mode, participant-only status checks, verified PayMongo reconciliation, signed webhook handling, and payment panels in both project workspaces. Existing `payments` records feed the existing admin transaction view. The server reads agreement amounts; browser-provided amounts are rejected. No project stages are changed by payment.
 
 ## Required setup
 
-1. Apply `supabase/migrations/202609180001_paymongo_security.sql` in the connected Supabase project's SQL Editor. It restricts payment writes to the server and adds a readiness check. It does not change payment columns or create tables. Checkout fails closed until this check passes. Review any custom security-definer RPC that can write payments as part of deployment; table grants cannot prevent such a function from writing on behalf of its owner.
+1. The supplied live metadata already restricts browser payment writes. Do not replay old security migrations blindly. Review the single prepared `supabase/migrations/202609300001_payment_readiness.sql` and [current readiness report](payment-readiness.md): it adds provider-reference uniqueness and strengthens the existing readiness check, alongside missing payout dependencies. No production SQL has been applied by this audit.
 2. Keep these variables server-only in `.env.local` and your deployment environment:
 
    ```dotenv

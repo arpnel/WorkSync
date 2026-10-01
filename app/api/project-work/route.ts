@@ -1,5 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
+import { after } from "next/server";
+import { reviewProjectPayment } from "@/services/payments/settlementServer";
 import {
   paymentUser,
   getProjectPayment,
@@ -79,6 +81,16 @@ export async function POST(request: Request) {
     );
     const result = await scoped.rpc("worksync_submit_work", body);
     if (result.error) throw new PaymentError(result.error.message, 400);
+    if (body.p_kind === "delivery")
+      after(async () => {
+        try {
+          await reviewProjectPayment(body.p_project);
+        } catch {
+          console.error(
+            "Automatic delivery review deferred to settlement worker.",
+          );
+        }
+      });
     return Response.json(
       { saved: true },
       { headers: { "Cache-Control": "no-store" } },

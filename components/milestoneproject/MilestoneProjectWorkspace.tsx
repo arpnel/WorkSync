@@ -120,15 +120,6 @@ export function MilestoneProjectWorkspace({ orderId }: { orderId: string }) {
         </CardContent>
       </Card>
 
-      {!["active", "revision", "completed", "cancelled"].includes(
-        workspace.status.toLowerCase(),
-      ) && (
-        <MilestonePlanningForm
-          orderId={workspace.orderId}
-          milestones={workspace.milestones}
-          onRefresh={refresh}
-        />
-      )}
       {workspace.projectId && (
         <ProjectMeetings
           key={workspace.projectId}
@@ -136,23 +127,10 @@ export function MilestoneProjectWorkspace({ orderId }: { orderId: string }) {
           active={workspace.status.toLowerCase() === "active"}
         />
       )}
-      <ProjectResolutionPanel
-        orderStatus={workspace.orderStatus}
-        key={workspace.orderId + ":resolution"}
-        orderId={workspace.orderId}
-        projectId={workspace.projectId}
-        status={
-          ["active", "revision", "completed", "cancelled"].includes(
-            workspace.status.toLowerCase(),
-          )
-            ? workspace.status
-            : workspace.orderStatus
-        }
-        userId={workspace.currentUserId}
-        milestones={workspace.milestones}
-        onRefresh={refresh}
-      />
-      <ContractSummary project={workspace} />
+
+      {workspace.clientSignedAt && workspace.freelancerSignedAt && (
+        <ContractSummary project={workspace} />
+      )}
       <ProjectPaymentPanel project={workspace} />
       <ProjectDeliveryPanel
         key={workspace.projectId ?? workspace.orderId}
@@ -160,29 +138,8 @@ export function MilestoneProjectWorkspace({ orderId }: { orderId: string }) {
         onRefresh={refresh}
       />
 
-      <div className="grid gap-5 xl:grid-cols-2 2xl:grid-cols-[minmax(300px,0.85fr)_minmax(360px,1.05fr)_minmax(300px,0.8fr)] 2xl:items-start">
-        <ProjectChatPanel
-          conversationId={workspace.conversationId}
-          className="h-[720px] min-h-[620px] 2xl:sticky 2xl:top-4"
-          messages={workspace.messages}
-          sending={sending}
-          isOtherParticipantTyping={isOtherParticipantTyping}
-          onSend={sendMessage}
-          onTypingChange={sendTyping}
-        />
-        <fieldset
-          className="min-w-0"
-          disabled={["active", "revision", "completed", "cancelled"].includes(
-            workspace.status.toLowerCase(),
-          )}
-        >
-          <MilestoneWorkspaceList
-            project={workspace}
-            updatingApprovalKey={updatingApprovalKey}
-            onRespondItem={respondToAgreementItem}
-          />
-        </fieldset>
-        <aside className="grid gap-5 xl:col-span-2 xl:grid-cols-2 2xl:col-span-1 2xl:block 2xl:space-y-5">
+      <div className="grid items-start gap-5 2xl:grid-cols-[minmax(280px,0.85fr)_minmax(320px,1fr)_minmax(320px,1fr)]">
+        <aside className="min-w-0 space-y-5">
           <fieldset
             className="min-w-0"
             disabled={["active", "revision", "completed", "cancelled"].includes(
@@ -198,6 +155,34 @@ export function MilestoneProjectWorkspace({ orderId }: { orderId: string }) {
               onSaveItem={saveAgreementItem}
             />
           </fieldset>
+        </aside>
+        <fieldset
+          className="min-w-0"
+          disabled={["active", "revision", "completed", "cancelled"].includes(
+            workspace.status.toLowerCase(),
+          )}
+        >
+          <MilestoneWorkspaceList
+            onRefresh={
+              workspace.status.toLowerCase() !== "cancelled"
+                ? refresh
+                : undefined
+            }
+            planning={
+              workspace.status.toLowerCase() !== "cancelled" ? (
+                <MilestonePlanningForm
+                  remainingBudget={workspace.budget - milestoneTotal}
+                  orderId={workspace.orderId}
+                  onRefresh={refresh}
+                />
+              ) : undefined
+            }
+            project={workspace}
+            updatingApprovalKey={updatingApprovalKey}
+            onRespondItem={respondToAgreementItem}
+          />
+        </fieldset>
+        <div className="min-w-0 space-y-5">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
@@ -230,7 +215,37 @@ export function MilestoneProjectWorkspace({ orderId }: { orderId: string }) {
               </div>
             </CardContent>
           </Card>
-        </aside>
+          <ProjectChatPanel
+            conversationId={workspace.conversationId}
+            className="h-[min(70dvh,720px)] min-h-[380px]"
+            messages={workspace.messages}
+            sending={sending}
+            isOtherParticipantTyping={isOtherParticipantTyping}
+            onSend={sendMessage}
+            onTypingChange={sendTyping}
+          />
+        </div>
+      </div>
+      <div className="flex justify-end pt-4">
+        <div className="w-full sm:max-w-lg">
+          <ProjectResolutionPanel
+            compact
+            orderStatus={workspace.orderStatus}
+            key={workspace.orderId + ":resolution"}
+            orderId={workspace.orderId}
+            projectId={workspace.projectId}
+            status={
+              ["active", "revision", "completed", "cancelled"].includes(
+                workspace.status.toLowerCase(),
+              )
+                ? workspace.status
+                : workspace.orderStatus
+            }
+            userId={workspace.currentUserId}
+            milestones={workspace.milestones}
+            onRefresh={refresh}
+          />
+        </div>
       </div>
     </div>
   );

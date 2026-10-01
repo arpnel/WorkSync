@@ -1,5 +1,9 @@
 ﻿import type { ProjectRecord } from "@/services/project/projectService";
-import type { ScheduleCard, SchedulePriority } from "@/types/schedule/schedule";
+import type {
+  ScheduleBoard,
+  ScheduleCard,
+  SchedulePriority,
+} from "@/types/schedule/schedule";
 export interface LinkedDeadline extends ScheduleCard {
   href: string;
   projectTitle: string;
@@ -73,12 +77,23 @@ export function buildProjectDeadlines(
       const dueDate = valid
         ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
         : "";
+      const rawStart = String(project.start_date ?? "");
+      const start = rawStart
+        ? new Date(rawStart.includes("T") ? rawStart : rawStart + "T00:00:00")
+        : null;
+      const projectStart =
+        start && Number.isFinite(start.getTime())
+          ? `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}-${String(start.getDate()).padStart(2, "0")}`
+          : "";
       result.push({
         id,
         listId: stage,
         title,
         description,
         dueDate,
+        startDate:
+          kind !== "meeting" && projectStart <= dueDate ? projectStart : "",
+        entryType: kind === "meeting" ? "deadline" : "plan",
         dueTime:
           valid && kind === "meeting"
             ? `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`
@@ -125,7 +140,9 @@ export function buildProjectDeadlines(
         project.due_date,
         completed
           ? "Done"
-          : ["active", "in_progress", "revision"].includes(String(project.status))
+          : ["active", "in_progress", "revision"].includes(
+                String(project.status),
+              )
             ? "In progress"
             : "To do",
         "project",
@@ -145,4 +162,27 @@ export function buildProjectDeadlines(
         );
   }
   return [...new Map(result.map((item) => [item.id, item])).values()];
+}
+
+/** Shared boards are derived from project records, never copied into personal planner state. */
+export function buildProjectBoards(
+  deadlines: LinkedDeadline[],
+): ScheduleBoard[] {
+  const boards = new Map<string, ScheduleBoard>();
+  for (const card of deadlines) {
+    if (card.kind === "meeting") continue;
+    const id = `linked-project:${card.projectKey}`;
+    if (!boards.has(id))
+      boards.set(id, {
+        id,
+        title: `Project: ${card.projectTitle}`,
+        lists: ["To do", "In progress", "In review", "Done"].map((title) => ({
+          id: title,
+          title,
+        })),
+        cards: [],
+      });
+    boards.get(id)!.cards.push(card);
+  }
+  return [...boards.values()];
 }

@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import type { ProjectRequest } from "@/services/project/projectRequestService";
 import { RequestCard } from "./RequestCard";
+import { screeningState } from "@/lib/ai/screening";
 import { ProjectCard, type Project } from "./ProjectCard";
 
 interface Props {
@@ -82,6 +83,7 @@ export function RequestList({
       ) ?? selectedRequest)
     : null;
   const selected = currentRequest;
+  const assessmentState = screeningState(selected?.screening, selected?.createdAt ?? "");
   const selectedName =
     selected?.currentParty === "freelancer"
       ? selected.clientName
@@ -104,7 +106,9 @@ export function RequestList({
     return [...result.values()].map((requests) =>
       sortByScore
         ? requests.sort(
-            (a, b) => (b.screening?.score ?? -1) - (a.screening?.score ?? -1),
+            (a, b) =>
+              (screeningState(b.screening, b.createdAt) === "ready" ? b.screening!.score! : -1) -
+              (screeningState(a.screening, a.createdAt) === "ready" ? a.screening!.score! : -1),
           )
         : requests,
     );
@@ -415,10 +419,10 @@ export function RequestList({
               <div
                 role="status"
                 aria-live="polite"
-                aria-busy={!selected.screening}
+                aria-busy={assessmentState === "preparing"}
                 className="rounded-xl border bg-muted/30 p-4 text-center"
               >
-                {selected.screening ? (
+                {assessmentState !== "preparing" ? (
                   <Sparkles className="mx-auto h-5 w-5 text-primary" />
                 ) : (
                   <LoaderCircle
@@ -433,10 +437,10 @@ export function RequestList({
                   {selected.screening?.score === null ||
                   selected.screening?.score === undefined
                     ? "—"
-                    : `${selected.screening.score}%`}
+                    : `${selected.screening.score}/100`}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {selected.screening?.result || "Preparing AI match..."}
+                  {assessmentState === "expired" ? "Expired assessment — review current evidence" : selected.screening?.result || (assessmentState === "preparing" ? "Preparing AI match..." : "Assessment unavailable or delayed")}
                 </p>
               </div>
             </div>
@@ -444,13 +448,13 @@ export function RequestList({
               <h3 className="font-semibold">AI screening</h3>
               {!selected.screening && (
                 <p className="text-sm text-muted-foreground">
-                  Your match assessment will appear automatically when it is
-                  ready.
+                  {assessmentState === "preparing" ? "The assessment will appear here if processing completes successfully." : "No assessment is available. You can still review the application and discuss the project."}
                 </p>
               )}
               <p className="text-xs text-muted-foreground">
-                Job match guidance based on submitted evidence. Review the
-                application before deciding.
+                Evidence match score, not a probability of success. Based on
+                listed skills, profile text and the proposal; portfolios are not
+                assessed. Review the application before deciding.
               </p>
               {selected.screening?.screenedAt && (
                 <p className="text-xs text-muted-foreground">

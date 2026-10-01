@@ -1,17 +1,12 @@
-/** Deadline is inclusive; late deliveries become eligible at submission, never before. */
-export function automaticReviewAt(submittedAt: string, dueDate: string | null) {
+/** Review windows start at delivery, not the planned work due date. */
+export function automaticReviewAt(
+  submittedAt: string,
+  _dueDate: string | null,
+  finalDelivery = true,
+) {
   const submitted = Date.parse(submittedAt);
   if (!Number.isFinite(submitted)) return null;
-  const deadline = dueDate ? Date.parse(dueDate) : NaN;
-  return new Date(
-    Math.max(
-      submitted,
-      Math.min(
-        submitted + 7 * 86400000,
-        Number.isFinite(deadline) ? deadline : Infinity,
-      ),
-    ),
-  ).toISOString();
+  return new Date(submitted + (finalDelivery ? 7 : 3) * 86400000).toISOString();
 }
 
 export function projectIsOverdue(

@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { getPublicIdentities } from "@/services/profile/publicIdentityService";
 import type { NotificationRecord } from "@/services/notification/notificationService";
 import { Button } from "@/components/ui/button";
+import { listMyAssessments } from "@/services/assessments/assessmentService";
 import {
   Dialog,
   DialogContent,
@@ -34,6 +35,25 @@ export function NotificationDetailDialog({
     async function load(): Promise<Detail> {
       if (!item.relatedId) return {};
       const id = item.relatedId;
+      if (item.type === "skill_assessment") {
+        const opening = (await listMyAssessments()).find(
+          (row) => row.id === id,
+        );
+        if (!opening)
+          return { body: "This assessment is unavailable for this account." };
+        const closed =
+          opening.status === "closed" || opening.attempt?.status === "expired";
+        return {
+          body: `${opening.category} · ${closed ? "Closed / expired" : opening.status === "scheduled" ? "Scheduled" : "Available"}\nCloses ${new Date(opening.closesAt).toLocaleString()}`,
+          href: `/home/assessments?opening=${encodeURIComponent(id)}`,
+          action:
+            opening.attempt?.status === "submitted"
+              ? "View Result"
+              : closed
+                ? "View Assessment"
+                : "Take Assessment",
+        };
+      }
       if (item.type?.includes("message")) {
         const message = await supabase
           .from("messages")

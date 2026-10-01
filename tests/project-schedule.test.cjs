@@ -34,6 +34,49 @@ const order = () => ({
   },
   milestones: [],
 });
+test("shared project boards retain real progress and project date ranges without personal copies", () => {
+  const row = order();
+  row.project.start_date = "2026-09-19";
+  row.service.service_type = "milestone";
+  row.milestones = [
+    {
+      milestone_id: "a",
+      title: "Design",
+      due_date: "2026-09-21",
+      status: "approved",
+    },
+    {
+      milestone_id: "b",
+      title: "Build",
+      due_date: "2026-09-25",
+      status: "pending",
+    },
+  ];
+  const cards = api.buildProjectDeadlines([row], [], now);
+  assert.equal(cards[0].startDate, "2026-09-19");
+  assert.equal(cards[1].startDate, "2026-09-19");
+  assert.equal(cards[1].entryType, "plan");
+  const boards = api.buildProjectBoards(cards);
+  assert.equal(boards.length, 1);
+  assert.equal(boards[0].id, "linked-project:o");
+  assert.equal(boards[0].cards.length, 2);
+  assert.equal(boards[0].cards[0].listId, "Done");
+  row.current_user_id = "c";
+  assert.equal(
+    JSON.stringify(
+      api.buildProjectBoards(api.buildProjectDeadlines([row], [], now)),
+    ),
+    JSON.stringify(boards),
+  );
+  row.project.start_date = "2026-10-01";
+  assert.equal(api.buildProjectDeadlines([row], [], now)[0].startDate, "");
+  row.project.start_date = null;
+  assert.equal(api.buildProjectDeadlines([row], [], now)[0].startDate, "");
+  assert.equal(
+    api.buildProjectBoards([{ ...cards[0], kind: "meeting" }]).length,
+    0,
+  );
+});
 test("legacy active and completed statuses map to the correct schedule stages", () => {
   const row = order();
   row.project.status = "in_progress";

@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, ArrowLeft, FolderKanban, Tag } from "lucide-react";
+import { Activity, ChevronLeft, FolderKanban, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import type { WorkspaceProjectType } from "@/types/project/projectWorkspace";
@@ -27,20 +27,24 @@ export function ProjectWorkspaceHeader({
 }: Props) {
   if (compact)
     return (
-      <header className="flex items-start gap-3 border-b pb-4">
+      <header className="flex items-start gap-1 border-b pb-4">
         <Button
           type="button"
           variant="ghost"
-          size="icon"
-          className="shrink-0"
+          size="sm"
+          className="h-auto shrink-0 cursor-pointer px-0 hover:bg-transparent dark:hover:bg-transparent text-xl font-medium text-foreground/50 hover:text-foreground/50 dark:text-foreground dark:hover:text-foreground sm:text-3xl"
           aria-label="Back to projects"
           title="Back to projects"
           onClick={onBack}
         >
-          <ArrowLeft className="size-5" />
+          <ChevronLeft className="size-5 sm:size-7" />
+          Project
         </Button>
+        <span aria-hidden="true" className="mt-1 text-xl text-muted-foreground">
+          |
+        </span>
         <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-3 pt-1">
-          <h1 className="min-w-0 flex-1 break-words text-xl font-semibold leading-tight tracking-tight sm:text-3xl">
+          <h1 className="min-w-0 flex-1 break-words text-xl font-semibold text-foreground dark:text-foreground/65 sm:text-3xl">
             {title}
           </h1>
           <Badge variant="outline" className="capitalize">
@@ -52,18 +56,25 @@ export function ProjectWorkspaceHeader({
   return (
     <Card className="gap-0 overflow-hidden py-0">
       <CardContent className="p-0">
-        <div className="flex min-w-0 items-center gap-1.5 border-b px-3 py-2.5 sm:px-5">
+        <div className="flex min-w-0 items-center gap-1 border-b px-3 py-2.5 sm:px-5">
           <Button
             type="button"
             variant="ghost"
-            size="icon"
-            className="h-8 w-8 shrink-0"
+            size="sm"
+            className="h-auto shrink-0 cursor-pointer px-0 hover:bg-transparent dark:hover:bg-transparent text-xl font-medium text-foreground/50 hover:text-foreground/50 dark:text-foreground dark:hover:text-foreground sm:text-2xl"
             aria-label="Back to projects"
             onClick={onBack}
           >
-            <ArrowLeft className="h-4.5 w-4.5" />
+            <ChevronLeft className="size-5 sm:size-6" />
+            Project
           </Button>
-          <h1 className="min-w-0 truncate text-xl font-semibold sm:text-2xl">
+          <span
+            aria-hidden="true"
+            className="text-xl text-muted-foreground"
+          >
+            |
+          </span>
+          <h1 className="min-w-0 truncate text-xl font-semibold text-foreground dark:text-foreground/65 sm:text-2xl">
             {title}
           </h1>
         </div>

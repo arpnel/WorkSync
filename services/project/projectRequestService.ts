@@ -5,6 +5,7 @@ import {
 import { platformAction } from "@/services/platform/platformService";
 import { supabase } from "@/lib/supabaseClient";
 import { screeningLabel } from "@/lib/ai/screening";
+import { assertFreelancerAvailable } from "@/services/marketplace/freelancerAvailability";
 
 export interface ScreeningResult {
   score: number | null;
@@ -334,6 +335,7 @@ export async function rejectProjectRequest(applicationId: string) {
 export async function startProjectDiscussion(
   request: ProjectRequest,
 ): Promise<string> {
+  if (request.status !== "accepted") await assertFreelancerAvailable(request.freelancerId);
   return platformAction("worksync_respond_application", {
     p_application: request.applicationId,
     p_accept: true,

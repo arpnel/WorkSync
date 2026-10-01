@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   getProjectPayment,
   startProjectPayment,
+  setAutoAccept,
   type ProjectPayment,
 } from "@/services/payments/paymentService";
 import type { ProjectWorkspace } from "@/types/project/projectWorkspace";
@@ -102,6 +103,28 @@ export function PaymentPanel({
       setBusy(false);
     }
   }
+  async function changeAutoAccept() {
+    const next = !payment?.autoAccept;
+    if (
+      next &&
+      !window.confirm(
+        "Automatically accept future deliveries without manual review? Approved deliveries can release money to the freelancer. Disputes and cancellation holds still apply.",
+      )
+    )
+      return;
+    setBusy(true);
+    setError("");
+    try {
+      await setAutoAccept(projectId, next);
+      await refresh();
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Unable to save preference.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
   const total = budget ?? payment?.amount;
   const paidAmount =
     payment?.status === "paid" ? payment.amount : payment ? 0 : undefined;
@@ -143,6 +166,13 @@ export function PaymentPanel({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Checkout charges the full agreed project amount, including milestone
+          projects.
+          {payment?.settlementVersion === 2
+            ? " Each approved milestone has its own payout. Accepted cancellations refund only funds not reserved for freelancer transfers, subject to provider eligibility."
+            : " Cancellation refunds require support until the updated settlement system is installed."}
+        </p>
         {payment?.status === "paid" && (
           <div className="rounded-xl border bg-muted/20 p-3 text-sm">
             <p className="font-medium">Freelancer payout</p>
@@ -162,16 +192,74 @@ export function PaymentPanel({
                   unavailable: "Payout tracking is not available yet.",
                 } as Record<string, string>
               )[payment.payout?.status ?? ""] ??
-                "Client payment received. Payout follows approval of all project work."}
+                (payment.autoReleaseEnabled
+                  ? "Client payment received. Each approved milestone can be paid separately after transfer checks."
+                  : "Client payment received. Automatic payout is not enabled; contact support about release.")}
             </p>
-            {payment.payout?.status === "awaiting_account" && !client && (
-              <a
-                href="/home/settings"
-                className="mt-2 inline-block text-primary underline"
+            {payment.payouts?.map((row) => (
+              <div
+                key={row.payout_id}
+                className="mt-3 flex flex-wrap justify-between gap-2 border-t pt-2"
               >
-                Set up payout account
-              </a>
+                <span>{row.title}</span>
+                <span>
+                  {money(Number(row.amount))} ·{" "}
+                  {row.status.replaceAll("_", " ")}
+                </span>
+              </div>
+            ))}
+            {payment.refunds?.map((row) => (
+              <div key={row.refund_id} className="mt-3 border-t pt-2">
+                <p>
+                  Cancellation refund: {money(Number(row.amount))} ·{" "}
+                  {row.status.replaceAll("_", " ")}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  A confirmed refund can take additional time to appear with the
+                  original payment method. Failed or uncertain refunds need
+                  support review.
+                </p>
+              </div>
+            ))}
+            {(payment.payout?.status === "awaiting_account" ||
+              payment.payouts?.some(
+                (row) => row.status === "awaiting_account",
+              )) &&
+              !client && (
+                <a
+                  href="/home/settings"
+                  className="mt-2 inline-block text-primary underline"
+                >
+                  Set up payout account
+                </a>
+              )}
+          </div>
+        )}
+        {client && payable && payment?.settlementVersion === 2 && (
+          <div className="space-y-2 border-t pt-3 text-sm">
+            <p className="font-medium">
+              Automatic delivery acceptance: {payment.autoAccept ? "On" : "Off"}
+            </p>
+            <p className="text-muted-foreground">
+              When enabled, future deliveries are accepted without manual review
+              on processing. Otherwise, intermediate milestones have 3 days for
+              review; final milestones and standard deliveries have 7 days after
+              submission. Payouts run on the configured schedule.
+            </p>
+            {!payment.autoReleaseEnabled && (
+              <p className="text-muted-foreground">
+                Automatic processing is currently disabled.
+              </p>
             )}
+            <Button
+              variant="outline"
+              disabled={busy || refreshing}
+              onClick={() => void changeAutoAccept()}
+            >
+              {payment.autoAccept
+                ? "Turn off auto-accept"
+                : "Enable auto-accept"}
+            </Button>
           </div>
         )}
         <dl className="space-y-3 text-sm" aria-label="Payment breakdown">

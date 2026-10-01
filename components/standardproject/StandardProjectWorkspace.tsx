@@ -103,23 +103,10 @@ export function StandardProjectWorkspace({ orderId }: { orderId: string }) {
           active={workspace.status.toLowerCase() === "active"}
         />
       )}
-      <ProjectResolutionPanel
-        orderStatus={workspace.orderStatus}
-        key={workspace.orderId + ":resolution"}
-        orderId={workspace.orderId}
-        projectId={workspace.projectId}
-        status={
-          ["active", "revision", "completed", "cancelled"].includes(
-            workspace.status.toLowerCase(),
-          )
-            ? workspace.status
-            : workspace.orderStatus
-        }
-        userId={workspace.currentUserId}
-        milestones={workspace.milestones}
-        onRefresh={refresh}
-      />
-      <ContractSummary project={workspace} />
+
+      {workspace.clientSignedAt && workspace.freelancerSignedAt && (
+        <ContractSummary project={workspace} />
+      )}
       <ProjectPaymentPanel project={workspace} />
       <ProjectDeliveryPanel
         key={workspace.projectId ?? workspace.orderId}
@@ -217,6 +204,27 @@ export function StandardProjectWorkspace({ orderId }: { orderId: string }) {
             </CardContent>
           </Card>
         </aside>
+      </div>
+      <div className="flex justify-end pt-4">
+        <div className="w-full sm:max-w-lg">
+          <ProjectResolutionPanel
+            compact
+            orderStatus={workspace.orderStatus}
+            key={workspace.orderId + ":resolution"}
+            orderId={workspace.orderId}
+            projectId={workspace.projectId}
+            status={
+              ["active", "revision", "completed", "cancelled"].includes(
+                workspace.status.toLowerCase(),
+              )
+                ? workspace.status
+                : workspace.orderStatus
+            }
+            userId={workspace.currentUserId}
+            milestones={workspace.milestones}
+            onRefresh={refresh}
+          />
+        </div>
       </div>
     </div>
   );

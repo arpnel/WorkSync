@@ -8,6 +8,7 @@ import { Bookmark, BookmarkCheck, Search } from "lucide-react";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import { Button } from "@/components/ui/button";
 import { listingKey } from "@/services/marketplace/listingActions";
+import { useFreelancerAvailability } from "@/hooks/useFreelancerAvailability";
 
 interface Props {
   ratings?: Map<string, number>;
@@ -28,6 +29,7 @@ export default function MarketplaceGrid({
   saving = null,
   onSave,
 }: Props) {
+  const availability = useFreelancerAvailability(services.flatMap(item => item.freelancer_id ? [item.freelancer_id] : []));
   if (loading)
     return (
       <ContentSkeleton label="Loading marketplace" variant="marketplace" />
@@ -61,6 +63,7 @@ export default function MarketplaceGrid({
                 className="relative min-w-0"
               >
                 <MarketplaceCard
+                  available={availability.get(listing.freelancer_id ?? "")}
                   listing={listing}
                   rating={ratings?.get(listing.freelancer_id ?? "")}
                   onClick={() => onCardClick?.(listing)}

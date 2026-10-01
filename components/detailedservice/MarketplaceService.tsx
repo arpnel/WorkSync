@@ -1,7 +1,12 @@
 "use client";
+import GuestSignup from "@/components/marketplace/GuestSignup";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import Link from "next/link";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { supabase } from "@/lib/supabaseClient";
 import { ListingActions } from "@/components/marketplace/ListingActions";
+import { FreelancerAvailability } from "@/components/marketplace/FreelancerAvailability";
+import { useFreelancerAvailability } from "@/hooks/useFreelancerAvailability";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -41,18 +46,65 @@ import {
 
 interface MarketplaceServiceDetailsProps {
   serviceId: string;
+  guest?: boolean;
 }
 
 export default function MarketplaceServiceDetails({
   serviceId,
+  guest = false,
 }: MarketplaceServiceDetailsProps) {
+  const [signup, setSignup] = useState(false);
+  const [serviceSkills, setServiceSkills] = useState<{
+    serviceId: string;
+    names: string[];
+    failed: boolean;
+  } | null>(null);
+  useEffect(() => {
+    let active = true;
+    async function loadSkills() {
+      try {
+        const links = await supabase
+          .from("service_skills")
+          .select("skill_id")
+          .eq("service_id", serviceId);
+        if (links.error) throw links.error;
+        const ids = [...new Set((links.data ?? []).map((row) => row.skill_id))];
+        const skills = ids.length
+          ? await supabase
+              .from("skills")
+              .select("id,name")
+              .in("id", ids)
+              .order("name")
+          : { data: [], error: null };
+        if (skills.error) throw skills.error;
+        if (active)
+          setServiceSkills({
+            serviceId,
+            names: (skills.data ?? []).map((row) => row.name),
+            failed: false,
+          });
+      } catch {
+        if (active) setServiceSkills({ serviceId, names: [], failed: true });
+      }
+    }
+    void loadSkills();
+    return () => {
+      active = false;
+    };
+  }, [serviceId]);
+  const [guestSeller, setGuestSeller] = useState<{
+    display_name: string | null;
+    avatar_url: string | null;
+  } | null>(null);
   const [service, setService] = useState<MarketplaceService | null>(null);
+  const availability = useFreelancerAvailability(service?.freelancer_id ? [service.freelancer_id] : []);
+  const available = availability.get(service?.freelancer_id ?? "");
 
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
 
   const [loading, setLoading] = useState(true);
 
-  const [roleLoading, setRoleLoading] = useState(true);
+  const [roleLoading, setRoleLoading] = useState(!guest);
 
   const [error, setError] = useState<string | null>(null);
 
@@ -113,6 +165,7 @@ export default function MarketplaceServiceDetails({
   }, []);
 
   useEffect(() => {
+    if (guest) return;
     async function loadUserRole() {
       try {
         setRoleLoading(true);
@@ -154,7 +207,7 @@ export default function MarketplaceServiceDetails({
     return () => {
       window.removeEventListener("account-role-changed", handleRoleChanged);
     };
-  }, []);
+  }, [guest]);
 
   /* ==========================================================
      LOAD LISTING
@@ -170,11 +223,12 @@ export default function MarketplaceServiceDetails({
 
       setLoading(true);
       setError(null);
+      setGuestSeller(null);
 
       try {
         console.log("Loading marketplace listing:", serviceId);
 
-        const data = await getMarketplaceService(serviceId);
+        const data = await getMarketplaceService(serviceId, guest);
 
         if (!data) {
           setError("Listing not found.");
@@ -183,6 +237,21 @@ export default function MarketplaceServiceDetails({
         }
 
         setService(data);
+        if (guest && data.freelancer_id) {
+          const { data: seller } = await supabase
+            .from("freelancer_profiles")
+            .select("user_id")
+            .eq("freelancer_id", data.freelancer_id)
+            .maybeSingle();
+          if (seller) {
+            const { data: identity } = await supabase
+              .from("profiles")
+              .select("display_name,avatar_url")
+              .eq("user_id", seller.user_id)
+              .maybeSingle();
+            setGuestSeller(identity);
+          }
+        }
       } catch (err) {
         console.error("Failed to load marketplace listing:", err);
 
@@ -194,13 +263,17 @@ export default function MarketplaceServiceDetails({
     }
 
     loadService();
-  }, [serviceId]);
+  }, [serviceId, guest]);
 
   /* ==========================================================
      SERVICE ACTION
   ========================================================== */
 
   async function handleServiceAction() {
+    if (guest) {
+      setSignup(true);
+      return;
+    }
     if (!service) {
       return;
     }
@@ -375,6 +448,7 @@ export default function MarketplaceServiceDetails({
 
   return (
     <>
+      <GuestSignup open={signup} onOpenChange={setSignup} />
       <div className="mx-auto w-full max-w-6xl break-words">
         <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
           <div className="min-w-0">
@@ -404,46 +478,136 @@ export default function MarketplaceServiceDetails({
           ===================================================== */}
 
             <div className="mt-6">
-              <h1 className="text-2xl font-bold tracking-tight">
-                {service.title}
-              </h1>
+              <div className="flex items-start justify-between gap-4 border-b pb-4">
+                <h1 className="min-w-0 flex-1 text-2xl font-bold tracking-tight">
+                  {service.title}
+                </h1>
+                <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center">
+                  <FreelancerAvailability available={available} />
+                  {" "}
+                  <ListingActions
+                    kind="service"
+                    id={service.service_id}
+                    onRequireAccount={guest ? () => setSignup(true) : undefined}
+                  />
+                </div>
+              </div>
 
-              {service.freelancer?.user_id && (
-                <Link
-                  className="mt-3 inline-block text-sm text-primary underline"
-                  href={`/home/profile/${service.freelancer.user_id}`}
-                >
-                  {service.freelancer.profile?.display_name ||
-                    [
-                      service.freelancer.profile?.first_name,
-                      service.freelancer.profile?.last_name,
-                    ]
-                      .filter(Boolean)
-                      .join(" ") ||
-                    "View freelancer profile"}
-                </Link>
-              )}
-              {service.category?.name && (
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {service.category.name}
-                </p>
-              )}
+              {(guest || service.freelancer?.user_id) &&
+                (() => {
+                  const profile = guest
+                    ? guestSeller
+                    : service.freelancer?.profile;
+                  const name =
+                    profile?.display_name ||
+                    (!guest
+                      ? [
+                          service.freelancer?.profile?.first_name,
+                          service.freelancer?.profile?.last_name,
+                        ]
+                          .filter(Boolean)
+                          .join(" ")
+                      : "") ||
+                    "Freelancer name unavailable";
+                  const identity = (
+                    <>
+                      <Avatar className="size-11">
+                        <AvatarImage
+                          src={profile?.avatar_url ?? undefined}
+                          alt=""
+                        />
+                        <AvatarFallback>
+                          {profile?.display_name?.slice(0, 2).toUpperCase() ||
+                            "?"}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="min-w-0 break-words text-sm font-medium">
+                        {name}
+                      </span>
+                    </>
+                  );
+                  const className =
+                    "mt-4 inline-flex cursor-pointer items-center gap-3 rounded-xl p-2 text-left focus-visible:outline-2 focus-visible:outline-primary";
+                  return guest ? (
+                    <button
+                      type="button"
+                      className={className}
+                      aria-label={"View profile of " + name}
+                      onClick={() => setSignup(true)}
+                    >
+                      {identity}
+                    </button>
+                  ) : (
+                    <Link
+                      className={className}
+                      href={"/home/profile/" + service.freelancer!.user_id}
+                      aria-label={"View profile of " + name}
+                    >
+                      {identity}
+                    </Link>
+                  );
+                })()}
             </div>
-
-            <ListingActions kind="service" id={service.service_id} />
 
             {/* =====================================================
               DESCRIPTION
           ===================================================== */}
 
-            <section className="mt-8">
-              <h2 className="text-lg font-semibold">
+            <section
+              className="mt-8 border-t pt-7"
+              aria-labelledby="about-service-heading"
+            >
+              <h2
+                id="about-service-heading"
+                className="text-xl font-semibold tracking-tight"
+              >
                 {isService ? "About this service" : "About this job"}
               </h2>
-
-              <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
-                {service.description}
-              </p>
+              <dl className="mt-6 space-y-6">
+                <div className="grid gap-2 sm:grid-cols-[130px_minmax(0,1fr)] sm:gap-6">
+                  <dt className="text-sm font-medium text-muted-foreground">
+                    Service
+                  </dt>
+                  <dd className="text-sm font-semibold">
+                    {service.category?.name || "Not specified"}
+                  </dd>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-[130px_minmax(0,1fr)] sm:gap-6">
+                  <dt className="text-sm font-medium text-muted-foreground">
+                    Skills included
+                  </dt>
+                  <dd className="flex flex-wrap gap-2 text-sm">
+                    {serviceSkills?.serviceId !== serviceId ? (
+                      <span className="text-muted-foreground">
+                        Loading skills...
+                      </span>
+                    ) : serviceSkills.failed ? (
+                      <span className="text-muted-foreground">
+                        Skills unavailable.
+                      </span>
+                    ) : serviceSkills.names.length ? (
+                      serviceSkills.names.map((name) => (
+                        <span
+                          key={name}
+                          className="max-w-full break-words rounded-lg bg-muted px-3 py-1.5 text-xs font-medium"
+                        >
+                          {name}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-muted-foreground">
+                        No skills specified.
+                      </span>
+                    )}
+                  </dd>
+                </div>
+                <div className="border-t pt-6">
+                  <dt className="text-sm font-semibold">Description</dt>
+                  <dd className="mt-3 whitespace-pre-wrap break-words text-sm leading-7 text-muted-foreground">
+                    {service.description?.trim() || "No description provided."}
+                  </dd>
+                </div>
+              </dl>
             </section>
 
             {/* =====================================================
@@ -451,7 +615,7 @@ export default function MarketplaceServiceDetails({
           ===================================================== */}
           </div>
           <aside
-            className="min-w-0 lg:sticky lg:top-6"
+            className="min-w-0 lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1 lg:row-span-2"
             aria-label="Listing details and actions"
           >
             {isService && (
@@ -475,7 +639,7 @@ export default function MarketplaceServiceDetails({
                 <div className="p-6">
                   <h2 className="text-base font-semibold">Service details</h2>
 
-                  <div className="mt-5 space-y-5">
+                  <div className="mt-5 divide-y [&>div]:py-4 [&>div:first-child]:pt-0 [&>div:last-child]:pb-0">
                     {/* DELIVERY */}
 
                     <div className="flex items-center justify-between gap-4">
@@ -537,7 +701,7 @@ export default function MarketplaceServiceDetails({
                   <button
                     type="button"
                     onClick={handleServiceAction}
-                    disabled={actionLoading}
+                    disabled={actionLoading || available === false}
                     className="
                     w-full
                     rounded-lg
@@ -553,7 +717,7 @@ export default function MarketplaceServiceDetails({
                     disabled:opacity-50
                   "
                   >
-                    {actionLoading ? "Submitting..." : actionLabel}
+                    {available === false ? "Fully booked" : actionLoading ? "Submitting..." : actionLabel}
                   </button>
 
                   {actionError && (
@@ -668,7 +832,7 @@ export default function MarketplaceServiceDetails({
           ===================================================== */}
 
           {isService && service.freelancer_id && (
-            <section className="min-w-0 lg:col-span-2">
+            <section className="min-w-0 border-t pt-6 lg:col-start-1 lg:row-start-2">
               <ServiceReviews freelancerId={service.freelancer_id} />
             </section>
           )}

@@ -25,6 +25,7 @@ import {
   ChartNoAxesCombined,
   BellRing,
   UserRound,
+  ClipboardCheck,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -36,6 +37,7 @@ const NAV_ITEMS = [
   { label: "Messages", icon: MessageCircle, href: "/home/messages" },
   { label: "My Listings", icon: Clipboard, href: "/home/my-listings" },
   { label: "Schedule", icon: Calendar, href: "/home/schedule" },
+  { label: "Assessments", icon: ClipboardCheck, href: "/home/assessments" },
   { label: "Notifications", icon: BellRing, href: "/home/notifications" },
   { label: "Clients", icon: Users, href: "/home/Client" },
   { label: "Analytics", icon: ChartNoAxesCombined, href: "/home/analytics" },

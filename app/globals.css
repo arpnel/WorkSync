@@ -1,6 +1,25 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Navigation cards share a lift/glow without changing their layout footprint. */
+.navigation-card {
+  transition: translate 180ms ease, box-shadow 180ms ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .navigation-card:hover {
+    translate: 0 -4px;
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--navigation-glow, var(--color-blue-500)) 35%, transparent), 0 8px 24px color-mix(in oklab, var(--navigation-glow, var(--color-blue-500)) 22%, transparent);
+  }
+}
+.navigation-card:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--navigation-glow, var(--color-blue-500)) 60%, transparent), 0 8px 24px color-mix(in oklab, var(--navigation-glow, var(--color-blue-500)) 22%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .navigation-card { transition: none; }
+  .navigation-card:hover { translate: none; }
+}
+
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

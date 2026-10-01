@@ -19,9 +19,11 @@ import {
 export function ListingActions({
   kind,
   id,
+  onRequireAccount,
 }: {
   kind: ListingKind;
   id: string;
+  onRequireAccount?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState<string>(reportReasons[0]);
@@ -29,6 +31,13 @@ export function ListingActions({
   const [sending, setSending] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [error, setError] = useState("");
+  if (onRequireAccount)
+    return (
+      <Button variant="ghost" size="sm" onClick={onRequireAccount}>
+        <Flag />
+        Report
+      </Button>
+    );
   return (
     <div className="flex items-center justify-between gap-2 px-2 py-2">
       <Dialog open={open} onOpenChange={setOpen}>

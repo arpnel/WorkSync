@@ -28,10 +28,10 @@ function load(path, modules = {}, env = {}, globals = {}) {
   return exports;
 }
 const timing = load("lib/projectSettlement.ts");
-test("automatic review uses the earlier cutoff, never before submission", () => {
+test("automatic review allows seven days for final deliveries and three for intermediate milestones", () => {
   assert.equal(
     timing.automaticReviewAt("2026-10-01T10:00:00Z", "2026-10-03T10:00:00Z"),
-    "2026-10-03T10:00:00.000Z",
+    "2026-10-08T10:00:00.000Z",
   );
   assert.equal(
     timing.automaticReviewAt("2026-10-01T10:00:00Z", "2026-11-01T10:00:00Z"),
@@ -39,13 +39,17 @@ test("automatic review uses the earlier cutoff, never before submission", () => 
   );
   assert.equal(
     timing.automaticReviewAt("2026-10-04T10:00:00Z", "2026-10-03T10:00:00Z"),
-    "2026-10-04T10:00:00.000Z",
+    "2026-10-11T10:00:00.000Z",
   );
   assert.equal(
     timing.automaticReviewAt("2026-10-01T10:00:00Z", null),
     "2026-10-08T10:00:00.000Z",
   );
   assert.equal(timing.automaticReviewAt("invalid", null), null);
+  assert.equal(
+    timing.automaticReviewAt("2026-10-01T10:00:00Z", null, false),
+    "2026-10-04T10:00:00.000Z",
+  );
 });
 test("overdue warning leaves terminal projects alone", () => {
   const now = Date.parse("2026-10-03T10:00:00Z");
@@ -137,6 +141,7 @@ function workerHarness({
   timeout = false,
   refund = false,
   mismatch = false,
+  claimedAmount,
 } = {}) {
   const payment = {
     payment_id: "payment",
@@ -211,6 +216,8 @@ function workerHarness({
       return q;
     },
     async rpc(name) {
+      if (name === "worksync_settlement_version")
+        return { data: 2, error: null };
       if (name === "worksync_settle_project") {
         reviews++;
         return { error: null };
@@ -218,7 +225,15 @@ function workerHarness({
       if (row.status !== "ready") return { data: [], error: null };
       row.status = "processing";
       row.claimed_at = new Date().toISOString();
-      return { data: [{ ...row }], error: null };
+      return {
+        data: [
+          {
+            ...row,
+            ...(claimedAmount === undefined ? {} : { amount: claimedAmount }),
+          },
+        ],
+        error: null,
+      };
     },
   };
   const transfer = {
@@ -230,6 +245,10 @@ function workerHarness({
     destination_account: destination,
   };
   const worker = load("services/payments/settlementServer.ts", {
+    "./refundServer": {
+      refundCancelledPayment: async () => false,
+      reconcileRefunds: async () => ({ reconciled: 0, errors: 0 }),
+    },
     "./paymentServer": {
       paymentDatabase: () => db,
       reconcilePayment: async () => true,
@@ -343,4 +362,74 @@ test("cron rejects missing credentials and leaves disabled automation inert", as
     200,
   );
   assert.equal(calls, 0);
+});
+
+test("a claim exceeding verified funding is quarantined before any transfer", async () => {
+  const h = workerHarness({ claimedAmount: 101 });
+  await h.worker.settleProjects();
+  assert.equal(h.posts(), 0);
+  assert.equal(h.row.status, "needs_review");
+});
+
+test("payout account writes are bound to the authenticated freelancer and reject supplied owners", async () => {
+  let saved;
+  let eligible = true;
+  const db = {
+    from: (table) =>
+      table === "freelancer_profiles"
+        ? {
+            select: () => ({
+              eq: (_key, user) => {
+                assert.equal(user, "freelancer-owner");
+                return {
+                  maybeSingle: async () => ({
+                    data: eligible ? { freelancer_id: "profile" } : null,
+                  }),
+                };
+              },
+            }),
+          }
+        : {
+            upsert: async (value) => {
+              saved = value;
+              return { error: null };
+            },
+          },
+  };
+  const route = load("app/api/payout-account/route.ts", {
+    "@/lib/payments/payouts": payout,
+    "@/lib/payments/paymongo": { PaymentError, paymentMode: () => "test" },
+    "@/services/payments/paymentServer": {
+      paymentUser: async () => ({ db, user: { id: "freelancer-owner" } }),
+      paymentResponse: () =>
+        Response.json({ error: "rejected" }, { status: 400 }),
+    },
+  });
+  const destination = {
+    name: "Fixture Owner",
+    number: "1234567890",
+    bic: "TESTPHMM",
+    bankLabel: "Fixture Bank",
+    provider: "pesonet",
+  };
+  const request = (body) =>
+    new Request("https://example.test", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  assert.equal(
+    (await route.POST(request({ ...destination, user_id: "someone-else" })))
+      .status,
+    400,
+  );
+  assert.equal(saved, undefined);
+  assert.equal((await route.POST(request(destination))).status, 200);
+  assert.equal(saved.user_id, "freelancer-owner");
+  assert.equal(saved.mode, "test");
+  assert.equal(saved.account_last4, "7890");
+  assert.ok(!saved.encrypted_destination.includes(destination.number));
+  saved = undefined;
+  eligible = false;
+  assert.equal((await route.POST(request(destination))).status, 400);
+  assert.equal(saved, undefined);
 });

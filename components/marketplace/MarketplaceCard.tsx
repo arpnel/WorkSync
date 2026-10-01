@@ -10,14 +10,16 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import type { MarketplaceItem } from "@/services/marketplace/MarketplaceServices";
+import { FreelancerAvailability } from "./FreelancerAvailability";
 
 interface Props {
+  available?: boolean;
   listing: MarketplaceItem;
   rating?: number;
   onClick?: () => void;
 }
 
-export default function MarketplaceCard({ listing, onClick, rating }: Props) {
+export default function MarketplaceCard({ listing, onClick, rating, available }: Props) {
   const isService = listing.listing_type === "service";
   const profile = isService
     ? listing.freelancer?.profile
@@ -138,6 +140,7 @@ export default function MarketplaceCard({ listing, onClick, rating }: Props) {
         </div>
 
         <div className="space-y-4 p-4">
+          <FreelancerAvailability available={available} />
           <div className="flex items-center gap-2.5">
             <Avatar className="h-8 w-8 shrink-0">
               <AvatarImage

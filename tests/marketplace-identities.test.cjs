@@ -239,6 +239,7 @@ function requestsHarness(viewer) {
   };
   // Public role rows can be filtered by RLS in the browser; identity lookup still resolves them.
   const service = load("services/project/projectRequestService.ts", {
+    "@/services/marketplace/freelancerAvailability": { assertFreelancerAvailable: async () => {} },
     "@/lib/supabaseClient": { supabase: db },
     "@/services/platform/platformService": {},
     "@/lib/ai/screening": { screeningLabel: (v) => v },
@@ -292,6 +293,8 @@ test("Buy resolves hidden owner profiles and still rejects buying your own servi
     },
   };
   const service = load("services/marketplace/MarketplaceServices.ts", {
+    "./freelancerAvailability": { assertFreelancerAvailable: async () => {} },
+    "@/lib/pageReadCache": { readPageCache: (_key, fetcher) => fetcher() },
     "@/lib/supabaseClient": { supabase: db },
     "@/services/platform/platformService": {
       platformAction: async () => {

@@ -207,9 +207,32 @@ export async function getProjectWorkspace(
     }
   }
 
-  const milestones: WorkspaceMilestone[] = records(project?.milestones)
+  let milestoneRows = records(project?.milestones);
+  const draftMilestones =
+    text(service?.service_type) === "milestone" &&
+    !!contractId &&
+    !["active", "completed"].includes(text(contract?.status)) &&
+    (!project || ["", "pending"].includes(text(project.status)));
+  if (draftMilestones) {
+    const draft = await supabase.rpc("worksync_draft_milestones", {
+      p_order: orderId,
+      p_action: "list",
+    });
+    if (draft.error)
+      throw new Error(
+        "Unable to load draft milestones: " + draft.error.message,
+      );
+    if (!Array.isArray(draft.data))
+      throw new Error("Invalid draft milestone response.");
+    milestoneRows = records(draft.data);
+  }
+  const milestones: WorkspaceMilestone[] = milestoneRows
     .map((milestone) => ({
-      id: text(milestone.milestone_id),
+      id: text(
+        draftMilestones
+          ? milestone.contract_milestone_id
+          : milestone.milestone_id,
+      ),
       title: text(milestone.title, "Untitled milestone"),
       description: text(milestone.description),
       amount: numeric(milestone.amount),

@@ -53,27 +53,84 @@ test("reservations are stable, valid UUIDs, isolated by project and mode", () =>
   assert.equal(provider.paymentId("ABC"), provider.paymentId("abc"));
 });
 
-function checkoutHarness({ ready = true, signed = true, onHold = false, existing = null, conflict = false } = {}) {
+function checkoutHarness({
+  ready = true,
+  signed = true,
+  onHold = false,
+  existing = null,
+  conflict = false,
+} = {}) {
   const calls = [];
   const db = {
     rpc: async () => ({ data: ready, error: null }),
     from(table) {
-      let operation = "select", values;
+      let operation = "select",
+        values;
       const query = {
-        select() { return query; }, eq() { return query; }, in() { return query; }, is() { return query; }, limit() { return query; },
-        insert(value) { operation = "insert"; values = value; return query; },
-        update(value) { operation = "update"; values = value; return query; },
-        single() { return result(true); }, maybeSingle() { return result(true); },
-        then(resolve, reject) { return result(false).then(resolve, reject); },
+        select() {
+          return query;
+        },
+        eq() {
+          return query;
+        },
+        in() {
+          return query;
+        },
+        is() {
+          return query;
+        },
+        limit() {
+          return query;
+        },
+        insert(value) {
+          operation = "insert";
+          values = value;
+          return query;
+        },
+        update(value) {
+          operation = "update";
+          values = value;
+          return query;
+        },
+        single() {
+          return result(true);
+        },
+        maybeSingle() {
+          return result(true);
+        },
+        then(resolve, reject) {
+          return result(false).then(resolve, reject);
+        },
       };
       async function result(single) {
-        if (operation !== "select") { calls.push({ table, operation, values }); return { error: conflict && operation === "insert" ? { code: "23505" } : null }; }
+        if (operation !== "select") {
+          calls.push({ table, operation, values });
+          return {
+            error:
+              conflict && operation === "insert" ? { code: "23505" } : null,
+          };
+        }
         let data;
-        if (table === "projects") data = { project_id: "project", order_id: "order", client_id: "cp", freelancer_id: "fp", title: "Project", status: "active" };
+        if (table === "projects")
+          data = {
+            project_id: "project",
+            order_id: "order",
+            client_id: "cp",
+            freelancer_id: "fp",
+            title: "Project",
+            status: "active",
+          };
         if (table === "client_profiles") data = { user_id: "client" };
         if (table === "freelancer_profiles") data = { user_id: "freelancer" };
-        if (table === "contracts") data = { final_price: 150, client_signed_at: signed ? "date" : null, freelancer_signed_at: "date", status: "active" };
-        if (table === "project_disputes") data = onHold ? [{ dispute_id: "d" }] : [];
+        if (table === "contracts")
+          data = {
+            final_price: 150,
+            client_signed_at: signed ? "date" : null,
+            freelancer_signed_at: "date",
+            status: "active",
+          };
+        if (table === "project_disputes")
+          data = onHold ? [{ dispute_id: "d" }] : [];
         if (table === "project_cancellations") data = [];
         if (table === "payments") data = single ? existing : [];
         return { data, error: null };
@@ -83,29 +140,65 @@ function checkoutHarness({ ready = true, signed = true, onHold = false, existing
   };
   const server = load("services/payments/paymentServer.ts", {
     "@supabase/supabase-js": {},
-    "@/lib/payments/paymongo": { ...provider, paymongo: async (path, attributes) => { calls.push({ provider: path, attributes }); return { id: "cs_example", attributes: { checkout_url: "https://checkout.paymongo.com/example" } }; } },
+    "@/lib/payments/paymongo": {
+      ...provider,
+      paymongo: async (path, attributes) => {
+        calls.push({ provider: path, attributes });
+        return {
+          id: "cs_example",
+          attributes: { checkout_url: "https://checkout.paymongo.com/example" },
+        };
+      },
+    },
   });
   return { server, db, calls };
 }
 test("unrelated users and freelancers cannot start a client checkout", async () => {
   for (const user of ["attacker", "freelancer"]) {
     const h = checkoutHarness();
-    await assert.rejects(h.server.createProjectCheckout(h.db, "project", user, "http://localhost:3000"), { status: 403 });
+    await assert.rejects(
+      h.server.createProjectCheckout(
+        h.db,
+        "project",
+        user,
+        "http://localhost:3000",
+      ),
+      { status: 403 },
+    );
     assert.equal(h.calls.length, 0);
   }
   const h = checkoutHarness();
-  await assert.rejects(h.server.getProjectPayment(h.db, "project", "attacker"), { status: 403 });
+  await assert.rejects(
+    h.server.getProjectPayment(h.db, "project", "attacker"),
+    { status: 403 },
+  );
 });
 test("security setup, unsigned agreement, and project hold prevent checkout", async () => {
-  for (const options of [{ ready: false }, { signed: false }, { onHold: true }]) {
+  for (const options of [
+    { ready: false },
+    { signed: false },
+    { onHold: true },
+  ]) {
     const h = checkoutHarness(options);
-    await assert.rejects(h.server.createProjectCheckout(h.db, "project", "client", "http://localhost:3000"));
+    await assert.rejects(
+      h.server.createProjectCheckout(
+        h.db,
+        "project",
+        "client",
+        "http://localhost:3000",
+      ),
+    );
     assert.equal(h.calls.length, 0);
   }
 });
 test("checkout reserves storage first and charges only the server agreement amount", async () => {
   const h = checkoutHarness();
-  const result = await h.server.createProjectCheckout(h.db, "project", "client", "http://localhost:3000");
+  const result = await h.server.createProjectCheckout(
+    h.db,
+    "project",
+    "client",
+    "http://localhost:3000",
+  );
   assert.equal(result.checkoutUrl, "https://checkout.paymongo.com/example");
   assert.equal(h.calls[0].operation, "insert");
   assert.equal(h.calls[0].values.amount, 150);
@@ -113,10 +206,20 @@ test("checkout reserves storage first and charges only the server agreement amou
   assert.equal(h.calls[2].values.transaction_reference, "cs_example");
 });
 test("concurrent reservation conflict and ambiguous pending reservation never create a second checkout", async () => {
-  for (const options of [{ conflict: true }, { existing: { ...row, transaction_reference: null } }]) {
+  for (const options of [
+    { conflict: true },
+    { existing: { ...row, transaction_reference: null } },
+  ]) {
     const h = checkoutHarness(options);
-    await assert.rejects(h.server.createProjectCheckout(h.db, "project", "client", "http://localhost:3000"));
-    assert.equal(h.calls.filter(c => c.provider).length, 0);
+    await assert.rejects(
+      h.server.createProjectCheckout(
+        h.db,
+        "project",
+        "client",
+        "http://localhost:3000",
+      ),
+    );
+    assert.equal(h.calls.filter((c) => c.provider).length, 0);
   }
 });
 test("webhook requires exact raw-body HMAC, correct mode, and recent timestamp", () => {
@@ -186,9 +289,21 @@ function serverWithWrites(fail = false) {
   const db = {
     from: () => ({
       update: (value) => ({
-        eq: async () => {
+        eq() {
+          return this;
+        },
+        in() {
+          return this;
+        },
+        select() {
+          return this;
+        },
+        async maybeSingle() {
           writes.push(value);
-          return { error: fail ? {} : null };
+          return {
+            data: fail ? null : { payment_id: "reservation" },
+            error: fail ? {} : null,
+          };
         },
       }),
     }),
@@ -291,4 +406,81 @@ test("API rejects browser amounts and unauthenticated requests before checkout",
   );
   assert.equal(altered.status, 400);
   assert.equal(creates, 0);
+});
+
+test("terminal payment states and conflicting provider IDs cannot be marked paid", async () => {
+  for (const changed of [
+    { status: "refunded" },
+    { status: "failed" },
+    { provider_payment_id: "pay_other" },
+  ]) {
+    const h = serverWithWrites();
+    await assert.rejects(
+      h.server.reconcilePayment(h.db, { ...row, ...changed }, session()),
+    );
+    assert.equal(h.writes.length, 0);
+  }
+  const h = serverWithWrites();
+  await h.server.reconcilePayment(h.db, row, session());
+  assert.equal(h.writes[0].provider_payment_id, "pay_example");
+});
+test("signed webhook verifies before processing and rejects malformed paid events", async () => {
+  let processed = 0;
+  const route = load("app/api/payments/webhook/route.ts", {
+    "@/lib/payments/paymongo": provider,
+    "@/services/payments/paymentServer": {
+      processPaymentWebhook: async () => {
+        processed++;
+      },
+      paymentResponse: (e) =>
+        Response.json({ error: e.message }, { status: e.status || 503 }),
+    },
+  });
+  const send = async (raw, valid = true) => {
+    const t = Math.floor(Date.now() / 1000);
+    const signature = crypto
+      .createHmac("sha256", "signing_secret")
+      .update(t + "." + raw)
+      .digest("hex");
+    return route.POST(
+      new Request("https://example.test/api/payments/webhook", {
+        method: "POST",
+        body: raw,
+        headers: {
+          "paymongo-signature": valid
+            ? "t=" + t + ",te=" + signature
+            : "invalid",
+        },
+      }),
+    );
+  };
+  const event = JSON.stringify({
+    data: {
+      attributes: {
+        type: "checkout_session.payment.paid",
+        data: { id: "cs_example" },
+      },
+    },
+  });
+  assert.equal((await send(event, false)).status, 401);
+  assert.equal((await send("{")).status, 400);
+  assert.equal(
+    (
+      await send(
+        JSON.stringify({
+          data: {
+            attributes: {
+              type: "checkout_session.payment.paid",
+              data: { id: "invalid" },
+            },
+          },
+        }),
+      )
+    ).status,
+    400,
+  );
+  assert.equal(processed, 0);
+  assert.equal((await send(event)).status, 200);
+  assert.equal((await send(event)).status, 200);
+  assert.equal(processed, 2); // Replays reconcile the same durable reservation.
 });

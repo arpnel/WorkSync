@@ -48,6 +48,59 @@ const tones = {
   rose: "border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-400/20 dark:bg-rose-400/10 dark:text-rose-300",
 };
 
+function SummaryCardLink({
+  href,
+  glow,
+  children,
+}: {
+  href: string;
+  glow: string;
+  children: ReactNode;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => setReduceMotion(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+  const active = hovered || focused;
+  return (
+    <Link
+      href={href}
+      className="group block rounded-2xl outline-offset-4 focus-visible:outline-2 focus-visible:outline-primary"
+      onPointerEnter={(event) => {
+        if (event.pointerType !== "touch") setHovered(true);
+      }}
+      onPointerLeave={() => setHovered(false)}
+      onPointerCancel={() => setHovered(false)}
+      onFocus={(event) =>
+        setFocused(event.currentTarget.matches(":focus-visible"))
+      }
+      onBlur={() => setFocused(false)}
+      style={{
+        transform:
+          active && !reduceMotion ? "translateY(-4px)" : "translateY(0)",
+        transition: reduceMotion
+          ? "none"
+          : "transform 180ms ease, box-shadow 180ms ease",
+        boxShadow: active
+          ? "0 0 0 1px rgb(" +
+            glow +
+            " / 50%), 0 6px 24px rgb(" +
+            glow +
+            " / 40%)"
+          : "none",
+      }}
+    >
+      {children}
+    </Link>
+  );
+}
+
 function ProjectStatus({ status }: { status: string }) {
   const tone =
     status === "completed"
@@ -146,6 +199,7 @@ export default function ActivityOverview({
       title: "Active projects",
       href: projectHref("active"),
       tone: tones.blue,
+      glow: "59 130 246",
       icon: BriefcaseBusiness,
       value: projects.filter((p) =>
         ["active", "in_progress", "revision"].includes(p.status),
@@ -156,12 +210,14 @@ export default function ActivityOverview({
       href: projectHref("completed"),
       value: completed,
       tone: tones.green,
+      glow: "16 185 129",
       icon: CircleCheck,
     },
     {
       title: "Pending requests",
       href: projectHref("request"),
       tone: tones.amber,
+      glow: "245 158 11",
       icon: Clock3,
       value: projects.filter((p) => ["pending", "requested"].includes(p.status))
         .length,
@@ -171,6 +227,7 @@ export default function ActivityOverview({
       href: "/home/my-listings",
       value: data.listings.length,
       tone: tones.violet,
+      glow: "139 92 246",
       icon: LayoutGrid,
     },
   ];
@@ -381,11 +438,7 @@ export default function ActivityOverview({
         className="col-span-12 grid grid-cols-2 gap-3 @min-[1200px]:grid-cols-4 @min-[900px]:col-span-1 @min-[900px]:col-start-1"
       >
         {stats.map((stat) => (
-          <Link
-            key={stat.title}
-            href={stat.href}
-            className="group rounded-2xl outline-offset-4 focus-visible:outline-2 focus-visible:outline-primary"
-          >
+          <SummaryCardLink key={stat.title} href={stat.href} glow={stat.glow}>
             <Card className="h-full py-5 transition-colors group-hover:border-primary/30">
               <CardContent>
                 <div className="flex flex-wrap-reverse items-center justify-between gap-2">
@@ -406,7 +459,7 @@ export default function ActivityOverview({
                 </p>
               </CardContent>
             </Card>
-          </Link>
+          </SummaryCardLink>
         ))}
       </section>
       {tools && (

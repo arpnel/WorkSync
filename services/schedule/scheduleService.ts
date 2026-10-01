@@ -8,19 +8,37 @@ const schema = z.object({
       title: z.string(),
       lists: z.array(z.object({ id: z.string(), title: z.string() })),
       cards: z.array(
-        z.object({
-          id: z.string(),
-          listId: z.string(),
-          title: z.string(),
-          description: z.string(),
-          dueDate: z.string(),
-          dueTime: z
-            .string()
-            .regex(/^$|^([01]\d|2[0-3]):[0-5]\d$/)
-            .optional()
-            .default(""),
-          priority: z.enum(["low", "medium", "high"]),
-        }),
+        z
+          .object({
+            id: z.string(),
+            listId: z.string(),
+            title: z.string(),
+            description: z.string(),
+            dueDate: z.string(),
+            startDate: z.string().optional(),
+            entryType: z.enum(["plan", "deadline"]).optional(),
+            dueTime: z
+              .string()
+              .regex(/^$|^([01]\d|2[0-3]):[0-5]\d$/)
+              .optional()
+              .default(""),
+            priority: z.enum(["low", "medium", "high"]),
+          })
+          .refine(
+            (card) =>
+              !card.startDate ||
+              (!!card.dueDate &&
+                /^\d{4}-\d{2}-\d{2}$/.test(card.startDate) &&
+                Number.isFinite(Date.parse(card.startDate + "T00:00:00Z")) &&
+                new Date(card.startDate + "T00:00:00Z")
+                  .toISOString()
+                  .slice(0, 10) === card.startDate &&
+                card.startDate <= card.dueDate),
+            {
+              message:
+                "Start date must be valid and on or before the deadline.",
+            },
+          ),
       ),
     }),
   ),

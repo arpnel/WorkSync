@@ -184,6 +184,12 @@ test("invalid, fractional, excessive and injected output is rejected", () => {
   );
 });
 test("legacy labels and metadata labels render; contacts are redacted", () => {
+  assert.equal(
+    rubric.screeningLabel(
+      JSON.stringify({ version: "worksync-match-v1", label: "Strong Match" }),
+    ),
+    "Strong Match",
+  );
   assert.equal(rubric.screeningLabel("Strong Match"), "Strong Match");
   assert.equal(
     rubric.screeningLabel(
@@ -206,6 +212,8 @@ function fixture({
   malformed = false,
   persistenceError = false,
   changeDuringEvaluation = false,
+  evidence = [],
+  evidenceError = null,
 } = {}) {
   const calls = { evaluations: 0, saves: 0, input: null };
   let saved = null;
@@ -231,6 +239,12 @@ function fixture({
     updated_at: "2026-09-01",
   };
   const db = {
+    rpc: async (name, args) => {
+      assert.equal(name, "worksync_skill_assessment_evidence");
+      assert.equal(args.p_user, "freelancer-user");
+      assert.equal(args.p_category, "category");
+      return { data: evidence, error: evidenceError };
+    },
     from(table) {
       const q = {
         select() {
@@ -254,6 +268,7 @@ function fixture({
             jobs: { ...job },
             client_profiles: owner ? { client_id: "client" } : null,
             freelancer_profiles: {
+              user_id: "freelancer-user",
               headline: "Developer",
               years_of_experience: 3,
               employment_preference: "contract",
@@ -327,6 +342,48 @@ test("non-owner cannot call Gemini or save a screening", async () => {
   await assert.rejects(f.run, /Only the job owner/);
   assert.equal(f.calls.evaluations, 0);
   assert.equal(f.calls.saves, 0);
+});
+test("matching passed assessment is structured evidence, not a fixed score boost", async () => {
+  const evidence = [
+    {
+      category_id: "category",
+      category: "Development",
+      version: 2,
+      percentage: 90,
+      passed: true,
+      completed_at: "2026-09-20T00:00:00Z",
+    },
+  ];
+  const f = fixture({ evidence });
+  const withResult = await f.run();
+  assert.equal(f.calls.input.freelancer.assessment.percentage, 90);
+  assert.equal(f.calls.input.freelancer.assessment.version, 2);
+  assert.ok(!JSON.stringify(f.calls.input).includes("category_id"));
+  const without = fixture();
+  const withoutResult = await without.run();
+  assert.equal(without.calls.input.freelancer.assessment, null);
+  assert.equal(withResult.screening.score, withoutResult.screening.score);
+  evidence[0].percentage = 95;
+  assert.equal((await f.run()).cached, false);
+  assert.equal(f.calls.evaluations, 2);
+});
+test("unrelated evidence is excluded; unavailable migration is compatible; actual errors stop screening", async () => {
+  const f = fixture({
+    evidence: [{ category_id: "unrelated", percentage: 100, passed: true }],
+  });
+  await f.run();
+  assert.equal(f.calls.input.freelancer.assessment, null);
+  await fixture({ evidenceError: { code: "PGRST202" } }).run();
+  await assert.rejects(
+    fixture({ evidenceError: { code: "42501" } }).run,
+    /could not be loaded/,
+  );
+  await assert.rejects(
+    fixture({
+      evidence: [{ category_id: "category", percentage: 100, passed: false }],
+    }).run,
+    /Invalid assessment/,
+  );
 });
 test("simultaneous requests coalesce; unchanged persisted results are reused", async () => {
   const f = fixture();
@@ -410,6 +467,70 @@ test("Gemini adapter validates structured output and computes the score locally"
   const result = await adapter.evaluateApplicant({ proposal: "Example" });
   assert.equal(request.model, "test-model");
   assert.equal(request.config.responseMimeType, "application/json");
+  assert.equal(request.config.systemInstruction, rubric.SCREENING_INSTRUCTION);
+  assert.equal(
+    request.config.responseJsonSchema.properties.recommendation.maxLength,
+    300,
+  );
   assert.equal(result.score, 80);
   assert.equal(result.result, "Strong Match");
+});
+
+test("terminal applications do not generate or save assessments", async () => {
+  for (const status of ["withdrawn", "cancelled", "rejected"]) {
+    const f = fixture();
+    f.application.status = status;
+    await assert.rejects(f.run, /no longer open/);
+    assert.equal(f.calls.evaluations, 0);
+    assert.equal(f.calls.saves, 0);
+  }
+});
+
+test("assessment display distinguishes delayed and expired results from processing", () => {
+  const now = Date.parse("2026-09-30T12:00:00Z");
+  assert.equal(
+    rubric.screeningState(null, "2026-09-30T11:59:30Z", now),
+    "preparing",
+  );
+  assert.equal(
+    rubric.screeningState(null, "2026-09-30T11:50:00Z", now),
+    "unavailable",
+  );
+  assert.equal(rubric.screeningState(null, "invalid", now), "unavailable");
+  assert.equal(
+    rubric.screeningState({ score: 80, expiresAt: "2026-10-01" }, "", now),
+    "ready",
+  );
+  assert.equal(
+    rubric.screeningState({ score: 80, expiresAt: "2026-09-29" }, "", now),
+    "expired",
+  );
+  assert.equal(
+    rubric.screeningState({ score: 80, expiresAt: null }, "", now),
+    "expired",
+  );
+});
+
+test("truncated or blocked provider completions are rejected even if text parses", async () => {
+  for (const finishReason of ["MAX_TOKENS", "SAFETY"]) {
+    const adapter = load(
+      "lib/ai/gemini.ts",
+      {
+        "server-only": {},
+        "./screening": rubric,
+        "@google/genai": {
+          GoogleGenAI: class {
+            models = {
+              generateContent: async () => ({
+                text: JSON.stringify(valid()),
+                candidates: [{ finishReason }],
+              }),
+            };
+          },
+        },
+      },
+      { process: { env: { GEMINI_API_KEY: "test" } } },
+    );
+    await assert.rejects(adapter.evaluateApplicant({}), /INCOMPLETE_RESPONSE/);
+  }
 });

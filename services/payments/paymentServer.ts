@@ -57,6 +57,7 @@ interface PaymentRow {
   status: string;
   transaction_reference: string | null;
   payment_method: string | null;
+  provider_payment_id?: string | null;
 }
 async function storageReady(db: DB) {
   const { data, error } = await db.rpc("worksync_payment_storage_ready");
@@ -99,7 +100,7 @@ async function findPayment(db: DB, id: string) {
   const { data, error } = await db
     .from("payments")
     .select(
-      "payment_id,project_id,order_id,payer_id,amount,status,transaction_reference,payment_method",
+      "payment_id,project_id,order_id,payer_id,amount,status,transaction_reference,payment_method,provider_payment_id",
     )
     .eq("payment_id", id)
     .maybeSingle();
@@ -112,6 +113,8 @@ export async function reconcilePayment(
   session: CheckoutSession,
 ) {
   const a = session.attributes;
+  if (!["pending", "paid"].includes(row.status))
+    throw new PaymentError("Payment requires support reconciliation.", 409);
   if (
     session.id !== row.transaction_reference &&
     row.transaction_reference !== null
@@ -127,6 +130,9 @@ export async function reconcilePayment(
   const paid = a.payments?.find((p) => p.attributes.status === "paid");
   if (!paid) return false;
   if (
+    typeof paid.id !== "string" ||
+    !/^pay_[a-zA-Z0-9]+$/.test(paid.id) ||
+    (row.provider_payment_id != null && row.provider_payment_id !== paid.id) ||
     paid.attributes.amount !== centavos(row.amount) ||
     paid.attributes.currency !== "PHP" ||
     (paid.attributes.livemode !== undefined &&
@@ -136,15 +142,28 @@ export async function reconcilePayment(
       "Payment amount or currency does not match the agreement.",
       409,
     );
-  const { error } = await db
+  const { data: saved, error } = await db
     .from("payments")
     .update({
       status: "paid",
       payment_method: paid.attributes.source?.type ?? "paymongo",
       transaction_reference: session.id,
+      provider_payment_id: paid.id,
+      provider: "paymongo",
+      livemode: a.livemode,
+      currency: "PHP",
+      ...(typeof paid.attributes.paid_at === "number" &&
+      Number.isFinite(paid.attributes.paid_at) &&
+      paid.attributes.paid_at > 0 &&
+      paid.attributes.paid_at < 8640000000000
+        ? { paid_at: new Date(paid.attributes.paid_at * 1000).toISOString() }
+        : {}),
     })
-    .eq("payment_id", row.payment_id);
-  if (error)
+    .eq("payment_id", row.payment_id)
+    .in("status", ["pending", "paid"])
+    .select("payment_id")
+    .maybeSingle();
+  if (error || !saved)
     throw new PaymentError(
       "Payment received but its record could not be updated. Refresh payment status.",
     );
@@ -178,12 +197,21 @@ export async function getProjectPayment(
     )
       paidAt = new Date(timestamp * 1000).toISOString();
   }
-  const payout = await db
-    .from("project_payouts")
-    .select("status,paid_at,amount")
-    .eq("project_id", projectId)
-    .eq("mode", paymentMode())
-    .maybeSingle();
+  const version = await db.rpc("worksync_settlement_version");
+  const upgraded = !version.error && version.data === 2;
+  const details = upgraded
+    ? await db.rpc("worksync_project_settlement_info", { p_project: projectId })
+    : null;
+  if (details?.error)
+    throw new PaymentError("Milestone payment tracking unavailable.");
+  const payout = upgraded
+    ? { data: null, error: null }
+    : await db
+        .from("project_payouts")
+        .select("status,paid_at,amount")
+        .eq("project_id", projectId)
+        .eq("mode", paymentMode())
+        .maybeSingle();
   return {
     status: paid
       ? "paid"
@@ -192,8 +220,23 @@ export async function getProjectPayment(
         : "processing",
     amount: row.amount,
     payout: payout.error ? { status: "unavailable" } : payout.data,
+    settlementVersion: upgraded ? 2 : 1,
+    autoAccept: details?.data?.autoAccept === true,
+    finalMilestoneId: details?.data?.finalMilestoneId ?? null,
+    payouts: upgraded
+      ? (details?.data?.payouts ?? []).filter(
+          (r: { mode: string }) => r.mode === paymentMode(),
+        )
+      : undefined,
+    refunds: upgraded
+      ? (details?.data?.refunds ?? []).filter(
+          (r: { mode: string }) => r.mode === paymentMode(),
+        )
+      : undefined,
     autoReleaseEnabled:
-      process.env.PROJECT_SETTLEMENT_ENABLED === "true" && !payout.error,
+      process.env.PROJECT_SETTLEMENT_ENABLED === "true" &&
+      upgraded &&
+      !payout.error,
     paidAt,
     mode: paymentMode(),
   };
@@ -299,6 +342,9 @@ export async function createProjectCheckout(
     amount: amount / 100,
     status: "pending",
     payment_method: "paymongo",
+    provider: "paymongo",
+    livemode: paymentMode() === "live",
+    currency: "PHP",
   });
   if (insertError)
     throw new PaymentError(

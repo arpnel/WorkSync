@@ -290,6 +290,7 @@ test("submission API rejects unpaid clients and unrelated freelancers before RPC
     [true, "freelancer", 200],
   ]) {
     let writes = 0;
+    const queued = [];
     const db = {
       from(table) {
         const q = {
@@ -317,6 +318,10 @@ test("submission API rejects unpaid clients and unrelated freelancers before RPC
       }
     }
     const route = load("app/api/project-work/route.ts", {
+      "next/server": { after: (callback) => queued.push(callback) },
+      "@/services/payments/settlementServer": {
+        reviewProjectPayment: async () => {},
+      },
       zod: require("zod"),
       "@supabase/supabase-js": {
         createClient: () => ({
@@ -356,6 +361,7 @@ test("submission API rejects unpaid clients and unrelated freelancers before RPC
     });
     assert.equal(response.status, expected);
     assert.equal(writes, expected === 200 ? 1 : 0);
+    assert.equal(queued.length, expected === 200 ? 1 : 0);
   }
 });
 

@@ -43,12 +43,16 @@ export function ProjectDeliveryPanel({
   onRefresh,
   paid = false,
   autoReleaseEnabled = false,
+  finalMilestoneId,
+  autoAccept = false,
   actions,
 }: {
   project: ProjectWorkspace;
   onRefresh: () => Promise<void>;
   paid?: boolean;
   autoReleaseEnabled?: boolean;
+  finalMilestoneId?: string | null;
+  autoAccept?: boolean;
   actions?: ReactNode;
 }) {
   const [history, setHistory] = useState<Awaited<
@@ -199,14 +203,18 @@ export function ProjectDeliveryPanel({
           </summary>
           <p className="mt-1 text-muted-foreground">
             {autoReleaseEnabled
-              ? "Submitted deliveries are automatically approved at the project deadline or seven days after submission, whichever comes first. A late delivery is eligible immediately after submission. Disputes and pending cancellation requests pause this process."
+              ? "Intermediate milestone deliveries have three days for client review after submission. Final milestone and standard deliveries have seven days. Client auto-accept can approve future deliveries sooner. Disputes and cancellation holds pause release; processing follows the configured schedule."
               : "Automatic review and payout are not activated in this environment yet. Review submitted work manually."}
           </p>
           {autoReleaseEnabled &&
             (history?.submissions ?? [])
               .filter((s) => reviewable.has(s.submission_id))
               .map((s) => {
-                const at = automaticReviewAt(s.created_at, project.dueDate);
+                const at = automaticReviewAt(
+                  s.created_at,
+                  project.dueDate,
+                  !s.milestone_id || s.milestone_id === finalMilestoneId,
+                );
                 return (
                   at && (
                     <p key={s.submission_id} className="mt-2 text-xs">
@@ -215,7 +223,10 @@ export function ProjectDeliveryPanel({
                             (m) => m.id === s.milestone_id,
                           )?.title
                         : "Final delivery"}
-                      : automatic review eligible{" "}
+                      :{" "}
+                      {autoAccept
+                        ? "client auto-accept is enabled; default review deadline"
+                        : "automatic review eligible"}{" "}
                       {new Date(at).toLocaleString()}. Open resolution requests
                       pause release.
                     </p>
@@ -224,8 +235,8 @@ export function ProjectDeliveryPanel({
               })}
           {project.type === "milestone" && (
             <p className="mt-2 text-xs text-muted-foreground">
-              The full project payout is queued after all milestones are
-              approved.
+              Each approved milestone is queued for its own payout after payment
+              checks.
             </p>
           )}
         </details>

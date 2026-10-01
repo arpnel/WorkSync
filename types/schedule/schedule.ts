@@ -5,6 +5,8 @@ export interface ScheduleCard {
   title: string;
   description: string;
   dueDate: string;
+  startDate?: string;
+  entryType?: "plan" | "deadline";
   dueTime?: string;
   priority: SchedulePriority;
 }

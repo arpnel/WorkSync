@@ -29,6 +29,7 @@ import {
   canRequestCancellation,
 } from "@/services/project/resolutionService";
 export function ProjectResolutionPanel({
+  compact = false,
   orderId,
   orderStatus,
   projectId,
@@ -37,6 +38,7 @@ export function ProjectResolutionPanel({
   milestones = [],
   onRefresh,
 }: {
+  compact?: boolean;
   orderId: string;
   orderStatus?: string;
   projectId: string | null;
@@ -106,18 +108,24 @@ export function ProjectResolutionPanel({
     setCategory("delivery");
     setMilestone("");
   };
+  const Container = compact ? "div" : Card;
+  const Content = compact ? "div" : CardContent;
   return (
-    <Card className="border-0 bg-transparent shadow-none">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <ShieldCheck className="size-5 text-primary" /> Find a way forward
-        </CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Discuss an issue or agree to end the project. Your request and
-          responses stay in the project history.
-        </p>
-      </CardHeader>
-      <CardContent className="space-y-3">
+    <Container
+      className={compact ? undefined : "border-0 bg-transparent shadow-none"}
+    >
+      {!compact && (
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <ShieldCheck className="size-5 text-primary" /> Find a way forward
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Discuss an issue or agree to end the project. Your request and
+            responses stay in the project history.
+          </p>
+        </CardHeader>
+      )}
+      <Content className="space-y-3">
         {held && (
           <p className="text-sm">
             Delivery decisions are paused until the open resolution request is
@@ -132,21 +140,43 @@ export function ProjectResolutionPanel({
             </Button>
           </p>
         )}
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div
+          className={
+            compact
+              ? "flex flex-wrap justify-end gap-2"
+              : "grid gap-3 sm:grid-cols-2"
+          }
+        >
           {canRequestCancellation(
             orderStatus ?? status,
             projectId ? status : null,
           ) && (
             <Button
-              variant="outline"
+              variant={compact ? "destructive" : "outline"}
               disabled={busy || !!held || !data}
-              className="h-auto items-start justify-start gap-3 whitespace-normal rounded-xl p-4 text-left"
+              className={
+                compact
+                  ? "h-9 gap-2 text-sm"
+                  : "h-auto items-start justify-start gap-3 whitespace-normal rounded-xl p-4 text-left"
+              }
               onClick={() => begin("cancel")}
             >
-              <CircleX className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+              <CircleX
+                className={
+                  compact
+                    ? "size-4 shrink-0"
+                    : "mt-0.5 size-5 shrink-0 text-muted-foreground"
+                }
+              />
               <span>
                 Request cancellation
-                <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                <span
+                  className={
+                    compact
+                      ? "hidden"
+                      : "mt-1 block text-xs font-normal text-muted-foreground"
+                  }
+                >
                   Ask the other participant to end the agreement.
                 </span>
               </span>
@@ -156,13 +186,23 @@ export function ProjectResolutionPanel({
             <Button
               variant="outline"
               disabled={busy || !!held || !data}
-              className="h-auto items-start justify-start gap-3 whitespace-normal rounded-xl p-4 text-left"
+              className={
+                compact
+                  ? "h-9 gap-2 text-sm"
+                  : "h-auto items-start justify-start gap-3 whitespace-normal rounded-xl p-4 text-left"
+              }
               onClick={() => begin("dispute")}
             >
               <MessageSquareWarning className="mt-0.5 size-5 shrink-0 text-primary" />
               <span>
                 Open dispute
-                <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                <span
+                  className={
+                    compact
+                      ? "hidden"
+                      : "mt-1 block text-xs font-normal text-muted-foreground"
+                  }
+                >
                   Ask for help resolving a delivery or agreement issue.
                 </span>
               </span>
@@ -218,7 +258,8 @@ export function ProjectResolutionPanel({
             {d.resolution && <p>Resolution: {d.resolution}</p>}
           </div>
         ))}
-        {!held &&
+        {!compact &&
+          !held &&
           data &&
           !data.disputes.length &&
           !data.cancellations.length && (
@@ -244,7 +285,7 @@ export function ProjectResolutionPanel({
               <DialogDescription>
                 {mode === "dispute"
                   ? "Tell us what happened and what would help resolve it. Delivery decisions and automatic release eligibility pause while the dispute is open."
-                  : "Signed work requires the other participant’s approval to cancel. Requesting cancellation pauses delivery decisions and automatic release eligibility. Refunds require separate payment processing."}
+                  : "Signed work requires the other participant’s approval to cancel. Requesting cancellation pauses delivery decisions and automatic release eligibility. After acceptance, eligible uncommitted funds are refunded when automatic settlement is enabled. Already reserved transfers and refund exceptions require support."}
               </DialogDescription>
             </DialogHeader>
             <form
@@ -404,7 +445,7 @@ export function ProjectResolutionPanel({
             </form>
           </DialogContent>
         </Dialog>
-      </CardContent>
-    </Card>
+      </Content>
+    </Container>
   );
 }

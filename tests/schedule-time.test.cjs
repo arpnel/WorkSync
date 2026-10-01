@@ -69,6 +69,33 @@ test("old saved cards load and new deadline times survive saving and reloading",
   const state = api.loadSchedule("user");
   assert.equal(state.boards[0].cards[0].dueTime, "");
   state.boards[0].cards[0].dueTime = "16:45";
+  state.boards[0].cards[0].startDate = "2026-09-01";
   api.saveSchedule("user", state);
   assert.equal(api.loadSchedule("user").boards[0].cards[0].dueTime, "16:45");
+  assert.equal(
+    api.loadSchedule("user").boards[0].cards[0].startDate,
+    "2026-09-01",
+  );
+  state.boards[0].cards[0].startDate = "2026-09-07";
+  assert.throws(() => api.parseSchedule(state), /Start date/);
+});
+
+test("calendar spans include both endpoints and cross month boundaries", () => {
+  const { isOnScheduleDate } = load("components/schedule/schedule-range.ts");
+  const card = { startDate: "2026-09-29", dueDate: "2026-10-02" };
+  for (const date of ["2026-09-29", "2026-09-30", "2026-10-01", "2026-10-02"])
+    assert.equal(isOnScheduleDate(card, date), true);
+  for (const date of ["2026-09-28", "2026-10-03"])
+    assert.equal(isOnScheduleDate(card, date), false);
+  assert.equal(
+    isOnScheduleDate({ dueDate: "2026-10-02" }, "2026-10-01"),
+    false,
+  );
+  assert.equal(
+    isOnScheduleDate(
+      { startDate: "2026-10-02", dueDate: "2026-10-02" },
+      "2026-10-02",
+    ),
+    true,
+  );
 });

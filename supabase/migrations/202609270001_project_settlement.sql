@@ -1,3 +1,5 @@
+-- SUPERSEDED UNAPPLIED DRAFT: use reviewed 202609300001_payment_readiness.sql instead.
+-- Do not replay this historical draft against the supplied production schema.
 -- PREPARED, NOT APPLIED. Verify live function bodies/grants before deployment.
 -- Full-project settlement only: milestone deliveries are reviewed separately, payout waits for all.
 begin;

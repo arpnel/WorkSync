@@ -127,6 +127,7 @@ test("40 marketplace cards use one batched identity read and one category query"
     },
   };
   const service = moduleAt("services/marketplace/MarketplaceServices.ts", {
+    "./freelancerAvailability": {},
     "@/lib/pageReadCache": { readPageCache: (_key, fetcher) => fetcher() },
     "@/lib/supabaseClient": { supabase },
     "@/services/platform/platformService": {},

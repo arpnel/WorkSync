@@ -136,6 +136,8 @@ export function ActiveProjectWorkspace({
             onRefresh={onRefresh}
             paid={paid}
             autoReleaseEnabled={payment?.autoReleaseEnabled ?? false}
+            finalMilestoneId={payment?.finalMilestoneId}
+            autoAccept={payment?.autoAccept ?? false}
             actions={
               <Dialog>
                 <DialogTrigger asChild>

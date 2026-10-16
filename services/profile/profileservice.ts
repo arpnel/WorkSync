@@ -1,5 +1,8 @@
 import { readPageCache, invalidatePageReads } from "@/lib/pageReadCache";
-import { getPublicIdentities } from "@/services/profile/publicIdentityService";
+import {
+  getPublicIdentities,
+  identityName,
+} from "@/services/profile/publicIdentityService";
 import { supabase } from "@/lib/supabaseClient";
 import { getFreelancerDetails } from "./profileDetails";
 
@@ -965,7 +968,22 @@ export async function getReviews(
     throw new Error(error.message);
   }
 
-  return (data ?? []).map(
+  const reviewRows = data ?? [];
+  const identities = await getPublicIdentities(
+    asFreelancer
+      ? { clientIds: reviewRows.map((review) => review.client_id) }
+      : { freelancerIds: reviewRows.map((review) => review.freelancer_id) },
+  );
+  const reviewerUserIds = new Map<string, string>(
+    asFreelancer
+      ? identities.clients.map((party) => [party.client_id, party.user_id])
+      : identities.freelancers.map((party) => [party.freelancer_id, party.user_id]),
+  );
+  const profilesByUserId = new Map(
+    identities.profiles.map((profile) => [profile.user_id, profile]),
+  );
+
+  return reviewRows.map(
     (review): Review => ({
       review_id: review.review_id,
       rating: review.rating,
@@ -975,6 +993,16 @@ export async function getReviews(
       client_id: review.client_id,
       freelancer_id: review.freelancer_id,
       reviewer_role: review.reviewer_role,
+      reviewer_name: identityName(
+        profilesByUserId.get(reviewerUserIds.get(
+          asFreelancer ? review.client_id : review.freelancer_id,
+        ) ?? ""),
+        asFreelancer ? "Client" : "Freelancer",
+      ),
+      reviewer_avatar_url:
+        profilesByUserId.get(reviewerUserIds.get(
+          asFreelancer ? review.client_id : review.freelancer_id,
+        ) ?? "")?.avatar_url ?? null,
     }),
   );
 }

@@ -12,8 +12,8 @@ import { SigninDialog } from "../auth/login/SigninDialog";
 
 const menuItems = [
   { name: "Features", href: "#features" },
-  { name: "Marketplace", href: "/marketplace" },
-  { name: "About", href: "#about" },
+  { name: "Explore", href: "#about" },
+  { name: "About", href: "#why-worksync" },
 ];
 
 export const HeroHeader = () => {

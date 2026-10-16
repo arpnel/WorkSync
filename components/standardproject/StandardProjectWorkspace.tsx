@@ -1,5 +1,4 @@
 "use client";
-import { ProjectMeetingsDialog } from "@/components/project/ProjectMeetingsDialog";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 
 import { CalendarDays, RotateCcw, Users, Wallet } from "lucide-react";
@@ -12,7 +11,6 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ContractSummary } from "@/components/project/ContractSummary";
 import { ProjectAgreementCard } from "@/components/project/ProjectAgreementCard";
-import { ProjectChatPanel } from "@/components/project/ProjectChatPanel";
 import { ProjectWorkspaceHeader } from "@/components/project/ProjectWorkspaceHeader";
 import { useProjectWorkspace } from "@/hooks/project/useProjectWorkspace";
 
@@ -22,13 +20,9 @@ export function StandardProjectWorkspace({ orderId }: { orderId: string }) {
     workspace,
     refresh,
     loading,
-    sending,
     updatingAgreement,
     updatingApprovalKey,
-    isOtherParticipantTyping,
     error,
-    sendMessage,
-    sendTyping,
     respondToAgreement,
     respondToAgreementItem,
     saveAgreementItem,
@@ -57,25 +51,6 @@ export function StandardProjectWorkspace({ orderId }: { orderId: string }) {
         onRefresh={refresh}
         error={error}
         onBack={() => router.push("/home/projects")}
-        chat={
-          <ProjectChatPanel
-            conversationId={workspace.conversationId}
-            className="h-[min(65dvh,560px)] min-h-[380px]"
-            headerActions={
-              workspace.projectId ? (
-                <ProjectMeetingsDialog
-                  projectId={workspace.projectId}
-                  active={workspace.status.toLowerCase() !== "completed"}
-                />
-              ) : undefined
-            }
-            messages={workspace.messages}
-            sending={sending}
-            isOtherParticipantTyping={isOtherParticipantTyping}
-            onSend={sendMessage}
-            onTypingChange={sendTyping}
-          />
-        }
       />
     );
   }
@@ -98,7 +73,7 @@ export function StandardProjectWorkspace({ orderId }: { orderId: string }) {
 
       {workspace.projectId && (
         <ProjectMeetings
-          key={workspace.projectId}
+          key={`${workspace.projectId}:meetings`}
           projectId={workspace.projectId}
           active={workspace.status.toLowerCase() === "active"}
         />
@@ -109,23 +84,13 @@ export function StandardProjectWorkspace({ orderId }: { orderId: string }) {
       )}
       <ProjectPaymentPanel project={workspace} />
       <ProjectDeliveryPanel
-        key={workspace.projectId ?? workspace.orderId}
+        key={`${workspace.projectId ?? workspace.orderId}:delivery`}
         project={workspace}
         onRefresh={refresh}
       />
 
-      <div className="grid gap-5 xl:grid-cols-2 2xl:grid-cols-[minmax(320px,0.9fr)_minmax(380px,1.1fr)_minmax(280px,0.75fr)] 2xl:items-start">
-        <ProjectChatPanel
-          conversationId={workspace.conversationId}
-          className="h-[720px] min-h-[620px] 2xl:sticky 2xl:top-4"
-          messages={workspace.messages}
-          sending={sending}
-          isOtherParticipantTyping={isOtherParticipantTyping}
-          onSend={sendMessage}
-          onTypingChange={sendTyping}
-        />
-
-        <fieldset
+      <div className="grid gap-5 xl:grid-cols-2 2xl:grid-cols-[minmax(320px,1fr)_minmax(380px,1fr)] 2xl:items-start">
+<fieldset
           className="min-w-0"
           disabled={["active", "revision", "completed", "cancelled"].includes(
             workspace.status.toLowerCase(),
@@ -141,7 +106,7 @@ export function StandardProjectWorkspace({ orderId }: { orderId: string }) {
           />
         </fieldset>
 
-        <aside className="grid gap-5 xl:col-span-2 xl:grid-cols-2 2xl:col-span-1 2xl:block 2xl:space-y-5">
+        <aside className="min-w-0 space-y-5">
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Project Summary</CardTitle>

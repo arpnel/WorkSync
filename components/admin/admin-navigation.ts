@@ -11,6 +11,7 @@ import {
   ChartNoAxesCombined,
   Store,
   ClipboardCheck,
+  ShieldAlert,
 } from "lucide-react";
 export const ADMIN_NAV_ITEMS = [
   {
@@ -36,6 +37,18 @@ export const ADMIN_NAV_ITEMS = [
     label: "Reports",
     icon: Flag,
     description: "Review evidence, record findings, and resolve reports.",
+  },
+  {
+    href: "/admin/support-tickets",
+    label: "Support tickets",
+    icon: ScrollText,
+    description: "Review and respond to account support requests.",
+  },
+  {
+    href: "/admin/moderation",
+    label: "Listing moderation",
+    icon: ShieldAlert,
+    description: "Review new job and service submissions.",
   },
   {
     href: "/admin/verification",

@@ -1,4 +1,6 @@
 "use client";
+import { StyledSelect } from "@/components/ui/styled-select";
+
 import { useState } from "react";
 import { ArrowDown, ArrowUp, Plus, Trash2, Eye, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -180,7 +182,7 @@ export function AssessmentEditor({
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="text-sm">
                     Question type
-                    <select
+                    <StyledSelect
                       className="mt-1 block w-full rounded-md border bg-background p-2"
                       value={q.type}
                       onChange={(e) =>
@@ -190,7 +192,7 @@ export function AssessmentEditor({
                       <option value="single">Single answer</option>
                       <option value="multiple">Multiple answers</option>
                       <option value="boolean">True / False</option>
-                    </select>
+                    </StyledSelect>
                   </label>
                   <label className="text-sm">
                     Points

@@ -1,4 +1,6 @@
 "use client";
+import { StyledSelect } from "@/components/ui/styled-select";
+
 import { useState } from "react";
 import {
   Dialog,
@@ -157,7 +159,7 @@ export default function ScheduleCardDialog({
           <div className="grid grid-cols-2 gap-4">
             <label className="block space-y-2 text-sm font-medium">
               <span>Priority</span>
-              <select
+              <StyledSelect
                 className="h-9 w-full rounded-lg border bg-background px-2 text-sm"
                 value={draft.priority}
                 onChange={(event) =>
@@ -170,12 +172,12 @@ export default function ScheduleCardDialog({
                 <option value="low">Low</option>
                 <option value="medium">Medium</option>
                 <option value="high">High</option>
-              </select>
+              </StyledSelect>
             </label>
           </div>
           <label className="block space-y-2 text-sm font-medium">
             <span>List</span>
-            <select
+            <StyledSelect
               className="h-9 w-full rounded-lg border bg-background px-2 text-sm"
               value={draft.listId}
               onChange={(event) =>
@@ -187,7 +189,7 @@ export default function ScheduleCardDialog({
                   {list.title}
                 </option>
               ))}
-            </select>
+            </StyledSelect>
             <span className="block text-xs font-normal text-muted-foreground">
               Change the list to move this card on any device.
             </span>

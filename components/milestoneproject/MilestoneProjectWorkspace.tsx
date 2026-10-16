@@ -1,5 +1,4 @@
 "use client";
-import { ProjectMeetingsDialog } from "@/components/project/ProjectMeetingsDialog";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 
 import { MilestonePlanningForm } from "@/components/project/MilestonePlanningForm";
@@ -13,7 +12,6 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ContractSummary } from "@/components/project/ContractSummary";
 import { ProjectAgreementCard } from "@/components/project/ProjectAgreementCard";
-import { ProjectChatPanel } from "@/components/project/ProjectChatPanel";
 import { ProjectWorkspaceHeader } from "@/components/project/ProjectWorkspaceHeader";
 import { useProjectWorkspace } from "@/hooks/project/useProjectWorkspace";
 import { MilestoneWorkspaceList } from "./MilestoneWorkspaceList";
@@ -24,13 +22,9 @@ export function MilestoneProjectWorkspace({ orderId }: { orderId: string }) {
     workspace,
     refresh,
     loading,
-    sending,
     updatingAgreement,
     updatingApprovalKey,
-    isOtherParticipantTyping,
     error,
-    sendMessage,
-    sendTyping,
     respondToAgreement,
     respondToAgreementItem,
     saveAgreementItem,
@@ -60,25 +54,6 @@ export function MilestoneProjectWorkspace({ orderId }: { orderId: string }) {
         onRefresh={refresh}
         error={error}
         onBack={() => router.push("/home/projects")}
-        chat={
-          <ProjectChatPanel
-            conversationId={workspace.conversationId}
-            className="h-[min(65dvh,560px)] min-h-[380px]"
-            headerActions={
-              workspace.projectId ? (
-                <ProjectMeetingsDialog
-                  projectId={workspace.projectId}
-                  active={workspace.status.toLowerCase() !== "completed"}
-                />
-              ) : undefined
-            }
-            messages={workspace.messages}
-            sending={sending}
-            isOtherParticipantTyping={isOtherParticipantTyping}
-            onSend={sendMessage}
-            onTypingChange={sendTyping}
-          />
-        }
       />
     );
   }
@@ -215,16 +190,7 @@ export function MilestoneProjectWorkspace({ orderId }: { orderId: string }) {
               </div>
             </CardContent>
           </Card>
-          <ProjectChatPanel
-            conversationId={workspace.conversationId}
-            className="h-[min(70dvh,720px)] min-h-[380px]"
-            messages={workspace.messages}
-            sending={sending}
-            isOtherParticipantTyping={isOtherParticipantTyping}
-            onSend={sendMessage}
-            onTypingChange={sendTyping}
-          />
-        </div>
+</div>
       </div>
       <div className="flex justify-end pt-4">
         <div className="w-full sm:max-w-lg">

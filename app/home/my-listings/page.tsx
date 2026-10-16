@@ -1,9 +1,11 @@
-"use client";
+﻿"use client";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import { WorkspacePageHeader } from "@/components/shared/WorkspacePageHeader";
 
 import { useCallback, useEffect, useState } from "react";
-import { Archive, Loader2 } from "lucide-react";
+import { Archive, Loader2, RotateCcw } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { getArchivedListings, restoreArchivedListing, type ArchivedListing } from "@/services/marketplace/archiveService";
 import { toast } from "sonner";
 
 import {
@@ -32,6 +34,8 @@ export default function Page() {
   const [search, setSearch] = useState("");
   const [kind, setKind] = useState("all");
   const [listings, setListings] = useState<MarketplaceItem[]>([]);
+  const [archived, setArchived] = useState<ArchivedListing[]>([]);
+  const [view, setView] = useState<"active" | "archived">("active");
   const [loadError, setLoadError] = useState("");
   const [loading, setLoading] = useState(true);
   const [pendingArchiveId, setPendingArchiveId] = useState<string | null>(null);
@@ -45,10 +49,11 @@ export default function Page() {
     setLoading(true);
 
     try {
-      const data = await getMyMarketplaceListings();
+      const [data, archivedData] = await Promise.all([getMyMarketplaceListings(), getArchivedListings()]);
 
       setLoadError("");
       setListings(Array.isArray(data) ? data.filter(Boolean) : []);
+      setArchived(archivedData);
     } catch (error) {
       setLoadError(
         error instanceof Error
@@ -57,6 +62,7 @@ export default function Page() {
       );
 
       setListings([]);
+      setArchived([]);
     } finally {
       setLoading(false);
     }
@@ -158,6 +164,7 @@ export default function Page() {
               TOOLBAR
           ================================================== */}
 
+      <div className="flex gap-2 border-b pb-2"><Button variant={view === "active" ? "default" : "ghost"} onClick={() => setView("active")}>Active listings</Button><Button variant={view === "archived" ? "default" : "ghost"} onClick={() => setView("archived")}>Archived ({archived.length})</Button></div>
       <div className="space-y-3">
         {loadError && (
           <p role="alert" className="text-sm text-destructive">
@@ -171,13 +178,13 @@ export default function Page() {
             </button>
           </p>
         )}
-        <ListingsToolbar
+        {view === "active" && <ListingsToolbar
           onCreated={() => loadListings()}
           search={search}
           onSearchChange={setSearch}
           kind={kind}
           onKindChange={setKind}
-        />
+        />}
         {editing && (
           <ListingEditDialog
             key={
@@ -197,28 +204,7 @@ export default function Page() {
           ================================================== */}
 
       <div className="min-w-0">
-        {loading ? (
-          renderSkeleton()
-        ) : visible.length === 0 ? (
-          renderEmptyState()
-        ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {visible.map((listing) => (
-              <ListingCard
-                key={
-                  "service_id" in listing
-                    ? listing.service_id
-                    : "job_id" in listing
-                      ? listing.job_id
-                      : crypto.randomUUID()
-                }
-                listing={listing}
-                onEdit={() => setEditing(listing)}
-                onArchive={handleArchive}
-              />
-            ))}
-          </div>
-        )}
+        {loading ? renderSkeleton() : view === "active" ? (visible.length === 0 ? renderEmptyState() : <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">{visible.map((listing) => <ListingCard key={"service_id" in listing ? listing.service_id : listing.job_id} listing={listing} onEdit={() => setEditing(listing)} onArchive={handleArchive} />)}</div>) : archived.length === 0 ? <div className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">No archived listings.</div> : <div className="divide-y rounded-xl border bg-card">{archived.map((item) => <div key={item.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><p className="font-semibold">{item.title} <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs font-normal">{item.kind}</span></p><p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{item.description}</p><p className="mt-2 text-xs text-muted-foreground">Posted {new Date(item.createdAt).toLocaleDateString()} · Archived {item.archivedAt ? new Date(item.archivedAt).toLocaleDateString() : "date unavailable"} · Previous status: {item.previousStatus}</p></div><Button variant="outline" onClick={async () => { try { await restoreArchivedListing(item); toast.success("Listing restored."); await loadListings(); } catch (error) { toast.error(error instanceof Error ? error.message : "Unable to restore this listing."); } }}><RotateCcw className="mr-2 size-4" />Restore</Button></div>)}</div>}
       </div>
 
       <AlertDialog

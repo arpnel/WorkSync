@@ -1,6 +1,6 @@
 export default function StatsSection() {
   return (
-    <section id="about" className="scroll-mt-24">
+    <section id="why-worksync" className="scroll-mt-24">
       <div className="bg-muted/50 py-24">
         <div className="mx-auto max-w-5xl px-6">
           <div>

@@ -1,9 +1,9 @@
-﻿"use client";
+"use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { WorkspacePageHeader } from "@/components/shared/WorkspacePageHeader";
 import { invalidatePageReads } from "@/lib/pageReadCache";
 import { supabase } from "@/lib/supabaseClient";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import MarketplaceHeader from "@/components/marketplace/MarketplaceHeader";
 import MarketplaceFilterSheet from "@/components/marketplace/MarketplaceFilterSheet";
 import MarketplaceGrid from "@/components/marketplace/MarketplaceGrid";
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { SignupDialog } from "@/components/auth/signup/SignupDialog";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   getMarketplaceServices,
   type MarketplaceItem,
@@ -33,18 +34,33 @@ import type {
 
 export default function MarketplaceBrowse({
   guest = false,
+  initialCategoryId = "",
+  initialSkillId = "",
+  initialService = "",
 }: {
   guest?: boolean;
+  initialCategoryId?: string;
+  initialSkillId?: string;
+  initialService?: string;
 }) {
   const [signup, setSignup] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
+  const [deepCategoryId, setDeepCategoryId] = useState(initialCategoryId);
+  const [deepSkillId, setDeepSkillId] = useState(
+    initialCategoryId ? initialSkillId : "",
+  );
+  const [deepCategoryName, setDeepCategoryName] = useState("");
+  const [deepSkillName, setDeepSkillName] = useState("");
   const [ratings, setRatings] = useState<Map<string, number>>(new Map());
   const [services, setServices] = useState<MarketplaceItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saveError, setSaveError] = useState("");
   const [search, setSearch] = useState("");
-  const [selectedService, setSelectedService] = useState<string | null>(null);
+  const [selectedService, setSelectedService] = useState<string | null>(
+    initialService || null,
+  );
   const [filterOpen, setFilterOpen] = useState(false);
   const [filters, setFilters] = useState<MarketplaceFiltersValue>({
     sort: ["latest"],
@@ -58,6 +74,85 @@ export default function MarketplaceBrowse({
   const savedOnly = filters.savedOnly;
   const [saving, setSaving] = useState<string | null>(null);
   const version = useRef(0);
+  const updateDeepFilters = useCallback(
+    (categoryId: string, skillId: string) => {
+      setDeepCategoryId(categoryId);
+      setDeepSkillId(categoryId ? skillId : "");
+      setSelectedService(null);
+      const params = new URLSearchParams(window.location.search);
+      if (categoryId) params.set("category", categoryId);
+      else params.delete("category");
+      if (categoryId && skillId) params.set("subcategory", skillId);
+      else params.delete("subcategory");
+      params.delete("service");
+      const query = params.toString();
+      const nextUrl = query ? `${pathname}?${query}` : pathname;
+      const currentUrl = window.location.pathname + window.location.search;
+      if (nextUrl !== currentUrl) window.history.pushState({}, "", nextUrl);
+    },
+    [pathname],
+  );
+  useEffect(() => {
+    setDeepCategoryId(initialCategoryId);
+    setDeepSkillId(initialCategoryId ? initialSkillId : "");
+    setSelectedService(initialService || null);
+  }, [initialCategoryId, initialSkillId, initialService]);
+  const updateServiceFilter = useCallback(
+    (service: string | null) => {
+      setSelectedService(service);
+      setDeepCategoryId("");
+      setDeepSkillId("");
+      const params = new URLSearchParams(window.location.search);
+      params.delete("category");
+      params.delete("subcategory");
+      if (service) params.set("service", service);
+      else params.delete("service");
+      const query = params.toString();
+      const nextUrl = query ? `${pathname}?${query}` : pathname;
+      if (nextUrl !== window.location.pathname + window.location.search)
+        window.history.pushState({}, "", nextUrl);
+    },
+    [pathname],
+  );
+  useEffect(() => {
+    const sync = () => {
+      const params = new URLSearchParams(window.location.search);
+      setDeepCategoryId(params.get("category") ?? "");
+      setDeepSkillId(
+        params.get("category") ? (params.get("subcategory") ?? "") : "",
+      );
+      setSelectedService(params.get("service") ?? null);
+    };
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, []);
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const [category, skill] = await Promise.all([
+        deepCategoryId
+          ? supabase
+              .from("job_categories")
+              .select("name")
+              .eq("id", deepCategoryId)
+              .maybeSingle()
+          : Promise.resolve({ data: null }),
+        deepSkillId
+          ? supabase
+              .from("skills")
+              .select("name")
+              .eq("id", deepSkillId)
+              .maybeSingle()
+          : Promise.resolve({ data: null }),
+      ]);
+      if (!active) return;
+      setDeepCategoryName(category.data?.name ?? "");
+      setDeepSkillName(skill.data?.name ?? "");
+    })();
+    return () => {
+      active = false;
+    };
+  }, [deepCategoryId, deepSkillId]);
   const load = useCallback(
     async (quiet = false) => {
       const request = ++version.current;
@@ -70,6 +165,8 @@ export default function MarketplaceBrowse({
         const result = await getMarketplaceServices({
           ...(guest ? { guest: true } : {}),
           search,
+          categoryId: deepCategoryId || null,
+          skillId: deepSkillId || null,
           sort,
           listingType: filters.listingType === "freelancer" ? "service" : "job",
           minPrice: filters.minPrice ? Number(filters.minPrice) : null,
@@ -106,7 +203,7 @@ export default function MarketplaceBrowse({
         if (request === version.current) setLoading(false);
       }
     },
-    [search, filters, guest],
+    [search, filters, guest, deepCategoryId, deepSkillId],
   );
   useEffect(() => {
     const requests = version;
@@ -222,29 +319,67 @@ export default function MarketplaceBrowse({
             guest ? setSignup(true) : router.push("/home/my-listings")
           }
           selectedService={selectedService}
-          onServiceChange={setSelectedService}
+          hasExternalFilter={Boolean(deepCategoryId)}
+          externalFilterLabel={`${deepCategoryName || "Category"}${deepSkillName ? ` · ${deepSkillName}` : ""}`}
+          onServiceChange={(value) => {
+            updateServiceFilter(value);
+          }}
         />
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        {(deepCategoryId || deepSkillId) && (
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-muted/20 p-3 text-sm">
+            <span className="font-medium">Filtered by</span>
+            {deepCategoryId && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => updateDeepFilters("", "")}
+              >
+                {deepCategoryName || "Selected category"}{" "}
+                <span aria-hidden="true">×</span>
+              </Button>
+            )}
+            {deepSkillId && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => updateDeepFilters(deepCategoryId, "")}
+              >
+                {deepSkillName || "Selected specialty"}{" "}
+                <span aria-hidden="true">×</span>
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => updateDeepFilters("", "")}
+            >
+              Clear filters
+            </Button>
+          </div>
+        )}
+        <div className="flex flex-wrap items-center justify-between gap-3 md:px-5">
           <p role="status" className="text-sm text-muted-foreground">
             {loading ? "Finding listings..." : `${visible.length} listings`}
           </p>
-          <label className="flex w-full min-w-0 items-center gap-2 text-sm sm:ml-auto sm:w-auto">
+          <div className="flex w-full min-w-0 items-center justify-end gap-3 text-sm sm:ml-auto sm:w-auto">
             <span className="shrink-0 text-muted-foreground">Sort by</span>
-            <select
-              className="h-11 min-w-0 flex-1 rounded-lg border bg-card px-3 text-foreground"
+            <Select
               value={filters.sort[0] ?? "latest"}
-              onChange={(event) => {
-                const sort = event.target.value as SortOption;
-                setFilters((current) => ({ ...current, sort: [sort] }));
+              onValueChange={(value) => {
+                setFilters((current) => ({ ...current, sort: [value as SortOption] }));
               }}
             >
-              <option value="latest">Latest</option>
-              <option value="lowestPrice">Lowest price</option>
-              <option value="highestRated">Highest rated</option>
-            </select>
-          </label>
-        </div>
-        <MarketplaceFilterSheet
+              <SelectTrigger className="!h-11 min-w-0 flex-1 rounded-lg border bg-card px-3 text-foreground shadow-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/30 sm:flex-none">
+                <SelectValue placeholder="Choose sorting" />
+              </SelectTrigger>
+              <SelectContent position="popper" side="bottom" sideOffset={4} avoidCollisions={false} align="end" className="rounded-lg border bg-card p-1 shadow-md">
+                <SelectItem className="rounded-lg py-2.5" value="latest">Latest</SelectItem>
+                <SelectItem className="rounded-lg py-2.5" value="lowestPrice">Lowest price</SelectItem>
+                <SelectItem className="rounded-lg py-2.5" value="highestRated">Highest rated</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>        <MarketplaceFilterSheet
           open={filterOpen}
           onOpenChange={setFilterOpen}
           initialFilters={filters}

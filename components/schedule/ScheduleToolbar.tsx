@@ -1,4 +1,6 @@
 "use client";
+import { StyledSelect } from "@/components/ui/styled-select";
+
 import { useState } from "react";
 import { Plus, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -28,7 +30,7 @@ export default function ScheduleToolbar({
         <label htmlFor="planner-board" className="text-sm font-medium">
           Board
         </label>
-        <select
+        <StyledSelect
           id="planner-board"
           aria-label="Current board"
           className="h-9 max-w-full min-w-40 rounded-lg border bg-background px-3 text-sm font-semibold sm:max-w-60"
@@ -43,7 +45,7 @@ export default function ScheduleToolbar({
               {item.title}
             </option>
           ))}
-        </select>
+        </StyledSelect>
         {!readOnly && (
           <Button
             variant="ghost"

@@ -73,6 +73,7 @@ export function SignupDetailsStep({
       <PasswordField
         label="Password"
         name="password"
+        showRequirements
         showPassword={showPassword}
         onToggle={onTogglePassword}
         onChange={onPasswordChange}

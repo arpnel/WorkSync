@@ -1,4 +1,6 @@
 "use client";
+import { StyledSelect } from "@/components/ui/styled-select";
+
 
 import * as React from "react";
 import {
@@ -67,6 +69,8 @@ interface MarketplaceHeaderProps {
   onCreateClick: () => void;
 
   selectedService: string | null;
+  hasExternalFilter?: boolean;
+  externalFilterLabel?: string;
   onServiceChange: (service: string | null) => void;
 }
 
@@ -81,6 +85,8 @@ export default function MarketplaceHeader({
   onFilterClick,
   onCreateClick,
   selectedService,
+  hasExternalFilter = false,
+  externalFilterLabel = "Selected category",
   onServiceChange,
 }: MarketplaceHeaderProps) {
   return (
@@ -164,13 +170,16 @@ export default function MarketplaceHeader({
 
         <label className="block min-w-0 space-y-2 md:hidden">
           <span className="text-sm font-medium">Browse services</span>
-          <select
+          <StyledSelect
             aria-label="Browse marketplace services"
-            value={selectedService ?? ""}
+            value={hasExternalFilter ? "__external__" : (selectedService ?? "")}
             onChange={(event) => onServiceChange(event.target.value || null)}
             className="h-12 w-full min-w-0 rounded-xl border bg-card px-3 text-base"
           >
             <option value="">All listings</option>
+            {hasExternalFilter && (
+              <option value="__external__">{externalFilterLabel}</option>
+            )}
             {marketplaceCategories.map((category) => (
               <optgroup key={category.name} label={category.name}>
                 {category.services.map((service) => (
@@ -180,7 +189,7 @@ export default function MarketplaceHeader({
                 ))}
               </optgroup>
             ))}
-          </select>
+          </StyledSelect>
         </label>
         <div className="relative hidden w-full min-w-0 md:block">
           <Carousel
@@ -209,7 +218,11 @@ export default function MarketplaceHeader({
                   <CarouselItem className="basis-auto pl-2">
                     <Button
                       type="button"
-                      variant={selectedService === null ? "default" : "outline"}
+                      variant={
+                        selectedService === null && !hasExternalFilter
+                          ? "default"
+                          : "outline"
+                      }
                       className="shrink-0 rounded-full"
                       onClick={() => {
                         onServiceChange(null);
@@ -218,7 +231,7 @@ export default function MarketplaceHeader({
                     >
                       <LayoutGrid className="h-4 w-4" />
                       All Listings
-                      {selectedService === null && (
+                      {selectedService === null && !hasExternalFilter && (
                         <Check className="ml-2 h-4 w-4" />
                       )}
                     </Button>

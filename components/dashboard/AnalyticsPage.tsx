@@ -1,4 +1,6 @@
 "use client";
+import { StyledSelect } from "@/components/ui/styled-select";
+
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
@@ -270,7 +272,7 @@ export default function AnalyticsPage() {
           <div className="flex flex-wrap gap-2">
             <label className="min-w-0 flex-1 @min-[900px]:flex-none">
               <span className="sr-only">Date range</span>
-              <select
+              <StyledSelect
                 className={`${selectStyle} w-full`}
                 value={range}
                 onChange={(e) => {
@@ -284,11 +286,11 @@ export default function AnalyticsPage() {
                 <option value="90">Last 90 days</option>
                 <option value="365">Last year</option>
                 <option value="custom">Custom range</option>
-              </select>
+              </StyledSelect>
             </label>
             <label className="min-w-0 flex-1 @min-[900px]:flex-none">
               <span className="sr-only">Your role</span>
-              <select
+              <StyledSelect
                 className={`${selectStyle} w-full`}
                 value={party}
                 onChange={(e) => setParty(e.target.value)}
@@ -296,7 +298,7 @@ export default function AnalyticsPage() {
                 <option value="all">All roles</option>
                 <option value="freelancer">As freelancer</option>
                 <option value="client">As client</option>
-              </select>
+              </StyledSelect>
             </label>
           </div>
           {range === "custom" && (

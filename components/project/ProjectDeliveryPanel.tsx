@@ -1,4 +1,6 @@
-﻿"use client";
+"use client";
+import { StyledSelect } from "@/components/ui/styled-select";
+
 import {
   useCallback,
   useEffect,
@@ -15,6 +17,7 @@ import { projectProgress } from "@/lib/projectProgress";
 import { reviewableDeliveryIds } from "@/lib/projectDelivery";
 import { Plus } from "lucide-react";
 import { SubmissionInbox } from "./SubmissionInbox";
+import { SubmissionComments } from "./SubmissionComments";
 import { SubmissionImage } from "./SubmissionImage";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
@@ -31,13 +34,34 @@ import {
 } from "@/components/ui/dialog";
 import type { ProjectWorkspace } from "@/types/project/projectWorkspace";
 import {
+  addProjectSubmissionComment,
   getDeliveryHistory,
   submitProjectWork,
   openProjectAttachment,
   reviewSubmission,
+  requestProjectSettlementReview,
   leaveProjectReview,
+  type SettlementReviewOutcome,
   type WorkSubmission,
 } from "@/services/project/projectDeliveryService";
+function settlementReviewNotice(outcome: SettlementReviewOutcome) {
+  switch (outcome.status) {
+    case "completed":
+      return "The project is marked complete.";
+    case "reviewed_pending":
+      return "Settlement ran, but the project is still active. The live settlement function did not complete it.";
+    case "disabled":
+      return "Delivery is approved, but settlement is disabled. Set PROJECT_SETTLEMENT_ENABLED=true in the server environment.";
+    case "version_unavailable":
+      return "Delivery is approved, but the server could not verify settlement version 2.";
+    case "payment_unavailable":
+      return "Delivery is approved, but no paid payment matched the server's test/live mode. Check the PayMongo key mode.";
+    case "verification_failed":
+      return `Delivery is approved, but PayMongo settlement verification failed: ${outcome.detail ?? "unknown error"}`;
+    case "request_failed":
+      return `Delivery is approved, but settlement could not be requested: ${outcome.detail ?? "unknown error"}`;
+  }
+}
 export function ProjectDeliveryPanel({
   project,
   onRefresh,
@@ -78,6 +102,7 @@ export function ProjectDeliveryPanel({
   const [comment, setComment] = useState("");
   const loadVersion = useRef(0);
   const automaticRefresh = useRef("");
+  const settlementRefresh = useRef("");
   useEffect(() => {
     const latest = (history?.submissions ?? [])
       .filter((s) => s.auto_reviewed_at)
@@ -133,9 +158,40 @@ export function ProjectDeliveryPanel({
     };
   }, [load]);
   useEffect(() => {
+    if (
+      !history ||
+      !project.projectId ||
+      project.currentParty !== "client" ||
+      !["active", "in_progress", "revision"].includes(project.status.toLowerCase())
+    ) return;
+    const approved = history.submissions
+      .filter((submission) => submission.kind === "delivery" && submission.status === "approved")
+      .sort((a, b) => a.created_at.localeCompare(b.created_at));
+    if (!approved.length) return;
+    const latest = approved[approved.length - 1];
+    const key = `${project.projectId}:${approved.map((item) => item.submission_id).sort().join(",")}`;
+    if (key === settlementRefresh.current) return;
+    settlementRefresh.current = key;
+    void requestProjectSettlementReview(project.projectId, latest.submission_id).then(async (reviewed) => {
+      setNotice(settlementReviewNotice(reviewed));
+      if (reviewed.status !== "completed") return;
+      clearProjectReadCache();
+      await load();
+      await onRefresh();
+    }).catch(() => {
+      settlementRefresh.current = "";
+    });
+  }, [history, load, onRefresh, project.currentParty, project.projectId, project.status]);
+
+  useEffect(() => {
     if (!project.projectId) return;
     const channel = supabase.channel("deliveries:" + project.projectId);
-    for (const table of ["project_submissions", "revision_requests", "reviews"])
+    for (const table of [
+      "project_submissions",
+      "revision_requests",
+      "reviews",
+      "project_submission_comments",
+    ])
       channel.on(
         "postgres_changes",
         {
@@ -151,15 +207,15 @@ export function ProjectDeliveryPanel({
       void supabase.removeChannel(channel);
     };
   }, [load, project.projectId]);
-  async function act(operation: () => Promise<void>, message: string) {
+  async function act(operation: () => Promise<void | string>, message: string) {
     if (busy) return;
     setBusy(true);
     setError("");
     setNotice("");
     try {
-      await operation();
+      const outcome = await operation();
       clearProjectReadCache();
-      setNotice(message);
+      setNotice(typeof outcome === "string" ? outcome : message);
       await load();
       await onRefresh();
     } catch (cause) {
@@ -353,7 +409,7 @@ export function ProjectDeliveryPanel({
                       <fieldset disabled={busy} className="space-y-3">
                         <label className="block text-sm">
                           Submission type
-                          <select
+                          <StyledSelect
                             className="mt-1 w-full rounded-md border bg-background p-2"
                             value={kind}
                             onChange={(e) =>
@@ -364,12 +420,12 @@ export function ProjectDeliveryPanel({
                               Deliver work for approval
                             </option>
                             <option value="progress">Progress update</option>
-                          </select>
+                          </StyledSelect>
                         </label>
                         {project.type === "milestone" && (
                           <label className="block text-sm">
                             Milestone
-                            <select
+                            <StyledSelect
                               required
                               className="mt-1 w-full rounded-md border bg-background p-2"
                               value={milestone}
@@ -383,7 +439,7 @@ export function ProjectDeliveryPanel({
                                     {m.title}
                                   </option>
                                 ))}
-                            </select>
+                            </StyledSelect>
                           </label>
                         )}
                         <label className="block text-sm">
@@ -562,6 +618,30 @@ export function ProjectDeliveryPanel({
                       </Button>
                     )}
                   </div>
+                  <SubmissionComments
+                    comments={history.comments}
+                    projectId={projectId}
+                    submissionId={submission.submission_id}
+                    currentUserId={project.currentUserId}
+                    otherParty={project.currentParty === "client" ? "Freelancer" : "Client"}
+                    busy={busy}
+                    onAdd={async (commentProjectId, submissionId, body) => {
+                      if (busy) throw new Error("A project update is already in progress.");
+                      setBusy(true);
+                      setError("");
+                      try {
+                        await addProjectSubmissionComment(commentProjectId, submissionId, body);
+                        clearProjectReadCache();
+                        await load();
+                        await onRefresh();
+                      } catch (cause) {
+                        setError(cause instanceof Error ? cause.message : "Unable to add comment.");
+                        throw cause;
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                  />
                   {history.revisions
                     .filter((r) => r.submission_id === submission.submission_id)
                     .map((r) => (
@@ -630,7 +710,7 @@ export function ProjectDeliveryPanel({
               <h3 className="font-medium">Review this project</h3>
               <label className="block text-sm">
                 Rating
-                <select
+                <StyledSelect
                   className="ml-3 rounded-md border bg-background p-2"
                   value={rating}
                   onChange={(e) => setRating(e.target.value)}
@@ -640,7 +720,7 @@ export function ProjectDeliveryPanel({
                       {n} stars
                     </option>
                   ))}
-                </select>
+                </StyledSelect>
               </label>
               <label className="block text-sm">
                 Comment
@@ -701,12 +781,23 @@ export function ProjectDeliveryPanel({
                 onClick={() => {
                   if (reviewing)
                     void act(async () => {
-                      await reviewSubmission(
+                      if (reviewing.action === "approve") {
+                        const approvedIds = (history?.submissions ?? [])
+                          .filter((submission) => submission.kind === "delivery" && submission.status === "approved")
+                          .map((submission) => submission.submission_id);
+                        if (!approvedIds.includes(reviewing.submission.submission_id))
+                          approvedIds.push(reviewing.submission.submission_id);
+                        settlementRefresh.current = `${projectId}:${approvedIds.sort().join(",")}`;
+                      }
+                      const settlementReviewed = await reviewSubmission(
+                        projectId,
                         reviewing.submission.submission_id,
                         reviewing.action,
                         instructions,
                       );
                       setReviewing(null);
+                      if (reviewing.action === "approve")
+                        return settlementReviewNotice(settlementReviewed ?? { status: "request_failed" });
                     }, "Delivery updated.");
                 }}
               >

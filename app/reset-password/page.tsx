@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
@@ -6,6 +6,9 @@ import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordRequirements } from "@/components/auth/PasswordRequirements";
+import { passwordMeetsRequirements } from "@/lib/validation/auth.validation";
+import { updatePasswordOnServer } from "@/services/auth/passwordService";
 
 export default function ResetPasswordPage() {
   const [ready, setReady] = useState(false);
@@ -38,12 +41,11 @@ export default function ResetPasswordPage() {
     event.preventDefault();
     if (!ready || busy) return;
     setError("");
-    if (password.length < 8) return setError("Use at least 8 characters.");
+    if (!passwordMeetsRequirements(password)) return setError("Password must have at least 8 characters, uppercase and lowercase letters, a number, and a special character.");
     if (password !== confirm) return setError("Passwords do not match.");
     setBusy(true);
     try {
-      const { error } = await supabase.auth.updateUser({ password });
-      if (error) throw error;
+      await updatePasswordOnServer(password);
       setDone(true);
       setPassword("");
       setConfirm("");
@@ -87,7 +89,8 @@ export default function ResetPasswordPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
-              </div>
+                              <PasswordRequirements password={password} />
+</div>
               <div className="space-y-2">
                 <Label htmlFor="confirm-password">Confirm password</Label>
                 <Input

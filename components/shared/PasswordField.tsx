@@ -5,6 +5,7 @@ import { Eye, EyeOff } from "lucide-react";
 
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { PasswordRequirements } from "@/components/auth/PasswordRequirements";
 
 interface PasswordFieldProps {
   label: string;
@@ -16,6 +17,7 @@ interface PasswordFieldProps {
   error?: string;
 
   onChange?: React.ChangeEventHandler<HTMLInputElement>;
+  showRequirements?: boolean;
 }
 
 export function PasswordField({
@@ -25,7 +27,9 @@ export function PasswordField({
   onToggle,
   error,
   onChange,
+  showRequirements = false,
 }: PasswordFieldProps) {
+  const [value, setValue] = React.useState("");
   return (
     <Field>
       <FieldLabel>{label}</FieldLabel>
@@ -36,13 +40,17 @@ export function PasswordField({
           type={showPassword ? "text" : "password"}
           className="pr-10"
           required
-          onChange={onChange}
+          onChange={(event) => {
+            setValue(event.target.value);
+            onChange?.(event);
+          }}
         />
 
         <button
           type="button"
           onClick={onToggle}
-          className="absolute right-2 top-2"
+          aria-label={showPassword ? "Hide password" : "Show password"}
+          className="absolute right-2 top-1/2 -translate-y-1/2"
         >
           {showPassword ? (
             <EyeOff size={16} />
@@ -51,6 +59,8 @@ export function PasswordField({
           )}
         </button>
       </div>
+
+      {showRequirements && <PasswordRequirements password={value} />}
 
       {error && (
         <div className="mt-2 flex items-center gap-2 text-red-500 text-sm">

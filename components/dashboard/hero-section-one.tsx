@@ -1,5 +1,4 @@
 import React from "react";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { HeroHeader } from "./header";
 import { ChevronRight } from "lucide-react";
@@ -45,15 +44,6 @@ export default function HeroSection() {
                         <SignupDialog />
                       </DialogContent>
                     </Dialog>
-                    <Button
-                      key={2}
-                      asChild
-                      size="lg"
-                      variant="outline"
-                      className="pl-5"
-                    >
-                      <Link href="/marketplace">Explore Freelancers</Link>
-                    </Button>
                   </div>
                 </div>
               </div>

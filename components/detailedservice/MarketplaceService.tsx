@@ -10,7 +10,13 @@ import { useFreelancerAvailability } from "@/hooks/useFreelancerAvailability";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Bookmark, Share2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import {
+  getSavedListings,
+  listingKey,
+  saveListing,
+} from "@/services/marketplace/listingActions";
 
 import {
   getCurrentUserRole,
@@ -25,8 +31,19 @@ import {
 } from "@/services/marketplace/MarketplaceServices";
 
 import type { MarketplaceService } from "@/services/marketplace/MarketplaceServices";
+import { getPublicProfile } from "@/services/profile/profileservice";
+import type { Profile } from "@/types/profile/profile";
+import {
+  EMPLOYMENT_PREFERENCES,
+  ENGLISH_PROFICIENCY,
+} from "@/constants/account-setup.constants";
+import {
+  getJobCategories,
+  type Category,
+} from "@/services/serviceP/categoryService";
 
 import ServiceReviews from "@/components/detailedservice/ServiceReviews";
+import ServiceRelatedWork from "@/components/detailedservice/ServiceRelatedWork";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -39,14 +56,41 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  getJobCategories,
-  type Category,
-} from "@/services/serviceP/categoryService";
 
 interface MarketplaceServiceDetailsProps {
   serviceId: string;
   guest?: boolean;
+}
+
+function formatBudgetInput(value: string) {
+  const cleaned = value.replace(/[^\d.]/g, "");
+  if (!cleaned) return "";
+  const decimalIndex = cleaned.indexOf(".");
+  const wholeDigits = (decimalIndex < 0 ? cleaned : cleaned.slice(0, decimalIndex))
+    .replace(/^0+(?=\d)/, "")
+    .slice(0, 6);
+  const fraction = decimalIndex < 0
+    ? ""
+    : `.${cleaned.slice(decimalIndex + 1).replace(/\./g, "").slice(0, 2)}`;
+  const numeric = Number(`${wholeDigits || "0"}${fraction}`);
+  if (numeric > 100_000) return "100,000";
+  const formattedWhole = (wholeDigits || "0").replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `${formattedWhole}${fraction}`;
+}
+
+function localDateString(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function deliveryDaysFromDate(dateValue: string, todayValue: string) {
+  const [year, month, day] = dateValue.split("-").map(Number);
+  const [todayYear, todayMonth, todayDay] = todayValue.split("-").map(Number);
+  const selected = Date.UTC(year, month - 1, day);
+  const today = Date.UTC(todayYear, todayMonth - 1, todayDay);
+  return Math.max(1, Math.ceil((selected - today) / 86_400_000));
 }
 
 export default function MarketplaceServiceDetails({
@@ -54,6 +98,10 @@ export default function MarketplaceServiceDetails({
   guest = false,
 }: MarketplaceServiceDetailsProps) {
   const [signup, setSignup] = useState(false);
+  const [shareFeedback, setShareFeedback] = useState("");
+  const [isSaved, setIsSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveFeedback, setSaveFeedback] = useState("");
   const [serviceSkills, setServiceSkills] = useState<{
     serviceId: string;
     names: string[];
@@ -97,8 +145,49 @@ export default function MarketplaceServiceDetails({
     avatar_url: string | null;
   } | null>(null);
   const [service, setService] = useState<MarketplaceService | null>(null);
+  const [freelancerProfile, setFreelancerProfile] = useState<Profile | null>(null);
+  const [freelancerProfileLoading, setFreelancerProfileLoading] = useState(false);
   const availability = useFreelancerAvailability(service?.freelancer_id ? [service.freelancer_id] : []);
   const available = availability.get(service?.freelancer_id ?? "");
+
+  useEffect(() => {
+    const userId = service?.freelancer?.user_id;
+    if (!userId) {
+      setFreelancerProfile(null);
+      return;
+    }
+    let active = true;
+    setFreelancerProfile(null);
+    setFreelancerProfileLoading(true);
+    void getPublicProfile(userId)
+      .then((profile) => {
+        if (active) setFreelancerProfile(profile?.role === "freelancer" ? profile : null);
+      })
+      .catch(() => {
+        if (active) setFreelancerProfile(null);
+      })
+      .finally(() => {
+        if (active) setFreelancerProfileLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [service?.freelancer?.user_id]);
+
+  useEffect(() => {
+    if (guest || !service?.service_id) return;
+    let active = true;
+    void getSavedListings()
+      .then((saved) => {
+        if (active) setIsSaved(saved.has(listingKey("service", service.service_id)));
+      })
+      .catch(() => {
+        if (active) setSaveFeedback("Could not load saved status.");
+      });
+    return () => {
+      active = false;
+    };
+  }, [guest, service?.service_id]);
 
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
 
@@ -122,47 +211,43 @@ export default function MarketplaceServiceDetails({
   const [projectTitle, setProjectTitle] = useState("");
   const [projectDescription, setProjectDescription] = useState("");
   const [projectBudget, setProjectBudget] = useState("");
-  const [projectDeliveryDays, setProjectDeliveryDays] = useState("");
+  const [projectDeliveryDate, setProjectDeliveryDate] = useState("");
   const [projectRevisions, setProjectRevisions] = useState("");
   const [projectCategoryId, setProjectCategoryId] = useState("");
   const [projectCategoryText, setProjectCategoryText] = useState("");
+  const [isCustomRequest, setIsCustomRequest] = useState(false);
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const categoryRef = useRef<HTMLDivElement>(null);
   const categoryMatches = useMemo(() => {
     const query = projectCategoryText.trim().toLowerCase();
-    return (
-      query
-        ? categories.filter((category) =>
-            category.name.toLowerCase().includes(query),
-          )
-        : categories
+    return (query
+      ? categories.filter((category) =>
+          category.name.toLowerCase().includes(query),
+        )
+      : categories
     )
       .sort((a, b) => a.name.localeCompare(b.name))
       .slice(0, 20);
   }, [categories, projectCategoryText]);
 
-  /* ==========================================================
-     LOAD CURRENT USER ROLE + LISTEN FOR ROLE CHANGES
-  ========================================================== */
-
   useEffect(() => {
     void getJobCategories()
       .then(setCategories)
-      .catch((error) => {
-        console.error("Failed to load job categories:", error);
-      });
+      .catch((error) => console.error("Failed to load job categories:", error));
   }, []);
 
   useEffect(() => {
     const closeCategory = (event: MouseEvent) => {
-      if (!categoryRef.current?.contains(event.target as Node)) {
+      if (!categoryRef.current?.contains(event.target as Node))
         setCategoryOpen(false);
-      }
     };
     document.addEventListener("mousedown", closeCategory);
     return () => document.removeEventListener("mousedown", closeCategory);
   }, []);
+  /* ==========================================================
+     LOAD CURRENT USER ROLE + LISTEN FOR ROLE CHANGES
+  ========================================================== */
 
   useEffect(() => {
     if (guest) return;
@@ -269,7 +354,7 @@ export default function MarketplaceServiceDetails({
      SERVICE ACTION
   ========================================================== */
 
-  async function handleServiceAction() {
+  async function handleServiceAction(customRequest = false) {
     if (guest) {
       setSignup(true);
       return;
@@ -307,17 +392,69 @@ export default function MarketplaceServiceDetails({
 
     setProjectTitle(service.title);
     setProjectDescription("");
-    setProjectBudget(String(service.price));
-    setProjectDeliveryDays(String(service.delivery_time_days));
+    setProjectBudget(formatBudgetInput(String(service.price)));
+    const defaultDeliveryDate = new Date();
+    defaultDeliveryDate.setDate(
+      defaultDeliveryDate.getDate() + Math.max(1, Number(service.delivery_time_days) || 1),
+    );
+    setProjectDeliveryDate(localDateString(defaultDeliveryDate));
     setProjectRevisions(String(service.revisions_count));
     setProjectCategoryId(service.category_id);
     setProjectCategoryText(service.category?.name ?? "");
+    setIsCustomRequest(customRequest);
+    setCategoryOpen(false);
     setActionError(null);
     setShowPurchaseDialog(true);
   }
 
+  async function handleShareService() {
+    if (!service) return;
+    const url = window.location.href;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: service.title, url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        setShareFeedback("Service link copied.");
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") return;
+      setShareFeedback("Unable to share this service.");
+    }
+  }
+
+  async function handleSaveService() {
+    if (!service) return;
+    if (guest) {
+      setSignup(true);
+      return;
+    }
+    if (saving) return;
+    setSaving(true);
+    setSaveFeedback("");
+    try {
+      await saveListing("service", service.service_id, !isSaved);
+      setIsSaved((current) => !current);
+    } catch (cause) {
+      setSaveFeedback(cause instanceof Error ? cause.message : "Unable to save service.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function confirmServiceRequest() {
     if (!service || !service.freelancer_id) return;
+    const budget = Number(projectBudget.replace(/,/g, ""));
+    const today = localDateString(new Date());
+    if (!Number.isFinite(budget) || budget <= 0 || budget > 100_000) {
+      setActionError("Enter a budget greater than 0 and no more than ₱100,000.");
+      return;
+    }
+    if (!projectDeliveryDate || projectDeliveryDate < today) {
+      setActionError("Choose today or a future delivery date.");
+      return;
+    }
+    const deliveryTimeDays = deliveryDaysFromDate(projectDeliveryDate, today);
 
     try {
       setActionLoading(true);
@@ -338,13 +475,13 @@ export default function MarketplaceServiceDetails({
         {
           projectTitle,
           description: projectDescription,
-          budget: Number(projectBudget),
-          deliveryTimeDays: Number(projectDeliveryDays),
+          budget,
+          deliveryTimeDays,
           revisionsCount: Number(projectRevisions),
           categoryId: projectCategoryId,
           categoryName:
             categories.find((category) => category.id === projectCategoryId)
-              ?.name ?? "",
+              ?.name ?? service.category?.name ?? "",
         },
       );
       setShowPurchaseDialog(false);
@@ -441,6 +578,42 @@ export default function MarketplaceServiceDetails({
   const isFreelancer = currentUserRole === "freelancer";
 
   const actionLabel = isService ? "Buy" : "Apply";
+  const sellerName = guest
+    ? guestSeller?.display_name || "Freelancer name unavailable"
+    : service.freelancer?.profile?.display_name ||
+      [service.freelancer?.profile?.first_name, service.freelancer?.profile?.last_name]
+        .filter(Boolean)
+        .join(" ") ||
+      "Freelancer name unavailable";
+  const sellerAvatar = guest
+    ? guestSeller?.avatar_url
+    : service.freelancer?.profile?.avatar_url;
+  const freelancerProfessionalDetails = [
+    [
+      "Hourly rate",
+      (freelancerProfile?.hourly_rate ?? service.freelancer?.hourly_rate) != null
+        ? `PHP ${(freelancerProfile?.hourly_rate ?? service.freelancer?.hourly_rate)?.toLocaleString()}/hr`
+        : null,
+    ],
+    [
+      "Experience",
+      freelancerProfile?.years_of_experience != null
+        ? `${freelancerProfile.years_of_experience} ${freelancerProfile.years_of_experience === 1 ? "year" : "years"}`
+        : null,
+    ],
+    [
+      "Work preference",
+      EMPLOYMENT_PREFERENCES.find(
+        (option) => option.value === freelancerProfile?.employment_preference,
+      )?.label ?? freelancerProfile?.employment_preference ?? null,
+    ],
+    [
+      "English",
+      ENGLISH_PROFICIENCY.find(
+        (option) => option.value === freelancerProfile?.english_proficiency,
+      )?.label ?? freelancerProfile?.english_proficiency ?? null,
+    ],
+  ].filter(([, value]) => value);
 
   /* ==========================================================
      RETURN
@@ -482,71 +655,7 @@ export default function MarketplaceServiceDetails({
                 <h1 className="min-w-0 flex-1 text-2xl font-bold tracking-tight">
                   {service.title}
                 </h1>
-                <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center">
-                  <FreelancerAvailability available={available} />
-                  {" "}
-                  <ListingActions
-                    kind="service"
-                    id={service.service_id}
-                    onRequireAccount={guest ? () => setSignup(true) : undefined}
-                  />
-                </div>
               </div>
-
-              {(guest || service.freelancer?.user_id) &&
-                (() => {
-                  const profile = guest
-                    ? guestSeller
-                    : service.freelancer?.profile;
-                  const name =
-                    profile?.display_name ||
-                    (!guest
-                      ? [
-                          service.freelancer?.profile?.first_name,
-                          service.freelancer?.profile?.last_name,
-                        ]
-                          .filter(Boolean)
-                          .join(" ")
-                      : "") ||
-                    "Freelancer name unavailable";
-                  const identity = (
-                    <>
-                      <Avatar className="size-11">
-                        <AvatarImage
-                          src={profile?.avatar_url ?? undefined}
-                          alt=""
-                        />
-                        <AvatarFallback>
-                          {profile?.display_name?.slice(0, 2).toUpperCase() ||
-                            "?"}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="min-w-0 break-words text-sm font-medium">
-                        {name}
-                      </span>
-                    </>
-                  );
-                  const className =
-                    "mt-4 inline-flex cursor-pointer items-center gap-3 rounded-xl p-2 text-left focus-visible:outline-2 focus-visible:outline-primary";
-                  return guest ? (
-                    <button
-                      type="button"
-                      className={className}
-                      aria-label={"View profile of " + name}
-                      onClick={() => setSignup(true)}
-                    >
-                      {identity}
-                    </button>
-                  ) : (
-                    <Link
-                      className={className}
-                      href={"/home/profile/" + service.freelancer!.user_id}
-                      aria-label={"View profile of " + name}
-                    >
-                      {identity}
-                    </Link>
-                  );
-                })()}
             </div>
 
             {/* =====================================================
@@ -554,7 +663,7 @@ export default function MarketplaceServiceDetails({
           ===================================================== */}
 
             <section
-              className="mt-8 border-t pt-7"
+              className="mt-8"
               aria-labelledby="about-service-heading"
             >
               <h2
@@ -615,7 +724,7 @@ export default function MarketplaceServiceDetails({
           ===================================================== */}
           </div>
           <aside
-            className="min-w-0 lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1 lg:row-span-2"
+            className="min-w-0 lg:col-start-2 lg:row-start-1 lg:row-span-2"
             aria-label="Listing details and actions"
           >
             {isService && (
@@ -700,7 +809,7 @@ export default function MarketplaceServiceDetails({
                 <div className="border-t p-6">
                   <button
                     type="button"
-                    onClick={handleServiceAction}
+                    onClick={() => void handleServiceAction()}
                     disabled={actionLoading || available === false}
                     className="
                     w-full
@@ -740,6 +849,89 @@ export default function MarketplaceServiceDetails({
                     </p>
                   )}
                 </div>
+              </section>
+            )}
+
+            {isService && (guest || service.freelancer?.user_id) && (
+              <section className="mt-4 rounded-2xl border bg-card p-5 shadow-sm" aria-label="Freelancer information and actions">
+                <div className="flex items-center gap-3">
+                  <Avatar className="size-12">
+                    <AvatarImage src={sellerAvatar ?? undefined} alt="" />
+                    <AvatarFallback>{sellerName.slice(0, 2).toUpperCase()}</AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1">
+                    {guest ? (
+                      <button type="button" onClick={() => setSignup(true)} className="truncate text-left font-semibold hover:text-primary">{sellerName}</button>
+                    ) : (
+                      <Link href={"/home/profile/" + service.freelancer!.user_id} className="truncate font-semibold hover:text-primary">{sellerName}</Link>
+                    )}
+                    {service.freelancer?.headline && <p className="truncate text-sm text-muted-foreground">{service.freelancer.headline}</p>}
+                  </div>
+                </div>
+                <div className="mt-4 flex items-center justify-between gap-3 border-t pt-4">
+                  <span className="text-sm font-medium">Availability</span>
+                  <FreelancerAvailability available={available} />
+                </div>
+                <div className="mt-4 space-y-3 border-t pt-4">
+                  <h3 className="text-sm font-medium">Professional details</h3>
+                  {freelancerProfileLoading ? (
+                    <p className="text-xs text-muted-foreground">Loading profile details…</p>
+                  ) : freelancerProfessionalDetails.length ? (
+                    <dl className="space-y-2 text-xs">
+                      {freelancerProfessionalDetails.map(([label, value]) => (
+                        <div key={label} className="flex flex-wrap justify-between gap-x-3 gap-y-1">
+                          <dt className="shrink-0 text-muted-foreground">{label}</dt>
+                          <dd className="min-w-0 break-words font-medium sm:text-right">{value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">No professional details added yet.</p>
+                  )}
+                  {!freelancerProfileLoading && freelancerProfile && (
+                    <div className="space-y-3">
+                      <div>
+                        <p className="mb-1.5 text-xs font-medium">Skills</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {freelancerProfile.skills?.length ? freelancerProfile.skills.slice(0, 5).map((skill) => (
+                            <Badge key={skill.id} variant="outline" className="max-w-full whitespace-normal break-words font-normal">{skill.name}</Badge>
+                          )) : <p className="text-xs text-muted-foreground">No skills added yet.</p>}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="mb-1.5 text-xs font-medium">Industries</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {freelancerProfile.industries?.length ? freelancerProfile.industries.slice(0, 3).map((industry) => (
+                            <Badge key={industry.id} variant="outline" className="max-w-full whitespace-normal break-words font-normal">{industry.name}</Badge>
+                          )) : <p className="text-xs text-muted-foreground">No industries added yet.</p>}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="mt-4 w-full"
+                  onClick={() => void handleServiceAction(true)}
+                  disabled={actionLoading || available === false}
+                >
+                  Custom request
+                </Button>
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  <div>
+                    <ListingActions kind="service" id={service.service_id} buttonVariant="outline" buttonClassName="w-full" onRequireAccount={guest ? () => setSignup(true) : undefined} />
+                  </div>
+                  <Button type="button" variant="outline" size="sm" onClick={() => void handleShareService()}>
+                    <Share2 className="size-4" />Share
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" className={isSaved ? "border-emerald-600 bg-emerald-600 text-white hover:border-emerald-700 hover:bg-emerald-700 hover:text-white dark:border-emerald-800 dark:bg-emerald-900 dark:text-white dark:hover:border-emerald-700 dark:hover:bg-emerald-800" : "transition-colors hover:border-emerald-600 hover:text-emerald-700"} aria-pressed={isSaved} disabled={saving} onClick={() => void handleSaveService()}>
+                    {isSaved ? <Bookmark className="size-4 text-white" /> : <Bookmark className="size-4" />}
+                    {saving ? "Saving" : isSaved ? "Saved" : "Save"}
+                  </Button>
+                </div>
+                {shareFeedback && <p role="status" className="mt-2 text-center text-xs text-muted-foreground">{shareFeedback}</p>}
+                {saveFeedback && <p role="status" className="mt-2 text-center text-xs text-muted-foreground">{saveFeedback}</p>}
               </section>
             )}
 
@@ -832,78 +1024,82 @@ export default function MarketplaceServiceDetails({
           ===================================================== */}
 
           {isService && service.freelancer_id && (
-            <section className="min-w-0 border-t pt-6 lg:col-start-1 lg:row-start-2">
+            <section className="min-w-0 lg:col-start-1 lg:row-start-2">
               <ServiceReviews freelancerId={service.freelancer_id} />
             </section>
           )}
         </div>
       </div>
 
+      {isService && service.freelancer_id && (
+        <ServiceRelatedWork service={service} guest={guest} sellerName={
+          (guest ? guestSeller?.display_name : service.freelancer?.profile?.display_name) ||
+          "this freelancer"
+        } />
+      )}
+
       <Dialog open={showPurchaseDialog} onOpenChange={setShowPurchaseDialog}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+        <DialogContent showCloseButton={false} className="max-h-[90vh] gap-6 overflow-y-auto p-6 sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Send service request</DialogTitle>
+            <DialogTitle className="text-2xl font-semibold tracking-tight sm:text-3xl">
+              Send service request
+            </DialogTitle>
             <DialogDescription>
-              Tell the freelancer what you need. These details become the
-              starting draft for your agreement.
+              Describe the project scope, expected deliverables, and any key
+              requirements. Your details will form the starting point for the
+              service agreement.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-2">
-            <div ref={categoryRef} className="grid gap-2">
-              <Label htmlFor="project-category">Type of work</Label>
-              <div className="relative">
-                <Input
-                  id="project-category"
-                  value={projectCategoryText}
-                  placeholder="Search for a category..."
-                  autoComplete="off"
-                  onFocus={() => setCategoryOpen(true)}
-                  onChange={(event) => {
-                    setProjectCategoryText(event.target.value);
-                    setProjectCategoryId("");
-                    setCategoryOpen(true);
-                  }}
-                />
-                {categoryOpen && !projectCategoryId && (
-                  <div className="absolute z-30 mt-2 w-full overflow-hidden rounded-lg border bg-background shadow-lg">
-                    <div className="max-h-60 overflow-y-auto py-1">
-                      {categoryMatches.length ? (
-                        categoryMatches.map((category) => (
-                          <button
-                            key={category.id}
-                            type="button"
-                            className="flex w-full px-4 py-2 text-left text-sm hover:bg-muted"
-                            onClick={() => {
-                              setProjectCategoryId(category.id);
-                              setProjectCategoryText(category.name);
-                              setCategoryOpen(false);
-                            }}
-                          >
-                            {category.name}
-                          </button>
-                        ))
-                      ) : (
-                        <p className="px-4 py-3 text-sm text-muted-foreground">
-                          No categories found.
-                        </p>
-                      )}
+          <div className="grid gap-6 py-2">
+            {isCustomRequest && (
+              <div ref={categoryRef} className="grid gap-3">
+                <Label htmlFor="project-category">Type of work</Label>
+                <div className="relative">
+                  <Input
+                    id="project-category"
+                    value={projectCategoryText}
+                    placeholder="Search for a category..."
+                    autoComplete="off"
+                    onFocus={() => setCategoryOpen(true)}
+                    onChange={(event) => {
+                      setProjectCategoryText(event.target.value);
+                      setProjectCategoryId("");
+                      setCategoryOpen(true);
+                    }}
+                  />
+                  {categoryOpen && (
+                    <div className="absolute z-30 mt-2 w-full overflow-hidden rounded-lg border bg-background shadow-lg">
+                      <div className="max-h-60 overflow-y-auto py-1">
+                        {categoryMatches.length ? (
+                          categoryMatches.map((category) => (
+                            <button
+                              key={category.id}
+                              type="button"
+                              className="flex w-full px-4 py-2 text-left text-sm hover:bg-muted"
+                              onClick={() => {
+                                setProjectCategoryId(category.id);
+                                setProjectCategoryText(category.name);
+                                setCategoryOpen(false);
+                              }}
+                            >
+                              {category.name}
+                            </button>
+                          ))
+                        ) : (
+                          <p className="px-4 py-3 text-sm text-muted-foreground">
+                            No categories found.
+                          </p>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
-              {projectCategoryId && (
-                <p className="text-xs text-emerald-600">
-                  Selected: {projectCategoryText}
-                </p>
-              )}
-              {!projectCategoryId && (
+                  )}
+                </div>
                 <p className="text-xs text-muted-foreground">
-                  Choose the closest match, such as Brand Identity for logo and
-                  visual-brand work.
+                  Choose the type of work for this custom request.
                 </p>
-              )}
-            </div>
-            <div className="grid gap-2">
+              </div>
+            )}
+            <div className="grid gap-3">
               <Label htmlFor="project-title">Project title</Label>
               <Input
                 id="project-title"
@@ -911,47 +1107,56 @@ export default function MarketplaceServiceDetails({
                 onChange={(event) => setProjectTitle(event.target.value)}
               />
             </div>
-            <div className="grid gap-2">
+            <div className="grid gap-3">
               <Label htmlFor="project-description">Project details</Label>
               <Textarea
                 id="project-description"
-                rows={6}
+                rows={2}
+                className="resize-none"
                 placeholder="Describe the work, expected output, requirements, and any important context."
                 value={projectDescription}
                 onChange={(event) => setProjectDescription(event.target.value)}
               />
             </div>
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid items-start gap-4 sm:grid-cols-3">
               <div className="grid gap-2">
-                <Label htmlFor="project-budget">Budget (PHP)</Label>
+                <div className="flex min-h-5 items-center justify-between gap-2">
+                  <Label htmlFor="project-budget">Budget</Label>
+                  <span className="text-xs text-muted-foreground">Max: ₱100,000</span>
+                </div>
+                <div className="relative">
+                  <Input
+                    id="project-budget"
+                    type="text"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    className="pr-10"
+                    value={projectBudget}
+                    onChange={(event) => setProjectBudget(formatBudgetInput(event.target.value))}
+                  />
+                  <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-medium text-muted-foreground" aria-hidden="true">
+                    ₱
+                  </span>
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="project-delivery-date" className="min-h-5">Delivery date</Label>
                 <Input
-                  id="project-budget"
-                  type="number"
-                  min="1"
-                  value={projectBudget}
-                  onChange={(event) => setProjectBudget(event.target.value)}
+                  id="project-delivery-date"
+                  type="date"
+                  min={localDateString(new Date())}
+                  value={projectDeliveryDate}
+                  onChange={(event) => setProjectDeliveryDate(event.target.value)}
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="project-days">Delivery days</Label>
-                <Input
-                  id="project-days"
-                  type="number"
-                  min="1"
-                  value={projectDeliveryDays}
-                  onChange={(event) =>
-                    setProjectDeliveryDays(event.target.value)
-                  }
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="project-revisions">Revisions</Label>
+                <Label htmlFor="project-revisions" className="min-h-5">Revisions</Label>
                 <Input
                   id="project-revisions"
-                  type="number"
-                  min="0"
+                  type="text"
+                  inputMode="numeric"
                   value={projectRevisions}
-                  onChange={(event) => setProjectRevisions(event.target.value)}
+                  onChange={(event) => setProjectRevisions(event.target.value.replace(/\D/g, ""))}
                 />
               </div>
             </div>
@@ -959,7 +1164,7 @@ export default function MarketplaceServiceDetails({
               <p className="text-sm text-destructive">{actionError}</p>
             )}
           </div>
-          <DialogFooter>
+          <DialogFooter className="-mx-6 -mb-6 mt-2 rounded-b-xl border-t bg-muted/50 p-6">
             <Button
               variant="outline"
               disabled={actionLoading}
@@ -970,7 +1175,7 @@ export default function MarketplaceServiceDetails({
             <Button
               disabled={
                 actionLoading ||
-                !projectCategoryId ||
+                (isCustomRequest && !projectCategoryId) ||
                 !projectTitle.trim() ||
                 !projectDescription.trim()
               }

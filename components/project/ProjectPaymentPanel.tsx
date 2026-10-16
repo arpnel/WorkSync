@@ -166,14 +166,7 @@ export function PaymentPanel({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <p className="text-sm text-muted-foreground">
-          Checkout charges the full agreed project amount, including milestone
-          projects.
-          {payment?.settlementVersion === 2
-            ? " Each approved milestone has its own payout. Accepted cancellations refund only funds not reserved for freelancer transfers, subject to provider eligibility."
-            : " Cancellation refunds require support until the updated settlement system is installed."}
-        </p>
-        {payment?.status === "paid" && (
+{payment?.status === "paid" && (
           <div className="rounded-xl border bg-muted/20 p-3 text-sm">
             <p className="font-medium">Freelancer payout</p>
             <p className="mt-1 text-muted-foreground">

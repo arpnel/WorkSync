@@ -1,18 +1,12 @@
 "use client";
 
 import {
-  ContextMenu,
-  ContextMenuTrigger,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuLabel,
-  ContextMenuSeparator,
-} from "@/components/ui/context-menu";
-import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { isOnScheduleDate } from "./schedule-range";
 import { useState } from "react";
@@ -60,6 +54,7 @@ export default function ScheduleCalendar({
   const [selected, setSelected] = useState(
     () => initialDate ?? dateKey(new Date()),
   );
+  const [openOptionsDate, setOpenOptionsDate] = useState<string | null>(null);
   const [month, setMonth] = useState(() => {
     const date = initialDate ? new Date(initialDate + "T00:00:00") : new Date();
     return new Date(date.getFullYear(), date.getMonth(), 1);
@@ -198,13 +193,22 @@ export default function ScheduleCalendar({
                 (card) => !rangedCards.includes(card),
               );
               return (
-                <ContextMenu key={key}>
-                  <ContextMenuTrigger asChild>
+                <DropdownMenu
+                  key={key}
+                  open={openOptionsDate === key}
+                  onOpenChange={(open) => setOpenOptionsDate(open ? key : null)}
+                >
+                  <DropdownMenuTrigger asChild>
                     <button
                       type="button"
                       aria-label={`${new Intl.DateTimeFormat("en", { dateStyle: "full" }).format(date)}: ${due.length} scheduled tasks`}
                       aria-pressed={selected === key}
                       aria-current={key === today ? "date" : undefined}
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        setSelected(key);
+                        setOpenOptionsDate(key);
+                      }}
                       onClick={() => {
                         setSelected(key);
                         if (!inMonth)
@@ -304,17 +308,17 @@ export default function ScheduleCalendar({
                         ))}
                       </span>
                     </button>
-                  </ContextMenuTrigger>
-                  <ContextMenuContent className="w-56">
-                    <ContextMenuLabel>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-56">
+                    <DropdownMenuLabel>
                       {date.toLocaleDateString(undefined, {
                         month: "short",
                         day: "numeric",
                         year: "numeric",
                       })}
-                    </ContextMenuLabel>
+                    </DropdownMenuLabel>
                     {onCreateDeadline && (
-                      <ContextMenuItem
+                      <DropdownMenuItem
                         disabled={status !== "ready"}
                         onSelect={() => {
                           setSelected(key);
@@ -322,9 +326,9 @@ export default function ScheduleCalendar({
                         }}
                       >
                         Create deadline
-                      </ContextMenuItem>
+                      </DropdownMenuItem>
                     )}
-                    <ContextMenuItem
+                    <DropdownMenuItem
                       onSelect={() => {
                         setSelected(key);
                         setMonth(
@@ -333,25 +337,25 @@ export default function ScheduleCalendar({
                       }}
                     >
                       View day&apos;s tasks ({due.length})
-                    </ContextMenuItem>
+                    </DropdownMenuItem>
                     {onOpenPlanner && (
-                      <ContextMenuItem onSelect={onOpenPlanner}>
+                      <DropdownMenuItem onSelect={onOpenPlanner}>
                         Create a plan
-                      </ContextMenuItem>
+                      </DropdownMenuItem>
                     )}
                     {onViewPlanner &&
                       due
                         .filter((card) => card.entryType === "plan")
                         .map((card) => (
-                          <ContextMenuItem
+                          <DropdownMenuItem
                             key={card.id}
                             onSelect={() => onViewPlanner(card)}
                           >
                             View planner: {card.title}
-                          </ContextMenuItem>
+                          </DropdownMenuItem>
                         ))}
-                    <ContextMenuSeparator />
-                    <ContextMenuItem
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
                       onSelect={() => {
                         const now = new Date();
                         setMonth(
@@ -361,50 +365,16 @@ export default function ScheduleCalendar({
                       }}
                     >
                       Go to today
-                    </ContextMenuItem>
-                  </ContextMenuContent>
-                </ContextMenu>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               );
             })}
           </div>
           <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border/50 px-2 pt-4 mt-4 text-xs text-muted-foreground">
             <span>
-              Lines show start-to-end dates. Select a day to see tasks;
-              right-click for options.
+              Lines show start-to-end dates. Click or right-click a day for its options.
             </span>
-            {onCreateDeadline && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm">
-                    Date options
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuItem
-                    disabled={status !== "ready"}
-                    onSelect={() => onCreateDeadline(selected)}
-                  >
-                    Create deadline for {selected}
-                  </DropdownMenuItem>
-                  {onOpenPlanner && (
-                    <DropdownMenuItem onSelect={onOpenPlanner}>
-                      Create a plan
-                    </DropdownMenuItem>
-                  )}
-                  {onViewPlanner &&
-                    selectedCards
-                      .filter((card) => card.entryType === "plan")
-                      .map((card) => (
-                        <DropdownMenuItem
-                          key={card.id}
-                          onSelect={() => onViewPlanner(card)}
-                        >
-                          View planner: {card.title}
-                        </DropdownMenuItem>
-                      ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
             <div className="flex gap-3">
               {(["high", "medium", "low"] as const).map((priority) => (
                 <span

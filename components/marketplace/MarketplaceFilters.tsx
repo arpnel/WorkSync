@@ -1,4 +1,6 @@
 "use client";
+import { StyledSelect } from "@/components/ui/styled-select";
+
 
 import { RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -109,7 +111,7 @@ export default function MarketplaceFilters({
       {services && (
         <label className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
           <span>Minimum rating</span>
-          <select
+          <StyledSelect
             className="h-11 w-full rounded-lg border bg-card px-3 text-sm text-foreground"
             value={filters.rating}
             onChange={(event) =>
@@ -123,7 +125,7 @@ export default function MarketplaceFilters({
                 {rating < 5 ? " & up" : ""}
               </option>
             ))}
-          </select>
+          </StyledSelect>
         </label>
       )}
       {hasFilters && (

@@ -1,4 +1,6 @@
 "use client";
+import { StyledSelect } from "@/components/ui/styled-select";
+
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
@@ -168,7 +170,7 @@ export default function WorkAnalytics({
           </label>
           <label className="space-y-1">
             Work as
-            <select
+            <StyledSelect
               className="block h-10 rounded-lg border bg-card px-3"
               value={party}
               onChange={(e) => setParty(e.target.value)}
@@ -176,7 +178,7 @@ export default function WorkAnalytics({
               <option value="all">All roles</option>
               <option value="freelancer">Freelancer</option>
               <option value="client">Client</option>
-            </select>
+            </StyledSelect>
           </label>
         </div>
       ) : (

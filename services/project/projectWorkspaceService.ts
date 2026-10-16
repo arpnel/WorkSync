@@ -551,38 +551,21 @@ export async function respondToProjectAgreementItem(
   approved: boolean,
 ): Promise<void> {
   const { contractId, party } = await getAgreementContext(orderId);
-  const existing = await supabase
-    .from("contract_item_approvals")
-    .select("approval_id")
-    .eq("contract_id", contractId)
-    .eq("item_key", itemKey)
-    .maybeSingle();
-  if (existing.error) throw new Error(existing.error.message);
-
   const timestampColumn =
     party === "client" ? "client_approved_at" : "freelancer_approved_at";
   const values = approved
     ? { [timestampColumn]: new Date().toISOString() }
     : { client_approved_at: null, freelancer_approved_at: null };
-
-  const mutation = existing.data
-    ? supabase
-        .from("contract_item_approvals")
-        .update(values)
-        .eq("approval_id", existing.data.approval_id)
-        .select("approval_id")
-        .maybeSingle()
-    : supabase
-        .from("contract_item_approvals")
-        .insert({
-          contract_id: contractId,
-          item_key: itemKey,
-          ...values,
-        })
-        .select("approval_id")
-        .maybeSingle();
-
-  const { data, error } = await mutation;
+  // Both participants can approve a new item at nearly the same time. Upsert
+  // against the unique key applies their timestamps to the same approval row.
+  const { data, error } = await supabase
+    .from("contract_item_approvals")
+    .upsert(
+      { contract_id: contractId, item_key: itemKey, ...values },
+      { onConflict: "contract_id,item_key" },
+    )
+    .select("approval_id")
+    .maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) {
     throw new Error(
@@ -590,7 +573,6 @@ export async function respondToProjectAgreementItem(
     );
   }
 }
-
 export async function updateProjectAgreementItem(
   orderId: string,
   itemKey: "budget" | "delivery" | "revisions",

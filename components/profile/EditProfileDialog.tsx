@@ -1,4 +1,6 @@
 "use client";
+import { StyledSelect } from "@/components/ui/styled-select";
+
 
 import { useEffect, useRef, useState } from "react";
 import { Camera, Loader2, Upload } from "lucide-react";
@@ -380,7 +382,7 @@ function EditProfileContent({
                   ))}
                   <div className="space-y-2">
                     <Label htmlFor="english">English proficiency</Label>
-                    <select
+                    <StyledSelect
                       id="english"
                       className="w-full rounded-md border bg-background p-2"
                       value={form.english_proficiency}
@@ -397,7 +399,7 @@ function EditProfileContent({
                           {o.label}
                         </option>
                       ))}
-                    </select>
+                    </StyledSelect>
                   </div>
                   {/* display_name */}
                   <div className="space-y-2">
@@ -600,7 +602,7 @@ function EditProfileContent({
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="employment">Employment preference</Label>
-                    <select
+                    <StyledSelect
                       id="employment"
                       className="w-full rounded-md border bg-background p-2"
                       value={form.employment_preference}
@@ -617,7 +619,7 @@ function EditProfileContent({
                           {o.label}
                         </option>
                       ))}
-                    </select>
+                    </StyledSelect>
                   </div>
                   <fieldset className="sm:col-span-2">
                     <legend className="mb-2 text-sm font-medium">

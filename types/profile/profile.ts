@@ -221,6 +221,8 @@ export type Review = {
   freelancer_id: string;
 
   reviewer_role: string;
+  reviewer_name?: string;
+  reviewer_avatar_url?: string | null;
 };
 
 /**

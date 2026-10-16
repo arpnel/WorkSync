@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import {
+  CreditCard,
   Wallet,
   Bell,
   MessageSquare,
@@ -42,6 +43,12 @@ const sections = [
     label: "Messaging",
     description: "Conversation preferences",
     Icon: MessageSquare,
+  },
+  {
+    id: "subscription",
+    label: "Subscription",
+    description: "Review your plan and listing limits",
+    Icon: CreditCard,
   },
 ] as const;
 
@@ -92,6 +99,8 @@ export function SettingsWorkspace({
           <TabsTrigger
             key={id}
             value={id}
+            id={`settings-trigger-${id}`}
+            aria-controls={`settings-content-${id}`}
             className="min-h-11 flex-auto justify-start gap-3 rounded-md px-3 text-sm data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none md:w-full"
           >
             <Icon className="size-4" />
@@ -112,6 +121,8 @@ export function SettingsWorkspace({
           <TabsContent
             key={id}
             value={id}
+            id={`settings-content-${id}`}
+            aria-labelledby={`settings-trigger-${id}`}
             forceMount
             className="mt-0 min-w-0 space-y-4 data-[state=inactive]:hidden"
           >

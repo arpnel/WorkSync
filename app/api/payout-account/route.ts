@@ -7,6 +7,56 @@ import {
 export const runtime = "nodejs";
 const json = (data: unknown) =>
   Response.json(data, { headers: { "Cache-Control": "no-store" } });
+async function reconcileWaitingPayouts(
+  db: Awaited<ReturnType<typeof paymentUser>>["db"],
+  userId: string,
+  mode: string,
+) {
+  const waiting = await db
+    .from("project_payouts")
+    .select("project_id,payment_id")
+    .eq("recipient_id", userId)
+    .eq("mode", mode)
+    .eq("status", "awaiting_account");
+  if (waiting.error) {
+    console.error("Payout account reconciliation query failed", {
+      code: waiting.error.code,
+    });
+    return false;
+  }
+
+  const pairs = new Map<string, { projectId: string; paymentId: string }>();
+  for (const payout of waiting.data ?? [])
+    pairs.set(JSON.stringify([payout.project_id, payout.payment_id]), {
+      projectId: payout.project_id,
+      paymentId: payout.payment_id,
+    });
+  for (const { projectId, paymentId } of pairs.values()) {
+    const { error } = await db.rpc("worksync_settle_project", {
+      p_project: projectId,
+      p_payment: paymentId,
+      p_mode: mode,
+    });
+    if (error) {
+      console.error("Payout account reconciliation RPC failed", {
+        code: error.code,
+      });
+      return false;
+    }
+  }
+  const remaining = await db
+    .from("project_payouts")
+    .select("payout_id")
+    .eq("recipient_id", userId)
+    .eq("mode", mode)
+    .eq("status", "awaiting_account");
+  if (remaining.error || (remaining.data ?? []).length > 0) {
+    console.error("Payout account reconciliation did not clear all waiting payouts", {
+      code: remaining.error?.code ?? "still_awaiting_account",
+    });
+    return false;
+  }  return true;
+}
 export async function GET(request: Request) {
   try {
     const { db, user } = await paymentUser(request);
@@ -24,7 +74,16 @@ export async function GET(request: Request) {
       .eq("mode", paymentMode())
       .maybeSingle();
     if (error) throw new PaymentError("Payout setup is not available yet.");
-    return json({ eligible: true, mode: paymentMode(), account: data });
+    const mode = paymentMode();
+    const reconciled = data
+      ? await reconcileWaitingPayouts(db, user.id, mode)
+      : true;
+    return json({
+      eligible: true,
+      mode,
+      account: data,
+      reconciliation: reconciled ? "complete" : "pending",
+    });
   } catch (error) {
     return paymentResponse(error);
   }
@@ -62,7 +121,16 @@ export async function POST(request: Request) {
         { onConflict: "user_id,mode" },
       );
     if (error) throw new PaymentError("Payout account could not be saved.");
-    return json({ saved: true });
+
+    const reconciled = await reconcileWaitingPayouts(
+      db,
+      user.id,
+      paymentMode(),
+    );
+    return json({
+      saved: true,
+      reconciliation: reconciled ? "complete" : "pending",
+    });
   } catch (error) {
     return paymentResponse(error);
   }

@@ -1,4 +1,6 @@
 "use client";
+import { StyledSelect } from "@/components/ui/styled-select";
+
 
 import { useRef, useState, type ReactNode } from "react";
 import {
@@ -121,7 +123,7 @@ export function SubmissionInbox({
           </h3>
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
             Sort
-            <select
+            <StyledSelect
               aria-label="Submission order"
               className="rounded-md border bg-background px-2 py-2 text-foreground"
               value={oldestFirst ? "oldest" : "newest"}
@@ -132,7 +134,7 @@ export function SubmissionInbox({
             >
               <option value="newest">Newest first</option>
               <option value="oldest">Oldest first</option>
-            </select>
+            </StyledSelect>
           </label>
         </div>
         <p className="text-xs leading-5 text-muted-foreground">

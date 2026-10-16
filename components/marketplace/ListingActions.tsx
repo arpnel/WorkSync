@@ -1,4 +1,6 @@
-﻿"use client";
+"use client";
+import { StyledSelect } from "@/components/ui/styled-select";
+
 import { useState } from "react";
 import { Flag } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,10 +22,14 @@ export function ListingActions({
   kind,
   id,
   onRequireAccount,
+  buttonClassName,
+  buttonVariant = "ghost",
 }: {
   kind: ListingKind;
   id: string;
   onRequireAccount?: () => void;
+  buttonClassName?: string;
+  buttonVariant?: "ghost" | "outline";
 }) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState<string>(reportReasons[0]);
@@ -33,16 +39,16 @@ export function ListingActions({
   const [error, setError] = useState("");
   if (onRequireAccount)
     return (
-      <Button variant="ghost" size="sm" onClick={onRequireAccount}>
+      <Button variant={buttonVariant} size="sm" className={buttonClassName} onClick={onRequireAccount}>
         <Flag />
         Report
       </Button>
     );
   return (
-    <div className="flex items-center justify-between gap-2 px-2 py-2">
+    <div className={buttonClassName ? "flex w-full items-center justify-between gap-2 p-0" : "flex items-center justify-between gap-2 px-2 py-2"}>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>
-          <Button variant="ghost" size="sm">
+          <Button variant={buttonVariant} size="sm" className={buttonClassName}>
             <Flag />
             Report
           </Button>
@@ -80,7 +86,7 @@ export function ListingActions({
             >
               <label className="block text-sm">
                 Reason
-                <select
+                <StyledSelect
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                   className="mt-1 w-full rounded-md border bg-background p-2"
@@ -88,7 +94,7 @@ export function ListingActions({
                   {reportReasons.map((item) => (
                     <option key={item}>{item}</option>
                   ))}
-                </select>
+                </StyledSelect>
               </label>
               <label className="block text-sm">
                 Additional details (optional)

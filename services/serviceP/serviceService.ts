@@ -1,4 +1,4 @@
-import { invalidatePageReads } from "@/lib/pageReadCache";
+﻿import { invalidatePageReads } from "@/lib/pageReadCache";
 import { supabase } from "@/lib/supabaseClient";
 import type {
   CreateListingPayload,
@@ -325,6 +325,15 @@ export async function createListing(
   ...args: Parameters<typeof createListingUncached>
 ) {
   const result = await createListingUncached(...args);
+  const { data: sessionData } = await supabase.auth.getSession();
+  if (!sessionData.session) throw new Error("Your listing was saved but could not be queued for moderation. Contact support before resubmitting.");
+  const queued = await fetch("/api/listings/moderate", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${sessionData.session.access_token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ type: result.listingType, id: result.id }),
+  });
+  const queueResult = await queued.json().catch(() => null) as { error?: string } | null;
+  if (!queued.ok) throw new Error(queueResult?.error ?? "Your listing was saved but could not be queued for review.");
   invalidatePageReads();
   return result;
 }

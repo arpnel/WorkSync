@@ -19,8 +19,8 @@ export default function DashboardLayout({
       disableTransitionOnChange
     >
       <CallProvider>
-        <SidebarProvider>
-          <div className="flex h-dvh w-full flex-col overflow-hidden">
+        <SidebarProvider className="h-dvh min-h-0 overflow-hidden">
+          <div className="fixed inset-0 flex h-dvh w-full flex-col overflow-hidden">
             <a
               href="#main-content"
               className="sr-only fixed left-3 top-3 z-[100] rounded-lg bg-primary px-4 py-3 text-primary-foreground focus:not-sr-only"
@@ -37,7 +37,7 @@ export default function DashboardLayout({
               <main
                 id="main-content"
                 tabIndex={-1}
-                className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-background p-4 sm:p-5 lg:p-6"
+                className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain bg-background p-4 sm:p-5 lg:p-6"
               >
                 <ModerationNotice />
                 <WorkspaceDesign>{children}</WorkspaceDesign>

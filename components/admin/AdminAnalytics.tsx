@@ -1,4 +1,6 @@
-﻿"use client";
+"use client";
+import { StyledSelect } from "@/components/ui/styled-select";
+
 import AdminMetricCard from "./AdminMetricCard";
 import AdminStatusChart from "./AdminStatusChart";
 import AdminPageHeader from "./AdminPageHeader";
@@ -101,7 +103,7 @@ export default function AdminAnalytics() {
         </label>
         <label className="text-sm">
           Status
-          <select
+          <StyledSelect
             className="block rounded-md border bg-background p-2"
             value={status}
             onChange={(e) => setStatus(e.target.value)}
@@ -123,7 +125,7 @@ export default function AdminAnalytics() {
             ).map((s) => (
               <option key={s}>{s}</option>
             ))}
-          </select>
+          </StyledSelect>
         </label>
         <Button variant="outline" onClick={() => void load()}>
           Refresh

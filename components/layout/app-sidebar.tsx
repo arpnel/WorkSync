@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -99,7 +99,7 @@ export function AppSidebar() {
             )}
           </div>
         </SidebarHeader>
-        <SidebarContent className="group-data-[collapsible=icon]:overflow-y-auto">
+        <SidebarContent className="overflow-hidden">
           <SidebarGroup className={collapsed ? "p-0.5" : "p-3"}>
             {navigation(collapsed)}
           </SidebarGroup>

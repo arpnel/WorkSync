@@ -375,53 +375,32 @@ test("payout account writes are bound to the authenticated freelancer and reject
   let saved;
   let eligible = true;
   const db = {
-    from: (table) =>
-      table === "freelancer_profiles"
-        ? {
-            select: () => ({
-              eq: (_key, user) => {
-                assert.equal(user, "freelancer-owner");
-                return {
-                  maybeSingle: async () => ({
-                    data: eligible ? { freelancer_id: "profile" } : null,
-                  }),
-                };
-              },
-            }),
-          }
-        : {
-            upsert: async (value) => {
-              saved = value;
-              return { error: null };
-            },
-          },
+    from: (table) => table === "freelancer_profiles"
+      ? { select: () => ({ eq: (_key, user) => {
+          assert.equal(user, "freelancer-owner");
+          return { maybeSingle: async () => ({ data: eligible ? { freelancer_id: "profile" } : null }) };
+        } }) }
+      : table === "project_payouts"
+        ? { select: () => ({ eq: () => ({ eq: () => ({ eq: () => Promise.resolve({ data: [], error: null }) }) }) }) }
+        : { upsert: async (value) => { saved = value; return { error: null }; } },
+    rpc: async () => ({ error: null }),
   };
   const route = load("app/api/payout-account/route.ts", {
     "@/lib/payments/payouts": payout,
     "@/lib/payments/paymongo": { PaymentError, paymentMode: () => "test" },
     "@/services/payments/paymentServer": {
       paymentUser: async () => ({ db, user: { id: "freelancer-owner" } }),
-      paymentResponse: () =>
-        Response.json({ error: "rejected" }, { status: 400 }),
+      paymentResponse: () => Response.json({ error: "rejected" }, { status: 400 }),
     },
   });
   const destination = {
-    name: "Fixture Owner",
-    number: "1234567890",
-    bic: "TESTPHMM",
-    bankLabel: "Fixture Bank",
-    provider: "pesonet",
+    name: "Fixture Owner", number: "1234567890", bic: "TESTPHMM",
+    bankLabel: "Fixture Bank", provider: "pesonet",
   };
-  const request = (body) =>
-    new Request("https://example.test", {
-      method: "POST",
-      body: JSON.stringify(body),
-    });
-  assert.equal(
-    (await route.POST(request({ ...destination, user_id: "someone-else" })))
-      .status,
-    400,
-  );
+  const request = (body) => new Request("https://example.test", {
+    method: "POST", body: JSON.stringify(body),
+  });
+  assert.equal((await route.POST(request({ ...destination, user_id: "someone-else" }))).status, 400);
   assert.equal(saved, undefined);
   assert.equal((await route.POST(request(destination))).status, 200);
   assert.equal(saved.user_id, "freelancer-owner");
@@ -432,4 +411,78 @@ test("payout account writes are bound to the authenticated freelancer and reject
   eligible = false;
   assert.equal((await route.POST(request(destination))).status, 400);
   assert.equal(saved, undefined);
+});
+
+test("loading an existing payout account reconciles its awaiting payouts once per project and payment", async () => {
+  const calls = [];
+  const filters = [];
+  const waiting = [
+    { project_id: "project-a", payment_id: "payment-a" },
+    { project_id: "project-a", payment_id: "payment-a" },
+    { project_id: "project-b", payment_id: "payment-b" },
+  ];
+  const db = {
+    from: (table) => {
+      let columns = "";
+      const chain = { eq: (field, value) => { filters.push([table, field, value]); return chain; } };
+      if (table === "freelancer_profiles") {
+        chain.maybeSingle = async () => ({ data: { freelancer_id: "profile" }, error: null });
+      } else if (table === "freelancer_payout_accounts") {
+        chain.maybeSingle = async () => ({ data: { bank_label: "Bank", account_last4: "1234" }, error: null });
+      } else {
+        chain.then = (resolve, reject) => Promise.resolve({ data: columns === "payout_id" ? [] : waiting, error: null }).then(resolve, reject);
+      }
+      return { select: (value) => { columns = value; return chain; } };
+    },
+    rpc: async (name, args) => { calls.push({ name, args }); return { error: null }; },
+  };
+  const route = load("app/api/payout-account/route.ts", {
+    "@/lib/payments/payouts": payout,
+    "@/lib/payments/paymongo": { PaymentError, paymentMode: () => "test" },
+    "@/services/payments/paymentServer": {
+      paymentUser: async () => ({ db, user: { id: "freelancer-owner" } }),
+      paymentResponse: () => Response.json({ error: "rejected" }, { status: 400 }),
+    },
+  });
+  const response = await route.GET(new Request("https://example.test"));
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(body.account.bank_label, "Bank");
+  assert.equal(body.reconciliation, "complete");
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].name, "worksync_settle_project");
+  assert.equal(calls[0].args.p_project, "project-a");
+  assert.equal(calls[0].args.p_payment, "payment-a");
+  assert.equal(calls[0].args.p_mode, "test");
+  assert.equal(calls[1].args.p_project, "project-b");
+  assert.ok(filters.some(([table, field, value]) => table === "project_payouts" && field === "recipient_id" && value === "freelancer-owner"));
+  assert.ok(filters.some(([table, field, value]) => table === "freelancer_payout_accounts" && field === "user_id" && value === "freelancer-owner"));
+  assert.ok(filters.some(([table, field, value]) => table === "freelancer_payout_accounts" && field === "mode" && value === "test"));
+  assert.ok(filters.some(([table, field, value]) => table === "project_payouts" && field === "mode" && value === "test"));
+  assert.ok(filters.some(([table, field, value]) => table === "project_payouts" && field === "status" && value === "awaiting_account"));
+});
+
+test("existing payout account reports reconciliation failure without changing payout state", async () => {
+  const db = {
+    from: (table) => {
+      const chain = { eq: () => chain };
+      if (table === "freelancer_profiles") chain.maybeSingle = async () => ({ data: { freelancer_id: "profile" }, error: null });
+      else if (table === "freelancer_payout_accounts") chain.maybeSingle = async () => ({ data: { bank_label: "Bank", account_last4: "1234" }, error: null });
+      else chain.then = (resolve, reject) => Promise.resolve({ data: [{ project_id: "project-a", payment_id: "payment-a" }], error: null }).then(resolve, reject);
+      return { select: (value) => { columns = value; return chain; } };
+    },
+    rpc: async () => ({ error: { code: "PGRST202" } }),
+  };
+  const route = load("app/api/payout-account/route.ts", {
+    "@/lib/payments/payouts": payout,
+    "@/lib/payments/paymongo": { PaymentError, paymentMode: () => "test" },
+    "@/services/payments/paymentServer": {
+      paymentUser: async () => ({ db, user: { id: "freelancer-owner" } }),
+      paymentResponse: () => Response.json({ error: "rejected" }, { status: 400 }),
+    },
+  });
+  const response = await route.GET(new Request("https://example.test"));
+  const body = await response.json();
+  assert.equal(body.account.bank_label, "Bank");
+  assert.equal(body.reconciliation, "pending");
 });

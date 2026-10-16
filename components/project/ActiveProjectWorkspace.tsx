@@ -1,10 +1,11 @@
 "use client";
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect } from "react";
 import { projectIsOverdue } from "@/lib/projectSettlement";
 import { LockKeyhole, CheckCircle2 } from "lucide-react";
 import type { ProjectPayment } from "@/services/payments/paymentService";
 import type { ProjectWorkspace } from "@/types/project/projectWorkspace";
 import { ProjectWorkspaceHeader } from "./ProjectWorkspaceHeader";
+import { ProjectMeetingsDialog } from "./ProjectMeetingsDialog";
 import { ProjectDeliveryPanel } from "./ProjectDeliveryPanel";
 import { ProjectPaymentPanel } from "./ProjectPaymentPanel";
 import { ProjectResolutionPanel } from "./ProjectResolutionPanel";
@@ -20,13 +21,11 @@ import {
 
 export function ActiveProjectWorkspace({
   project,
-  chat,
   onRefresh,
   onBack,
   error,
 }: {
   project: ProjectWorkspace;
-  chat: ReactNode;
   onRefresh: () => Promise<void>;
   onBack: () => void;
   error: string | null;
@@ -60,11 +59,10 @@ export function ActiveProjectWorkspace({
       )}
       <nav
         aria-label="Project sections"
-        className="grid grid-cols-3 gap-1 rounded-xl bg-muted p-1 md:hidden"
+        className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1 md:hidden"
       >
         {[
           ["work", "Work"],
-          ["messages", "Messages"],
           ["payment", "Payment"],
         ].map(([value, label]) => (
           <button
@@ -104,9 +102,9 @@ export function ActiveProjectWorkspace({
                 Project completed
               </h2>
               <p className="mt-2 text-sm">
-                The final work has been approved. Your deliveries, feedback,
-                agreement, and conversation remain available here. Leave a
-                review below to finish your project experience.
+                The final work has been approved. Your deliveries, feedback, and
+                agreement remain available here. Leave a review below to finish
+                your project experience.
               </p>
             </section>
           )}
@@ -138,7 +136,8 @@ export function ActiveProjectWorkspace({
             autoReleaseEnabled={payment?.autoReleaseEnabled ?? false}
             finalMilestoneId={payment?.finalMilestoneId}
             autoAccept={payment?.autoAccept ?? false}
-            actions={
+            actions={<>
+              {project.projectId && <ProjectMeetingsDialog projectId={project.projectId} active={!completed} />}
               <Dialog>
                 <DialogTrigger asChild>
                   <Button variant="outline" size="sm">
@@ -163,7 +162,7 @@ export function ActiveProjectWorkspace({
                   />
                 </DialogContent>
               </Dialog>
-            }
+            </>}
           />
           {project.type === "milestone" && (
             <details
@@ -210,7 +209,7 @@ export function ActiveProjectWorkspace({
         </section>
         <aside
           className={`min-w-0 space-y-5 ${mobileSection === "work" ? "hidden md:block" : ""}`}
-          aria-label="Project payment and messages"
+          aria-label="Project payment"
         >
           <section
             id="project-payment"
@@ -218,13 +217,6 @@ export function ActiveProjectWorkspace({
             aria-label="Project payment"
           >
             <ProjectPaymentPanel project={project} onPayment={setPayment} />
-          </section>
-          <section
-            id="project-conversation"
-            className={`scroll-mt-6 ${mobileSection === "messages" ? "" : "hidden md:block"}`}
-            aria-label="Project conversation"
-          >
-            {chat}
           </section>
         </aside>
       </div>

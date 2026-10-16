@@ -1,4 +1,6 @@
-﻿"use client";
+"use client";
+import { StyledSelect } from "@/components/ui/styled-select";
+
 import { ADMIN_PAGE_GUIDANCE } from "./admin-page-guidance";
 import AdminMetricCard from "./AdminMetricCard";
 import AdminStatusChart from "./AdminStatusChart";
@@ -183,7 +185,7 @@ export default function AdminRecords({
       <div className="flex flex-wrap items-end gap-3 rounded-xl border bg-card p-4">
         <label className="space-y-1 text-sm">
           Page status
-          <select
+          <StyledSelect
             className="block h-10 rounded-md border bg-background px-3"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
@@ -195,7 +197,7 @@ export default function AdminRecords({
                 {value === "all" ? "All statuses" : value.replaceAll("_", " ")}
               </option>
             ))}
-          </select>
+          </StyledSelect>
         </label>
         <label className="space-y-1 text-sm">
           From
@@ -217,7 +219,7 @@ export default function AdminRecords({
         </label>
         <label className="space-y-1 text-sm">
           Sort page
-          <select
+          <StyledSelect
             className="block h-10 rounded-md border bg-background px-3"
             value={sort}
             onChange={(e) => setSort(e.target.value)}
@@ -225,7 +227,7 @@ export default function AdminRecords({
             <option value="newest">Newest first</option>
             <option value="oldest">Oldest first</option>
             <option value="name">Name A?Z</option>
-          </select>
+          </StyledSelect>
         </label>
         <Button
           variant="ghost"
@@ -475,7 +477,7 @@ export default function AdminRecords({
             >
               <label className="block text-sm">
                 Action
-                <select
+                <StyledSelect
                   className="mt-1 w-full rounded-md border bg-background p-2"
                   value={action}
                   onChange={(e) => setAction(e.target.value)}
@@ -485,7 +487,7 @@ export default function AdminRecords({
                       {value.replaceAll("_", " ")}
                     </option>
                   ))}
-                </select>
+                </StyledSelect>
               </label>
               {module === "users" && action === "suspend" && (
                 <label className="block text-sm">

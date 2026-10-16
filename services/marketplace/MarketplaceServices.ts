@@ -37,6 +37,7 @@ export interface MarketplaceQuery {
   search?: string;
 
   categoryId?: string | null;
+  skillId?: string | null;
 
   minPrice?: number | null;
   maxPrice?: number | null;
@@ -421,27 +422,10 @@ async function buildMarketplaceJob(
 async function getServices(
   query: MarketplaceQuery,
 ): Promise<MarketplaceService[]> {
+  const columns = `service_id,freelancer_id,category_id,title,description,price,pricing_mode,delivery_time_days,revisions_count,service_type,status,slug,cover_image_url,created_at,updated_at${query.skillId ? ",service_skills!inner(skill_id)" : ""}`;
   let request = supabase
     .from(SERVICES_TABLE)
-    .select(
-      `
-      service_id,
-      freelancer_id,
-      category_id,
-      title,
-      description,
-      price,
-      pricing_mode,
-      delivery_time_days,
-      revisions_count,
-      service_type,
-      status,
-      slug,
-      cover_image_url,
-      created_at,
-      updated_at
-    `,
-    )
+    .select(columns)
     .eq("status", "Active")
     .eq("is_archived", false);
 
@@ -459,6 +443,8 @@ async function getServices(
   if (query.categoryId) {
     request = request.eq("category_id", query.categoryId);
   }
+  if (query.skillId)
+    request = request.eq("service_skills.skill_id", query.skillId);
 
   if (query.freelancerId) {
     request = request.eq("freelancer_id", query.freelancerId);
@@ -508,7 +494,7 @@ async function getServices(
     return [];
   }
 
-  const rows = data as ServiceRow[];
+  const rows = data as unknown as ServiceRow[];
   const related = await loadRelatedListings(rows, [], query.guest);
   return Promise.all(rows.map((row) => buildMarketplaceService(row, related)));
 }
@@ -518,24 +504,10 @@ async function getServices(
 ========================================================== */
 
 async function getJobs(query: MarketplaceQuery): Promise<MarketplaceJob[]> {
+  const columns = `job_id,client_id,category_id,title,description,budget_min,budget_max,pricing_type,deadline,status,created_at,updated_at${query.skillId ? ",job_skills!inner(skill_id)" : ""}`;
   let request = supabase
     .from(JOBS_TABLE)
-    .select(
-      `
-      job_id,
-      client_id,
-      category_id,
-      title,
-      description,
-      budget_min,
-      budget_max,
-      pricing_type,
-      deadline,
-      status,
-      created_at,
-      updated_at
-    `,
-    )
+    .select(columns)
     .eq("status", "open")
     .eq("is_archived", false);
 
@@ -553,6 +525,7 @@ async function getJobs(query: MarketplaceQuery): Promise<MarketplaceJob[]> {
   if (query.categoryId) {
     request = request.eq("category_id", query.categoryId);
   }
+  if (query.skillId) request = request.eq("job_skills.skill_id", query.skillId);
 
   if (query.clientId) {
     request = request.eq("client_id", query.clientId);
@@ -602,7 +575,7 @@ async function getJobs(query: MarketplaceQuery): Promise<MarketplaceJob[]> {
     return [];
   }
 
-  const rows = data as JobRow[];
+  const rows = data as unknown as JobRow[];
   const related = await loadRelatedListings([], rows, query.guest);
   return Promise.all(rows.map((row) => buildMarketplaceJob(row, related)));
 }
@@ -1192,6 +1165,13 @@ export async function createMarketplaceOrder(
 
   if (!details.projectTitle.trim() || !details.description.trim()) {
     throw new Error("Project title and description are required.");
+  }
+  if (
+    !Number.isFinite(details.budget) ||
+    details.budget <= 0 ||
+    details.budget > 100_000
+  ) {
+    throw new Error("Budget must be greater than 0 and no more than PHP 100,000.");
   }
   if (!details.categoryId) {
     throw new Error("Job category is required.");

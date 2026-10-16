@@ -1,4 +1,6 @@
 "use client";
+import { StyledSelect } from "@/components/ui/styled-select";
+
 
 import * as React from "react";
 
@@ -32,7 +34,7 @@ export function ProjectTabs({
     <div className="min-w-0">
       <label className="flex items-center justify-between gap-3 rounded-xl border bg-card px-4 py-2 md:hidden">
         <span className="text-sm text-muted-foreground">Show projects</span>
-        <select
+        <StyledSelect
           aria-label="Project status"
           value={activeFilter}
           onChange={(event) => onFilterChange(event.target.value as FilterType)}
@@ -43,7 +45,7 @@ export function ProjectTabs({
               {filter === "Request" ? "Requests" : filter}
             </option>
           ))}
-        </select>
+        </StyledSelect>
       </label>
       <div className="hidden gap-1 border-b pb-2 md:flex md:flex-wrap md:items-center">
         {filters.map((filter) => (

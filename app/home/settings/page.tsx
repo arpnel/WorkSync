@@ -19,6 +19,14 @@ export default function Page() {
           verification: <VerificationSettings />,
           notifications: <NotificationSettings />,
           messaging: <MessageSettings />,
+          subscription: (
+            <a
+              href="/home/subscription"
+              className="inline-flex min-h-11 items-center rounded-lg border px-4 text-sm font-medium text-primary hover:bg-accent"
+            >
+              View subscription and listing limits
+            </a>
+          ),
         }}
       />
     </div>

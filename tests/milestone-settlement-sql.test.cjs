@@ -128,6 +128,29 @@ test(
         },
       );
       await scenario(
+        "existing awaiting-account payout attaches a later account exactly once",
+        async () => {
+          await db.exec(`delete from freelancer_payout_accounts where user_id='${id(2)}' and mode='test'`);
+          await submit(30, 20, 8);
+          await settle();
+          let payouts = await rows("project_payouts");
+          assert.equal(payouts.length, 1);
+          assert.equal(payouts[0].status, "awaiting_account");
+          assert.equal(payouts[0].encrypted_destination, null);
+
+          await db.exec(`insert into freelancer_payout_accounts(user_id,mode,encrypted_destination,bank_label,account_last4) values('${id(2)}','test','later-ciphertext','Fixture Bank','1234')`);
+          await settle();
+          payouts = await rows("project_payouts");
+          assert.equal(payouts.length, 1);
+          assert.equal(payouts[0].status, "ready");
+          assert.equal(payouts[0].encrypted_destination, "later-ciphertext");
+          assert.equal(payouts[0].recipient_id, id(2));
+          assert.equal(payouts[0].mode, "test");
+
+          await settle();
+          assert.equal((await rows("project_payouts")).length, 1);
+        },
+      );      await scenario(
         "standard project gets seven days rather than immediate overdue approval",
         async () => {
           await submit(30, null, 4);

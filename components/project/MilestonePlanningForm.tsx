@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import {
@@ -131,6 +131,13 @@ export function MilestonePlanningForm({
           </label>
           <label className="block text-sm">
             Amount (PHP)
+            <span className="mb-1 block text-xs text-muted-foreground">
+              Maximum: PHP{" "}
+              {maximum.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </span>
             <Input
               type="number"
               min="0.01"
@@ -138,15 +145,21 @@ export function MilestonePlanningForm({
               step="0.01"
               required
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              onChange={(e) => {
+                const entered = e.target.value;
+                if (entered === "") {
+                  setAmount("");
+                  return;
+                }
+                const parsed = Number(entered);
+                setAmount(
+                  Number.isFinite(parsed) && parsed > maximum
+                    ? String(maximum)
+                    : entered,
+                );
+              }}
             />
-            <span className="mt-1 block text-xs text-muted-foreground">
-              Remaining agreed budget: PHP{" "}
-              {maximum.toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
-            </span>
+
           </label>
           <label className="block text-sm">
             Deadline

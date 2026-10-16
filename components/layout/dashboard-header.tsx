@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import {
   BriefcaseBusiness,
   ChevronDown,
+  Crown,
   LogOut,
   MessageCircle,
   Settings,
@@ -200,6 +201,11 @@ export function DashboardHeader() {
       }
     } catch (error) {
       console.error("Failed to switch account role:", error);
+      toast.error(
+        error instanceof Error
+          ? `Unable to switch to ${targetRole}: ${error.message}`
+          : `Unable to switch to ${targetRole}. Please try again.`,
+      );
     } finally {
       setSwitchingRole(false);
     }
@@ -222,6 +228,11 @@ export function DashboardHeader() {
       setShowClientDialog(false);
     } catch (error) {
       console.error("Failed to become client:", error);
+      toast.error(
+        error instanceof Error
+          ? `Unable to create or activate your client account: ${error.message}`
+          : "Unable to create or activate your client account. Please try again.",
+      );
     } finally {
       setSwitchingRole(false);
     }
@@ -319,6 +330,19 @@ export function DashboardHeader() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {/* =================================================
+              SUBSCRIPTION
+          ================================================= */}
+
+          <Link
+            href="/home/offers"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition hover:bg-accent hover:text-accent-foreground"
+            aria-label="Plans and offers"
+            title="Plans and offers"
+          >
+            <Crown className="h-5 w-5 text-amber-500 dark:text-amber-400" />
+          </Link>
 
           {/* =================================================
               NOTIFICATIONS

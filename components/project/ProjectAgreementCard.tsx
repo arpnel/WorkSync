@@ -279,6 +279,11 @@ export function ProjectAgreementCard({
     const item = approvalMap.get(key);
     return Boolean(item?.clientApprovedAt && item.freelancerApprovedAt);
   });
+  const today = new Date();
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const hasPastMilestoneDate = project.milestones.some(
+    (milestone) => milestone.dueDate && milestone.dueDate.slice(0, 10) < todayKey,
+  );
 
   const respond = async (accepted: boolean) => {
     const saved = await onRespond(accepted);
@@ -357,6 +362,11 @@ export function ProjectAgreementCard({
           onSave={saveItem}
         />
 
+        {hasPastMilestoneDate && (
+          <p role="alert" className="text-sm text-destructive">
+            A milestone deadline has passed. Remove and recreate it with a current or future date before confirming.
+          </p>
+        )}
         <div className="space-y-3 border-t pt-4 text-sm">
           <div className="flex justify-between gap-3">
             <span className="text-muted-foreground">Client confirmation</span>
@@ -379,6 +389,7 @@ export function ProjectAgreementCard({
                 updating ||
                 mineAccepted ||
                 !everyItemApproved ||
+                hasPastMilestoneDate ||
                 !project.contractId
               }
               onClick={() => setPendingFinalResponse(true)}

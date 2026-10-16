@@ -61,12 +61,14 @@ async function verifyFunding(
   return paid.id;
 }
 
-/** Best-effort fast path for newly submitted deliveries; cron is the durable retry path. */
-export async function reviewProjectPayment(projectId: string) {
-  if (process.env.PROJECT_SETTLEMENT_ENABLED !== "true") return;
+export type ProjectSettlementReviewStatus = "disabled" | "version_unavailable" | "payment_unavailable" | "reviewed_pending" | "completed";
+
+/** Best-effort fast path for approved deliveries; cron is the durable retry path. */
+export async function reviewProjectPayment(projectId: string): Promise<ProjectSettlementReviewStatus> {
+  if (process.env.PROJECT_SETTLEMENT_ENABLED !== "true") return "disabled";
   const db = paymentDatabase();
   const version = await db.rpc("worksync_settlement_version");
-  if (version.error || version.data !== 2) return;
+  if (version.error || version.data !== 2) return "version_unavailable";
   const payment = await db
     .from("payments")
     .select(
@@ -76,7 +78,7 @@ export async function reviewProjectPayment(projectId: string) {
     .eq("status", "paid")
     .maybeSingle();
   if (payment.error) throw new PaymentError("Delivery payment unavailable.");
-  if (!payment.data) return;
+  if (!payment.data) return "payment_unavailable";
   await verifyFunding(db, payment.data);
   const result = await db.rpc("worksync_settle_project", {
     p_project: projectId,
@@ -84,6 +86,14 @@ export async function reviewProjectPayment(projectId: string) {
     p_mode: paymentMode(),
   });
   if (result.error) throw new PaymentError("Delivery automatic review failed.");
+  const project = await db
+    .from("projects")
+    .select("status")
+    .eq("project_id", projectId)
+    .maybeSingle();
+  if (project.error || !project.data)
+    throw new PaymentError("Unable to verify project completion status.");
+  return project.data.status === "completed" ? "completed" : "reviewed_pending";
 }
 
 export async function settleProjects() {

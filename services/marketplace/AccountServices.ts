@@ -117,18 +117,27 @@ export async function getCurrentUserRole(): Promise<UserRole> {
 ========================================================== */
 
 export async function switchUserRole(role: UserRole): Promise<void> {
-  const userId = await getCurrentUserId();
+  const { data, error: sessionError } = await supabase.auth.getSession();
+  const accessToken = data.session?.access_token;
+  if (sessionError || !accessToken)
+    throw new Error("Your session expired. Please sign in again.");
 
-  const { error } = await supabase
-    .from("Users")
-    .update({
-      role,
-    })
-    .eq("user_id", userId);
+  const response = await fetch("/api/account/switch-role", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ role }),
+  });
+  const result = await response.json().catch(() => null);
+  if (!response.ok)
+    throw new Error(
+      typeof result?.error === "string"
+        ? result.error
+        : "Unable to switch account. Please try again.",
+    );
 
-  if (error) {
-    throw error;
-  }
   invalidatePageReads();
   clearProjectReadCache();
 }

@@ -1,10 +1,16 @@
-﻿"use client";
+"use client";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
+import { PasswordRequirements } from "@/components/auth/PasswordRequirements";
+import { passwordMeetsRequirements } from "@/lib/validation/auth.validation";
+import { updatePasswordOnServer } from "@/services/auth/passwordService";
+import { useTheme } from "next-themes";
+import { StyledSelect } from "@/components/ui/styled-select";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
@@ -14,8 +20,10 @@ import {
 } from "@/components/ui/card";
 
 export default function AccountSettings() {
+  const { theme, setTheme } = useTheme();
   const [email, setEmail] = useState("");
   const [newEmail, setNewEmail] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
@@ -68,10 +76,11 @@ export default function AccountSettings() {
   function changePassword(event: FormEvent) {
     event.preventDefault();
     void run(async () => {
-      if (password.length < 8) throw new Error("Use at least 8 characters.");
+      if (!passwordMeetsRequirements(password)) throw new Error("Password must have at least 8 characters, uppercase and lowercase letters, a number, and a special character.");
+      if (!currentPassword) throw new Error("Enter your current password.");
       if (password !== confirm) throw new Error("Passwords do not match.");
-      const { error } = await supabase.auth.updateUser({ password });
-      if (error) throw error;
+      await updatePasswordOnServer(password, currentPassword);
+      setCurrentPassword("");
       setPassword("");
       setConfirm("");
       return "Password updated.";
@@ -96,6 +105,20 @@ export default function AccountSettings() {
           {feedback}
         </p>
       )}
+      <Card>
+        <CardHeader>
+          <CardTitle>Appearance</CardTitle>
+          <CardDescription>Choose how WorkSync looks on this device.</CardDescription>
+        </CardHeader>
+        <CardContent className="max-w-lg space-y-2">
+          <Label htmlFor="appearance-theme">Theme</Label>
+          <StyledSelect id="appearance-theme" value={theme ?? "system"} onChange={(event) => setTheme(event.target.value)}>
+            <option value="system">System</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </StyledSelect>
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader>
           <CardTitle>Account</CardTitle>
@@ -133,6 +156,16 @@ export default function AccountSettings() {
         <CardContent className="space-y-5">
           <form onSubmit={changePassword} className="max-w-lg space-y-3">
             <label className="block text-sm">
+              Current password
+              <Input
+                type="password"
+                autoComplete="current-password"
+                required
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+              />
+            </label>
+            <label className="block text-sm">
               New password
               <Input
                 type="password"
@@ -142,7 +175,8 @@ export default function AccountSettings() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
-            </label>
+                          <PasswordRequirements password={password} />
+</label>
             <label className="block text-sm">
               Confirm password
               <Input

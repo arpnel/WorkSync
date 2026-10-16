@@ -1,4 +1,6 @@
 "use client";
+import { StyledSelect } from "@/components/ui/styled-select";
+
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
@@ -115,7 +117,7 @@ export default function GuestMarketplace() {
             setPage(0);
           }}
         />
-        <select
+        <StyledSelect
           aria-label="Service category"
           className="max-w-full rounded-md border bg-background px-3 py-2 text-sm"
           value={category}
@@ -130,8 +132,8 @@ export default function GuestMarketplace() {
               {c.name}
             </option>
           ))}
-        </select>
-        <select
+        </StyledSelect>
+        <StyledSelect
           aria-label="Sort services"
           className="rounded-md border bg-background px-3 py-2 text-sm"
           value={sort}
@@ -143,7 +145,7 @@ export default function GuestMarketplace() {
           <option value="latest">Newest</option>
           <option value="low">Price: low to high</option>
           <option value="high">Price: high to low</option>
-        </select>
+        </StyledSelect>
       </div>
       {loading ? (
         <p role="status" className="py-10 text-center text-muted-foreground">

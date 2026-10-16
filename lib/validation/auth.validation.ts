@@ -1,7 +1,6 @@
-import {
+﻿import {
   EMAIL_REGEX,
   NAME_REGEX,
-  MIN_PASSWORD_LENGTH,
   ERROR_MESSAGES,
 } from "../../components/auth/constants";
 
@@ -17,6 +16,18 @@ import {
 export interface ValidationResult {
   valid: boolean;
   message?: string;
+}
+
+export const PASSWORD_RULES = [
+  { id: "length", label: "At least 8 characters", test: (value: string) => value.length >= 8 },
+  { id: "uppercase", label: "At least one uppercase letter", test: (value: string) => /[A-Z]/.test(value) },
+  { id: "lowercase", label: "At least one lowercase letter", test: (value: string) => /[a-z]/.test(value) },
+  { id: "number", label: "At least one number", test: (value: string) => /[0-9]/.test(value) },
+  { id: "special", label: "At least one special character", test: (value: string) => /[^A-Za-z0-9]/.test(value) },
+] as const;
+
+export function passwordMeetsRequirements(password: string): boolean {
+  return PASSWORD_RULES.every((rule) => rule.test(password));
 }
 
 
@@ -88,14 +99,9 @@ export function validatePassword(
     };
   }
 
-  if (
-    checkLength &&
-    password.length < MIN_PASSWORD_LENGTH
-  ) {
-    return {
-      valid: false,
-      message: ERROR_MESSAGES.PASSWORD_SHORT,
-    };
+  if (checkLength && !passwordMeetsRequirements(password)) {
+    const unmet = PASSWORD_RULES.find((rule) => !rule.test(password));
+    return { valid: false, message: unmet?.label ?? ERROR_MESSAGES.PASSWORD_SHORT + " Include uppercase and lowercase letters, a number, and a special character." };
   }
 
   return {

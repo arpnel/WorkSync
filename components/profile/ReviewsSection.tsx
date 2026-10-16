@@ -8,7 +8,7 @@ import { getReviews } from "../../services/profile/profileservice";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 interface ReviewsSectionProps {
   userId: string;
@@ -126,8 +126,17 @@ export default function ReviewsSection({ userId, role }: ReviewsSectionProps) {
                     ================================================= */}
 
                     <Avatar className="h-12 w-12 shrink-0">
+                      {review.reviewer_avatar_url && (
+                        <AvatarImage
+                          src={review.reviewer_avatar_url}
+                          alt={review.reviewer_name ?? "Reviewer"}
+                        />
+                      )}
                       <AvatarFallback>
-                        {review.reviewer_role === "client" ? "C" : "F"}
+                        {(review.reviewer_name ?? (review.reviewer_role === "client" ? "Client" : "Freelancer"))
+                          .trim()
+                          .slice(0, 1)
+                          .toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
 
@@ -139,9 +148,10 @@ export default function ReviewsSection({ userId, role }: ReviewsSectionProps) {
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <h4 className="font-semibold">
-                            {review.reviewer_role === "client"
-                              ? "Client"
-                              : "Freelancer"}
+                            {review.reviewer_name ??
+                              (review.reviewer_role === "client"
+                                ? "Client"
+                                : "Freelancer")}
                           </h4>
 
                           <p className="text-sm text-muted-foreground">

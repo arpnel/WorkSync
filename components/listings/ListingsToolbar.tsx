@@ -1,4 +1,5 @@
-﻿import { Search } from "lucide-react";
+import { StyledSelect } from "@/components/ui/styled-select";
+import { Search } from "lucide-react";
 import type { CreateListingResult } from "@/services/serviceP/service.types";
 import { Input } from "@/components/ui/input";
 import { ServiceCreateDialogLauncher } from "@/components/profile/ServiceCreateDialogLauncher";
@@ -28,7 +29,7 @@ export function ListingsToolbar({
         />
       </div>
       <div className="flex flex-wrap gap-2">
-        <select
+        <StyledSelect
           aria-label="Listing type"
           className="rounded-md border bg-background px-3 text-sm"
           value={kind}
@@ -37,7 +38,7 @@ export function ListingsToolbar({
           <option value="all">All listings</option>
           <option value="service">Services</option>
           <option value="job">Jobs</option>
-        </select>
+        </StyledSelect>
         <ServiceCreateDialogLauncher onCreated={onCreated} />
       </div>
     </div>

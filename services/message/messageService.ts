@@ -121,8 +121,7 @@ export async function getMessageConversations(): Promise<{
       supabase
         .from("conversation_participants")
         .select("conversation_id, user_id")
-        .in("conversation_id", conversationIds)
-        .neq("user_id", currentUserId),
+        .in("conversation_id", conversationIds),
       supabase
         .from("messages")
         .select(
@@ -145,9 +144,12 @@ export async function getMessageConversations(): Promise<{
   }
 
   const otherUserIds = [
-    ...new Set(
-      (participantsResult.data ?? []).map((participant) => participant.user_id),
-    ),
+    ...new Set([
+      ...(participantsResult.data ?? []).map(
+        (participant) => participant.user_id,
+      ),
+      currentUserId,
+    ]),
   ];
 
   const projectIds = [
@@ -157,8 +159,29 @@ export async function getMessageConversations(): Promise<{
         .filter((id): id is string => Boolean(id)),
     ),
   ];
+  const orderIds = [
+    ...new Set(
+      (conversationsResult.data ?? [])
+        .map((conversation) => conversation.order_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  const jobIds = [
+    ...new Set(
+      (conversationsResult.data ?? [])
+        .map((conversation) => conversation.job_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
 
-  const [participantProfiles, projectsResult] = await Promise.all([
+  const [
+    participantProfiles,
+    projectsResult,
+    projectsByOrderResult,
+    jobsResult,
+    serviceOrdersResult,
+    contractsResult,
+  ] = await Promise.all([
     getParticipants(otherUserIds),
     projectIds.length
       ? supabase
@@ -166,8 +189,45 @@ export async function getMessageConversations(): Promise<{
           .select("project_id, title")
           .in("project_id", projectIds)
       : Promise.resolve({ data: [], error: null }),
+    orderIds.length
+      ? supabase
+          .from("projects")
+          .select("order_id, title")
+          .in("order_id", orderIds)
+      : Promise.resolve({ data: [], error: null }),
+    jobIds.length
+      ? supabase.from("jobs").select("job_id, title").in("job_id", jobIds)
+      : Promise.resolve({ data: [], error: null }),
+    orderIds.length
+      ? supabase
+          .from("service_orders")
+          .select("order_id, service_id")
+          .in("order_id", orderIds)
+      : Promise.resolve({ data: [], error: null }),
+    orderIds.length
+      ? supabase
+          .from("contracts")
+          .select("order_id, terms")
+          .in("order_id", orderIds)
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
+  if (serviceOrdersResult.error) throw serviceOrdersResult.error;
+  if (contractsResult.error) throw contractsResult.error;
+  const serviceIds = [
+    ...new Set(
+      (serviceOrdersResult.data ?? [])
+        .map((order) => order.service_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  const servicesResult = serviceIds.length
+    ? await supabase
+        .from("services")
+        .select("service_id, title")
+        .in("service_id", serviceIds)
+    : { data: [], error: null };
+  if (servicesResult.error) throw servicesResult.error;
   if (projectsResult.error) {
     throw projectsResult.error;
   }
@@ -178,13 +238,77 @@ export async function getMessageConversations(): Promise<{
       project.title,
     ]),
   );
-  const participantByConversation = new Map(
-    (participantsResult.data ?? []).map((participant) => [
-      participant.conversation_id,
-      participantProfiles.get(participant.user_id),
+  const orderProjectTitles = new Map(
+    (projectsByOrderResult.data ?? []).map((project) => [
+      project.order_id,
+      project.title,
     ]),
   );
+  const jobTitles = new Map(
+    (jobsResult.data ?? []).map((job) => [job.job_id, job.title]),
+  );
+  const serviceTitles = new Map(
+    (servicesResult.data ?? []).map((service) => [
+      service.service_id,
+      service.title,
+    ]),
+  );
+  const serviceIdByOrder = new Map(
+    (serviceOrdersResult.data ?? []).map((order) => [
+      order.order_id,
+      order.service_id,
+    ]),
+  );
+  const contractTitles = new Map(
+    (contractsResult.data ?? []).map((contract) => {
+      let title: unknown = null;
+      try {
+        const terms =
+          typeof contract.terms === "string"
+            ? JSON.parse(contract.terms)
+            : contract.terms;
+        title =
+          terms && typeof terms === "object"
+            ? (terms as Record<string, unknown>).projectTitle
+            : null;
+      } catch {
+        title = null;
+      }
+      return [contract.order_id, typeof title === "string" ? title : null];
+    }),
+  );
+  const cleanTitle = (title: string | null | undefined) => {
+    const cleaned = title?.trim();
+    return cleaned &&
+      ![
+        "worksync project",
+        "project",
+        "project conversation",
+        "order conversation",
+        "job discussion",
+      ].includes(cleaned.toLowerCase())
+      ? cleaned
+      : null;
+  };
+  const participantByConversation = new Map(
+    (participantsResult.data ?? [])
+      .filter((participant) => participant.user_id !== currentUserId)
+      .map((participant) => [
+        participant.conversation_id,
+        participantProfiles.get(participant.user_id),
+      ]),
+  );
 
+  const participantsByConversation = new Map<
+    string,
+    typeof participantsResult.data
+  >();
+  for (const participant of participantsResult.data ?? []) {
+    const rows =
+      participantsByConversation.get(participant.conversation_id) ?? [];
+    rows.push(participant);
+    participantsByConversation.set(participant.conversation_id, rows);
+  }
   const messagesByConversation = new Map<string, typeof messagesResult.data>();
 
   for (const message of messagesResult.data ?? []) {
@@ -204,6 +328,8 @@ export async function getMessageConversations(): Promise<{
     (conversation): MessageConversation => {
       const messages =
         messagesByConversation.get(conversation.conversation_id) ?? [];
+      const participantRows =
+        participantsByConversation.get(conversation.conversation_id) ?? [];
       const participant = participantByConversation.get(
         conversation.conversation_id,
       ) ?? {
@@ -214,14 +340,55 @@ export async function getMessageConversations(): Promise<{
       };
       const lastMessage = messages[0];
 
+      const orderId = conversation.order_id;
+      const linkedTitle =
+        cleanTitle(
+          conversation.project_id
+            ? projectTitles.get(conversation.project_id)
+            : null,
+        ) ??
+        cleanTitle(orderId ? orderProjectTitles.get(orderId) : null) ??
+        cleanTitle(orderId ? contractTitles.get(orderId) : null) ??
+        cleanTitle(
+          orderId
+            ? serviceTitles.get(serviceIdByOrder.get(orderId) ?? "")
+            : null,
+        ) ??
+        cleanTitle(
+          conversation.job_id ? jobTitles.get(conversation.job_id) : null,
+        );
+
       return {
         conversationId: conversation.conversation_id,
         projectId: conversation.project_id,
         orderId: conversation.order_id,
         jobId: conversation.job_id,
-        projectTitle: conversation.project_id
-          ? (projectTitles.get(conversation.project_id) ?? null)
-          : null,
+        projectTitle: conversation.project_id ? linkedTitle : null,
+        conversationTitle:
+          linkedTitle ??
+          (conversation.order_id
+            ? "Order conversation"
+            : conversation.job_id
+              ? "Job discussion"
+              : "Project conversation"),
+        participantIntro: (() => {
+          const people = participantRows
+            .map((row) => participantProfiles.get(row.user_id))
+            .filter((person): person is MessageParticipant => Boolean(person));
+          const client = people.find((person) => person.role === "client");
+          const freelancer = people.find(
+            (person) => person.role === "freelancer",
+          );
+          const names =
+            client && freelancer
+              ? [client.name, freelancer.name]
+              : people.map((person) => person.name);
+          return names.length > 1
+            ? `${names[0]} and ${names[1]} are now in this chat.`
+            : names[0]
+              ? `${names[0]} is now in this chat.`
+              : "You are now in this chat.";
+        })(),
         participant,
         lastMessage: lastMessage?.message ?? "No messages yet",
         lastMessageAt: lastMessage?.created_at ?? conversation.created_at,
@@ -465,6 +632,32 @@ export async function markConversationRead(
   }
 }
 
+export function createMessageTypingChannel(
+  conversationId: string,
+  currentUserId: string,
+  onTypingChange: (isTyping: boolean) => void,
+) {
+  const channel = supabase
+    .channel(`message-typing:${conversationId}`, {
+      config: { broadcast: { self: false } },
+    })
+    .on("broadcast", { event: "typing" }, ({ payload }) => {
+      if (payload.userId !== currentUserId)
+        onTypingChange(Boolean(payload.isTyping));
+    })
+    .subscribe();
+
+  return {
+    channel,
+    sendTyping: (isTyping: boolean) => {
+      void channel.send({
+        type: "broadcast",
+        event: "typing",
+        payload: { userId: currentUserId, isTyping },
+      });
+    },
+  };
+}
 export function subscribeToConversationMessages(
   conversationId: string,
   onChange: () => void,

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export type SortOption = "latest" | "lowestPrice" | "highestRated";
-export type ListingType = "freelancer" | "client";
+export type ListingType = "freelancer" | "service" | "job";
 export interface MarketplaceFiltersValue {
   sort: SortOption[];
   listingType: ListingType;
@@ -25,7 +25,7 @@ export default function MarketplaceFilters({
   filters,
   onChange,
 }: MarketplaceFiltersProps) {
-  const services = filters.listingType === "freelancer";
+  const services = filters.listingType !== "job";
   const hasFilters = Boolean(
     filters.savedOnly ||
     filters.listingType !== "freelancer" ||
@@ -38,8 +38,9 @@ export default function MarketplaceFilters({
       <fieldset className="space-y-2">
         <legend className="mb-2 text-sm font-semibold">Listing type</legend>
         {[
-          { value: "freelancer", label: "Services" },
-          { value: "client", label: "Jobs" },
+          { value: "freelancer", label: "Freelancers" },
+          { value: "service", label: "Services" },
+          { value: "job", label: "Jobs" },
         ].map((option) => (
           <label
             key={option.value}
@@ -50,12 +51,19 @@ export default function MarketplaceFilters({
               name="marketplace-listing-type"
               value={option.value}
               checked={filters.listingType === option.value}
-              onChange={() =>
+              onChange={() => {
+                const listingType = option.value as ListingType;
                 onChange({
                   ...filters,
-                  listingType: option.value as ListingType,
-                })
-              }
+                  listingType,
+                  sort:
+                    listingType === "job"
+                      ? ["latest"]
+                      : listingType === "freelancer"
+                        ? ["highestRated"]
+                        : filters.sort,
+                });
+              }}
               className="size-4 accent-primary"
             />
             {option.label}

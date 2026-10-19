@@ -17,14 +17,15 @@ export interface AccountRoleStatus {
 
 async function getCurrentUserId(): Promise<string> {
   const {
-    data: { user },
+    data: { session },
     error,
-  } = await supabase.auth.getUser();
+  } = await supabase.auth.getSession();
 
   if (error) {
     throw error;
   }
 
+  const user = session?.user;
   if (!user) {
     throw new Error("User not authenticated.");
   }

@@ -20,9 +20,11 @@ export function MilestonePlanningForm({
   orderId,
   onRefresh,
   remainingBudget,
+  previousDueDate,
 }: {
   orderId: string;
   remainingBudget: number;
+  previousDueDate?: string | null;
   onRefresh: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
@@ -32,6 +34,13 @@ export function MilestonePlanningForm({
   const [due, setDue] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const minimumDue = previousDueDate
+    ? new Date(
+        Date.parse(previousDueDate.slice(0, 10) + "T00:00:00Z") + 86400000,
+      )
+        .toISOString()
+        .slice(0, 10)
+    : todayDate();
   const maximum = Number.isFinite(remainingBudget)
     ? Math.max(0, Math.round(remainingBudget * 100) / 100)
     : 0;
@@ -76,8 +85,12 @@ export function MilestonePlanningForm({
               setError("Enter an amount within the remaining agreed budget.");
               return;
             }
-            if (!due || due < todayDate()) {
-              setError("Choose today or a future deadline.");
+            if (!due || due < minimumDue) {
+              setError(
+                previousDueDate
+                  ? "Choose a deadline later than the previous milestone."
+                  : "Choose today or a future deadline.",
+              );
               return;
             }
             setBusy(true);
@@ -159,13 +172,12 @@ export function MilestonePlanningForm({
                 );
               }}
             />
-
           </label>
           <label className="block text-sm">
             Deadline
             <Input
               type="date"
-              min={todayDate()}
+              min={minimumDue}
               required
               value={due}
               onChange={(e) => setDue(e.target.value)}

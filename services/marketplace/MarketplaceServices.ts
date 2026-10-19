@@ -49,6 +49,10 @@ export interface MarketplaceQuery {
   freelancerId?: string | null;
 
   clientId?: string | null;
+
+  /** Optional bounded page for marketplace feeds. */
+  page?: number;
+  pageSize?: number;
 }
 
 /* ==========================================================
@@ -74,6 +78,8 @@ export interface MarketplaceFreelancer {
   headline: string | null;
   hourly_rate: number | null;
   verification_status: string | null;
+  skills?: string[];
+  has_portfolio?: boolean;
 
   profile: MarketplaceProfile | null;
 }
@@ -158,6 +164,8 @@ export interface MarketplaceJob {
 
   pricing_type: string;
 
+  experience_level?: string;
+
   deadline: string | null;
 
   status: string;
@@ -228,6 +236,8 @@ interface JobRow {
   budget_max: number;
 
   pricing_type: string;
+
+  experience_level?: string;
 
   deadline: string | null;
 
@@ -399,6 +409,8 @@ async function buildMarketplaceJob(
 
     pricing_type: job.pricing_type,
 
+    experience_level: job.experience_level,
+
     deadline: job.deadline,
 
     status: job.status,
@@ -482,6 +494,12 @@ async function getServices(
       break;
   }
 
+  if (query.pageSize && query.pageSize > 0) {
+    const page = Math.max(0, Math.floor(query.page ?? 0));
+    const pageSize = Math.min(48, Math.floor(query.pageSize));
+    request = request.range(page * pageSize, page * pageSize + pageSize - 1);
+  }
+
   const { data, error } = await request;
 
   if (error) {
@@ -503,8 +521,52 @@ async function getServices(
    GET JOBS
 ========================================================== */
 
+async function hideUnavailableJobsForCurrentFreelancer(
+  rows: JobRow[],
+  guest: boolean | undefined,
+): Promise<JobRow[]> {
+  if (guest) return rows;
+  const { data: auth, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!auth.user) return rows;
+  const [
+    { data: account, error: accountError },
+    { data: profile, error: profileError },
+  ] = await Promise.all([
+    supabase
+      .from(USERS_TABLE)
+      .select("role")
+      .eq("user_id", auth.user.id)
+      .maybeSingle(),
+    supabase
+      .from(FREELANCER_TABLE)
+      .select("freelancer_id")
+      .eq("user_id", auth.user.id)
+      .maybeSingle(),
+  ]);
+  if (accountError) throw accountError;
+  if (profileError) throw profileError;
+  if (account?.role !== "freelancer" || !profile) return rows;
+  const { data: applications, error } = await supabase
+    .from("job_applications")
+    .select("job_id,status")
+    .eq("freelancer_id", profile.freelancer_id)
+    .in(
+      "job_id",
+      rows.map((row) => row.job_id),
+    );
+  if (error) throw error;
+  const unavailable = new Set(
+    (applications ?? [])
+      .filter((application) =>
+        ["accepted", "rejected"].includes(application.status),
+      )
+      .map((application) => application.job_id),
+  );
+  return rows.filter((row) => !unavailable.has(row.job_id));
+}
 async function getJobs(query: MarketplaceQuery): Promise<MarketplaceJob[]> {
-  const columns = `job_id,client_id,category_id,title,description,budget_min,budget_max,pricing_type,deadline,status,created_at,updated_at${query.skillId ? ",job_skills!inner(skill_id)" : ""}`;
+  const columns = `job_id,client_id,category_id,title,description,budget_min,budget_max,pricing_type,experience_level,deadline,status,created_at,updated_at${query.skillId ? ",job_skills!inner(skill_id)" : ""}`;
   let request = supabase
     .from(JOBS_TABLE)
     .select(columns)
@@ -563,6 +625,12 @@ async function getJobs(query: MarketplaceQuery): Promise<MarketplaceJob[]> {
       break;
   }
 
+  if (query.pageSize && query.pageSize > 0) {
+    const page = Math.max(0, Math.floor(query.page ?? 0));
+    const pageSize = Math.min(48, Math.floor(query.pageSize));
+    request = request.range(page * pageSize, page * pageSize + pageSize - 1);
+  }
+
   const { data, error } = await request;
 
   if (error) {
@@ -575,7 +643,11 @@ async function getJobs(query: MarketplaceQuery): Promise<MarketplaceJob[]> {
     return [];
   }
 
-  const rows = data as unknown as JobRow[];
+  const rows = await hideUnavailableJobsForCurrentFreelancer(
+    data as unknown as JobRow[],
+    query.guest,
+  );
+  if (!rows.length) return [];
   const related = await loadRelatedListings([], rows, query.guest);
   return Promise.all(rows.map((row) => buildMarketplaceJob(row, related)));
 }
@@ -1171,7 +1243,9 @@ export async function createMarketplaceOrder(
     details.budget <= 0 ||
     details.budget > 100_000
   ) {
-    throw new Error("Budget must be greater than 0 and no more than PHP 100,000.");
+    throw new Error(
+      "Budget must be greater than 0 and no more than PHP 100,000.",
+    );
   }
   if (!details.categoryId) {
     throw new Error("Job category is required.");
@@ -1295,23 +1369,53 @@ async function loadRelatedListings(
       [...services, ...jobs].map((row) => row.category_id).filter(Boolean),
     ),
   ];
-  const [identities, categories] = await Promise.all([
-    guest
-      ? Promise.resolve({ profiles: [], freelancers: [], clients: [] })
-      : getPublicIdentities({ freelancerIds, clientIds }),
-    categoryIds.length
-      ? supabase.from(CATEGORY_TABLE).select("id,name").in("id", categoryIds)
-      : Promise.resolve({ data: [], error: null }),
-  ]);
+  const [identities, categories, freelancerSkills, portfolioRows] =
+    await Promise.all([
+      guest
+        ? Promise.resolve({ profiles: [], freelancers: [], clients: [] })
+        : getPublicIdentities({ freelancerIds, clientIds }),
+      categoryIds.length
+        ? supabase.from(CATEGORY_TABLE).select("id,name").in("id", categoryIds)
+        : Promise.resolve({ data: [], error: null }),
+      !guest && freelancerIds.length
+        ? supabase
+            .from("freelancer_skills")
+            .select("freelancer_id,skills(name)")
+            .in("freelancer_id", freelancerIds)
+        : Promise.resolve({ data: [], error: null }),
+      !guest && freelancerIds.length
+        ? supabase
+            .from("portfolio")
+            .select("freelancer_id")
+            .in("freelancer_id", freelancerIds)
+            .limit(500)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
   if (categories.error) throw categories.error;
   const profiles = new Map(
     identities.profiles.map((row) => [row.user_id, row]),
+  );
+  const skillsByFreelancer = new Map<string, string[]>();
+  for (const row of freelancerSkills.data ?? []) {
+    const skill = Array.isArray(row.skills) ? row.skills[0] : row.skills;
+    if (typeof skill?.name !== "string") continue;
+    const names = skillsByFreelancer.get(row.freelancer_id) ?? [];
+    names.push(skill.name);
+    skillsByFreelancer.set(row.freelancer_id, names);
+  }
+  const freelancersWithPortfolio = new Set(
+    (portfolioRows.data ?? []).map((row) => row.freelancer_id),
   );
   return {
     freelancers: new Map(
       identities.freelancers.map((row) => [
         row.freelancer_id,
-        { ...row, profile: profiles.get(row.user_id) ?? null },
+        {
+          ...row,
+          profile: profiles.get(row.user_id) ?? null,
+          skills: skillsByFreelancer.get(row.freelancer_id) ?? [],
+          has_portfolio: freelancersWithPortfolio.has(row.freelancer_id),
+        },
       ]),
     ),
     clients: new Map(

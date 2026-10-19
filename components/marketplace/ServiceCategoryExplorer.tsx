@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -196,12 +196,14 @@ export default function ServiceCategoryExplorer() {
                             className="flex min-h-10 items-center justify-between gap-3 rounded-lg px-2 text-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           >
                             <span className="truncate">{subcategory.name}</span>
-                            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                              {subcategory.listingCount}{" "}
-                              {subcategory.listingCount === 1
-                                ? "service"
-                                : "services"}
-                            </span>
+                            {subcategory.listingCount !== null && (
+                              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                                {subcategory.listingCount}{" "}
+                                {subcategory.listingCount === 1
+                                  ? "service"
+                                  : "services"}
+                              </span>
+                            )}
                           </Link>
                         </li>
                       ))}

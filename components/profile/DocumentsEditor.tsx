@@ -32,6 +32,10 @@ export function DocumentsEditor({
   const [error, setError] = useState("");
   async function save() {
     const files = [...resume, ...samples, ...certificates];
+    if (resume.some((file) => file.type !== "application/pdf")) {
+      setError("Your CV or resume must be a PDF file.");
+      return;
+    }
     if (
       files.some(
         (file) =>
@@ -76,15 +80,15 @@ export function DocumentsEditor({
         );
       }
       const nextResume = resume[0]
-        ? await upload("resumes", "resume", resume[0])
-        : (kept.find((doc) => doc.bucket === "resumes")?.path ?? null);
+        ? await upload("verification-documents", "resume", resume[0])
+        : (kept.find((doc) => doc.label === "Resume / CV")?.path ?? null);
       const nextSamples = await uploadMany(
-        "verification",
+        "verification-documents",
         "portfolio",
         samples,
       );
       const nextCertificates = await uploadMany(
-        "verification",
+        "verification-documents",
         "certifications",
         certificates,
       );
@@ -163,12 +167,26 @@ export function DocumentsEditor({
           </div>
         ))}
         {[
-          { label: "Replace resume", files: setResume, multiple: false },
-          { label: "Add portfolio samples", files: setSamples, multiple: true },
+          {
+            label: "Replace resume",
+            files: setResume,
+            selectedFiles: resume,
+            multiple: false,
+            accept: "application/pdf",
+          },
+          {
+            label: "Add portfolio samples",
+            files: setSamples,
+            selectedFiles: samples,
+            multiple: true,
+            accept: "application/pdf,image/jpeg,image/png,image/webp",
+          },
           {
             label: "Add certifications",
             files: setCertificates,
+            selectedFiles: certificates,
             multiple: true,
+            accept: "application/pdf,image/jpeg,image/png,image/webp",
           },
         ].map((field) => (
           <div className="space-y-2" key={field.label}>
@@ -178,9 +196,19 @@ export function DocumentsEditor({
               type="file"
               disabled={busy}
               multiple={field.multiple}
-              accept="application/pdf,image/jpeg,image/png,image/webp"
-              onChange={(e) => field.files(Array.from(e.target.files ?? []))}
+              accept={field.accept}
+              onChange={(e) => {
+                field.files(Array.from(e.target.files ?? []));
+                e.target.value = "";
+              }}
             />
+            <p className="text-xs text-muted-foreground">
+              {field.selectedFiles.length
+                ? field.selectedFiles.map((file) => file.name).join(", ")
+                : field.multiple
+                  ? "PDF, JPG, PNG or WebP, up to 5 MB each."
+                  : "PDF only, up to 5 MB."}
+            </p>
           </div>
         ))}
         {error && (

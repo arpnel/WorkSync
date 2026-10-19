@@ -8,18 +8,20 @@ import {
   Wallet,
   Star,
   ShieldCheck,
+  MapPin,
 } from "lucide-react";
 import type { MarketplaceItem } from "@/services/marketplace/MarketplaceServices";
 import { FreelancerAvailability } from "./FreelancerAvailability";
 
 interface Props {
   available?: boolean;
+  freelancerMode?: boolean;
   listing: MarketplaceItem;
   rating?: number;
   onClick?: () => void;
 }
 
-export default function MarketplaceCard({ listing, onClick, rating, available }: Props) {
+export default function MarketplaceCard({ listing, onClick, rating, available, freelancerMode = false }: Props) {
   const isService = listing.listing_type === "service";
   const profile = isService
     ? listing.freelancer?.profile
@@ -39,6 +41,74 @@ export default function MarketplaceCard({ listing, onClick, rating, available }:
         currency: "PHP",
         maximumFractionDigits: 0,
       }).format(listing.budget_max);
+
+  if (freelancerMode && isService) {
+    const hourlyRate = listing.freelancer?.hourly_rate;
+    const hourlyLabel = hourlyRate == null
+      ? "Hourly rate not listed"
+      : `${new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 }).format(hourlyRate)}/hr`;
+    return (
+      <button
+        type="button"
+        className="block h-full w-full rounded-xl text-left focus-visible:outline-2 focus-visible:outline-primary"
+        onClick={onClick}
+        disabled={!onClick}
+      >
+        <Card className="flex h-full min-h-[300px] flex-col gap-0 rounded-xl border bg-card p-5 transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
+          <div className="flex items-center gap-3">
+            <Avatar className="size-14 shrink-0">
+              <AvatarImage src={profile?.avatar_url ?? undefined} alt={ownerName} />
+              <AvatarFallback>{ownerName.slice(0, 1).toUpperCase()}</AvatarFallback>
+            </Avatar>
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-semibold">{ownerName}</p>
+              <p className="line-clamp-2 text-sm text-muted-foreground">
+                {listing.freelancer?.headline || "Freelancer"}
+              </p>
+            </div>
+            {listing.freelancer?.verification_status === "approved" && (
+              <ShieldCheck className="size-5 shrink-0 text-primary" aria-label="Verified freelancer" />
+            )}
+          </div>
+          {profile?.location && (
+            <p className="mt-4 flex items-center gap-1.5 text-xs text-muted-foreground">
+              <MapPin className="size-3.5" />{profile.location}
+            </p>
+          )}
+          <div className="mt-4 flex items-center justify-between border-y py-3 text-sm">
+            <span className="flex items-center gap-1.5">
+              <Star className="size-4 fill-amber-400 text-amber-500" />
+              {rating == null ? "New freelancer" : `${rating.toFixed(1)} rating`}
+            </span>
+            <span className="font-medium">{hourlyLabel}</span>
+          </div>
+          <div className="mt-4 min-w-0">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Specialty</p>
+            <p className="mt-1 truncate font-medium">{listing.category?.name ?? "Freelance services"}</p>
+          </div>
+          {(listing.freelancer?.skills?.length || listing.freelancer?.has_portfolio) && (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {listing.freelancer?.skills?.slice(0, 3).map((skill) => (
+                <span key={skill} className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
+                  {skill}
+                </span>
+              ))}
+              {listing.freelancer?.has_portfolio && (
+                <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+                  Portfolio
+                </span>
+              )}
+            </div>
+          )}
+          <div className="mt-auto pt-5">
+            <p className="text-xs text-muted-foreground">Featured service</p>
+            <p className="mt-1 line-clamp-2 font-semibold">{listing.title}</p>
+            <p className="mt-2 text-sm text-muted-foreground">Starting at {priceLabel}</p>
+          </div>
+        </Card>
+      </button>
+    );
+  }
 
   if (!isService) {
     return (

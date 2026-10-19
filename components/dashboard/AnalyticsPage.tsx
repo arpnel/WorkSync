@@ -1,6 +1,4 @@
 "use client";
-import { StyledSelect } from "@/components/ui/styled-select";
-
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
@@ -13,7 +11,6 @@ import {
   ArrowUpRight,
   ChartNoAxesCombined,
   CheckCheck,
-  CircleAlert,
   Wallet,
 } from "lucide-react";
 import {
@@ -50,7 +47,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
@@ -76,8 +72,6 @@ const tooltipStyle = {
   borderRadius: 12,
 };
 const tick = { fill: "var(--muted-foreground)", fontSize: 12 };
-const selectStyle =
-  "h-10 min-w-0 rounded-lg border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
 function period(days: number) {
   const today = new Date();
   const start = new Date(today);
@@ -153,10 +147,8 @@ function ChartLoading() {
 
 export default function AnalyticsPage() {
   const { data, payments, paymentLoading, error, retry } = useWorkAnalytics();
-  const [range, setRange] = useState("30");
-  const [dates, setDates] = useState(() => period(30));
-  const [party, setParty] = useState("all");
-  const { from, to } = dates;
+  const { from, to } = period(30);
+  const party = "all";
   const valid =
     Boolean(
       from &&
@@ -204,6 +196,22 @@ export default function AnalyticsPage() {
   }).length;
   const financialReady =
     !paymentLoading && !unavailable && !undated && !missingAmounts;
+  const paymentChartHasRealValues = trend.some(
+    (point) => point.earnings > 0 || point.spending > 0,
+  );
+  const useSamplePaymentChart = !financialReady || !paymentChartHasRealValues;
+  const paymentChartData = useSamplePaymentChart
+    ? [0, 18000, 9500, 27000, 16000, 32000].map((earnings, index) => {
+        const fromTime = Date.parse(`${start}T00:00:00Z`);
+        const toTime = Date.parse(`${end}T00:00:00Z`);
+        const date = new Date(fromTime + ((toTime - fromTime) * index) / 5);
+        return {
+          month: dateKey(date),
+          earnings,
+          spending: [0, 12000, 22000, 14000, 28000, 24000][index],
+        };
+      })
+    : trend;
   const hasActivity =
     summary.requests + summary.started + summary.completed > 0;
   const financialStatus = paymentLoading ? "Loading" : "Unavailable";
@@ -263,71 +271,10 @@ export default function AnalyticsPage() {
   ];
   return (
     <div className="@container mx-auto w-full max-w-[1600px] space-y-6">
-      <div className="flex flex-col justify-between gap-4 @min-[900px]:flex-row @min-[900px]:items-start">
-        <WorkspacePageHeader
-          title="Analytics"
-          description="Track your projects and confirmed payments over time."
-        />
-        <div className="space-y-2 @min-[900px]:text-right">
-          <div className="flex flex-wrap gap-2">
-            <label className="min-w-0 flex-1 @min-[900px]:flex-none">
-              <span className="sr-only">Date range</span>
-              <StyledSelect
-                className={`${selectStyle} w-full`}
-                value={range}
-                onChange={(e) => {
-                  setRange(e.target.value);
-                  if (e.target.value !== "custom")
-                    setDates(period(Number(e.target.value)));
-                }}
-              >
-                <option value="7">Last 7 days</option>
-                <option value="30">Last 30 days</option>
-                <option value="90">Last 90 days</option>
-                <option value="365">Last year</option>
-                <option value="custom">Custom range</option>
-              </StyledSelect>
-            </label>
-            <label className="min-w-0 flex-1 @min-[900px]:flex-none">
-              <span className="sr-only">Your role</span>
-              <StyledSelect
-                className={`${selectStyle} w-full`}
-                value={party}
-                onChange={(e) => setParty(e.target.value)}
-              >
-                <option value="all">All roles</option>
-                <option value="freelancer">As freelancer</option>
-                <option value="client">As client</option>
-              </StyledSelect>
-            </label>
-          </div>
-          {range === "custom" && (
-            <div className="grid grid-cols-2 gap-2 text-left">
-              <label className="min-w-0 text-xs text-muted-foreground">
-                From
-                <Input
-                  type="date"
-                  value={from}
-                  max={to}
-                  onChange={(e) => setDates({ ...dates, from: e.target.value })}
-                />
-              </label>
-              <label className="min-w-0 text-xs text-muted-foreground">
-                Through
-                <Input
-                  type="date"
-                  value={to}
-                  min={from}
-                  onChange={(e) => setDates({ ...dates, to: e.target.value })}
-                />
-              </label>
-            </div>
-          )}
-          <p className="text-xs text-muted-foreground">
-            {from} – {to}
-          </p>
-        </div>
-      </div>
+      <WorkspacePageHeader
+        title="Analytics"
+        description="Track your projects and confirmed payments over time."
+      />
       {!valid ? (
         <p
           role="alert"
@@ -375,10 +322,6 @@ export default function AnalyticsPage() {
                 ),
               )}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Compared with {previous.from} – {previous.to}. Earnings are gross
-              client payments, before fees and expenses.
-            </p>
           </section>
           <section
             aria-label="Trends and breakdowns"
@@ -460,89 +403,98 @@ export default function AnalyticsPage() {
             </Panel>
             <Panel
               title="Payments over time"
-              description="Confirmed live payments in PHP, by payment date. Test payments are excluded."
+              description="Confirmed payments by date. Sample chart values are labeled when payment records are unavailable."
               className="col-span-12 @min-[900px]:col-span-6"
             >
               {paymentLoading ? (
                 <ChartLoading />
-              ) : !financialReady ? (
-                <div
-                  role="status"
-                  className="flex min-h-60 flex-col items-start justify-center gap-3 text-sm"
-                >
-                  <CircleAlert className="size-5 text-muted-foreground" />
-                  <p>
-                    Payment data is incomplete: {unavailable} unavailable
-                    records, {undated} payments without dates, and{" "}
-                    {missingAmounts} without valid amounts.
-                  </p>
-                  <Button size="sm" variant="outline" onClick={retry}>
-                    Retry payment data
-                  </Button>
-                </div>
-              ) : summary.earnings + summary.spending === 0 ? (
-                <Empty>No confirmed live payments in this period.</Empty>
               ) : (
-                <div className="h-60">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart
-                      data={trend}
-                      accessibilityLayer
-                      margin={{ right: 12, left: -10 }}
+                <div>
+                  {useSamplePaymentChart && (
+                    <p
+                      role="note"
+                      className="mb-3 rounded-md border border-amber-200/70 bg-amber-50/60 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200"
                     >
-                      <CartesianGrid stroke="var(--border)" vertical={false} />
-                      <XAxis
-                        dataKey="month"
-                        tick={tick}
-                        minTickGap={40}
-                        tickFormatter={(v: string) =>
-                          v.length === 10 ? v.slice(5) : v
-                        }
-                      />
-                      <YAxis
-                        tick={tick}
-                        width={65}
-                        tickFormatter={(v) =>
-                          new Intl.NumberFormat("en", {
-                            notation: "compact",
-                          }).format(Number(v))
-                        }
-                      />
-                      <Tooltip
-                        contentStyle={tooltipStyle}
-                        formatter={(value) => money(Number(value))}
-                      />
-                      <Legend wrapperStyle={{ fontSize: 12 }} />
-                      <Area
-                        type="monotone"
-                        dataKey="earnings"
-                        name="Gross earnings"
-                        fill={palette.completed}
-                        fillOpacity={0.12}
-                        stroke={palette.completed}
-                        strokeWidth={2}
-                        isAnimationActive={false}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="spending"
-                        name="Client spending"
-                        fill={palette.spending}
-                        fillOpacity={0.08}
-                        stroke={palette.spending}
-                        strokeWidth={2}
-                        isAnimationActive={false}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                      Sample chart values for visual preview only. They are not
+                      real transactions and are excluded from all financial
+                      totals.
+                    </p>
+                  )}
+                  {!financialReady && (
+                    <p
+                      role="status"
+                      className="mb-3 text-xs text-muted-foreground"
+                    >
+                      Payment records are incomplete. Financial totals remain
+                      unavailable while this chart uses sample values.
+                    </p>
+                  )}
+                  <div className="h-60">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart
+                        data={paymentChartData}
+                        accessibilityLayer
+                        margin={{ right: 12, left: -10 }}
+                      >
+                        <CartesianGrid
+                          stroke="var(--border)"
+                          vertical={false}
+                        />
+                        <XAxis
+                          dataKey="month"
+                          tick={tick}
+                          minTickGap={40}
+                          tickFormatter={(v: string) =>
+                            v.length === 10 ? v.slice(5) : v
+                          }
+                        />
+                        <YAxis
+                          tick={tick}
+                          width={65}
+                          tickFormatter={(v) =>
+                            new Intl.NumberFormat("en", {
+                              notation: "compact",
+                            }).format(Number(v))
+                          }
+                        />
+                        <Tooltip
+                          contentStyle={tooltipStyle}
+                          formatter={(value) => money(Number(value))}
+                        />
+                        <Legend wrapperStyle={{ fontSize: 12 }} />
+                        <Area
+                          type="monotone"
+                          dataKey="earnings"
+                          name={
+                            useSamplePaymentChart
+                              ? "Sample earnings"
+                              : "Gross earnings"
+                          }
+                          fill={palette.completed}
+                          fillOpacity={0.12}
+                          stroke={palette.completed}
+                          strokeWidth={2}
+                          isAnimationActive={false}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="spending"
+                          name={
+                            useSamplePaymentChart
+                              ? "Sample spending"
+                              : "Client spending"
+                          }
+                          fill={palette.spending}
+                          fillOpacity={0.08}
+                          stroke={palette.spending}
+                          strokeWidth={2}
+                          isAnimationActive={false}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
-              )}
-              {!paymentLoading && summary.testPayments > 0 && (
-                <p className="mt-3 text-xs text-muted-foreground">
-                  {money(summary.testPayments)} in simulated test payments
-                  excluded.
-                </p>
-              )}
+              )}{" "}
             </Panel>
             <Panel
               title="Work by project type"

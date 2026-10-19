@@ -15,7 +15,13 @@ import {
 } from "@/components/ui/dialog";
 import { SignupDialog } from "@/components/auth/signup/SignupDialog";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   getMarketplaceServices,
   type MarketplaceItem,
@@ -54,6 +60,9 @@ export default function MarketplaceBrowse({
   const [deepSkillName, setDeepSkillName] = useState("");
   const [ratings, setRatings] = useState<Map<string, number>>(new Map());
   const [services, setServices] = useState<MarketplaceItem[]>([]);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saveError, setSaveError] = useState("");
@@ -63,8 +72,8 @@ export default function MarketplaceBrowse({
   );
   const [filterOpen, setFilterOpen] = useState(false);
   const [filters, setFilters] = useState<MarketplaceFiltersValue>({
-    sort: ["latest"],
-    listingType: "freelancer",
+    sort: guest ? ["latest"] : ["highestRated"],
+    listingType: guest ? "service" : "freelancer",
     minPrice: "",
     maxPrice: "",
     rating: 0,
@@ -154,9 +163,13 @@ export default function MarketplaceBrowse({
     };
   }, [deepCategoryId, deepSkillId]);
   const load = useCallback(
-    async (quiet = false) => {
+    async (quiet = false, pageIndex = 0, append = false) => {
       const request = ++version.current;
-      if (!quiet) setLoading(true);
+      if (append) setLoadingMore(true);
+      else {
+        setLoadingMore(false);
+        if (!quiet) setLoading(true);
+      }
       setError("");
       try {
         const sort: MarketplaceSort = filters.sort.includes("lowestPrice")
@@ -168,7 +181,9 @@ export default function MarketplaceBrowse({
           categoryId: deepCategoryId || null,
           skillId: deepSkillId || null,
           sort,
-          listingType: filters.listingType === "freelancer" ? "service" : "job",
+          listingType: filters.listingType === "job" ? "job" : "service",
+          page: pageIndex,
+          pageSize: 24,
           minPrice: filters.minPrice ? Number(filters.minPrice) : null,
           maxPrice: filters.maxPrice ? Number(filters.maxPrice) : null,
         });
@@ -179,18 +194,35 @@ export default function MarketplaceBrowse({
         );
         const rated = result.filter(
           (item) =>
-            item.listing_type === "job" ||
+            filters.listingType === "job" ||
             (ratings.get(item.freelancer_id ?? "") ?? 0) >= filters.rating,
         );
+        const pageItems = filters.listingType === "freelancer"
+          ? rated.filter((item, index, rows) => item.freelancer_id && rows.findIndex((candidate) => candidate.freelancer_id === item.freelancer_id) === index)
+          : rated;
         if (filters.sort.includes("highestRated"))
-          rated.sort(
+          pageItems.sort(
             (a, b) =>
               (ratings.get(b.freelancer_id ?? "") ?? 0) -
               (ratings.get(a.freelancer_id ?? "") ?? 0),
           );
         if (request === version.current) {
-          setServices(rated);
-          setRatings(ratings);
+          setServices((current) => {
+            const next = append ? [...current, ...pageItems] : pageItems;
+            if (filters.listingType === "freelancer") {
+              const unique = new Map<string, MarketplaceItem>();
+              for (const item of next) {
+                if (item.freelancer_id && !unique.has(item.freelancer_id)) {
+                  unique.set(item.freelancer_id, item);
+                }
+              }
+              return [...unique.values()];
+            }
+            return next;
+          });
+          setRatings((current) => append ? new Map([...current, ...ratings]) : ratings);
+          setHasMore(result.length === 24);
+          setPage(pageIndex);
         }
       } catch (cause) {
         if (request === version.current)
@@ -200,14 +232,20 @@ export default function MarketplaceBrowse({
               : "Unable to load marketplace.",
           );
       } finally {
-        if (request === version.current) setLoading(false);
+        if (request === version.current) {
+          if (append) setLoadingMore(false);
+          else setLoading(false);
+        }
       }
     },
     [search, filters, guest, deepCategoryId, deepSkillId],
   );
   useEffect(() => {
     const requests = version;
-    const timer = setTimeout(() => void load(), 250);
+    setPage(0);
+    setHasMore(false);
+    setServices([]);
+    const timer = setTimeout(() => void load(false, 0, false), 250);
     return () => {
       clearTimeout(timer);
       requests.current++;
@@ -238,7 +276,7 @@ export default function MarketplaceBrowse({
       timer = setTimeout(refresh, 150);
     };
     const channel = supabase.channel("marketplace:" + crypto.randomUUID());
-    for (const table of ["services", "jobs", "reviews"])
+    for (const table of ["services", "jobs", "reviews", "job_applications"])
       channel.on(
         "postgres_changes",
         { event: "*", schema: "public", table },
@@ -359,27 +397,44 @@ export default function MarketplaceBrowse({
         )}
         <div className="flex flex-wrap items-center justify-between gap-3 md:px-5">
           <p role="status" className="text-sm text-muted-foreground">
-            {loading ? "Finding listings..." : `${visible.length} listings`}
+            {loading ? "Finding listings..." : `${visible.length} ${filters.listingType === "freelancer" ? "freelancers" : "listings"}`}
           </p>
           <div className="flex w-full min-w-0 items-center justify-end gap-3 text-sm sm:ml-auto sm:w-auto">
             <span className="shrink-0 text-muted-foreground">Sort by</span>
             <Select
               value={filters.sort[0] ?? "latest"}
               onValueChange={(value) => {
-                setFilters((current) => ({ ...current, sort: [value as SortOption] }));
+                setFilters((current) => ({
+                  ...current,
+                  sort: [value as SortOption],
+                }));
               }}
             >
               <SelectTrigger className="!h-11 min-w-0 flex-1 rounded-lg border bg-card px-3 text-foreground shadow-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/30 sm:flex-none">
                 <SelectValue placeholder="Choose sorting" />
               </SelectTrigger>
-              <SelectContent position="popper" side="bottom" sideOffset={4} avoidCollisions={false} align="end" className="rounded-lg border bg-card p-1 shadow-md">
-                <SelectItem className="rounded-lg py-2.5" value="latest">Latest</SelectItem>
-                <SelectItem className="rounded-lg py-2.5" value="lowestPrice">Lowest price</SelectItem>
-                <SelectItem className="rounded-lg py-2.5" value="highestRated">Highest rated</SelectItem>
+              <SelectContent
+                position="popper"
+                side="bottom"
+                sideOffset={4}
+                avoidCollisions={false}
+                align="end"
+                className="rounded-lg border bg-card p-1 shadow-md"
+              >
+                <SelectItem className="rounded-lg py-2.5" value="latest">
+                  Latest
+                </SelectItem>
+                <SelectItem className="rounded-lg py-2.5" value="lowestPrice">
+                  Lowest price
+                </SelectItem>
+                <SelectItem className="rounded-lg py-2.5" value="highestRated">
+                  Highest rated
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
-        </div>        <MarketplaceFilterSheet
+        </div>{" "}
+        <MarketplaceFilterSheet
           open={filterOpen}
           onOpenChange={setFilterOpen}
           initialFilters={filters}
@@ -388,7 +443,7 @@ export default function MarketplaceBrowse({
               setSignup(true);
               return;
             }
-            setFilters((current) => ({ ...value, sort: current.sort }));
+            setFilters(value);
             setFilterOpen(false);
           }}
         />
@@ -407,19 +462,35 @@ export default function MarketplaceBrowse({
         ) : (
           <MarketplaceGrid
             services={visible}
+            freelancerMode={filters.listingType === "freelancer"}
             ratings={ratings}
             loading={loading}
             saved={saved}
             saving={saving}
-            onSave={toggle}
+            onSave={filters.listingType === "freelancer" ? undefined : toggle}
             onCardClick={(listing) =>
               router.push(
-                listing.listing_type === "service"
+                filters.listingType === "freelancer" && listing.freelancer?.user_id
+                  ? guest
+                    ? `/marketplace/${listing.service_id}`
+                    : `/home/profile/${listing.freelancer.user_id}`
+                  : listing.listing_type === "service"
                   ? `${guest ? "/marketplace" : "/home/marketplace"}/${listing.service_id}`
                   : `${guest ? "/marketplace" : "/home/marketplace"}/jobs/${listing.job_id}`,
               )
             }
           />
+        )}
+        {!error && hasMore && (
+          <div className="flex justify-center pb-4">
+            <Button
+              variant="outline"
+              disabled={loadingMore}
+              onClick={() => void load(false, page + 1, true)}
+            >
+              {loadingMore ? "Loading..." : "Load more"}
+            </Button>
+          </div>
         )}
       </div>
     </main>

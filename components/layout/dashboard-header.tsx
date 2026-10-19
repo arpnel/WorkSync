@@ -9,6 +9,7 @@ import {
   ChevronDown,
   Crown,
   LogOut,
+  Loader2,
   MessageCircle,
   Settings,
   User,
@@ -248,6 +249,19 @@ export function DashboardHeader() {
 
   return (
     <>
+      {loggingOut && (
+        <div
+          className="fixed inset-0 z-[1000] flex items-center justify-center bg-background/75 p-4 text-foreground"
+          role="status"
+          aria-live="assertive"
+          aria-busy="true"
+        >
+          <div className="flex min-w-48 flex-col items-center gap-3 rounded-2xl border bg-card px-8 py-7 shadow-xl">
+            <Loader2 className="size-8 animate-spin text-primary" aria-hidden="true" />
+            <p className="text-sm font-semibold">Logging you out...</p>
+          </div>
+        </div>
+      )}
       <header className="relative z-30 flex h-16 min-w-0 items-center border-b bg-card px-3 sm:px-4 lg:px-6">
         <div className="flex min-w-0 flex-1 items-center gap-1 sm:gap-3">
           <Link

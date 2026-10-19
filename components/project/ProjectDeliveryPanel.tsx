@@ -121,7 +121,7 @@ export function ProjectDeliveryPanel({
       if (!project.projectId) return;
       const request = ++loadVersion.current;
       try {
-        const projectId = project.projectId;
+        const projectId = project.projectId ?? "";
         const fresh = await readProjectCache(
           `delivery:${projectId}`,
           () => getDeliveryHistory(projectId),
@@ -162,26 +162,44 @@ export function ProjectDeliveryPanel({
       !history ||
       !project.projectId ||
       project.currentParty !== "client" ||
-      !["active", "in_progress", "revision"].includes(project.status.toLowerCase())
-    ) return;
+      !["active", "in_progress", "revision"].includes(
+        project.status.toLowerCase(),
+      )
+    )
+      return;
     const approved = history.submissions
-      .filter((submission) => submission.kind === "delivery" && submission.status === "approved")
+      .filter(
+        (submission) =>
+          submission.kind === "delivery" && submission.status === "approved",
+      )
       .sort((a, b) => a.created_at.localeCompare(b.created_at));
     if (!approved.length) return;
     const latest = approved[approved.length - 1];
-    const key = `${project.projectId}:${approved.map((item) => item.submission_id).sort().join(",")}`;
+    const key = `${project.projectId}:${approved
+      .map((item) => item.submission_id)
+      .sort()
+      .join(",")}`;
     if (key === settlementRefresh.current) return;
     settlementRefresh.current = key;
-    void requestProjectSettlementReview(project.projectId, latest.submission_id).then(async (reviewed) => {
-      setNotice(settlementReviewNotice(reviewed));
-      if (reviewed.status !== "completed") return;
-      clearProjectReadCache();
-      await load();
-      await onRefresh();
-    }).catch(() => {
-      settlementRefresh.current = "";
-    });
-  }, [history, load, onRefresh, project.currentParty, project.projectId, project.status]);
+    void requestProjectSettlementReview(project.projectId, latest.submission_id)
+      .then(async (reviewed) => {
+        setNotice(settlementReviewNotice(reviewed));
+        if (reviewed.status !== "completed") return;
+        clearProjectReadCache();
+        await load();
+        await onRefresh();
+      })
+      .catch(() => {
+        settlementRefresh.current = "";
+      });
+  }, [
+    history,
+    load,
+    onRefresh,
+    project.currentParty,
+    project.projectId,
+    project.status,
+  ]);
 
   useEffect(() => {
     if (!project.projectId) return;
@@ -224,8 +242,7 @@ export function ProjectDeliveryPanel({
       setBusy(false);
     }
   }
-  if (!project.projectId) return null;
-  const projectId = project.projectId;
+  const projectId = project.projectId ?? "";
   const active = ["active", "revision"].includes(project.status.toLowerCase());
   const remaining =
     history && project.revisions != null
@@ -236,6 +253,18 @@ export function ProjectDeliveryPanel({
     history?.submissions ?? [],
     project.milestones,
   );
+  const currentMilestone =
+    project.type === "milestone"
+      ? ([...project.milestones]
+          .filter(
+            (item) =>
+              !["approved", "completed", "cancelled"].includes(item.status),
+          )
+          .sort((a, b) => a.displayOrder - b.displayOrder)[0] ?? null)
+      : null;
+  useEffect(() => {
+    if (project.type === "milestone") setMilestone(currentMilestone?.id ?? "");
+  }, [currentMilestone?.id, project.type]);
   const pendingDelivery = (history?.submissions ?? []).some(
     (submission) =>
       reviewable.has(submission.submission_id) &&
@@ -250,53 +279,9 @@ export function ProjectDeliveryPanel({
   const ownReview = history?.reviews.some(
     (review) => review.reviewer_role === project.currentParty,
   );
+  if (!project.projectId) return null;
   return (
     <div className="space-y-5">
-      {active && (
-        <details className="rounded-xl border bg-card p-4 text-sm">
-          <summary className="cursor-pointer font-medium">
-            How review and payment work
-          </summary>
-          <p className="mt-1 text-muted-foreground">
-            {autoReleaseEnabled
-              ? "Intermediate milestone deliveries have three days for client review after submission. Final milestone and standard deliveries have seven days. Client auto-accept can approve future deliveries sooner. Disputes and cancellation holds pause release; processing follows the configured schedule."
-              : "Automatic review and payout are not activated in this environment yet. Review submitted work manually."}
-          </p>
-          {autoReleaseEnabled &&
-            (history?.submissions ?? [])
-              .filter((s) => reviewable.has(s.submission_id))
-              .map((s) => {
-                const at = automaticReviewAt(
-                  s.created_at,
-                  project.dueDate,
-                  !s.milestone_id || s.milestone_id === finalMilestoneId,
-                );
-                return (
-                  at && (
-                    <p key={s.submission_id} className="mt-2 text-xs">
-                      {s.milestone_id
-                        ? project.milestones.find(
-                            (m) => m.id === s.milestone_id,
-                          )?.title
-                        : "Final delivery"}
-                      :{" "}
-                      {autoAccept
-                        ? "client auto-accept is enabled; default review deadline"
-                        : "automatic review eligible"}{" "}
-                      {new Date(at).toLocaleString()}. Open resolution requests
-                      pause release.
-                    </p>
-                  )
-                );
-              })}
-          {project.type === "milestone" && (
-            <p className="mt-2 text-xs text-muted-foreground">
-              Each approved milestone is queued for its own payout after payment
-              checks.
-            </p>
-          )}
-        </details>
-      )}
       <section
         className="space-y-2 rounded-lg bg-muted/30 p-3 sm:p-4"
         aria-label="Project progress"
@@ -433,7 +418,7 @@ export function ProjectDeliveryPanel({
                             >
                               <option value="">Choose milestone</option>
                               {project.milestones
-                                .filter((m) => m.status !== "approved")
+                                .filter((m) => m.id === currentMilestone?.id)
                                 .map((m) => (
                                   <option key={m.id} value={m.id}>
                                     {m.title}
@@ -623,19 +608,34 @@ export function ProjectDeliveryPanel({
                     projectId={projectId}
                     submissionId={submission.submission_id}
                     currentUserId={project.currentUserId}
-                    otherParty={project.currentParty === "client" ? "Freelancer" : "Client"}
+                    otherParty={
+                      project.currentParty === "client"
+                        ? "Freelancer"
+                        : "Client"
+                    }
                     busy={busy}
                     onAdd={async (commentProjectId, submissionId, body) => {
-                      if (busy) throw new Error("A project update is already in progress.");
+                      if (busy)
+                        throw new Error(
+                          "A project update is already in progress.",
+                        );
                       setBusy(true);
                       setError("");
                       try {
-                        await addProjectSubmissionComment(commentProjectId, submissionId, body);
+                        await addProjectSubmissionComment(
+                          commentProjectId,
+                          submissionId,
+                          body,
+                        );
                         clearProjectReadCache();
                         await load();
                         await onRefresh();
                       } catch (cause) {
-                        setError(cause instanceof Error ? cause.message : "Unable to add comment.");
+                        setError(
+                          cause instanceof Error
+                            ? cause.message
+                            : "Unable to add comment.",
+                        );
                         throw cause;
                       } finally {
                         setBusy(false);
@@ -783,9 +783,17 @@ export function ProjectDeliveryPanel({
                     void act(async () => {
                       if (reviewing.action === "approve") {
                         const approvedIds = (history?.submissions ?? [])
-                          .filter((submission) => submission.kind === "delivery" && submission.status === "approved")
+                          .filter(
+                            (submission) =>
+                              submission.kind === "delivery" &&
+                              submission.status === "approved",
+                          )
                           .map((submission) => submission.submission_id);
-                        if (!approvedIds.includes(reviewing.submission.submission_id))
+                        if (
+                          !approvedIds.includes(
+                            reviewing.submission.submission_id,
+                          )
+                        )
                           approvedIds.push(reviewing.submission.submission_id);
                         settlementRefresh.current = `${projectId}:${approvedIds.sort().join(",")}`;
                       }
@@ -797,7 +805,9 @@ export function ProjectDeliveryPanel({
                       );
                       setReviewing(null);
                       if (reviewing.action === "approve")
-                        return settlementReviewNotice(settlementReviewed ?? { status: "request_failed" });
+                        return settlementReviewNotice(
+                          settlementReviewed ?? { status: "request_failed" },
+                        );
                     }, "Delivery updated.");
                 }}
               >

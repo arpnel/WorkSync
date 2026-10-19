@@ -14,6 +14,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import PortfolioEditor from "./PortfolioEditor";
+import { DocumentPreview } from "./DocumentPreview";
+import { supabase } from "@/lib/supabaseClient";
 
 interface PortfolioSectionProps {
   userId: string;
@@ -27,6 +29,9 @@ export default function PortfolioSection({
   editable = false,
 }: PortfolioSectionProps) {
   const [projects, setProjects] = useState<PortfolioProject[]>([]);
+  const [samplePaths, setSamplePaths] = useState<string[]>([]);
+  const [sampleError, setSampleError] = useState("");
+  const [sampleRetry, setSampleRetry] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<PortfolioProject | null | undefined>();
@@ -48,6 +53,29 @@ export default function PortfolioSection({
   useEffect(() => {
     void loadProjects();
   }, [loadProjects]);
+  useEffect(() => {
+    if (!isOwner) return;
+    let active = true;
+    async function loadSamples() {
+      setSampleError("");
+      try {
+        const result = await supabase
+          .from("freelancer_profiles")
+          .select("portfolio_sample_urls")
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (!active) return;
+        if (result.error) throw result.error;
+        setSamplePaths(result.data?.portfolio_sample_urls ?? []);
+      } catch {
+        if (active) setSampleError("Unable to load uploaded work samples.");
+      }
+    }
+    void loadSamples();
+    return () => {
+      active = false;
+    };
+  }, [isOwner, sampleRetry, userId]);
 
   const handleDelete = async (id: string) => {
     const confirmed = window.confirm("Delete this portfolio project?");
@@ -80,6 +108,41 @@ export default function PortfolioSection({
       </CardHeader>
 
       <CardContent>
+        {isOwner && samplePaths.length > 0 && (
+          <section className="mb-5 space-y-3">
+            <div>
+              <h3 className="font-semibold">Uploaded work samples</h3>
+              <p className="text-sm text-muted-foreground">
+                Setup samples visible only to you.
+              </p>
+            </div>
+            <div className="divide-y rounded-lg border px-3">
+              {samplePaths.map((path, index) => (
+                <DocumentPreview
+                  key={`${index}-${path}`}
+                  label={`Work sample ${index + 1}`}
+                  path={path}
+                  bucket="verification-documents"
+                />
+              ))}
+            </div>
+          </section>
+        )}
+        {sampleError && (
+          <div
+            role="alert"
+            className="mb-4 flex items-center justify-between gap-3 text-sm text-destructive"
+          >
+            {sampleError}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSampleRetry((value) => value + 1)}
+            >
+              Retry
+            </Button>
+          </div>
+        )}
         {error && (
           <div
             role="alert"
@@ -112,7 +175,21 @@ export default function PortfolioSection({
               </div>
             ))}
           </div>
-        ) : error && projects.length === 0 ? null : projects.length === 0 ? (
+        ) : error && projects.length === 0 ? null : projects.length === 0 &&
+          samplePaths.length > 0 ? (
+          <div className="rounded-xl border border-dashed py-6 text-center">
+            <p className="text-sm text-muted-foreground">
+              Your uploaded work samples are shown above. Add a project to
+              include its title, description, and link.
+            </p>
+            {isOwner && editable && (
+              <Button className="mt-4" onClick={() => setEditing(null)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Project
+              </Button>
+            )}
+          </div>
+        ) : projects.length === 0 ? (
           <div className="rounded-xl border border-dashed py-12 text-center">
             <p className="text-lg font-medium">No portfolio projects yet</p>
 

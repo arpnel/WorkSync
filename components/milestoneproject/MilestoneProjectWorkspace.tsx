@@ -147,6 +147,7 @@ export function MilestoneProjectWorkspace({ orderId }: { orderId: string }) {
               workspace.status.toLowerCase() !== "cancelled" ? (
                 <MilestonePlanningForm
                   remainingBudget={workspace.budget - milestoneTotal}
+                  previousDueDate={workspace.milestones.at(-1)?.dueDate}
                   orderId={workspace.orderId}
                   onRefresh={refresh}
                 />
@@ -190,7 +191,7 @@ export function MilestoneProjectWorkspace({ orderId }: { orderId: string }) {
               </div>
             </CardContent>
           </Card>
-</div>
+        </div>
       </div>
       <div className="flex justify-end pt-4">
         <div className="w-full sm:max-w-lg">

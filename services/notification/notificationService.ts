@@ -36,12 +36,44 @@ async function fetchNotifications(): Promise<NotificationRecord[]> {
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
   const { data: auth } = await supabase.auth.getSession();
-  const preferences: unknown =
-    auth.session?.user.user_metadata?.hidden_notification_groups;
-  const hidden = Array.isArray(preferences) ? preferences : [];
+  const metadata = auth.session?.user.user_metadata;
+  const hidden: unknown[] = Array.isArray(metadata?.hidden_notification_groups)
+    ? metadata.hidden_notification_groups
+    : [];
+  const hiddenMessageGroups: unknown[] = Array.isArray(
+    metadata?.hidden_message_notification_groups,
+  )
+    ? metadata.hidden_message_notification_groups
+    : [];
+  const messageRows = (data ?? []).filter((item) =>
+    String(item.type ?? "").toLowerCase().includes("message"),
+  );
+  const conversationIds = [
+    ...new Set(
+      messageRows
+        .map((item) => item.related_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  const conversationsResult = conversationIds.length
+    ? await supabase
+        .from("conversations")
+        .select("conversation_id, project_id, order_id, job_id")
+        .in("conversation_id", conversationIds)
+    : { data: [], error: null };
+  const conversationGroups = new Map(
+    (conversationsResult.data ?? []).map((conversation) => [
+      conversation.conversation_id,
+      conversation.order_id
+        ? "orders"
+        : conversation.project_id || conversation.job_id
+          ? "projects"
+          : "direct",
+    ]),
+  );
   return (data ?? [])
     .filter((item) => {
-      const type = String(item.type ?? "");
+      const type = String(item.type ?? "").toLowerCase();
       const group = type.includes("message")
         ? "messages"
         : type.includes("review")
@@ -49,7 +81,17 @@ async function fetchNotifications(): Promise<NotificationRecord[]> {
           : /project|contract|milestone|application|service_request/.test(type)
             ? "projects"
             : null;
-      return !group || !hidden.includes(group);
+      if (group && hidden.includes(group)) return false;
+      if (!type.includes("message")) return true;
+      const messageGroup = conversationGroups.get(item.related_id ?? "") ??
+        (type.includes("order")
+          ? "orders"
+          : type.includes("direct")
+            ? "direct"
+            : type.includes("project") || type.includes("job")
+              ? "projects"
+              : null);
+      return !messageGroup || !hiddenMessageGroups.includes(messageGroup);
     })
     .map((item) => ({
       id: item.notification_id,
@@ -69,6 +111,17 @@ export async function markNotificationRead(notificationId: string) {
   const { error } = await supabase
     .from("notifications")
     .update({ is_read: true })
+    .eq("notification_id", notificationId)
+    .eq("user_id", userId);
+  if (error) throw new Error(error.message);
+  invalidatePageReads();
+}
+
+export async function markNotificationUnread(notificationId: string) {
+  const userId = await currentUserId();
+  const { error } = await supabase
+    .from("notifications")
+    .update({ is_read: false })
     .eq("notification_id", notificationId)
     .eq("user_id", userId);
   if (error) throw new Error(error.message);

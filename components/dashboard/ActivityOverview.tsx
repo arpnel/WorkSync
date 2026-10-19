@@ -117,7 +117,7 @@ function ProjectStatus({ status }: { status: string }) {
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[clamp(0.8125rem,0.75rem+0.2vw,0.9375rem)] font-medium capitalize ${tone}`}
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${tone}`}
     >
       <span
         aria-hidden="true"
@@ -232,12 +232,10 @@ export default function ActivityOverview({
     },
   ];
   const projectActivity = (
-    <Card className="min-w-0">
+    <Card size="sm" className="min-w-0">
       <CardHeader>
-        <CardTitle className="text-[clamp(1.125rem,1rem+0.3vw,1.375rem)]">
-          Project activity
-        </CardTitle>
-        <CardDescription className="text-[clamp(0.875rem,0.75rem+0.3vw,1rem)]">
+        <CardTitle className="text-base">Project activity</CardTitle>
+        <CardDescription className="text-sm">
           Your projects, current status, and deadlines. Budgets are agreed
           contract values.
         </CardDescription>
@@ -249,7 +247,7 @@ export default function ActivityOverview({
               {projects.map((p) => (
                 <article
                   key={p.id}
-                  className="rounded-xl border bg-muted/20 p-4"
+                  className="rounded-lg border bg-muted/20 p-3"
                 >
                   <Link
                     className="break-words font-semibold text-primary hover:underline"
@@ -260,9 +258,9 @@ export default function ActivityOverview({
                   <div className="mt-2">
                     <ProjectStatus status={p.status} />
                   </div>
-                  <dl className="mt-3 grid grid-cols-2 gap-3 text-[clamp(0.875rem,0.75rem+0.3vw,1rem)]">
+                  <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
                     <div>
-                      <dt className="text-[clamp(0.8125rem,0.75rem+0.2vw,0.9375rem)] text-muted-foreground">
+                      <dt className="text-xs text-muted-foreground">
                         Budget (PHP)
                       </dt>
                       <dd className="mt-1 break-words">
@@ -272,7 +270,7 @@ export default function ActivityOverview({
                       </dd>
                     </div>
                     <div>
-                      <dt className="text-[clamp(0.8125rem,0.75rem+0.2vw,0.9375rem)] text-muted-foreground">
+                      <dt className="text-xs text-muted-foreground">
                         Deadline
                       </dt>
                       <dd className="mt-1">
@@ -286,7 +284,7 @@ export default function ActivityOverview({
               ))}
             </div>
             <div className="hidden md:block">
-              <Table className="text-[clamp(0.875rem,0.75rem+0.3vw,1rem)]">
+              <Table className="text-sm [&_td]:py-1.5 [&_th]:h-9">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Project</TableHead>
@@ -326,13 +324,13 @@ export default function ActivityOverview({
             </div>
           </>
         ) : (
-          <p className="text-[clamp(0.875rem,0.75rem+0.3vw,1rem)] text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             No projects in this period.
           </p>
         )}
         {reports && (
           <p
-            className={`mt-4 rounded-lg border px-4 py-3 text-[clamp(0.875rem,0.75rem+0.3vw,1rem)] font-medium ${tones.green}`}
+            className={`mt-4 rounded-lg border px-4 py-3 text-sm font-medium ${tones.green}`}
           >
             Completion rate:{" "}
             {projects.length
@@ -345,11 +343,9 @@ export default function ActivityOverview({
     </Card>
   );
   const recentNotifications = (
-    <Card className="min-w-0">
+    <Card size="sm" className="min-w-0">
       <CardHeader>
-        <CardTitle className="text-[clamp(1.125rem,1rem+0.3vw,1.375rem)]">
-          Recent notifications
-        </CardTitle>
+        <CardTitle className="text-base">Recent notifications</CardTitle>
       </CardHeader>
       <CardContent className="divide-y">
         {selectedNotification && (
@@ -363,28 +359,22 @@ export default function ActivityOverview({
           <button
             type="button"
             key={n.id}
-            className="w-full rounded-md py-3 text-left transition hover:bg-muted/60 focus-visible:outline-2 focus-visible:outline-primary"
+            className="w-full rounded-md py-2 text-left transition hover:bg-muted/60 focus-visible:outline-2 focus-visible:outline-primary"
             onClick={() => {
               setSelectedNotification(n);
               if (n.unread)
                 void markNotificationRead(n.id).catch(() => undefined);
             }}
           >
-            <p className="text-[clamp(0.875rem,0.75rem+0.3vw,1rem)] font-medium">
-              {n.title}
-            </p>
-            <p className="text-[clamp(0.875rem,0.75rem+0.3vw,1rem)] text-muted-foreground">
-              {n.description}
-            </p>
-            <time className="text-[clamp(0.8125rem,0.75rem+0.2vw,0.9375rem)] text-muted-foreground">
+            <p className="text-sm font-medium">{n.title}</p>
+            <p className="text-sm text-muted-foreground">{n.description}</p>
+            <time className="text-xs text-muted-foreground">
               {new Date(n.createdAt).toLocaleString()}
             </time>
           </button>
         ))}
         {!notificationItems.length && (
-          <p className="text-[clamp(0.875rem,0.75rem+0.3vw,1rem)] text-muted-foreground">
-            No activity yet.
-          </p>
+          <p className="text-sm text-muted-foreground">No activity yet.</p>
         )}
         <Link
           className="mt-3 block text-[clamp(0.875rem,0.75rem+0.3vw,1rem)] underline"
@@ -493,7 +483,7 @@ export default function ActivityOverview({
       )}
       {charts && (
         <div
-          className={`col-span-12 min-w-0 @min-[900px]:col-span-1 @min-[900px]:col-start-1 ${tools && phoneView !== "performance" ? "hidden md:block" : ""}`}
+          className={`col-span-12 min-w-0 @min-[900px]:col-span-1 @min-[900px]:col-start-1 ${tools ? "@min-[900px]:-mt-20" : ""} ${tools && phoneView !== "performance" ? "hidden md:block" : ""}`}
         >
           {charts(projectActivity)}
         </div>

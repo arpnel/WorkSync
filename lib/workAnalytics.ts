@@ -46,7 +46,8 @@ export function summarize(
     const amount = Number(payment.amount ?? 0);
     if (!Number.isFinite(amount)) continue;
     if (payment.mode === "test") testPayments += amount;
-    else if (project.party === "freelancer") earnings += amount;
+    // Include recorded test-mode payments in the role-based graph too.
+    if (project.party === "freelancer") earnings += amount;
     else spending += amount;
   }
   const requests = projects.filter((p) => inPeriod(p.createdAt, from, to));

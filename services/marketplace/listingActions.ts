@@ -1,6 +1,9 @@
 import { readPageCache, invalidatePageReads } from "@/lib/pageReadCache";
 import { supabase } from "@/lib/supabaseClient";
-import { assertFreelancerAvailable, getOwnFreelancerId } from "./freelancerAvailability";
+import {
+  assertFreelancerAvailable,
+  getOwnFreelancerId,
+} from "./freelancerAvailability";
 import {
   databaseError,
   platformAction,
@@ -93,7 +96,8 @@ export async function applyForJob(
   } = await supabase.auth.getSession();
   if (!session) throw new Error("Sign in to apply.");
   const freelancerId = await getOwnFreelancerId();
-  if (!freelancerId) throw new Error("A freelancer profile is required to apply.");
+  if (!freelancerId)
+    throw new Error("A freelancer profile is required to apply.");
   await assertFreelancerAvailable(freelancerId);
   const response = await fetch("/api/applications", {
     method: "POST",
@@ -109,6 +113,7 @@ export async function applyForJob(
       result?.error ||
         "Application submission could not be confirmed. Check your Requests before retrying.",
     );
+  invalidatePageReads();
   return result.applicationId as string;
 }
 export function getFreelancerRatings(

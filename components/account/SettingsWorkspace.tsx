@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   CreditCard,
   Wallet,
@@ -59,6 +59,20 @@ export function SettingsWorkspace({
 }) {
   const [active, setActive] = useState("account");
   const [phoneDetail, setPhoneDetail] = useState(false);
+
+  useEffect(() => {
+    const syncSection = () => {
+      const hash = window.location.hash.slice(1);
+      const section = hash === "messages" ? "messaging" : hash;
+      if (sections.some((item) => item.id === section)) {
+        setActive(section);
+        setPhoneDetail(true);
+      }
+    };
+    syncSection();
+    window.addEventListener("hashchange", syncSection);
+    return () => window.removeEventListener("hashchange", syncSection);
+  }, []);
   return (
     <Tabs
       value={active}

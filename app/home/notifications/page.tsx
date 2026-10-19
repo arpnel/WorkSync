@@ -3,6 +3,8 @@ import { WorkspacePageHeader } from "@/components/shared/WorkspacePageHeader";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
 import { NotificationDetailDialog } from "@/components/notifications/NotificationDetailDialog";
 import type { NotificationRecord } from "@/services/notification/notificationService";
 import { formatDistanceToNow, isToday } from "date-fns";
@@ -10,6 +12,8 @@ import {
   BellRing,
   BriefcaseBusiness,
   CheckCheck,
+  CircleX,
+  Clock3,
   FileCheck2,
   MessageCircle,
   Settings2,
@@ -18,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   getNotificationKind,
+  getNotificationTone,
   type NotificationKind,
 } from "@/components/notifications/notification-data";
 import { useNotifications } from "@/hooks/notification/useNotifications";
@@ -39,10 +44,39 @@ const kindLabels: Record<NotificationKind, string> = {
 
 export default function NotificationsPage() {
   const [selected, setSelected] = useState<NotificationRecord | null>(null);
+  const router = useRouter();
   const { items, loading, error, unreadCount, markRead, markAllRead } =
     useNotifications();
+  const openNotification = async (item: NotificationRecord) => {
+    if (item.unread) void markRead(item.id).catch(() => undefined);
+    const lowerTitle = item.title.toLowerCase();
+    const selectedApplication =
+      item.type?.includes("application") &&
+      /selected|discussion|accepted/.test(lowerTitle) &&
+      !/declined|rejected/.test(lowerTitle);
+    if (selectedApplication && item.relatedId) {
+      try {
+        const result = await supabase
+          .from("conversations")
+          .select("conversation_id")
+          .eq("job_id", item.relatedId)
+          .limit(1)
+          .maybeSingle();
+        if (result.data?.conversation_id) {
+          router.push(
+            "/home/messages?conversation=" +
+              encodeURIComponent(result.data.conversation_id),
+          );
+          return;
+        }
+      } catch {
+        // Fall back to the notification detail when chat cannot be resolved.
+      }
+    }
+    setSelected(item);
+  };
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6">
+    <div className="mx-auto w-full max-w-7xl space-y-6">
       {selected && (
         <NotificationDetailDialog
           key={selected.id}
@@ -74,6 +108,7 @@ export default function NotificationsPage() {
           Mark all as read
         </Button>
       </div>
+
       {error && (
         <p className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
           {error}
@@ -107,21 +142,47 @@ export default function NotificationsPage() {
             <div className="overflow-hidden rounded-lg border bg-card">
               {grouped.map((item) => {
                 const kind = getNotificationKind(item.type);
-                const Icon = kindIcons[kind];
+                const tone = getNotificationTone(item.type, item.title);
+                const Icon =
+                  tone === "declined"
+                    ? CircleX
+                    : tone === "deadline"
+                      ? Clock3
+                      : kindIcons[kind];
+                const toneClass =
+                  tone === "declined"
+                    ? "text-rose-700 dark:text-rose-300"
+                    : tone === "deadline"
+                      ? "text-amber-700 dark:text-amber-300"
+                      : "text-foreground";
+                const iconClass =
+                  tone === "declined"
+                    ? "bg-rose-100/80 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300"
+                    : tone === "deadline"
+                      ? "bg-amber-100/80 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300"
+                      : "bg-muted";
                 return (
                   <article
                     key={item.id}
                     id={item.id}
-                    className={`scroll-mt-24 border-b p-4 transition-colors last:border-b-0 hover:bg-muted/40 sm:p-5 ${item.unread ? "border-border bg-primary/[0.025]" : "bg-card"}`}
+                    className={`cursor-pointer scroll-mt-24 border-b p-4 transition-colors last:border-b-0 hover:bg-muted/40 sm:p-5 ${selected?.id === item.id ? "bg-primary/[0.06] ring-1 ring-inset ring-primary/25" : item.unread ? "bg-primary/[0.025]" : "bg-card"}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void openNotification(item);
+                    }}
                   >
                     <div className="flex gap-4">
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted">
+                      <span
+                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md ${iconClass}`}
+                      >
                         <Icon className="h-5 w-5" />
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex items-center gap-2">
-                            <h3 className="font-semibold">{item.title}</h3>
+                            <h3 className={`font-semibold ${toneClass}`}>
+                              {item.title}
+                            </h3>
                             {item.unread && (
                               <span className="h-2 w-2 rounded-full bg-primary" />
                             )}
@@ -140,10 +201,9 @@ export default function NotificationsPage() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => {
-                              setSelected(item);
-                              if (item.unread)
-                                void markRead(item.id).catch(() => undefined);
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void openNotification(item);
                             }}
                           >
                             View details

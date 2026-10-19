@@ -39,3 +39,24 @@ export function getNotificationHref(
     return "/home/projects";
   return relatedId ? `/home/notifications#${relatedId}` : "/home/notifications";
 }
+
+export type NotificationTone = "declined" | "deadline" | "default";
+
+export function getNotificationTone(
+  type: string | null,
+  title: string,
+): NotificationTone {
+  const normalizedTitle = title.toLowerCase();
+  const normalizedType = type?.toLowerCase() ?? "";
+  if (
+    /declin|reject|not selected/.test(normalizedTitle) ||
+    /application_declined|application_rejected/.test(normalizedType)
+  )
+    return "declined";
+  if (
+    /deadline|due soon|due date|approaching/.test(normalizedTitle) ||
+    /deadline/.test(normalizedType)
+  )
+    return "deadline";
+  return "default";
+}

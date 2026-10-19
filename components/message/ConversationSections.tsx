@@ -28,21 +28,16 @@ export const sections = [
   {
     id: "projects",
     label: "Projects",
-    description: "Conversations about your projects.",
+    description: "Service projects and job discussions.",
     icon: FolderKanban,
   },
   {
     id: "orders",
     label: "Orders",
-    description: "Service orders and delivery updates.",
+    description: "Order discussions and delivery updates.",
     icon: ShoppingBag,
   },
-  {
-    id: "jobs",
-    label: "Jobs",
-    description: "Conversations about jobs.",
-    icon: BriefcaseBusiness,
-  },
+
   {
     id: "direct",
     label: "Direct",

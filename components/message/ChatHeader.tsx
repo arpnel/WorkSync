@@ -2,7 +2,6 @@
 
 import type { ReactNode } from "react";
 import { ArrowLeft, Briefcase } from "lucide-react";
-
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +13,7 @@ interface ChatHeaderProps {
   project?: string;
   avatar?: string;
   online?: boolean;
+  typing?: boolean;
   onBack?: () => void;
   onViewProject?: () => void;
 }
@@ -25,6 +25,7 @@ export default function ChatHeader({
   project,
   avatar,
   online,
+  typing = false,
   onViewProject,
   onBack,
 }: ChatHeaderProps) {
@@ -54,7 +55,6 @@ export default function ChatHeader({
             <AvatarImage src={avatar} alt={name} />
             <AvatarFallback>{initials}</AvatarFallback>
           </Avatar>
-
           {online === true && (
             <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-background bg-green-500" />
           )}
@@ -63,9 +63,8 @@ export default function ChatHeader({
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <h2 className="truncate text-base font-semibold sm:text-lg">
-              {name}
+              {project ?? name}
             </h2>
-
             {typeof online === "boolean" && (
               <Badge
                 variant={online ? "default" : "secondary"}
@@ -75,17 +74,20 @@ export default function ChatHeader({
               </Badge>
             )}
           </div>
-
           <div className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground sm:flex-wrap sm:text-sm">
-            {role && <span>{role}</span>}
-            {role && project && <span aria-hidden="true">/</span>}
-
-            {project && (
+            {typing ? (
+              <span role="status" className="text-primary">
+                Typing…
+              </span>
+            ) : (
               <>
-                <Briefcase className="h-4 w-4" />
-                <span className="truncate" title={project}>
-                  {project}
-                </span>
+                {project ? (
+                  <span className="truncate">{name}</span>
+                ) : (
+                  role && <span>{role}</span>
+                )}
+                {project && role && <span aria-hidden="true">/</span>}
+                {project && role && <span>{role}</span>}
               </>
             )}
           </div>

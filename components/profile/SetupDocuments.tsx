@@ -6,7 +6,6 @@ import { supabase } from "@/lib/supabaseClient";
 import { DocumentPreview } from "./DocumentPreview";
 import { DocumentsEditor } from "./DocumentsEditor";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 type Document = { label: string; path: string; bucket: string };
 
@@ -47,7 +46,7 @@ export function SetupDocuments({
                 {
                   label: "Resume / CV",
                   path: data.resume_url,
-                  bucket: "resumes",
+                  bucket: "verification-documents",
                 },
               ]
             : []),
@@ -55,14 +54,14 @@ export function SetupDocuments({
             (path: string, index: number) => ({
               label: `Portfolio sample ${index + 1}`,
               path,
-              bucket: "verification",
+              bucket: "verification-documents",
             }),
           ),
           ...(data?.certification_urls ?? []).map(
             (path: string, index: number) => ({
               label: `Certification ${index + 1}`,
               path,
-              bucket: "verification",
+              bucket: "verification-documents",
             }),
           ),
         ]);
@@ -84,7 +83,7 @@ export function SetupDocuments({
   }, [userId, revision]);
 
   return (
-    <Card>
+    <section className="space-y-4">
       {editing && (
         <DocumentsEditor
           userId={userId}
@@ -97,9 +96,9 @@ export function SetupDocuments({
           }}
         />
       )}
-      <CardHeader>
+      <div>
         <div className="flex items-center justify-between gap-3">
-          <CardTitle>Your setup documents</CardTitle>
+          <h2 className="text-base font-semibold">Your setup documents</h2>
           {editable && (
             <Button
               size="sm"
@@ -115,8 +114,8 @@ export function SetupDocuments({
           Supporting files saved during setup. Publish portfolio projects
           separately in the Portfolio tab.
         </p>
-      </CardHeader>
-      <CardContent className="space-y-3">
+      </div>
+      <div className="space-y-4">
         {error && (
           <p role="alert" className="text-sm text-destructive">
             {error}
@@ -127,13 +126,47 @@ export function SetupDocuments({
             Loading documents…
           </p>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2">
-            {documents.map((document) => (
-              <DocumentPreview
-                key={`${document.bucket}/${document.path}`}
-                {...document}
-              />
-            ))}
+          <div className="space-y-4">
+            {(
+              [
+                {
+                  title: "CV / Resume",
+                  match: (document: Document) =>
+                    document.label === "Resume / CV",
+                },
+                {
+                  title: "Portfolio",
+                  match: (document: Document) =>
+                    document.label.startsWith("Portfolio"),
+                },
+                {
+                  title: "Certifications",
+                  match: (document: Document) =>
+                    document.label.startsWith("Certification"),
+                },
+              ] as const
+            ).map((group) => {
+              const files = documents.filter(group.match);
+              return (
+                <section key={group.title} className="space-y-2 border-t pt-4">
+                  <h3 className="text-sm font-semibold">{group.title}</h3>
+                  {files.length ? (
+                    <div className="space-y-3">
+                      {files.map((document) => (
+                        <DocumentPreview
+                          key={`${document.bucket}/${document.path}`}
+                          {...document}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      No {group.title.toLowerCase()} uploaded.
+                    </p>
+                  )}
+                </section>
+              );
+            })}
           </div>
         )}
         {!loading && !error && !documents.length && (
@@ -141,7 +174,7 @@ export function SetupDocuments({
             No supporting files saved.
           </p>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }

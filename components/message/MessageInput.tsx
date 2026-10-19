@@ -1,5 +1,11 @@
 "use client";
-import { useRef, useState, type KeyboardEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
 import { Paperclip, SendHorizontal, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -10,6 +16,8 @@ interface MessageInputProps {
   allowAttachments?: boolean;
   disabled?: boolean;
   placeholder?: string;
+  enterToSend?: boolean;
+  onTypingChange?: (isTyping: boolean) => void;
 }
 export default function MessageInput({
   onSend,
@@ -17,14 +25,41 @@ export default function MessageInput({
   allowAttachments = false,
   disabled = false,
   placeholder = "Write a message...",
+  enterToSend = true,
+  onTypingChange,
 }: MessageInputProps) {
   const [message, setMessage] = useState("");
   const [attachment, setAttachment] = useState<File | undefined>();
   const [submitting, setSubmitting] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const busy = useRef(false);
+  const typingTimer = useRef<number | null>(null);
+  const stopTyping = useCallback(() => {
+    if (typingTimer.current !== null) window.clearTimeout(typingTimer.current);
+    typingTimer.current = null;
+    onTypingChange?.(false);
+  }, [onTypingChange]);
+  const handleDraftChange = (value: string) => {
+    setMessage(value);
+    if (!onTypingChange) return;
+    onTypingChange(Boolean(value.trim()));
+    if (typingTimer.current !== null) window.clearTimeout(typingTimer.current);
+    typingTimer.current = value.trim()
+      ? window.setTimeout(() => {
+          typingTimer.current = null;
+          onTypingChange(false);
+        }, 1800)
+      : null;
+  };
+  useEffect(
+    () => () => {
+      stopTyping();
+    },
+    [stopTyping],
+  );
   const sendMessage = async () => {
     if ((!message.trim() && !attachment) || disabled || busy.current) return;
+    stopTyping();
     busy.current = true;
     setSubmitting(true);
     try {
@@ -42,6 +77,7 @@ export default function MessageInput({
   };
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (
+      enterToSend &&
       event.key === "Enter" &&
       !event.shiftKey &&
       !event.nativeEvent.isComposing
@@ -103,8 +139,9 @@ export default function MessageInput({
         )}
         <Textarea
           value={message}
-          onChange={(event) => setMessage(event.target.value)}
+          onChange={(event) => handleDraftChange(event.target.value)}
           onKeyDown={handleKeyDown}
+          onBlur={stopTyping}
           placeholder={placeholder}
           disabled={disabled || submitting}
           aria-label="Write a message"
@@ -124,8 +161,10 @@ export default function MessageInput({
         </Button>
       </div>
       <p className="mt-1.5 pl-1 text-[10px] text-muted-foreground">
-        Enter to send ? Shift + Enter for a new line
-        {allowAttachments ? " ? Files up to 10 MB" : ""}
+        {enterToSend
+          ? "Enter to send · Shift + Enter for a new line"
+          : "Enter for a new line"}
+        {allowAttachments ? " · Files up to 10 MB" : ""}
       </p>
     </div>
   );

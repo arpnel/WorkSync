@@ -15,6 +15,12 @@ import { RequestList } from "@/components/project/RequestList";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  BriefcaseBusiness,
+  CheckCircle2,
+  FolderKanban,
+  MessageSquareText,
+} from "lucide-react";
 
 export default function Page() {
   return (
@@ -100,27 +106,51 @@ function ProjectsPage() {
       />
       {!loading && (
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-          {(
-            [
-              ["All projects", projects.length],
-              ["Active", projects.filter((p) => p.status === "Active").length],
-              [
-                "In discussion",
+          {[
+            {
+              label: "All projects",
+              count: projects.length,
+              Icon: FolderKanban,
+              iconTone: "bg-primary/10 text-primary",
+            },
+            {
+              label: "Active",
+              count: projects.filter((p) => p.status === "Active").length,
+              Icon: BriefcaseBusiness,
+              iconTone: "bg-blue-500/10 text-blue-700 dark:text-blue-300",
+            },
+            {
+              label: "In discussion",
+              count:
                 projects.filter((p) => p.status === "In Discussion").length +
-                  discussions.length,
-              ],
-              [
-                "Completed",
-                projects.filter((p) => p.status === "Completed").length,
-              ],
-            ] as const
-          ).map(([label, count]) => (
-            <Card key={label} className="gap-0 py-5">
+                discussions.length,
+              Icon: MessageSquareText,
+              iconTone: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
+            },
+            {
+              label: "Completed",
+              count: projects.filter((p) => p.status === "Completed").length,
+              Icon: CheckCircle2,
+              iconTone:
+                "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+            },
+          ].map(({ label, count, Icon, iconTone }) => (
+            <Card className="h-full gap-0 py-5 transition-colors" key={label}>
               <CardContent>
-                <p className="text-xs font-medium text-muted-foreground">
-                  {label}
-                </p>
-                <p className="mt-2 text-2xl font-semibold tabular-nums">
+                <div className="flex flex-wrap-reverse items-center justify-between gap-2">
+                  <p className="text-sm leading-snug font-medium text-muted-foreground">
+                    {label}
+                  </p>
+                  <span
+                    className={`flex size-9 shrink-0 items-center justify-center rounded-md ${iconTone}`}
+                  >
+                    <Icon
+                      className="size-4 shrink-0 2xl:size-5"
+                      aria-hidden="true"
+                    />
+                  </span>
+                </div>
+                <p className="mt-2 text-[clamp(1.75rem,1.25rem+1vw,2.5rem)] leading-tight font-semibold tabular-nums">
                   {count}
                 </p>
               </CardContent>

@@ -1,8 +1,9 @@
 "use client";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 
-import { CalendarDays, RotateCcw, Users, Wallet } from "lucide-react";
+import { CalendarDays, RotateCcw, Wallet } from "lucide-react";
 import ProjectMeetings from "@/components/project/ProjectMeetings";
+import { ProjectChatPanel } from "@/components/project/ProjectChatPanel";
 import { ProjectResolutionPanel } from "@/components/project/ProjectResolutionPanel";
 import { ActiveProjectWorkspace } from "@/components/project/ActiveProjectWorkspace";
 import { ProjectDeliveryPanel } from "@/components/project/ProjectDeliveryPanel";
@@ -22,6 +23,10 @@ export function StandardProjectWorkspace({ orderId }: { orderId: string }) {
     loading,
     updatingAgreement,
     updatingApprovalKey,
+    sending,
+    isOtherParticipantTyping,
+    sendMessage,
+    sendTyping,
     error,
     respondToAgreement,
     respondToAgreementItem,
@@ -68,6 +73,8 @@ export function StandardProjectWorkspace({ orderId }: { orderId: string }) {
         categoryName={workspace.categoryName}
         status={workspace.status}
         type={workspace.type}
+        clientName={workspace.clientName}
+        freelancerName={workspace.freelancerName}
         onBack={() => router.push("/home/projects")}
       />
 
@@ -90,7 +97,7 @@ export function StandardProjectWorkspace({ orderId }: { orderId: string }) {
       />
 
       <div className="grid gap-5 xl:grid-cols-2 2xl:grid-cols-[minmax(320px,1fr)_minmax(380px,1fr)] 2xl:items-start">
-<fieldset
+        <fieldset
           className="min-w-0"
           disabled={["active", "revision", "completed", "cancelled"].includes(
             workspace.status.toLowerCase(),
@@ -150,26 +157,17 @@ export function StandardProjectWorkspace({ orderId }: { orderId: string }) {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Users className="h-4 w-4" />
-                Participants
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <div>
-                <p className="text-xs text-muted-foreground">Client</p>
-                <p className="mt-1 font-medium">{workspace.clientName}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Freelancer</p>
-                <p className="mt-1 font-medium">{workspace.freelancerName}</p>
-              </div>
-            </CardContent>
-          </Card>
+          <ProjectChatPanel
+            conversationId={workspace.conversationId}
+            messages={workspace.messages}
+            sending={sending}
+            isOtherParticipantTyping={isOtherParticipantTyping}
+            onSend={sendMessage}
+            onTypingChange={sendTyping}
+          />
         </aside>
       </div>
+
       <div className="flex justify-end pt-4">
         <div className="w-full sm:max-w-lg">
           <ProjectResolutionPanel

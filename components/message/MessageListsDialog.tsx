@@ -62,7 +62,15 @@ export default function MessageListsDialog({
         .filter((c) => archivedIds.has(c.conversationId))
         .map((c) => ({
           id: c.conversationId,
-          name: c.participant.name,
+          name:
+            c.projectId || c.orderId || c.jobId
+              ? c.conversationTitle ||
+                (c.orderId
+                  ? "Order conversation"
+                  : c.jobId
+                    ? "Job discussion"
+                    : "Project conversation")
+              : c.participant.name,
           avatar: c.participant.avatarUrl,
           detail:
             c.projectTitle ||

@@ -219,15 +219,17 @@ export async function submitFreelancerSetup(
     .maybeSingle();
   check(error, "Find freelancer profile");
   const resume = values.resume
-    ? await upload("resumes", user.id, values.resume)
+    ? await upload("verification-documents", user.id, values.resume)
     : undefined;
   const samples = [];
   for (const file of values.portfolioSamples)
-    samples.push(await upload("verification", `${user.id}/portfolio`, file));
+    samples.push(
+      await upload("verification-documents", `${user.id}/portfolio`, file),
+    );
   const certificates = [];
   for (const file of values.certifications)
     certificates.push(
-      await upload("verification", `${user.id}/certifications`, file),
+      await upload("verification-documents", `${user.id}/certifications`, file),
     );
   const data = {
     user_id: user.id,

@@ -11,6 +11,8 @@ export interface MessageConversation {
   orderId: string | null;
   jobId: string | null;
   projectTitle: string | null;
+  conversationTitle: string | null;
+  participantIntro: string;
   participant: MessageParticipant;
   lastMessage: string;
   lastMessageAt: string;

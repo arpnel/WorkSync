@@ -40,14 +40,21 @@ export function ServiceImageSection({
       mediaFiles: [...values.mediaFiles, ...files],
       mediaUrls: [...values.mediaUrls, ...urls],
     });
+    event.target.value = "";
   };
 
   const removeCurrentMedia = () => {
-    const newFiles = [...values.mediaFiles];
     const newUrls = [...values.mediaUrls];
-
-    newFiles.splice(currentIndex, 1);
+    const removedUrl = newUrls[currentIndex];
     newUrls.splice(currentIndex, 1);
+    const newFiles = [...values.mediaFiles];
+    if (removedUrl?.startsWith("blob:")) {
+      const fileIndex =
+        values.mediaUrls
+          .slice(0, currentIndex + 1)
+          .filter((url) => url.startsWith("blob:")).length - 1;
+      if (fileIndex >= 0) newFiles.splice(fileIndex, 1);
+    }
 
     setCurrentIndex(0);
 
@@ -70,6 +77,16 @@ export function ServiceImageSection({
   };
 
   const currentMedia = values.mediaUrls[currentIndex];
+  const currentFileIndex = currentMedia?.startsWith("blob:")
+    ? values.mediaUrls
+        .slice(0, currentIndex + 1)
+        .filter((url) => url.startsWith("blob:")).length - 1
+    : -1;
+  const currentFile =
+    currentFileIndex >= 0 ? values.mediaFiles[currentFileIndex] : undefined;
+  const isVideo =
+    currentFile?.type.startsWith("video/") ??
+    /\.(mp4|webm|mov|m4v)(?:$|[?#])/i.test(currentMedia ?? "");
 
   return (
     <div className="space-y-5">
@@ -95,7 +112,7 @@ export function ServiceImageSection({
       ) : (
         <div className="space-y-4">
           <div className="relative overflow-hidden rounded-xl border">
-            {values.mediaFiles[currentIndex]?.type.startsWith("video") ? (
+            {isVideo ? (
               <video
                 src={currentMedia}
                 controls
@@ -136,7 +153,7 @@ export function ServiceImageSection({
               <ImageIcon className="h-4 w-4 text-muted-foreground" />
 
               <span>
-                {currentIndex + 1} /{values.mediaFiles.length}
+                {currentIndex + 1} /{values.mediaUrls.length}
               </span>
             </div>
 

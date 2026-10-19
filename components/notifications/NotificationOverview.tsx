@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
 import { NotificationDetailDialog } from "./NotificationDetailDialog";
 import type { NotificationRecord } from "@/services/notification/notificationService";
 import { formatDistanceToNow } from "date-fns";
@@ -9,6 +11,8 @@ import {
   Bell,
   BriefcaseBusiness,
   CheckCheck,
+  CircleX,
+  Clock3,
   ChevronRight,
   FileCheck2,
   MessageCircle,
@@ -23,6 +27,7 @@ import {
 } from "@/components/ui/popover";
 import {
   getNotificationKind,
+  getNotificationTone,
   type NotificationKind,
 } from "./notification-data";
 import { useNotifications } from "@/hooks/notification/useNotifications";
@@ -37,9 +42,38 @@ const kindIcons = {
 
 export function NotificationOverview() {
   const [selected, setSelected] = useState<NotificationRecord | null>(null);
+  const router = useRouter();
   const { items, loading, error, unreadCount, markRead, markAllRead } =
     useNotifications();
   const recent = items.slice(0, 5);
+  const openNotification = async (item: NotificationRecord) => {
+    if (item.unread) void markRead(item.id).catch(() => undefined);
+    const lowerTitle = item.title.toLowerCase();
+    const selectedApplication =
+      item.type?.includes("application") &&
+      /selected|discussion|accepted/.test(lowerTitle) &&
+      !/declined|rejected/.test(lowerTitle);
+    if (selectedApplication && item.relatedId) {
+      try {
+        const result = await supabase
+          .from("conversations")
+          .select("conversation_id")
+          .eq("job_id", item.relatedId)
+          .limit(1)
+          .maybeSingle();
+        if (result.data?.conversation_id) {
+          router.push(
+            "/home/messages?conversation=" +
+              encodeURIComponent(result.data.conversation_id),
+          );
+          return;
+        }
+      } catch {
+        // Fall back to the notification detail when chat cannot be resolved.
+      }
+    }
+    setSelected(item);
+  };
   return (
     <>
       {selected && (
@@ -99,24 +133,44 @@ export function NotificationOverview() {
               </p>
             ) : (
               recent.map((item) => {
-                const Icon = kindIcons[getNotificationKind(item.type)];
+                const tone = getNotificationTone(item.type, item.title);
+                const Icon =
+                  tone === "declined"
+                    ? CircleX
+                    : tone === "deadline"
+                      ? Clock3
+                      : kindIcons[getNotificationKind(item.type)];
+                const toneClass =
+                  tone === "declined"
+                    ? "text-rose-700 dark:text-rose-300"
+                    : tone === "deadline"
+                      ? "text-amber-700 dark:text-amber-300"
+                      : "text-foreground";
+                const iconClass =
+                  tone === "declined"
+                    ? "bg-rose-100/80 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300"
+                    : tone === "deadline"
+                      ? "bg-amber-100/80 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300"
+                      : "bg-muted";
                 return (
                   <button
                     type="button"
                     key={item.id}
                     onClick={() => {
-                      setSelected(item);
-                      if (item.unread)
-                        void markRead(item.id).catch(() => undefined);
+                      void openNotification(item);
                     }}
                     className={`flex w-full text-left gap-3 border-b px-4 py-3 transition hover:bg-muted/50 ${item.unread ? "bg-primary/[0.04]" : ""}`}
                   >
-                    <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted">
+                    <span
+                      className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${iconClass}`}
+                    >
                       <Icon className="h-4 w-4" />
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="flex items-start gap-2">
-                        <span className="line-clamp-1 flex-1 text-sm font-medium">
+                        <span
+                          className={`line-clamp-1 flex-1 text-sm font-medium ${toneClass}`}
+                        >
                           {item.title}
                         </span>
                         {item.unread && (

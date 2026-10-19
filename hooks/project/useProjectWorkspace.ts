@@ -19,6 +19,7 @@ import {
   subscribeToUserConversations,
 } from "@/services/message/messageService";
 import { supabase } from "@/lib/supabaseClient";
+import { useMessageAccountSettings } from "@/hooks/message/useMessageAccountSettings";
 import type {
   ProjectWorkspace,
   WorkspaceMessage,
@@ -38,6 +39,7 @@ function mergeMessages(
 }
 
 export function useProjectWorkspace(orderId: string) {
+  const messageSettings = useMessageAccountSettings();
   const [workspace, setWorkspace] = useState<ProjectWorkspace | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -164,7 +166,14 @@ export function useProjectWorkspace(orderId: string) {
   }, [load, orderId, workspace?.contractId]);
 
   useEffect(() => {
-    if (!workspace?.conversationId) return;
+    if (
+      !workspace?.conversationId ||
+      !messageSettings.ready ||
+      !messageSettings.settings.typingIndicators
+    ) {
+      sendTypingRef.current = () => undefined;
+      return;
+    }
 
     const typing = createProjectTypingChannel(
       workspace.conversationId,
@@ -178,7 +187,12 @@ export function useProjectWorkspace(orderId: string) {
       setIsOtherParticipantTyping(false);
       void supabase.removeChannel(typing.channel);
     };
-  }, [workspace?.conversationId, workspace?.currentUserId]);
+  }, [
+    workspace?.conversationId,
+    workspace?.currentUserId,
+    messageSettings.ready,
+    messageSettings.settings.typingIndicators,
+  ]);
 
   useEffect(() => {
     if (!workspace?.projectId) return;

@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, ChevronLeft, FolderKanban, Tag } from "lucide-react";
+import { Activity, ChevronLeft, FolderKanban, Tag, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import type { WorkspaceProjectType } from "@/types/project/projectWorkspace";
@@ -13,6 +13,8 @@ type Props = {
   categoryName: string | null;
   status: string;
   type: WorkspaceProjectType;
+  clientName?: string;
+  freelancerName?: string;
   onBack: () => void;
 };
 
@@ -23,6 +25,8 @@ export function ProjectWorkspaceHeader({
   categoryName,
   status,
   type,
+  clientName,
+  freelancerName,
   onBack,
 }: Props) {
   if (compact)
@@ -68,16 +72,36 @@ export function ProjectWorkspaceHeader({
             <ChevronLeft className="size-5 sm:size-6" />
             Project
           </Button>
-          <span
-            aria-hidden="true"
-            className="text-xl text-muted-foreground"
-          >
+          <span aria-hidden="true" className="text-xl text-muted-foreground">
             |
           </span>
           <h1 className="min-w-0 truncate text-xl font-semibold text-foreground dark:text-foreground/65 sm:text-2xl">
             {title}
           </h1>
         </div>
+
+        {(clientName || freelancerName) && (
+          <div className="border-b px-4 py-3 sm:px-5">
+            <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <Users className="h-3.5 w-3.5" />
+              Participants
+            </p>
+            <div className="mt-2 space-y-1 text-sm">
+              {clientName && (
+                <p className="truncate">
+                  <span className="text-muted-foreground">Client:</span>{" "}
+                  {clientName}
+                </p>
+              )}
+              {freelancerName && (
+                <p className="truncate">
+                  <span className="text-muted-foreground">Freelancer:</span>{" "}
+                  {freelancerName}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="grid gap-3 px-4 py-3 sm:grid-cols-3 sm:gap-0 sm:px-5">
           <div className="min-w-0 sm:pr-5">

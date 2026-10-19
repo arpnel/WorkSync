@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
+import type { MarketplaceItem } from "@/services/marketplace/MarketplaceServices";
+import { invalidatePageReads } from "@/lib/pageReadCache";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -27,7 +30,10 @@ import {
   type Category,
   type Skill,
 } from "@/services/serviceP/categoryService";
-import { createListing } from "@/services/serviceP/serviceService";
+import {
+  createListing,
+  updateServiceMedia,
+} from "@/services/serviceP/serviceService";
 import { validateListingCreationValues } from "@/lib/validation/service.creation.validation";
 import { useAuthUserId } from "@/hooks/auth/useAuthUserId";
 import { useProfile } from "@/hooks/profile/useProfile";
@@ -65,12 +71,14 @@ type ServiceDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated?: (result: CreateListingResult) => void | Promise<void>;
+  listing?: MarketplaceItem;
 };
 
 export function ServiceDialog({
   open,
   onOpenChange,
   onCreated,
+  listing,
 }: ServiceDialogProps) {
   const [values, setValues] = useState<ServiceFormValues>(defaultValues);
   const [errors, setErrors] = useState<
@@ -79,6 +87,7 @@ export function ServiceDialog({
   const [categories, setCategories] = useState<Category[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [allSkills, setAllSkills] = useState<Skill[]>([]);
+  const [originalMediaUrls, setOriginalMediaUrls] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [dirty, setDirty] = useState(false);
 
@@ -90,17 +99,52 @@ export function ServiceDialog({
     profile?.role === "client" || profile?.role === "freelancer"
       ? profile.role
       : null;
-  const isJob = listingRole === "client";
+  const isJob = listing
+    ? listing.listing_type === "job"
+    : listingRole === "client";
   const noun = isJob ? "Job" : "Service";
 
   useEffect(() => {
     if (!open) return;
 
-    setValues(defaultValues);
+    const initialValues: ServiceFormValues = listing
+      ? {
+          ...defaultValues,
+          title: listing.title,
+          description: listing.description,
+          categoryId: listing.category_id,
+          categoryText: listing.category?.name ?? "",
+          ...(listing.listing_type === "job"
+            ? {
+                budgetMin: listing.budget_min,
+                budgetMax: listing.budget_max,
+                deadline: listing.deadline?.slice(0, 10) ?? "",
+                experienceLevel:
+                  listing.experience_level === "beginner" ||
+                  listing.experience_level === "expert"
+                    ? listing.experience_level
+                    : "intermediate",
+              }
+            : {
+                price: listing.price,
+                serviceType:
+                  listing.service_type === "milestone"
+                    ? "milestone"
+                    : "standard",
+                deliveryTimeDays: listing.delivery_time_days,
+                revisionCount: listing.revisions_count,
+                mediaUrls: listing.cover_image_url
+                  ? [listing.cover_image_url]
+                  : [],
+              }),
+        }
+      : defaultValues;
+    setValues(initialValues);
+    setOriginalMediaUrls(initialValues.mediaUrls);
     setErrors({});
     setDirty(false);
     setIsSubmitting(false);
-  }, [open]);
+  }, [open, listing]);
 
   useEffect(() => {
     if (!open) return;
@@ -130,6 +174,55 @@ export function ServiceDialog({
         toast.error("Recommended skills could not be loaded.");
       });
   }, [open, values.categoryId]);
+
+  useEffect(() => {
+    if (!open || !listing) return;
+    const isJobListing = listing.listing_type === "job";
+    const idColumn = isJobListing ? "job_id" : "service_id";
+    const relation = isJobListing ? "job_skills" : "service_skills";
+    const listingId = isJobListing ? listing.job_id : listing.service_id;
+    void supabase
+      .from(relation)
+      .select("skill_id")
+      .eq(idColumn, listingId)
+      .then(({ data, error }) => {
+        if (error) {
+          toast.error("Listing skills could not be loaded.");
+          return;
+        }
+        setValues((current) => ({
+          ...current,
+          skillIds: (data ?? []).map((row) => String(row.skill_id)),
+        }));
+      });
+  }, [open, listing]);
+
+  useEffect(() => {
+    if (!open || listing?.listing_type !== "service") return;
+    void supabase
+      .from("service_media")
+      .select("media_url")
+      .eq("service_id", listing.service_id)
+      .order("display_order", { ascending: true })
+      .then(({ data, error }) => {
+        if (error) {
+          toast.error("Service images could not be loaded.");
+          return;
+        }
+        const urls = (data ?? []).map((item) => item.media_url);
+        const loadedUrls =
+          urls.length > 0
+            ? urls
+            : listing.cover_image_url
+              ? [listing.cover_image_url]
+              : [];
+        setOriginalMediaUrls(loadedUrls);
+        setValues((current) => ({
+          ...current,
+          mediaUrls: loadedUrls,
+        }));
+      });
+  }, [open, listing]);
 
   const canSubmit = Boolean(userId && listingRole && !profileLoading);
 
@@ -182,7 +275,19 @@ export function ServiceDialog({
 
     if (!duplicateLock.lock()) return;
 
-    const validation = validateListingCreationValues(values, listingRole);
+    const validationValues =
+      listing?.listing_type === "job"
+        ? {
+            ...values,
+            deadline: new Date(Date.now() + 86400000)
+              .toISOString()
+              .slice(0, 10),
+          }
+        : values;
+    const validation = validateListingCreationValues(
+      validationValues,
+      listingRole,
+    );
 
     if (!validation.ok) {
       setErrors(validation.errors);
@@ -191,7 +296,10 @@ export function ServiceDialog({
       return;
     }
 
-    const data = validation.data;
+    const data = {
+      ...validation.data,
+      ...(listing?.listing_type === "job" ? { deadline: values.deadline } : {}),
+    };
     const payload: CreateListingPayload = {
       title: data.title,
       description: data.description,
@@ -226,17 +334,99 @@ export function ServiceDialog({
     setIsSubmitting(true);
 
     try {
-      const result = await createListing(payload);
-      setDirty(false);
-      toast.success(`${noun} posted successfully.`);
-      await onCreated?.(result);
+      if (listing) {
+        const isJobListing = listing.listing_type === "job";
+        const idColumn = isJobListing ? "job_id" : "service_id";
+        const table = isJobListing ? "jobs" : "services";
+        const listingId = isJobListing ? listing.job_id : listing.service_id;
+        const ownerColumn = isJobListing ? "client_id" : "freelancer_id";
+        const ownerId = isJobListing
+          ? listing.client_id
+          : listing.freelancer_id;
+        const update = isJobListing
+          ? {
+              title: data.title,
+              description: data.description,
+              category_id: data.categoryId,
+              budget_min: data.budgetMin ?? 0,
+              budget_max: data.budgetMax,
+              deadline: data.deadline || null,
+              experience_level: data.experienceLevel,
+            }
+          : {
+              title: data.title,
+              description: data.description,
+              category_id: data.categoryId,
+              price: data.price,
+              service_type: data.serviceType,
+              delivery_time_days: data.deliveryTimeDays,
+              revisions_count: data.revisionCount,
+            };
+        const { data: saved, error } = await supabase
+          .from(table)
+          .update(update)
+          .eq(idColumn, listingId)
+          .eq(ownerColumn, ownerId)
+          .select(idColumn)
+          .maybeSingle();
+        if (error) throw error;
+        if (!saved) throw new Error("The listing could not be updated.");
+
+        const skillTable = isJobListing ? "job_skills" : "service_skills";
+        const { error: deleteSkillsError } = await supabase
+          .from(skillTable)
+          .delete()
+          .eq(idColumn, listingId);
+        if (deleteSkillsError) throw deleteSkillsError;
+        if (data.skillIds.length) {
+          const { error: addSkillsError } = await supabase
+            .from(skillTable)
+            .insert(
+              data.skillIds.map((skillId) => ({
+                [idColumn]: listingId,
+                skill_id: skillId,
+              })),
+            );
+          if (addSkillsError) throw addSkillsError;
+        }
+        const retainedMediaUrls = values.mediaUrls.filter(
+          (url) => !url.startsWith("blob:"),
+        );
+        const mediaChanged =
+          data.mediaFiles.length > 0 ||
+          retainedMediaUrls.length !== originalMediaUrls.length ||
+          retainedMediaUrls.some(
+            (url, index) => url !== originalMediaUrls[index],
+          );
+        if (!isJobListing && mediaChanged) {
+          await updateServiceMedia(
+            listingId,
+            data.mediaFiles,
+            retainedMediaUrls,
+          );
+        }
+        invalidatePageReads();
+        setDirty(false);
+        toast.success(`${noun} updated successfully.`);
+        await onCreated?.({ listingType: listing.listing_type, id: listingId });
+      } else {
+        const result = await createListing(payload);
+        setDirty(false);
+        toast.success(`${noun} posted successfully.`);
+        await onCreated?.(result);
+      }
       onOpenChange(false);
     } catch (error) {
-      console.error("Failed to create listing:", error);
+      console.error(
+        listing ? "Failed to update listing:" : "Failed to create listing:",
+        error,
+      );
       toast.error(
         error instanceof Error
           ? error.message
-          : `Failed to post ${noun.toLowerCase()}.`,
+          : listing
+            ? `Failed to update ${noun.toLowerCase()}.`
+            : `Failed to post ${noun.toLowerCase()}.`,
       );
     } finally {
       setIsSubmitting(false);
@@ -253,7 +443,7 @@ export function ServiceDialog({
         <div className="flex h-16 items-center border-b px-6">
           <DialogHeader>
             <DialogTitle className="text-2xl font-semibold">
-              Post a {noun}
+              {listing ? `Edit ${noun}` : `Post a ${noun}`}
             </DialogTitle>
           </DialogHeader>
         </div>
@@ -356,7 +546,10 @@ export function ServiceDialog({
               {!isJob && (
                 <div className="flex h-44 items-center justify-center overflow-hidden bg-muted">
                   {values.mediaUrls[0] ? (
-                    values.mediaFiles[0]?.type.startsWith("video/") ? (
+                    (values.mediaFiles[0]?.type.startsWith("video/") ??
+                    /\.(mp4|webm|mov|m4v)(?:$|[?#])/i.test(
+                      values.mediaUrls[0],
+                    )) ? (
                       <video
                         src={values.mediaUrls[0]}
                         className="h-full w-full object-contain"
@@ -438,21 +631,25 @@ export function ServiceDialog({
                 {isSubmitting ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Posting...
+                    {listing ? "Saving..." : "Posting..."}
                   </>
+                ) : listing ? (
+                  `Save ${noun}`
                 ) : (
                   `Post ${noun}`
                 )}
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full"
-                disabled={isSubmitting}
-                onClick={resetForm}
-              >
-                Reset
-              </Button>
+              {!listing && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  disabled={isSubmitting}
+                  onClick={resetForm}
+                >
+                  Reset
+                </Button>
+              )}
             </div>
           </aside>
         </div>

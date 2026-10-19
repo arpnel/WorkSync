@@ -94,6 +94,95 @@ async function uploadServiceMedia(
   }
 }
 
+export async function updateServiceMedia(
+  serviceId: string,
+  files: File[],
+  retainedUrls: string[],
+) {
+  const user = await getAuthenticatedUser();
+  const { data: existing, error: loadError } = await supabase
+    .from("service_media")
+    .select("media_url,media_type,display_order")
+    .eq("service_id", serviceId)
+    .order("display_order", { ascending: true });
+  if (loadError) throw loadError;
+
+  let existingMedia = existing ?? [];
+  if (existingMedia.length === 0) {
+    const { data: service, error: serviceError } = await supabase
+      .from("services")
+      .select("cover_image_url")
+      .eq("service_id", serviceId)
+      .maybeSingle();
+    if (serviceError) throw serviceError;
+    if (service?.cover_image_url) {
+      existingMedia = [
+        {
+          media_url: service.cover_image_url,
+          media_type: /\.(mp4|webm|mov|m4v)(?:$|[?#])/i.test(
+            service.cover_image_url,
+          )
+            ? "video"
+            : "image",
+          display_order: 0,
+        },
+      ];
+    }
+  }
+
+  const retained = existingMedia.filter((item) =>
+    retainedUrls.includes(item.media_url),
+  );
+  const upload = await uploadServiceMedia(user.id, serviceId, files);
+  const nextMedia = [
+    ...retained.map((item, index) => ({ ...item, display_order: index })),
+    ...upload.media.map((item, index) => ({
+      ...item,
+      display_order: retained.length + index,
+    })),
+  ];
+
+  const { error: deleteError } = await supabase
+    .from("service_media")
+    .delete()
+    .eq("service_id", serviceId);
+  if (deleteError) {
+    await supabase.storage
+      .from(SERVICE_MEDIA_BUCKET)
+      .remove(upload.uploadedPaths);
+    throw deleteError;
+  }
+
+  const { error: insertError } = nextMedia.length
+    ? await supabase.from("service_media").insert(
+        nextMedia.map((item) => ({
+          service_id: serviceId,
+          media_url: item.media_url,
+          media_type: item.media_type,
+          display_order: item.display_order,
+        })),
+      )
+    : { error: null };
+
+  if (insertError) {
+    await supabase
+      .from("service_media")
+      .insert(
+        existingMedia.map((item) => ({ service_id: serviceId, ...item })),
+      );
+    await supabase.storage
+      .from(SERVICE_MEDIA_BUCKET)
+      .remove(upload.uploadedPaths);
+    throw insertError;
+  }
+
+  const { error: coverError } = await supabase
+    .from("services")
+    .update({ cover_image_url: nextMedia[0]?.media_url ?? null })
+    .eq("service_id", serviceId);
+  if (coverError) throw coverError;
+}
+
 async function createFreelancerService(
   userId: string,
   payload: CreateListingPayload,
@@ -326,14 +415,26 @@ export async function createListing(
 ) {
   const result = await createListingUncached(...args);
   const { data: sessionData } = await supabase.auth.getSession();
-  if (!sessionData.session) throw new Error("Your listing was saved but could not be queued for moderation. Contact support before resubmitting.");
+  if (!sessionData.session)
+    throw new Error(
+      "Your listing was saved but could not be queued for moderation. Contact support before resubmitting.",
+    );
   const queued = await fetch("/api/listings/moderate", {
     method: "POST",
-    headers: { Authorization: `Bearer ${sessionData.session.access_token}`, "Content-Type": "application/json" },
+    headers: {
+      Authorization: `Bearer ${sessionData.session.access_token}`,
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify({ type: result.listingType, id: result.id }),
   });
-  const queueResult = await queued.json().catch(() => null) as { error?: string } | null;
-  if (!queued.ok) throw new Error(queueResult?.error ?? "Your listing was saved but could not be queued for review.");
+  const queueResult = (await queued.json().catch(() => null)) as {
+    error?: string;
+  } | null;
+  if (!queued.ok)
+    throw new Error(
+      queueResult?.error ??
+        "Your listing was saved but could not be queued for review.",
+    );
   invalidatePageReads();
   return result;
 }

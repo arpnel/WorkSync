@@ -35,6 +35,8 @@ export default function ServiceRelatedWork({ service, guest, sellerName }: Props
             listingType: "service",
             sort: "latest",
             guest,
+            page: 0,
+            pageSize: 12,
           }),
           service.freelancer_id
             ? getMarketplaceServices({
@@ -42,6 +44,8 @@ export default function ServiceRelatedWork({ service, guest, sellerName }: Props
                 listingType: "service",
                 sort: "latest",
                 guest,
+                page: 0,
+                pageSize: 12,
               })
             : Promise.resolve([]),
         ]);

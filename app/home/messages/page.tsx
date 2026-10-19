@@ -19,6 +19,7 @@ import MessageScroller from "../../../components/message/MessageScroller";
 
 import { Button } from "@/components/ui/button";
 import { useMessaging } from "@/hooks/message/useMessaging";
+import { useMessagePresenceContext } from "@/components/message/MessagePresenceProvider";
 
 function formatConversationTime(value: string) {
   const date = new Date(value);
@@ -47,12 +48,16 @@ function formatMessageTime(value: string) {
 }
 
 export default function MessagesPage() {
+  const onlineUserIds = useMessagePresenceContext();
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [messageQuery, setMessageQuery] = useState("");
   const [section, setSection] = useState<Section>("all");
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const {
+    messageSettings,
+    isOtherParticipantTyping,
+    sendTyping,
     preferences,
     preferencesReady,
     savingPreference,
@@ -95,25 +100,39 @@ export default function MessagesPage() {
     blocked: preferences.blockedUserIds.includes(
       conversation.participant.userId,
     ),
-    category: conversation.projectId
-      ? ("projects" as const)
-      : conversation.orderId
-        ? ("orders" as const)
-        : conversation.jobId
-          ? ("jobs" as const)
+    category:
+      conversation.projectId || conversation.jobId
+        ? ("projects" as const)
+        : conversation.orderId
+          ? ("orders" as const)
           : ("direct" as const),
     context: conversation.projectId
       ? (conversation.projectTitle ?? "Project conversation")
       : conversation.orderId
-        ? "Order conversation"
+        ? "Order discussion"
         : conversation.jobId
-          ? "Job conversation"
+          ? "Job discussion"
           : "Direct conversation",
-    name: conversation.participant.name,
-    role: conversation.participant.role ?? undefined,
+    name:
+      conversation.projectId || conversation.orderId || conversation.jobId
+        ? (conversation.conversationTitle ??
+          (conversation.orderId
+            ? "Order conversation"
+            : conversation.jobId
+              ? "Job discussion"
+              : "Project conversation"))
+        : conversation.participant.name,
+    role: conversation.projectTitle
+      ? conversation.participant.name
+      : (conversation.participant.role ?? undefined),
     avatar: conversation.participant.avatarUrl ?? undefined,
-    lastMessage: callPreview(conversation.lastMessage),
+    lastMessage: messageSettings.showMessagePreviews
+      ? callPreview(conversation.lastMessage)
+      : "Message preview hidden",
     lastMessageTime: formatConversationTime(conversation.lastMessageAt),
+    online:
+      messageSettings.activeStatus &&
+      onlineUserIds.has(conversation.participant.userId),
     unreadCount: conversation.unreadCount,
   }));
 
@@ -223,6 +242,14 @@ export default function MessagesPage() {
               role={selectedConversation.participant.role ?? undefined}
               project={selectedConversation.projectTitle ?? undefined}
               avatar={selectedConversation.participant.avatarUrl ?? undefined}
+              online={
+                messageSettings.activeStatus
+                  ? onlineUserIds.has(selectedConversation.participant.userId)
+                  : undefined
+              }
+              typing={
+                messageSettings.typingIndicators && isOtherParticipantTyping
+              }
             />
 
             {!preferencesReady && (
@@ -283,6 +310,7 @@ export default function MessagesPage() {
                 key={`history:${selectedConversation.conversationId}`}
                 messages={messageItems}
                 searching={searchOpen}
+                introduction={selectedConversation.participantIntro}
               />
             )}
 
@@ -315,6 +343,10 @@ export default function MessagesPage() {
               onSend={sendMessage}
               disabled={sending || loadingMessages || blocked || blockedBy}
               placeholder={sending ? "Sending..." : "Write a message..."}
+              enterToSend={messageSettings.enterToSend}
+              onTypingChange={
+                messageSettings.typingIndicators ? sendTyping : undefined
+              }
             />
           </div>
           {detailsOpen && (

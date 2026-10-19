@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import { useEffect, useState } from "react";
 import { clearProjectReadCache } from "@/lib/projectReadCache";
 import { supabase } from "@/lib/supabaseClient";
@@ -38,7 +38,6 @@ export function useProjectSchedule() {
       "projects",
       "milestones",
       "contracts",
-      "project_meetings",
       "service_orders",
     ])
       channel.on(

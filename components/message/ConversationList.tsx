@@ -11,7 +11,7 @@ export interface Conversation {
   lastMessageTime: string;
   unreadCount?: number;
   online?: boolean;
-  category?: "projects" | "orders" | "jobs" | "direct";
+  category?: "projects" | "orders" | "direct";
   context?: string;
   archived?: boolean;
   pinned?: boolean;

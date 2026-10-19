@@ -1,7 +1,6 @@
 "use client";
 import { StyledSelect } from "@/components/ui/styled-select";
 
-
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -251,9 +250,9 @@ export default function WorkAnalytics({
               </div>
               <p className="text-muted-foreground">
                 Compared with {previous.from} to {previous.to}, an equally long
-                period. Gross earnings are confirmed live client payments for
-                your freelance work, before fees and expenses; they are not net
-                profit or a payout balance.
+                period. Gross earnings use confirmed payments for your freelance
+                work in the configured payment mode, before fees and expenses;
+                they are not net profit or a payout balance.
               </p>
             </>
           )}
@@ -445,8 +444,8 @@ export default function WorkAnalytics({
                   </Link>
                 </CardTitle>
                 <CardDescription>
-                  Confirmed live payments in PHP, grouped by payment date. Test
-                  payments are excluded.
+                  Confirmed payments in PHP, grouped by payment date. Payments
+                  from the current test or live mode are shown.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -546,8 +545,8 @@ export default function WorkAnalytics({
                 )}
                 {!paymentLoading && summary.testPayments > 0 && (
                   <p className="mt-3 text-muted-foreground">
-                    Test payments in this period: {money(summary.testPayments)}.
-                    These are simulated transactions.
+                    Recorded test payments included in this chart:{" "}
+                    {money(summary.testPayments)}.
                   </p>
                 )}
               </CardContent>

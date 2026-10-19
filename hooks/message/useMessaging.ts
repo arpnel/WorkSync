@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { supabase } from "@/lib/supabaseClient";
 
 import {
   getMessagingPreferences,
@@ -10,14 +11,17 @@ import {
   setUserBlocked,
   getConversationMessages,
   getMessageConversations,
+  createMessageTypingChannel,
   markConversationRead,
   sendConversationMessage,
   subscribeToConversationMessages,
   subscribeToUserConversations,
 } from "@/services/message/messageService";
 import type { ChatMessage, MessageConversation } from "@/types/message/message";
+import { useMessageAccountSettings } from "@/hooks/message/useMessageAccountSettings";
 
 export function useMessaging() {
+  const messageAccountSettings = useMessageAccountSettings();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<MessageConversation[]>([]);
   const [selectedConversationId, setSelectedConversationId] = useState<
@@ -31,6 +35,8 @@ export function useMessaging() {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const messageRequest = useRef(0);
   const [sending, setSending] = useState(false);
+  const [isOtherParticipantTyping, setIsOtherParticipantTyping] =
+    useState(false);
   const [preferences, setPreferences] = useState<
     import("@/types/message/message").MessagingPreferences
   >({ preferences: [], blockedUserIds: [], blockedByUserIds: [] });
@@ -45,6 +51,8 @@ export function useMessaging() {
     setSelectedConversationId(conversationId);
   }, []);
   const sendingRef = useRef(false);
+  const sendTypingRef = useRef<(isTyping: boolean) => void>(() => undefined);
+  const typingTimerRef = useRef<number | null>(null);
   const preferenceSavingRef = useRef(false);
   const missingPreferencesSetup = useRef(false);
   const preferencesLoading = useRef(false);
@@ -197,15 +205,6 @@ export function useMessaging() {
           ],
         });
         setLoadingMessages(false);
-        await markConversationRead(conversationId);
-        if (!isCurrent()) return;
-        setConversations((current) =>
-          current.map((conversation) =>
-            conversation.conversationId === conversationId
-              ? { ...conversation, unreadCount: 0 }
-              : conversation,
-          ),
-        );
         if (isCurrent()) setError(null);
       } catch (loadError) {
         if (!isCurrent()) return;
@@ -251,6 +250,87 @@ export function useMessaging() {
     };
   }, [loadConversations, loadMessages, selectedConversationId]);
 
+  const setRemoteTyping = useCallback((isTyping: boolean) => {
+    if (typingTimerRef.current !== null)
+      window.clearTimeout(typingTimerRef.current);
+    setIsOtherParticipantTyping(isTyping);
+    typingTimerRef.current = isTyping
+      ? window.setTimeout(() => {
+          typingTimerRef.current = null;
+          setIsOtherParticipantTyping(false);
+        }, 2400)
+      : null;
+  }, []);
+  const sendTyping = useCallback(
+    (isTyping: boolean) => sendTypingRef.current(isTyping),
+    [],
+  );
+
+  useEffect(() => {
+    const conversationId = selectedConversationId;
+    if (
+      !conversationId ||
+      !currentUserId ||
+      !messageAccountSettings.ready ||
+      !messageAccountSettings.settings.typingIndicators
+    ) {
+      sendTypingRef.current = () => undefined;
+      return;
+    }
+    const typing = createMessageTypingChannel(
+      conversationId,
+      currentUserId,
+      setRemoteTyping,
+    );
+    sendTypingRef.current = typing.sendTyping;
+    return () => {
+      sendTypingRef.current = () => undefined;
+      setRemoteTyping(false);
+      void supabase.removeChannel(typing.channel);
+    };
+  }, [
+    selectedConversationId,
+    currentUserId,
+    messageAccountSettings.ready,
+    messageAccountSettings.settings.typingIndicators,
+    setRemoteTyping,
+  ]);
+  const currentLastMessageId =
+    messageState.conversationId === selectedConversationId
+      ? messageState.messages.at(-1)?.messageId
+      : null;
+
+  useEffect(() => {
+    if (
+      !selectedConversationId ||
+      !messageAccountSettings.ready ||
+      !messageAccountSettings.settings.readReceipts ||
+      messageState.conversationId !== selectedConversationId
+    )
+      return;
+    let alive = true;
+    void markConversationRead(selectedConversationId)
+      .then(() => {
+        if (!alive) return;
+        setConversations((current) =>
+          current.map((conversation) =>
+            conversation.conversationId === selectedConversationId
+              ? { ...conversation, unreadCount: 0 }
+              : conversation,
+          ),
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [
+    selectedConversationId,
+    currentLastMessageId,
+    messageState.conversationId,
+    messageAccountSettings.ready,
+    messageAccountSettings.settings.readReceipts,
+  ]);
   const selectedConversation = useMemo(
     () =>
       conversations.find(
@@ -299,6 +379,11 @@ export function useMessaging() {
   );
 
   return {
+    messageSettings: messageAccountSettings.settings,
+    messageSettingsReady: messageAccountSettings.ready,
+    updateMessageSettings: messageAccountSettings.update,
+    isOtherParticipantTyping,
+    sendTyping,
     preferences,
     preferencesReady,
     savingPreference,

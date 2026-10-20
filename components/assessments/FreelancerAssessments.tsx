@@ -16,6 +16,7 @@ import {
   listMyAssessments,
   assessmentAttempt,
 } from "@/services/assessments/assessmentService";
+import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import type {
   MemberAssessment,
   AttemptResponse,
@@ -136,7 +137,16 @@ export default function FreelancerAssessments() {
       : x.status === "closed" || x.attempt?.status === "expired"
         ? "expired"
         : "available";
-  if (loading) return <p role="status">Loading assessments…</p>;
+  if (loading)
+    return (
+      <div className="mx-auto max-w-4xl space-y-5">
+        <div className="space-y-2" aria-hidden="true">
+          <div className="h-8 w-64 animate-pulse rounded-md bg-muted" />
+          <div className="h-4 w-96 max-w-full animate-pulse rounded-md bg-muted" />
+        </div>
+        <ContentSkeleton label="Loading skill assessments" variant="list" />
+      </div>
+    );
   return (
     <div className="mx-auto max-w-4xl space-y-5">
       <header>

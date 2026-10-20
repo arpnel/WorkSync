@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -148,9 +149,23 @@ export default function SupportTickets() {
         </CardHeader>
         <CardContent className="space-y-3">
           {loading ? (
-            <p className="py-10 text-center text-sm text-muted-foreground">
-              Loading tickets…
-            </p>
+            <div
+              role="status"
+              aria-label="Loading tickets"
+              className="space-y-3 py-2"
+            >
+              {Array.from({ length: 4 }, (_, index) => (
+                <div
+                  key={index}
+                  className="space-y-3 rounded-xl border p-4 sm:p-5"
+                >
+                  <Skeleton className="h-5 w-1/3" />
+                  <Skeleton className="h-3 w-1/2" />
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-2/3" />
+                </div>
+              ))}
+            </div>
           ) : (
             visible.map((ticket) => (
               <button

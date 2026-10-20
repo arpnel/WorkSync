@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { completeSignin } from "@/services/auth/completeSignin";
+import { AuthLoadingScreen } from "@/components/auth/AuthLoadingScreen";
 
 // Use the same browser session store as sign-in and the authenticated pages.
 export default function AuthCallbackPage() {
@@ -29,21 +30,17 @@ export default function AuthCallbackPage() {
       active = false;
     };
   }, []);
-  return (
+  return error ? (
     <main className="mx-auto max-w-md space-y-4 px-6 py-16">
-      <h1 className="text-2xl font-semibold">Signing in to WorkSync</h1>
-      {error ? (
-        <>
-          <p role="alert" className="text-sm text-destructive">
-            {error}
-          </p>
-          <Link href="/login" className="underline">
-            Back to sign in
-          </Link>
-        </>
-      ) : (
-        <p role="status">Completing sign-in…</p>
-      )}
+      <h1 className="text-2xl font-semibold">Unable to sign in</h1>
+      <p role="alert" className="text-sm text-destructive">
+        {error}
+      </p>
+      <Link href="/login" className="underline">
+        Back to sign in
+      </Link>
     </main>
+  ) : (
+    <AuthLoadingScreen />
   );
 }

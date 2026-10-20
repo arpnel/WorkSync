@@ -25,6 +25,7 @@ import {
   getSkillsByCategory,
   type Skill,
 } from "@/services/serviceP/categoryService";
+import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import type {
   AdminAssessment,
   OpeningResults,
@@ -155,7 +156,16 @@ export default function AdminAssessments() {
     audienceScope,
     minimumAccountAgeDays,
   ]);
-  if (loading) return <p role="status">Loading assessments…</p>;
+  if (loading)
+    return (
+      <div className="mx-auto max-w-7xl space-y-5">
+        <div className="space-y-2" aria-hidden="true">
+          <div className="h-8 w-64 animate-pulse rounded-md bg-muted" />
+          <div className="h-4 w-96 max-w-full animate-pulse rounded-md bg-muted" />
+        </div>
+        <ContentSkeleton label="Loading skill assessments" variant="table" />
+      </div>
+    );
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       <header className="space-y-2">

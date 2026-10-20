@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { ClipboardCheck } from "lucide-react";
 import { getAssessmentEvidence } from "@/services/assessments/assessmentService";
 import type { AssessmentEvidence } from "@/lib/assessments/types";
+import { Skeleton } from "@/components/ui/skeleton";
 export function ProfileAssessments({ userId }: { userId: string }) {
   return <ProfileAssessmentResults key={userId} userId={userId} />;
 }
@@ -37,7 +38,14 @@ function ProfileAssessmentResults({ userId }: { userId: string }) {
         verification.
       </p>
       {loading ? (
-        <p className="text-sm">Loading results…</p>
+        <div
+          role="status"
+          aria-label="Loading assessment results"
+          className="space-y-3"
+        >
+          <Skeleton className="h-16 w-full rounded-lg" />
+          <Skeleton className="h-16 w-full rounded-lg" />
+        </div>
       ) : error ? (
         <p className="text-sm text-muted-foreground">
           Assessment results are unavailable.

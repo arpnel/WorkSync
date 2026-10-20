@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { SigninForm } from "./SigninForm";
 import { useRouter } from "next/navigation";
 import { login } from "../../../services/auth/signinService";
+import { getPostSigninPath } from "@/services/auth/completeSignin";
 
 import { validateSigninForm } from "../../../lib/validation/auth.validation";
 
@@ -129,24 +130,10 @@ export function SigninDialog() {
         password,
       });
 
-      // Check if the user has completed account setup
-      const { data: profile, error } = await supabase
-        .from("profiles") // change if your table has a different name
-        .select("account_setup_completed")
-        .eq("user_id", user.id)
-        .single();
-
-      if (error) {
-        throw error;
-      }
+      const destination = await getPostSigninPath(user.id);
 
       resetForm();
-
-      if (profile?.account_setup_completed) {
-        router.replace("/home/marketplace");
-      } else {
-        router.replace("/account-setup");
-      }
+      router.replace(destination);
     } catch (error) {
       console.log("Login error:", error);
       console.log("Message:", error instanceof Error ? error.message : error);

@@ -74,7 +74,7 @@ function DashboardTools() {
 
 export default function DashboardPage() {
   return (
-    <div className="@container mx-auto w-full max-w-[1600px]">
+    <div className="@container mx-auto w-full max-w-[1600px] px-4 sm:px-5">
       <div className="mb-6">
         <WorkspacePageHeader
           title="Dashboard"

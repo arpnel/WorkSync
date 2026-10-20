@@ -925,9 +925,9 @@ export async function getReviews(
   userId: string,
   role?: Profile["role"],
 ): Promise<Review[]> {
-  const identities = await getPublicIdentities({ userIds: [userId] });
-  const freelancer = identities.freelancers.find((row) => row.user_id === userId);
-  const client = identities.clients.find((row) => row.user_id === userId);
+  const targetIdentities = await getPublicIdentities({ userIds: [userId] });
+  const freelancer = targetIdentities.freelancers.find((row) => row.user_id === userId);
+  const client = targetIdentities.clients.find((row) => row.user_id === userId);
   const asFreelancer = role ? role === "freelancer" : !!freelancer;
   const id = asFreelancer ? freelancer?.freelancer_id : client?.client_id;
   if (!id) return [];

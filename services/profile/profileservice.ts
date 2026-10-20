@@ -925,24 +925,11 @@ export async function getReviews(
   userId: string,
   role?: Profile["role"],
 ): Promise<Review[]> {
-  const [freelancer, client] = await Promise.all([
-    supabase
-      .from("freelancer_profiles")
-      .select("freelancer_id")
-      .eq("user_id", userId)
-      .maybeSingle(),
-    supabase
-      .from("client_profiles")
-      .select("client_id")
-      .eq("user_id", userId)
-      .maybeSingle(),
-  ]);
-  if (freelancer.error) throw new Error(freelancer.error.message);
-  if (client.error) throw new Error(client.error.message);
-  const asFreelancer = role ? role === "freelancer" : !!freelancer.data;
-  const id = asFreelancer
-    ? freelancer.data?.freelancer_id
-    : client.data?.client_id;
+  const identities = await getPublicIdentities({ userIds: [userId] });
+  const freelancer = identities.freelancers.find((row) => row.user_id === userId);
+  const client = identities.clients.find((row) => row.user_id === userId);
+  const asFreelancer = role ? role === "freelancer" : !!freelancer;
+  const id = asFreelancer ? freelancer?.freelancer_id : client?.client_id;
   if (!id) return [];
   const { data, error } = await supabase
     .from(REVIEWS_TABLE)

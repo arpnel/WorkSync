@@ -30,7 +30,17 @@ import type {
   OpeningResults,
   Quiz,
 } from "@/lib/assessments/types";
-const date = (s: string | null) => (s ? new Date(s).toLocaleString() : "—");
+const assessmentTimeZone = "Asia/Manila";
+const date = (value: string | null) =>
+  value
+    ? new Intl.DateTimeFormat("en-PH", {
+        dateStyle: "medium",
+        timeStyle: "short",
+        timeZone: assessmentTimeZone,
+      }).format(new Date(value))
+    : "—";
+const philippinesDateTimeToIso = (value: string) =>
+  new Date(`${value}:00+08:00`).toISOString();
 export default function AdminAssessments() {
   const [items, setItems] = useState<AdminAssessment[]>([]),
     [loading, setLoading] = useState(true),
@@ -315,36 +325,50 @@ export default function AdminAssessments() {
       )}
       <Dialog
         open={!!opening}
-        onOpenChange={(v) => {
-          if (!v && !busy) setOpening(null);
+        onOpenChange={(value) => {
+          if (!value && !busy) setOpening(null);
         }}
       >
-        <DialogContent className="max-h-[85dvh] overflow-y-auto rounded-2xl sm:max-w-xl">
-          <DialogHeader className="space-y-2">
-            <DialogTitle>Open {opening?.item.category} assessment</DialogTitle>
-            <DialogDescription>
-              Choose which active freelancers qualify and when the assessment is
-              available. The eligible group is fixed when you confirm; later
-              account or category changes are not added automatically.
+        <DialogContent className="w-[calc(100vw-1.5rem)] max-h-[90dvh] gap-5 overflow-y-auto rounded-2xl p-5 sm:max-w-lg sm:p-6">
+          <DialogHeader className="space-y-2 text-left">
+            <DialogTitle className="pr-8 text-xl tracking-tight">
+              Open {opening?.item.category} assessment
+            </DialogTitle>
+            <DialogDescription className="leading-5">
+              Choose who can take this assessment and set its availability
+              window in Philippine time (PHT). The eligible group is saved when
+              you confirm.
             </DialogDescription>
           </DialogHeader>
           {error && (
-            <p role="alert" className="text-sm text-destructive">
+            <p
+              role="alert"
+              className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
+            >
               {error}
             </p>
           )}
-          <p className="text-sm">
-            {opening?.item.quiz?.questions.length} questions · Pass{" "}
-            {opening?.item.quiz?.passingPercentage}% ·{" "}
-            {opening?.item.quiz?.timeLimitMinutes
-              ? `${opening.item.quiz.timeLimitMinutes} minutes`
-              : "No separate timer"}
-          </p>
-          <fieldset className="space-y-3 rounded-xl border bg-muted/20 p-4">
-            <legend className="text-sm font-medium">Who can take it?</legend>
-            <div className="grid gap-3 sm:grid-cols-2">
+          <div className="flex flex-wrap gap-2 text-xs">
+            <span className="rounded-full border bg-muted/30 px-3 py-1.5">
+              {opening?.item.quiz?.questions.length} questions
+            </span>
+            <span className="rounded-full border bg-muted/30 px-3 py-1.5">
+              Pass {opening?.item.quiz?.passingPercentage}%
+            </span>
+            <span className="rounded-full border bg-muted/30 px-3 py-1.5">
+              {opening?.item.quiz?.timeLimitMinutes
+                ? `${opening.item.quiz.timeLimitMinutes} minutes`
+                : "No timer"}
+            </span>
+          </div>
+          <fieldset className="min-w-0 space-y-3 rounded-xl border bg-card p-4">
+            <legend className="px-1 text-sm font-semibold">
+              Who can take it?
+            </legend>
+            <div className="grid min-w-0 gap-2 sm:grid-cols-2">
               <Button
                 type="button"
+                className="h-11 min-w-0 whitespace-normal rounded-lg px-3"
                 variant={audienceScope === "category" ? "default" : "outline"}
                 aria-pressed={audienceScope === "category"}
                 onClick={() => setAudienceScope("category")}
@@ -353,6 +377,7 @@ export default function AdminAssessments() {
               </Button>
               <Button
                 type="button"
+                className="h-11 min-w-0 whitespace-normal rounded-lg px-3"
                 variant={
                   audienceScope === "all_freelancers" ? "default" : "outline"
                 }
@@ -362,61 +387,81 @@ export default function AdminAssessments() {
                 All active freelancers
               </Button>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Category only includes freelancers who selected{" "}
-              {opening?.item.category}. Suspended accounts are never eligible.
+            <p className="text-xs leading-5 text-muted-foreground">
+              {audienceScope === "category"
+                ? `Includes freelancers who selected ${opening?.item.category}.`
+                : "Includes active freelancers across every category."}{" "}
+              Suspended accounts are never eligible.
             </p>
           </fieldset>
-          <label className="block space-y-2 text-sm font-medium">
+          <label className="block min-w-0 space-y-2 text-sm font-medium">
             Minimum account age in days
             <Input
+              className="h-11 w-full rounded-lg bg-background"
               type="number"
               min={0}
               max={3650}
               step={1}
               value={minimumAccountAgeDays}
               onChange={(event) => setMinimumAccountAgeDays(event.target.value)}
+              aria-invalid={
+                minimumAccountAgeDays.trim() === "" ||
+                !Number.isInteger(Number(minimumAccountAgeDays)) ||
+                Number(minimumAccountAgeDays) < 0 ||
+                Number(minimumAccountAgeDays) > 3650
+              }
               aria-describedby="assessment-account-age-help"
             />
             <span
               id="assessment-account-age-help"
-              className="block text-xs text-muted-foreground"
+              className="block text-xs font-normal leading-5 text-muted-foreground"
             >
-              Set 0 to include newly created freelancer accounts.
+              Set 0 to include newly created accounts.
             </span>
           </label>
           <p
-            className="rounded-lg bg-background px-3 py-2 text-sm"
+            className="flex items-center justify-between gap-3 rounded-lg border bg-muted/20 px-3 py-2.5 text-sm"
             role="status"
             aria-live="polite"
           >
-            Eligible now: {count ?? "Checking…"}
-            {count === 0 && ". No freelancers match these settings."}
+            <span className="text-muted-foreground">Eligible freelancers</span>
+            <span className="shrink-0 font-semibold tabular-nums">
+              {count ?? "Checking…"}
+            </span>
           </p>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block space-y-2 text-sm font-medium">
-              Opens at (local time; blank for immediately)
+          {count === 0 && (
+            <p className="-mt-3 text-xs text-muted-foreground">
+              No freelancers match these settings yet.
+            </p>
+          )}
+          <div className="grid min-w-0 gap-4">
+            <label className="block min-w-0 space-y-2 text-sm font-medium">
+              Opens at (PHT)
+              <span className="block text-xs font-normal text-muted-foreground">
+                Leave blank to open immediately.
+              </span>
               <Input
+                className="h-11 w-full min-w-0 rounded-lg bg-background"
                 type="datetime-local"
                 value={opens}
-                onChange={(e) => setOpens(e.target.value)}
+                onChange={(event) => setOpens(event.target.value)}
               />
             </label>
-            <label className="block space-y-2 text-sm font-medium">
-              Closes at (local time)
+            <label className="block min-w-0 space-y-2 text-sm font-medium">
+              Closes at (PHT)
               <Input
+                className="h-11 w-full min-w-0 rounded-lg bg-background"
                 type="datetime-local"
                 value={closes}
-                onChange={(e) => setCloses(e.target.value)}
+                onChange={(event) => setCloses(event.target.value)}
               />
             </label>
           </div>
           <p className="text-xs leading-5 text-muted-foreground">
-            Change the passing score or timer in Edit assessment before
-            publishing.
+            Change the passing score or timer in Edit assessment before opening.
           </p>
           <Button
-            className="h-11 w-full rounded-xl"
+            className="h-11 w-full rounded-lg"
             disabled={
               busy || !closes || !opening || count === null || count === 0
             }
@@ -427,8 +472,8 @@ export default function AdminAssessments() {
                   opening.item.categoryId,
                   opening.item.version!,
                   opening.id,
-                  opens ? new Date(opens).toISOString() : null,
-                  new Date(closes).toISOString(),
+                  opens ? philippinesDateTimeToIso(opens) : null,
+                  philippinesDateTimeToIso(closes),
                   audienceScope,
                   Number(minimumAccountAgeDays),
                 );
@@ -440,10 +485,10 @@ export default function AdminAssessments() {
               })
             }
           >
-            Confirm opening
+            {busy ? "Opening assessment…" : "Confirm opening"}
           </Button>
         </DialogContent>
-      </Dialog>
+      </Dialog>{" "}
       <Dialog
         open={!!results}
         onOpenChange={(v) => {

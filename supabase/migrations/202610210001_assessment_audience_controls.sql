@@ -1,14 +1,49 @@
--- PREPARED, NOT APPLIED. Adds admin-configurable skill assessment audiences.
+-- Manual SQL Editor migration. Safe to rerun when the columns already exist.
 -- Existing openings keep the current category-only, 30-day eligibility rules.
--- Review the deployed assessment schema/RPCs and enum-independent constraints before applying.
+-- Review the deployed assessment schema/RPCs before applying.
 begin;
 
 alter table public.skill_assessment_openings
-  add column audience_scope text not null default 'category'
-    check (audience_scope in ('category', 'all_freelancers')),
-  add column minimum_account_age_days integer not null default 30
-    check (minimum_account_age_days between 0 and 3650);
+  add column if not exists audience_scope text,
+  add column if not exists minimum_account_age_days integer;
 
+update public.skill_assessment_openings
+set audience_scope = coalesce(audience_scope, 'category'),
+    minimum_account_age_days = coalesce(minimum_account_age_days, 30)
+where audience_scope is null or minimum_account_age_days is null;
+
+alter table public.skill_assessment_openings
+  alter column audience_scope set default 'category',
+  alter column audience_scope set not null,
+  alter column minimum_account_age_days set default 30,
+  alter column minimum_account_age_days set not null;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.skill_assessment_openings'::regclass
+      and conname = 'skill_assessment_openings_audience_scope_check'
+  ) then
+    alter table public.skill_assessment_openings
+      add constraint skill_assessment_openings_audience_scope_check
+      check (audience_scope in ('category', 'all_freelancers')) not valid;
+  end if;
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.skill_assessment_openings'::regclass
+      and conname = 'skill_assessment_openings_minimum_account_age_days_check'
+  ) then
+    alter table public.skill_assessment_openings
+      add constraint skill_assessment_openings_minimum_account_age_days_check
+      check (minimum_account_age_days between 0 and 3650) not valid;
+  end if;
+  alter table public.skill_assessment_openings
+    validate constraint skill_assessment_openings_audience_scope_check;
+  alter table public.skill_assessment_openings
+    validate constraint skill_assessment_openings_minimum_account_age_days_check;
+end;
+$$;
 create or replace function public.worksync_skill_assessment_eligible_count(
   p_category uuid,
   p_audience_scope text,
@@ -139,8 +174,8 @@ begin
   insert into public.notifications(user_id,type,title,message,related_id,is_read)
   select e.user_id,'skill_assessment',c.name||' Skill Assessment Available',
     'A WorkSync '||c.name||' Skill Assessment is available from '||
-    to_char(starts at time zone 'UTC','YYYY-MM-DD HH24:MI')||' UTC until '||
-    to_char(p_closes_at at time zone 'UTC','YYYY-MM-DD HH24:MI')||' UTC. Complete it to demonstrate category knowledge.',
+    to_char(starts at time zone 'Asia/Manila','YYYY-MM-DD HH12:MI AM')||' PHT until '||
+    to_char(p_closes_at at time zone 'Asia/Manila','YYYY-MM-DD HH12:MI AM')||' PHT. Complete it to demonstrate category knowledge.',
     p_opening,false
   from public.skill_assessment_eligible e
   join public.job_categories c on c.id=p_category

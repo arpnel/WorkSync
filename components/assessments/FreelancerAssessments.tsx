@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ClipboardCheck, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import {
   Dialog,
@@ -35,6 +36,13 @@ export default function FreelancerAssessments() {
     [saved, setSaved] = useState("");
   const [remaining, setRemaining] = useState<number | null>(null),
     [offset, setOffset] = useState(0);
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  const leaveAttempt = () => {
+    setSelected(null);
+    setAttempt(null);
+    setRemaining(null);
+    setSaved("");
+  };
   async function reload() {
     const rows = await listMyAssessments();
     setItems(rows);
@@ -157,17 +165,8 @@ export default function FreelancerAssessments() {
             variant="ghost"
             disabled={busy}
             onClick={() => {
-              if (
-                !attempt?.quiz ||
-                window.confirm(
-                  "Leave this attempt? Only explicitly saved answers are preserved; the timer continues.",
-                )
-              ) {
-                setSelected(null);
-                setAttempt(null);
-                setRemaining(null);
-                setSaved("");
-              }
+              if (!attempt?.quiz) leaveAttempt();
+              else setConfirmLeave(true);
             }}
           >
             <ArrowLeft className="size-4" />
@@ -363,6 +362,14 @@ export default function FreelancerAssessments() {
           </Button>
         </DialogContent>
       </Dialog>
+      <ConfirmActionDialog
+        open={confirmLeave}
+        onOpenChange={setConfirmLeave}
+        title="Leave this assessment?"
+        description="Only explicitly saved answers are preserved. The timer continues while you are away."
+        confirmLabel="Leave assessment"
+        onConfirm={leaveAttempt}
+      />
     </div>
   );
 }

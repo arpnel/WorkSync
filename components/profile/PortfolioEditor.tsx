@@ -11,6 +11,7 @@ import {
   updatePortfolioProject,
 } from "@/services/profile/profileservice";
 import { Button } from "@/components/ui/button";
+import { FileUpload } from "@/components/uploads/FileUpload";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -142,11 +143,18 @@ export default function PortfolioEditor({
           <fieldset disabled={busy} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="portfolio-image">Project image</Label>
-              <Input
+              <FileUpload
                 id="portfolio-image"
-                type="file"
+                file={file}
+                onFileSelect={(selected) => {
+                  setError("");
+                  setFile(selected);
+                }}
+                onFileRemove={() => setFile(null)}
+                onFileError={setError}
                 accept="image/jpeg,image/png,image/webp"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                maxSizeBytes={5 * 1024 * 1024}
+                placeholder="Choose a project image"
               />
               {imagePreview && (
                 <Image

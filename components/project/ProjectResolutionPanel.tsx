@@ -9,7 +9,7 @@ import {
   Loader2,
   Paperclip,
 } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { FileUpload } from "@/components/uploads/FileUpload";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
@@ -386,20 +386,28 @@ export function ProjectResolutionPanel({
                       </div>
                     </fieldset>
                   )}
-                  <label className="block text-sm">
-                    <span className="mb-2 flex items-center gap-2 font-medium">
+                  <div className="space-y-2 text-sm">
+                    <p className="flex items-center gap-2 font-medium">
                       <Paperclip className="size-4" />
                       Evidence{" "}
                       <span className="font-normal text-muted-foreground">
                         Optional, up to 10 MB
                       </span>
-                    </span>
-                    <Input
-                      type="file"
+                    </p>
+                    <FileUpload
+                      file={file ?? null}
+                      onFileSelect={(selected) => {
+                        setError("");
+                        setFile(selected);
+                      }}
+                      onFileRemove={() => setFile(undefined)}
+                      onFileError={setError}
+                      accept="*/*"
+                      maxSizeBytes={10 * 1024 * 1024}
+                      placeholder="Choose evidence"
                       disabled={busy}
-                      onChange={(e) => setFile(e.target.files?.[0])}
                     />
-                  </label>
+                  </div>
                 </>
               )}
               <label className="block text-sm">

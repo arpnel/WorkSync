@@ -6,6 +6,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 
 import { EMPLOYMENT_PREFERENCES } from "@/constants/account-setup.constants";
@@ -249,9 +250,32 @@ export function FreelancerInformationSection({
             id="resume"
             type="file"
             accept="application/pdf"
-            className="block w-full rounded-md border p-2 text-sm"
+            className="hidden"
             onChange={(event) => onFileSelect("resume", event)}
           />
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => document.getElementById("resume")?.click()}
+            >
+              {values.resume ? "Replace PDF" : "Choose PDF"}
+            </Button>
+            {values.resume && (
+              <>
+                <span className="break-all text-sm text-muted-foreground">
+                  {values.resume.name}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => onChange("resume", null)}
+                >
+                  Remove
+                </Button>
+              </>
+            )}
+          </div>
 
           {values.existingResumeUrl && !values.resume && (
             <p className="text-sm text-muted-foreground">

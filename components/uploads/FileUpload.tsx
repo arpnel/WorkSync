@@ -1,11 +1,14 @@
 "use client";
 
-import { useRef, type ChangeEvent } from "react";
+import { useRef, useState, type ChangeEvent } from "react";
 import { Upload, FileIcon, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
 export interface FileUploadProps {
+  /** ID for associating a visible label with the hidden input */
+  id?: string;
+
   /** Currently selected file or null */
   file: File | null;
 
@@ -27,6 +30,9 @@ export interface FileUploadProps {
   /** Error message */
   error?: string;
 
+  /** Called when the selected file exceeds the size limit */
+  onFileError?: (message: string) => void;
+
   /** Optional label */
   label?: string;
 
@@ -44,6 +50,7 @@ export interface FileUploadProps {
 }
 
 export function FileUpload({
+  id,
   file,
   onFileSelect,
   onFileRemove,
@@ -51,6 +58,7 @@ export function FileUpload({
   maxSizeBytes,
   placeholder = "Upload a file",
   error,
+  onFileError,
   label,
   description,
   className,
@@ -58,13 +66,19 @@ export function FileUpload({
   disabled = false,
 }: FileUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [selectionError, setSelectionError] = useState("");
 
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
     if (!selected) return;
     if (selected.size > maxSizeBytes) {
+      const message = `Choose a file up to ${formatSize(maxSizeBytes)}.`;
+      setSelectionError(message);
+      onFileError?.(message);
+      e.target.value = "";
       return;
     }
+    setSelectionError("");
     onFileSelect(selected);
     // Reset input so the same file can be re-selected
     e.target.value = "";
@@ -87,6 +101,7 @@ export function FileUpload({
       )}
 
       <input
+        id={id}
         ref={inputRef}
         type="file"
         accept={accept}
@@ -112,7 +127,10 @@ export function FileUpload({
             type="button"
             variant="ghost"
             size="icon"
-            onClick={onFileRemove}
+            onClick={() => {
+              setSelectionError("");
+              onFileRemove();
+            }}
             disabled={disabled}
             className="shrink-0"
           >
@@ -138,7 +156,9 @@ export function FileUpload({
         </button>
       )}
 
-      {error && <p className="text-xs text-destructive">{error}</p>}
+      {(error || selectionError) && (
+        <p className="text-xs text-destructive">{error || selectionError}</p>
+      )}
     </div>
   );
 }

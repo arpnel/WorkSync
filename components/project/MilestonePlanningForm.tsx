@@ -9,6 +9,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { platformAction } from "@/services/platform/platformService";
@@ -208,6 +209,7 @@ export function RemoveDraftMilestone({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [confirmRemoval, setConfirmRemoval] = useState(false);
   return (
     <div className={compact ? "ml-auto" : "mt-3 border-t pt-2"}>
       <Button
@@ -215,35 +217,40 @@ export function RemoveDraftMilestone({
         variant="ghost"
         size="sm"
         disabled={busy}
-        onClick={async () => {
-          if (
-            !window.confirm(
-              "Remove this draft milestone? Any final confirmations must be withdrawn before changing the plan.",
-            )
-          )
-            return;
-          setBusy(true);
-          setError("");
-          try {
-            await platformAction("worksync_draft_milestones", {
-              p_order: orderId,
-              p_action: "remove",
-              p_milestone: id,
-            });
-            await onRefresh();
-          } catch (cause) {
-            setError(
-              cause instanceof Error
-                ? cause.message
-                : "Unable to remove milestone.",
-            );
-          } finally {
-            setBusy(false);
-          }
-        }}
+        onClick={() => setConfirmRemoval(true)}
       >
-        {busy ? "Removing?" : "Remove draft"}
+        {busy ? "Removing…" : "Remove draft"}
       </Button>
+      <ConfirmActionDialog
+        open={confirmRemoval}
+        onOpenChange={setConfirmRemoval}
+        title="Remove this draft milestone?"
+        description="Any final confirmations must be withdrawn before changing the plan."
+        confirmLabel="Remove milestone"
+        destructive
+        onConfirm={() => {
+          void (async () => {
+            setBusy(true);
+            setError("");
+            try {
+              await platformAction("worksync_draft_milestones", {
+                p_order: orderId,
+                p_action: "remove",
+                p_milestone: id,
+              });
+              await onRefresh();
+            } catch (cause) {
+              setError(
+                cause instanceof Error
+                  ? cause.message
+                  : "Unable to remove milestone.",
+              );
+            } finally {
+              setBusy(false);
+            }
+          })();
+        }}
+      />
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}

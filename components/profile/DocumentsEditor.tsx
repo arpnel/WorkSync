@@ -2,7 +2,6 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -191,9 +190,10 @@ export function DocumentsEditor({
         ].map((field) => (
           <div className="space-y-2" key={field.label}>
             <Label htmlFor={field.label}>{field.label}</Label>
-            <Input
+            <input
               id={field.label}
               type="file"
+              className="hidden"
               disabled={busy}
               multiple={field.multiple}
               accept={field.accept}
@@ -202,6 +202,14 @@ export function DocumentsEditor({
                 e.target.value = "";
               }}
             />
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy}
+              onClick={() => document.getElementById(field.label)?.click()}
+            >
+              {field.selectedFiles.length ? "Add more files" : "Choose files"}
+            </Button>
             <p className="text-xs text-muted-foreground">
               {field.selectedFiles.length
                 ? field.selectedFiles.map((file) => file.name).join(", ")

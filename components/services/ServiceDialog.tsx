@@ -16,6 +16,7 @@ import type {
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 import {
   Dialog,
   DialogContent,
@@ -90,6 +91,7 @@ export function ServiceDialog({
   const [originalMediaUrls, setOriginalMediaUrls] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [confirmClose, setConfirmClose] = useState(false);
 
   const duplicateLock = useDuplicateSubmissionLock();
   const userId = useAuthUserId();
@@ -254,7 +256,8 @@ export function ServiceDialog({
   };
 
   const closeDialog = () => {
-    if (dirty && !isSubmitting && !window.confirm("Discard changes?")) {
+    if (dirty && !isSubmitting) {
+      setConfirmClose(true);
       return;
     }
 
@@ -654,6 +657,20 @@ export function ServiceDialog({
           </aside>
         </div>
       </DialogContent>
+      <ConfirmActionDialog
+        open={confirmClose}
+        onOpenChange={setConfirmClose}
+        title={`Discard ${noun.toLowerCase()} changes?`}
+        description={`Your unsaved ${noun.toLowerCase()} details will be lost.`}
+        cancelLabel="Keep editing"
+        confirmLabel="Discard changes"
+        destructive
+        onConfirm={() => {
+          setDirty(false);
+          setConfirmClose(false);
+          onOpenChange(false);
+        }}
+      />
     </Dialog>
   );
 }

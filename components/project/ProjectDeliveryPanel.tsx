@@ -22,6 +22,7 @@ import { SubmissionImage } from "./SubmissionImage";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { FileUpload } from "@/components/uploads/FileUpload";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -92,7 +93,6 @@ export function ProjectDeliveryPanel({
   const [kind, setKind] = useState<"progress" | "delivery">("delivery");
   const [milestone, setMilestone] = useState("");
   const [file, setFile] = useState<File>();
-  const [uploadKey, setUploadKey] = useState(0);
   const [reviewing, setReviewing] = useState<{
     submission: WorkSubmission;
     action: "approve" | "revision";
@@ -387,7 +387,6 @@ export function ProjectDeliveryPanel({
                           setBody("");
                           setLink("");
                           setFile(undefined);
-                          setUploadKey((key) => key + 1);
                         }, "Work submitted. Your previous submissions remain in the history.");
                       }}
                     >
@@ -444,19 +443,21 @@ export function ProjectDeliveryPanel({
                             onChange={(e) => setLink(e.target.value)}
                           />
                         </label>
-                        <label className="block text-sm">
-                          Attachment (up to 10 MB)
-                          <Input
-                            key={uploadKey}
-                            type="file"
-                            onChange={(e) => setFile(e.target.files?.[0])}
+                        <div className="space-y-1 text-sm">
+                          <p>Attachment (up to 10 MB)</p>
+                          <FileUpload
+                            file={file ?? null}
+                            onFileSelect={(selected) => {
+                              setUploadError("");
+                              setFile(selected);
+                            }}
+                            onFileRemove={() => setFile(undefined)}
+                            onFileError={setUploadError}
+                            accept="*/*"
+                            maxSizeBytes={10 * 1024 * 1024}
+                            placeholder="Choose an attachment"
                           />
-                          {file && (
-                            <span className="mt-1 block break-all text-xs text-muted-foreground">
-                              Selected: {file.name}
-                            </span>
-                          )}
-                        </label>
+                        </div>
                         {kind === "delivery" && pendingDelivery && (
                           <p className="text-sm text-muted-foreground">
                             This delivery is awaiting review. Wait for approval

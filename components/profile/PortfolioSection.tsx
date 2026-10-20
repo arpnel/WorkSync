@@ -12,6 +12,7 @@ import {
 } from "../../services/profile/profileservice";
 
 import { Button } from "@/components/ui/button";
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import PortfolioEditor from "./PortfolioEditor";
 import { DocumentPreview } from "./DocumentPreview";
@@ -36,6 +37,7 @@ export default function PortfolioSection({
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<PortfolioProject | null | undefined>();
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   const loadProjects = useCallback(async () => {
     setLoading(true);
@@ -78,10 +80,6 @@ export default function PortfolioSection({
   }, [isOwner, sampleRetry, userId]);
 
   const handleDelete = async (id: string) => {
-    const confirmed = window.confirm("Delete this portfolio project?");
-
-    if (!confirmed) return;
-
     setDeleting(id);
     setError("");
     try {
@@ -258,7 +256,7 @@ export default function PortfolioSection({
                           variant="destructive"
                           aria-label={`Delete ${project.title}`}
                           disabled={deleting !== null}
-                          onClick={() => handleDelete(project.portfolio_id)}
+                          onClick={() => setDeleteTarget(project.portfolio_id)}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -281,6 +279,20 @@ export default function PortfolioSection({
           }}
         />
       )}
+      <ConfirmActionDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title="Delete portfolio project?"
+        description="This project will be removed from your portfolio."
+        confirmLabel="Delete project"
+        destructive
+        onConfirm={() => {
+          if (deleteTarget) void handleDelete(deleteTarget);
+          setDeleteTarget(null);
+        }}
+      />
     </Card>
   );
 }

@@ -10,6 +10,7 @@ import { RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ProjectContractDialog } from "./ProjectContractDialog";
 import { Button } from "@/components/ui/button";
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   getProjectPayment,
@@ -62,6 +63,7 @@ export function PaymentPanel({
   const [payment, setPayment] = useState<ProjectPayment | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [confirmAutoAccept, setConfirmAutoAccept] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const inFlight = useRef(false);
   const refresh = useCallback(async () => {
@@ -105,13 +107,13 @@ export function PaymentPanel({
   }
   async function changeAutoAccept() {
     const next = !payment?.autoAccept;
-    if (
-      next &&
-      !window.confirm(
-        "Automatically accept future deliveries without manual review? Approved deliveries can release money to the freelancer. Disputes and cancellation holds still apply.",
-      )
-    )
+    if (next) {
+      setConfirmAutoAccept(true);
       return;
+    }
+    await saveAutoAccept(false);
+  }
+  async function saveAutoAccept(next: boolean) {
     setBusy(true);
     setError("");
     try {
@@ -318,6 +320,17 @@ export function PaymentPanel({
         {contractDetails && (
           <div className="border-t pt-4">{contractDetails}</div>
         )}
+        <ConfirmActionDialog
+          open={confirmAutoAccept}
+          onOpenChange={setConfirmAutoAccept}
+          title="Enable automatic delivery acceptance?"
+          description="Future deliveries will be accepted without manual review. Approved deliveries can release money to the freelancer. Disputes and cancellation holds still apply."
+          confirmLabel="Enable auto-accept"
+          onConfirm={() => {
+            setConfirmAutoAccept(false);
+            void saveAutoAccept(true);
+          }}
+        />
       </CardContent>
     </Card>
   );

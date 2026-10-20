@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { ClipboardCheck, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -49,6 +50,13 @@ export default function AdminAssessments() {
     [closes, setCloses] = useState("");
   const [results, setResults] = useState<OpeningResults | null>(null),
     [search, setSearch] = useState("");
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [closeTarget, setCloseTarget] = useState<string | null>(null);
+  const discardEditor = () => {
+    setSelected(null);
+    setQuiz(null);
+    setDirty(false);
+  };
   async function reload() {
     const rows = await listAdminAssessments();
     setItems(rows);
@@ -129,14 +137,8 @@ export default function AdminAssessments() {
             variant="ghost"
             disabled={busy}
             onClick={() => {
-              if (
-                !dirty ||
-                window.confirm("Discard unsaved assessment changes?")
-              ) {
-                setSelected(null);
-                setQuiz(null);
-                setDirty(false);
-              }
+              if (!dirty) discardEditor();
+              else setConfirmDiscard(true);
             }}
           >
             <ArrowLeft className="size-4" />
@@ -215,17 +217,7 @@ export default function AdminAssessments() {
                             size="sm"
                             variant="destructive"
                             disabled={busy}
-                            onClick={() => {
-                              if (
-                                window.confirm(
-                                  "Close this opening now? Unsubmitted attempts will expire.",
-                                )
-                              )
-                                void action(async () => {
-                                  await closeAssessment(active.id);
-                                  await reload();
-                                });
-                            }}
+                            onClick={() => setCloseTarget(active.id)}
                           >
                             Close assessment
                           </Button>
@@ -448,6 +440,34 @@ export default function AdminAssessments() {
           )}
         </DialogContent>
       </Dialog>
+      <ConfirmActionDialog
+        open={confirmDiscard}
+        onOpenChange={setConfirmDiscard}
+        title="Discard assessment changes?"
+        description="Your unsaved assessment edits will be lost."
+        confirmLabel="Discard changes"
+        destructive
+        onConfirm={discardEditor}
+      />
+      <ConfirmActionDialog
+        open={closeTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setCloseTarget(null);
+        }}
+        title="Close this assessment opening?"
+        description="Unsubmitted attempts will expire when this opening is closed."
+        confirmLabel="Close opening"
+        destructive
+        onConfirm={() => {
+          if (closeTarget) {
+            void action(async () => {
+              await closeAssessment(closeTarget);
+              await reload();
+            });
+          }
+          setCloseTarget(null);
+        }}
+      />
     </div>
   );
 }

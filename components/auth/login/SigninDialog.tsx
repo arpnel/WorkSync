@@ -14,6 +14,7 @@ import { validateSigninForm } from "../../../lib/validation/auth.validation";
 import { ERROR_MESSAGES } from "../constants";
 import { SignupDialog } from "../signup/SignupDialog";
 import { Button } from "@/components/ui/button";
+import { Loader2 } from "lucide-react";
 
 export function SigninDialog() {
   const router = useRouter();
@@ -25,6 +26,7 @@ export function SigninDialog() {
   const [password, setPassword] = React.useState("");
 
   const [loading, setLoading] = React.useState(false);
+  const [signingIn, setSigningIn] = React.useState(false);
 
   const [passwordError, setPasswordError] = React.useState("");
 
@@ -72,16 +74,23 @@ export function SigninDialog() {
   };
 
   const handleGoogleSignin = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
+    if (loading) return;
+    setLoading(true);
+    setSigningIn(true);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
 
-    if (error) {
-      console.error(error.message);
-      showMessage(error.message);
+      if (error) throw error;
+    } catch (error) {
+      console.error(error);
+      showMessage(error instanceof Error ? error.message : ERROR_MESSAGES.UNKNOWN);
+      setSigningIn(false);
+      setLoading(false);
     }
   };
 
@@ -95,6 +104,7 @@ export function SigninDialog() {
     if (loading) return;
 
     setLoading(true);
+    setSigningIn(true);
 
     try {
       const validation = validateSigninForm({
@@ -157,6 +167,7 @@ export function SigninDialog() {
         showMessage(ERROR_MESSAGES.UNKNOWN);
       }
     } finally {
+      setSigningIn(false);
       setLoading(false);
     }
   };
@@ -171,6 +182,19 @@ export function SigninDialog() {
     );
   return (
     <>
+      {signingIn && (
+        <div
+          className="fixed inset-0 z-[1000] flex items-center justify-center bg-background/75 p-4 text-foreground"
+          role="status"
+          aria-live="assertive"
+          aria-busy="true"
+        >
+          <div className="flex min-w-48 flex-col items-center gap-3 rounded-2xl border bg-card px-8 py-7 shadow-xl">
+            <Loader2 className="size-8 animate-spin text-primary" aria-hidden="true" />
+            <p className="text-sm font-semibold">Signing you in...</p>
+          </div>
+        </div>
+      )}
       {notice && (
         <p role="status" className="text-sm">
           {notice}

@@ -10,6 +10,7 @@ import AboutSection from "@/components/profile/AboutSection";
 import ServicesSection from "@/components/profile/ServicesSection";
 import PortfolioSection from "@/components/profile/PortfolioSection";
 import ReviewsSection from "@/components/profile/ReviewsSection";
+import { ProfileListings } from "@/components/profile/ProfileListings";
 import { getPublicProfile } from "@/services/profile/profileservice";
 import type { Profile } from "@/types/profile/profile";
 
@@ -77,7 +78,18 @@ export default function PublicProfilePage() {
                 </TabsContent>
               </Tabs>
             ) : (
-              <ReviewsSection userId={profile.user_id} role={profile.role} />
+              <Tabs defaultValue="listings">
+                <TabsList className="mb-5 h-auto w-full flex-wrap justify-start gap-1 rounded-lg border bg-card p-1.5">
+                  <TabsTrigger value="listings">Listings</TabsTrigger>
+                  <TabsTrigger value="reviews">Reviews</TabsTrigger>
+                </TabsList>
+                <TabsContent value="listings">
+                  <ProfileListings editable={false} userId={profile.user_id} />
+                </TabsContent>
+                <TabsContent value="reviews">
+                  <ReviewsSection userId={profile.user_id} role={profile.role} />
+                </TabsContent>
+              </Tabs>
             )}
           </div>
         </div>

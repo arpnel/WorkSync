@@ -3,34 +3,49 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   getMyMarketplaceListings,
+  getMarketplaceListingsByClient,
   type MarketplaceItem,
 } from "@/services/marketplace/MarketplaceServices";
 import { ListingEditDialog } from "@/components/listings/ListingEditDialog";
+import { getPublicIdentities } from "@/services/profile/publicIdentityService";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-export function ProfileListings({ editable }: { editable: boolean }) {
+export function ProfileListings({ editable, userId }: {
+  editable: boolean;
+  userId?: string;
+}) {
   const [items, setItems] = useState<MarketplaceItem[]>([]);
   const [editing, setEditing] = useState<MarketplaceItem | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const load = useCallback(async () => {
     try {
-      setItems(await getMyMarketplaceListings());
+      if (!userId) {
+        setItems(await getMyMarketplaceListings());
+      } else {
+        const identities = await getPublicIdentities({ userIds: [userId] });
+        const client = identities.clients.find((row) => row.user_id === userId);
+        setItems(client ? await getMarketplaceListingsByClient(client.client_id) : []);
+      }
       setError("");
     } catch {
-      setError("Unable to load your project listings.");
+      setError(
+        userId
+          ? "Unable to load project listings."
+          : "Unable to load your project listings.",
+      );
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [userId]);
   useEffect(() => {
     void load();
   }, [load]);
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Project listings</CardTitle>
+        <CardTitle>{editable ? "My listings" : "Project listings"}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         {loading && (

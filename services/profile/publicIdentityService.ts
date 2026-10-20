@@ -12,6 +12,7 @@ export interface PublicIdentity {
   updated_at: string;
 }
 export interface PublicIdentities {
+  roles: { user_id: string; role: "client" | "freelancer" }[];
   profiles: PublicIdentity[];
   clients: { client_id: string; user_id: string }[];
   freelancers: {
@@ -32,6 +33,7 @@ export async function getPublicIdentities(input: {
   } = await supabase.auth.getSession();
   if (!session) throw new Error("Sign in to view marketplace profiles.");
   const result: PublicIdentities = {
+    roles: [],
     profiles: [],
     clients: [],
     freelancers: [],
@@ -88,6 +90,7 @@ export async function getPublicIdentities(input: {
       );
     }
     result.profiles.push(...data.profiles);
+    result.roles.push(...(data.roles ?? []));
     result.clients.push(...data.clients);
     result.freelancers.push(...data.freelancers);
   }

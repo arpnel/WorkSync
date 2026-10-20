@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -29,6 +29,8 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { getCurrentUserRole, type UserRole } from "@/services/marketplace/AccountServices";
+import { useEffect, useState } from "react";
 
 const NAV_ITEMS = [
   { label: "Dashboard", icon: Home, href: "/home/dashboard" },
@@ -49,6 +51,25 @@ export function AppSidebar() {
   const pathname = usePathname();
   const { setOpenMobile, isMobile, state } = useSidebar();
   const collapsed = !isMobile && state === "collapsed";
+  const [role, setRole] = useState<UserRole | null>(null);
+  useEffect(() => {
+    let active = true;
+    void getCurrentUserRole()
+      .then((value) => {
+        if (active) setRole(value);
+      })
+      .catch(() => {});
+    const onRoleChanged = (event: Event) => {
+      const nextRole = (event as CustomEvent<{ role?: UserRole }>).detail?.role;
+      if (nextRole === "client" || nextRole === "freelancer") setRole(nextRole);
+    };
+    window.addEventListener("account-role-changed", onRoleChanged);
+    return () => {
+      active = false;
+      window.removeEventListener("account-role-changed", onRoleChanged);
+    };
+  }, []);
+  const discoveryLabel = role === "client" ? "Freelancers" : "Clients";
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(`${href}/`);
 
@@ -61,7 +82,13 @@ export function AppSidebar() {
             href={item.href}
             onClick={() => setOpenMobile(false)}
             aria-current={isActive(item.href) ? "page" : undefined}
-            title={iconOnly ? item.label : undefined}
+            title={
+              iconOnly
+                ? item.label === "Clients"
+                  ? discoveryLabel
+                  : item.label
+                : undefined
+            }
             className={cn(
               "flex min-h-11 items-center rounded-xl py-2.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary",
               iconOnly ? "justify-center px-0" : "gap-3 px-3",
@@ -71,7 +98,7 @@ export function AppSidebar() {
           >
             <item.icon className="h-5 w-5 shrink-0" aria-hidden="true" />
             <span className={iconOnly ? "sr-only" : undefined}>
-              {item.label}
+              {item.label === "Clients" ? discoveryLabel : item.label}
             </span>
           </Link>
         ))}

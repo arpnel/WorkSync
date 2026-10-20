@@ -226,6 +226,8 @@ export async function getPublicProfile(
   const freelancerResult = {
     data: identities.freelancers.find((row) => row.user_id === userId) ?? null,
   };
+  const activeRole = identities.roles.find((row) => row.user_id === userId)?.role ??
+    (freelancerResult.data ? "freelancer" : "client");
   const profileResult = await supabase
     .from(PROFILES_TABLE)
     .select(
@@ -234,7 +236,7 @@ export async function getPublicProfile(
     .eq("user_id", userId)
     .maybeSingle();
 
-  const details = freelancerResult.data
+  const details = activeRole === "freelancer" && freelancerResult.data
     ? await getFreelancerDetails(freelancerResult.data.freelancer_id)
     : {};
 
@@ -252,7 +254,7 @@ export async function getPublicProfile(
   return {
     user_id: userId,
     email: "",
-    role: freelancerResult.data ? "freelancer" : "client",
+    role: activeRole,
     first_name: base.first_name,
     last_name: base.last_name,
     avatar_url: base.avatar_url,

@@ -113,10 +113,18 @@ export default function ProfilePage() {
                 </TabsContent>
               </Tabs>
             ) : (
-              <>
-                <ProfileListings editable />
-                <ReviewsSection userId={profile.user_id} role={profile.role} />
-              </>
+              <Tabs defaultValue="listings" className="w-full">
+                <TabsList className="mb-5 h-auto w-full flex-wrap justify-start gap-1 rounded-lg border bg-card p-1.5">
+                  <TabsTrigger value="listings">My Listings</TabsTrigger>
+                  <TabsTrigger value="reviews">Reviews</TabsTrigger>
+                </TabsList>
+                <TabsContent value="listings">
+                  <ProfileListings editable />
+                </TabsContent>
+                <TabsContent value="reviews">
+                  <ReviewsSection userId={profile.user_id} role={profile.role} />
+                </TabsContent>
+              </Tabs>
             )}
           </div>
         </div>

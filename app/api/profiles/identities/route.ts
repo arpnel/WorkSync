@@ -130,7 +130,19 @@ export async function POST(request: Request) {
         },
         503,
       );
+    const roles = relatedIds.length
+      ? await db.from("Users").select("user_id,role").in("user_id", relatedIds)
+      : { data: [], error: null };
+    if (roles.error)
+      return json(
+        {
+          error: "Marketplace account roles could not be loaded.",
+          code: "IDENTITIES_ROLE_LOOKUP_FAILED",
+        },
+        503,
+      );
     return json({
+      roles: (roles.data ?? []).filter((row) => row.role === "client" || row.role === "freelancer"),
       profiles: profiles.data ?? [],
       clients: clients.data ?? [],
       freelancers: freelancers.data ?? [],

@@ -134,13 +134,31 @@ async function saveProfile(userId: string, values: ClientSetupValues) {
   check(error, "Save basic profile");
 }
 async function finish(userId: string, role: "client" | "freelancer") {
-  const roleResult = await supabase
-    .from("Users")
-    .update({ role })
-    .eq("user_id", userId)
-    .select("user_id")
-    .single();
-  check(roleResult.error, "Select account role");
+  const { data: sessionData, error: sessionError } =
+    await supabase.auth.getSession();
+  const accessToken = sessionData.session?.access_token;
+  if (sessionError || !accessToken) {
+    throw new Error("Your session expired. Please sign in again.");
+  }
+
+  // Users is a protected account table. Set the role through the authenticated
+  // server endpoint, which verifies this token and performs the privileged write.
+  const roleResponse = await fetch("/api/account/switch-role", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ role }),
+  });
+  const roleResult = await roleResponse.json().catch(() => null);
+  if (!roleResponse.ok) {
+    throw new Error(
+      typeof roleResult?.error === "string"
+        ? roleResult.error
+        : "Unable to select your account role. Please try again.",
+    );
+  }
   // Profile completion, not identity approval; this is deliberately the last write.
   const result = await supabase
     .from("profiles")

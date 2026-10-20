@@ -5,6 +5,7 @@ import { ProfileAssessments } from "@/components/assessments/ProfileAssessments"
 import type { Profile } from "@/types/profile/profile";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { BadgeCheck } from "lucide-react";
 import {
   EMPLOYMENT_PREFERENCES,
   ENGLISH_PROFICIENCY,
@@ -15,11 +16,13 @@ function ProfileTags({
   items,
   limit,
   unavailable,
+  assessedItemIds = [],
 }: {
   title: string;
   items: { id: string; name: string }[];
   limit: number;
   unavailable: boolean;
+  assessedItemIds?: string[];
 }) {
   const [expanded, setExpanded] = useState(false);
   return (
@@ -30,9 +33,29 @@ function ProfileTags({
           <Badge
             key={item.id}
             variant="outline"
-            className="max-w-full whitespace-normal break-words font-normal"
+            title={
+              assessedItemIds.includes(item.id)
+                ? "Skill assessment passed"
+                : undefined
+            }
+            aria-label={
+              assessedItemIds.includes(item.id)
+                ? `${item.name}, skill assessment passed`
+                : item.name
+            }
+            className={
+              assessedItemIds.includes(item.id)
+                ? "max-w-full whitespace-normal break-words border-amber-500/60 bg-amber-400/15 font-medium text-amber-800 dark:text-amber-300"
+                : "max-w-full whitespace-normal break-words font-normal"
+            }
           >
             {item.name}
+            {assessedItemIds.includes(item.id) && (
+              <BadgeCheck
+                className="ml-0.5 size-3.5 shrink-0"
+                aria-hidden="true"
+              />
+            )}
           </Badge>
         ))}
         {!items.length && (
@@ -43,6 +66,12 @@ function ProfileTags({
           </p>
         )}
       </div>
+      {items.some((item) => assessedItemIds.includes(item.id)) && (
+        <p className="flex items-center gap-1 text-xs text-amber-700 dark:text-amber-300">
+          <BadgeCheck className="size-3.5" aria-hidden="true" />
+          Passed skill assessment
+        </p>
+      )}
       {items.length > limit && (
         <button
           type="button"
@@ -58,6 +87,7 @@ function ProfileTags({
 }
 
 export default function AboutSection({ profile }: { profile: Profile }) {
+  const [passedCategoryIds, setPassedCategoryIds] = useState<string[]>([]);
   const professionalDetails = [
     [
       "Hourly rate",
@@ -136,6 +166,7 @@ export default function AboutSection({ profile }: { profile: Profile }) {
               title="Industries"
               items={profile.industries ?? []}
               limit={3}
+              assessedItemIds={passedCategoryIds}
               unavailable={Boolean(
                 profile.unavailable_details?.includes("Industries"),
               )}
@@ -158,7 +189,10 @@ export default function AboutSection({ profile }: { profile: Profile }) {
           </>
         )}
         {profile.role === "freelancer" && (
-          <ProfileAssessments userId={profile.user_id} />
+          <ProfileAssessments
+            userId={profile.user_id}
+            onPassedCategoriesChange={setPassedCategoryIds}
+          />
         )}
         <p className="border-t pt-4 text-xs text-muted-foreground">
           Member since{" "}

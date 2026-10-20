@@ -73,7 +73,7 @@ export default function MarketplaceBrowse({
   const [filterOpen, setFilterOpen] = useState(false);
   const [filters, setFilters] = useState<MarketplaceFiltersValue>({
     sort: guest ? ["latest"] : ["highestRated"],
-    listingType: guest ? "service" : "freelancer",
+    listingType: "service",
     minPrice: "",
     maxPrice: "",
     rating: 0,

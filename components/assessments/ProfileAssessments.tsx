@@ -4,10 +4,28 @@ import { ClipboardCheck } from "lucide-react";
 import { getAssessmentEvidence } from "@/services/assessments/assessmentService";
 import type { AssessmentEvidence } from "@/lib/assessments/types";
 import { Skeleton } from "@/components/ui/skeleton";
-export function ProfileAssessments({ userId }: { userId: string }) {
-  return <ProfileAssessmentResults key={userId} userId={userId} />;
+export function ProfileAssessments({
+  userId,
+  onPassedCategoriesChange,
+}: {
+  userId: string;
+  onPassedCategoriesChange?: (categoryIds: string[]) => void;
+}) {
+  return (
+    <ProfileAssessmentResults
+      key={userId}
+      userId={userId}
+      onPassedCategoriesChange={onPassedCategoriesChange}
+    />
+  );
 }
-function ProfileAssessmentResults({ userId }: { userId: string }) {
+function ProfileAssessmentResults({
+  userId,
+  onPassedCategoriesChange,
+}: {
+  userId: string;
+  onPassedCategoriesChange?: (categoryIds: string[]) => void;
+}) {
   const [rows, setRows] = useState<AssessmentEvidence[]>([]),
     [error, setError] = useState(false),
     [loading, setLoading] = useState(true);
@@ -15,7 +33,10 @@ function ProfileAssessmentResults({ userId }: { userId: string }) {
     let alive = true;
     void getAssessmentEvidence(userId)
       .then((r) => {
-        if (alive) setRows(r);
+        if (alive) {
+          setRows(r);
+          onPassedCategoriesChange?.(r.map((row) => row.category_id));
+        }
       })
       .catch(() => {
         if (alive) setError(true);
@@ -26,7 +47,7 @@ function ProfileAssessmentResults({ userId }: { userId: string }) {
     return () => {
       alive = false;
     };
-  }, [userId]);
+  }, [userId, onPassedCategoriesChange]);
   return (
     <section className="space-y-3 border-t pt-4">
       <h3 className="flex items-center gap-2 text-sm font-semibold">

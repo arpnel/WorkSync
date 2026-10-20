@@ -43,7 +43,18 @@ const opening = z.object({
   closesAt: time,
   closedAt: time.nullable(),
   status: z.enum(["open", "scheduled", "closed"]),
+  audienceScope: z.enum(["category", "all_freelancers"]).optional(),
+  minimumAccountAgeDays: z.number().int().nonnegative().optional(),
+  eligibleCount: count.optional(),
 });
+export const openingSettingsSchema = z.array(
+  z.object({
+    openingId: z.string().uuid(),
+    audienceScope: z.enum(["category", "all_freelancers"]),
+    minimumAccountAgeDays: z.number().int().nonnegative(),
+    eligibleCount: count,
+  }),
+);
 export const adminListSchema = z.array(
   z.object({
     categoryId: z.string().uuid(),

@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { AdminFilterPanel } from "@/components/admin/admin-ui";
 import {
   Table,
   TableHeader,
@@ -182,72 +183,80 @@ export default function AdminRecords({
           />
         </div>
       )}
-      <div className="flex flex-wrap items-end gap-3 rounded-xl border bg-card p-4">
-        <label className="space-y-1 text-sm">
-          Page status
-          <StyledSelect
-            className="block h-10 rounded-md border bg-background px-3"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+      <AdminFilterPanel ariaLabel="Filter records">
+        <div className="grid grid-cols-1 items-end gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(9rem,1fr)_minmax(11rem,1.4fr)_minmax(11rem,1.4fr)_minmax(9rem,1fr)_auto]">
+          <label className="grid min-w-0 gap-1.5 text-sm font-medium">
+            Page status
+            <StyledSelect
+              className="h-10 w-full rounded-lg border bg-background px-3 font-normal"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              {Array.from(
+                new Set(["all", statusFilter, ...Object.keys(statusCounts)]),
+              ).map((value) => (
+                <option key={value} value={value}>
+                  {value === "all"
+                    ? "All statuses"
+                    : value.replaceAll("_", " ")}
+                </option>
+              ))}
+            </StyledSelect>
+          </label>
+          <label className="grid min-w-0 gap-1.5 text-sm font-medium">
+            From
+            <Input
+              className="h-10 w-full rounded-lg bg-background font-normal"
+              type="date"
+              value={fromDate}
+              max={toDate || undefined}
+              onChange={(e) => setFromDate(e.target.value)}
+            />
+          </label>
+          <label className="grid min-w-0 gap-1.5 text-sm font-medium">
+            Through
+            <Input
+              className="h-10 w-full rounded-lg bg-background font-normal"
+              type="date"
+              value={toDate}
+              min={fromDate || undefined}
+              onChange={(e) => setToDate(e.target.value)}
+            />
+          </label>
+          <label className="grid min-w-0 gap-1.5 text-sm font-medium">
+            Sort page
+            <StyledSelect
+              className="h-10 w-full rounded-lg border bg-background px-3 font-normal"
+              value={sort}
+              onChange={(e) => setSort(e.target.value)}
+            >
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="name">Name order</option>
+            </StyledSelect>
+          </label>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-10 w-full rounded-lg lg:w-auto"
+            onClick={() => {
+              setStatusFilter("all");
+              setFromDate("");
+              setToDate("");
+              setSort("newest");
+              setSearch("");
+              setOffset(0);
+              setPreviousOffsets([]);
+            }}
           >
-            {Array.from(
-              new Set(["all", statusFilter, ...Object.keys(statusCounts)]),
-            ).map((value) => (
-              <option key={value} value={value}>
-                {value === "all" ? "All statuses" : value.replaceAll("_", " ")}
-              </option>
-            ))}
-          </StyledSelect>
-        </label>
-        <label className="space-y-1 text-sm">
-          From
-          <Input
-            type="date"
-            value={fromDate}
-            max={toDate || undefined}
-            onChange={(e) => setFromDate(e.target.value)}
-          />
-        </label>
-        <label className="space-y-1 text-sm">
-          Through
-          <Input
-            type="date"
-            value={toDate}
-            min={fromDate || undefined}
-            onChange={(e) => setToDate(e.target.value)}
-          />
-        </label>
-        <label className="space-y-1 text-sm">
-          Sort page
-          <StyledSelect
-            className="block h-10 rounded-md border bg-background px-3"
-            value={sort}
-            onChange={(e) => setSort(e.target.value)}
-          >
-            <option value="newest">Newest first</option>
-            <option value="oldest">Oldest first</option>
-            <option value="name">Name A?Z</option>
-          </StyledSelect>
-        </label>
-        <Button
-          variant="ghost"
-          onClick={() => {
-            setStatusFilter("all");
-            setFromDate("");
-            setToDate("");
-            setSort("newest");
-            setSearch("");
-            setOffset(0);
-            setPreviousOffsets([]);
-          }}
-        >
-          Reset filters
-        </Button>
-        <p className="w-full text-xs text-muted-foreground">
+            Reset filters
+          </Button>
+        </div>
+        <p className="mt-3 text-xs leading-5 text-muted-foreground">
           Search checks all records. Status, dates and sorting apply to the
           loaded page.
         </p>
-      </div>
+      </AdminFilterPanel>
       {!loading &&
         data &&
         (module === "overview" ? (

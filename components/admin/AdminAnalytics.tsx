@@ -4,6 +4,7 @@ import { StyledSelect } from "@/components/ui/styled-select";
 import AdminMetricCard from "./AdminMetricCard";
 import AdminStatusChart from "./AdminStatusChart";
 import AdminPageHeader from "./AdminPageHeader";
+import { AdminFilterPanel } from "./admin-ui";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getAdminAnalytics } from "@/services/admin/adminService";
@@ -84,53 +85,61 @@ export default function AdminAnalytics() {
   return (
     <div className="min-w-0 space-y-6">
       <AdminPageHeader title="Platform analytics" />
-      <div className="grid gap-4 rounded-2xl border bg-card p-4 sm:flex sm:flex-wrap sm:items-end sm:p-5">
-        <label className="text-sm">
-          From
-          <Input
-            type="date"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-          />
-        </label>
-        <label className="text-sm">
-          Through
-          <Input
-            type="date"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-          />
-        </label>
-        <label className="text-sm">
-          Status
-          <StyledSelect
-            className="block rounded-md border bg-background p-2"
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
+      <AdminFilterPanel ariaLabel="Filter analytics">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_minmax(12rem,1fr)_auto]">
+          <label className="grid gap-1.5 text-sm font-medium">
+            From
+            <Input
+              className="h-10 rounded-lg bg-background font-normal"
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+            />
+          </label>
+          <label className="grid gap-1.5 text-sm font-medium">
+            Through
+            <Input
+              className="h-10 rounded-lg bg-background font-normal"
+              type="date"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+            />
+          </label>
+          <label className="grid gap-1.5 text-sm font-medium">
+            Status
+            <StyledSelect
+              className="h-10 w-full rounded-lg border bg-background px-3 font-normal"
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+            >
+              {Array.from(
+                new Set([
+                  "all",
+                  status,
+                  ...knownStatuses,
+                  ...(data?.scope === "moderation"
+                    ? [
+                        "suspended",
+                        "hidden",
+                        ...Object.keys(data.moderation.reports),
+                        ...Object.keys(data.moderation.disputes),
+                      ]
+                    : ["pending", "active", "completed", "cancelled"]),
+                ]),
+              ).map((s) => (
+                <option key={s}>{s}</option>
+              ))}
+            </StyledSelect>
+          </label>
+          <Button
+            className="h-10 rounded-lg"
+            variant="outline"
+            onClick={() => void load()}
           >
-            {Array.from(
-              new Set([
-                "all",
-                status,
-                ...knownStatuses,
-                ...(data?.scope === "moderation"
-                  ? [
-                      "suspended",
-                      "hidden",
-                      ...Object.keys(data.moderation.reports),
-                      ...Object.keys(data.moderation.disputes),
-                    ]
-                  : ["pending", "active", "completed", "cancelled"]),
-              ]),
-            ).map((s) => (
-              <option key={s}>{s}</option>
-            ))}
-          </StyledSelect>
-        </label>
-        <Button variant="outline" onClick={() => void load()}>
-          Refresh
-        </Button>
-      </div>
+            Refresh
+          </Button>
+        </div>
+      </AdminFilterPanel>
       <p className="text-sm text-muted-foreground">
         {data?.scope === "moderation"
           ? "Dates filter users, reports, disputes and audit actions. Suspended accounts and hidden listings are current totals. Status filters reports, disputes, suspended accounts and hidden listings; it does not filter users or audit actions."

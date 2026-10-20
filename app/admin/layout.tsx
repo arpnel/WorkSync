@@ -5,6 +5,7 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import AdminSidebar from "@/components/admin/admin-sidebar";
 import AdminHeader from "@/components/admin/admin-header";
 import { FaqBubble } from "@/components/landing/FaqBubble";
+import { AdminPageFrame } from "@/components/admin/admin-ui";
 export default function AdminLayout({ children }: { children: ReactNode }) {
   return (
     <AdminAccess>
@@ -24,7 +25,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               tabIndex={-1}
               className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-background p-4 sm:p-5 lg:p-6"
             >
-              <WorkspaceDesign>{children}</WorkspaceDesign>
+              <WorkspaceDesign>
+                <AdminPageFrame>{children}</AdminPageFrame>
+              </WorkspaceDesign>
             </main>
           </div>
         </div>

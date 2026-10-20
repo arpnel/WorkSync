@@ -97,3 +97,33 @@ export function ReviewFeedback({ message }: { message: string }) {
     </p>
   ) : null;
 }
+
+export function AdminPageFrame({ children }: { children: ReactNode }) {
+  return (
+    <div className="mx-auto w-full max-w-[1600px] min-w-0 space-y-7">
+      {children}
+    </div>
+  );
+}
+
+export function AdminFilterPanel({
+  children,
+  className,
+  ariaLabel,
+}: {
+  children: ReactNode;
+  className?: string;
+  ariaLabel?: string;
+}) {
+  return (
+    <section
+      aria-label={ariaLabel}
+      className={cn(
+        "rounded-xl border bg-card p-4 shadow-sm sm:p-5",
+        className,
+      )}
+    >
+      {children}
+    </section>
+  );
+}

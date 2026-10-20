@@ -47,7 +47,11 @@ export default function AdminAssessments() {
     } | null>(null),
     [count, setCount] = useState<number | null>(null),
     [opens, setOpens] = useState(""),
-    [closes, setCloses] = useState("");
+    [closes, setCloses] = useState(""),
+    [audienceScope, setAudienceScope] = useState<
+      "category" | "all_freelancers"
+    >("category"),
+    [minimumAccountAgeDays, setMinimumAccountAgeDays] = useState("30");
   const [results, setResults] = useState<OpeningResults | null>(null),
     [search, setSearch] = useState("");
   const [confirmDiscard, setConfirmDiscard] = useState(false);
@@ -101,16 +105,51 @@ export default function AdminAssessments() {
     setCount(null);
     setOpens("");
     setCloses("");
+    setAudienceScope("category");
+    setMinimumAccountAgeDays("30");
     setOpening({ item, id: crypto.randomUUID() });
-    await action(async () =>
-      setCount((await eligibleCount(item.categoryId)).count),
-    );
   }
+  useEffect(() => {
+    if (!opening) return;
+    const ageDays = Number(minimumAccountAgeDays);
+    if (
+      minimumAccountAgeDays.trim() === "" ||
+      !Number.isInteger(ageDays) ||
+      ageDays < 0 ||
+      ageDays > 3650
+    ) {
+      setCount(null);
+      return;
+    }
+    let active = true;
+    setCount(null);
+    void eligibleCount(opening.item.categoryId, audienceScope, ageDays)
+      .then(({ count: eligible }) => {
+        if (active) setCount(eligible);
+      })
+      .catch((cause) => {
+        if (!active) return;
+        setCount(null);
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "Unable to calculate assessment eligibility.",
+        );
+      });
+    return () => {
+      active = false;
+    };
+  }, [
+    opening?.id,
+    opening?.item.categoryId,
+    audienceScope,
+    minimumAccountAgeDays,
+  ]);
   if (loading) return <p role="status">Loading assessments…</p>;
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <header>
-        <h1 className="flex items-center gap-2 text-2xl font-semibold">
+    <div className="mx-auto max-w-7xl space-y-6">
+      <header className="space-y-2">
+        <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
           <ClipboardCheck className="text-primary" />
           Skill assessments
         </h1>
@@ -174,12 +213,13 @@ export default function AdminAssessments() {
       ) : (
         <>
           <Input
+            className="h-11 rounded-xl bg-card"
             aria-label="Search categories"
             placeholder="Search categories"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3">
             {items
               .filter((x) =>
                 x.category.toLowerCase().includes(search.toLowerCase()),
@@ -187,13 +227,16 @@ export default function AdminAssessments() {
               .map((item) => {
                 const active = item.openings.find((o) => o.status !== "closed");
                 return (
-                  <Card key={item.categoryId}>
-                    <CardHeader>
+                  <Card
+                    key={item.categoryId}
+                    className="flex h-full flex-col rounded-xl shadow-sm"
+                  >
+                    <CardHeader className="pb-3">
                       <CardTitle className="text-base">
                         {item.category}
                       </CardTitle>
                     </CardHeader>
-                    <CardContent className="space-y-3">
+                    <CardContent className="flex flex-1 flex-col space-y-4">
                       <p className="text-sm">
                         {item.quiz?.questions.length ?? 0} questions · Passing:{" "}
                         {item.quiz?.passingPercentage ?? 70}%
@@ -203,7 +246,7 @@ export default function AdminAssessments() {
                           ? `${active.status === "scheduled" ? "Scheduled" : "Open"} until ${date(active.closesAt)}`
                           : "Closed"}
                       </p>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="mt-auto flex flex-wrap gap-2 border-t pt-4">
                         <Button
                           size="sm"
                           variant="outline"
@@ -252,7 +295,12 @@ export default function AdminAssessments() {
                                 }
                               >
                                 Version {o.version} · {date(o.openedAt)} ·{" "}
-                                {o.status}
+                                {o.status} · {o.eligibleCount ?? 0} eligible ·{" "}
+                                {o.audienceScope === "all_freelancers"
+                                  ? "all active freelancers"
+                                  : "category freelancers"}{" "}
+                                · {o.minimumAccountAgeDays ?? 30}+ day account
+                                age
                               </Button>
                             ))}
                           </div>
@@ -271,13 +319,13 @@ export default function AdminAssessments() {
           if (!v && !busy) setOpening(null);
         }}
       >
-        <DialogContent>
-          <DialogHeader>
+        <DialogContent className="max-h-[85dvh] overflow-y-auto rounded-2xl sm:max-w-xl">
+          <DialogHeader className="space-y-2">
             <DialogTitle>Open {opening?.item.category} assessment</DialogTitle>
             <DialogDescription>
-              Publishing freezes this version and the eligible cohort now.
-              Scheduling a later start does not add newly eligible accounts.
-              Notifications are sent once.
+              Choose which active freelancers qualify and when the assessment is
+              available. The eligible group is fixed when you confirm; later
+              account or category changes are not added automatically.
             </DialogDescription>
           </DialogHeader>
           {error && (
@@ -292,32 +340,86 @@ export default function AdminAssessments() {
               ? `${opening.item.quiz.timeLimitMinutes} minutes`
               : "No separate timer"}
           </p>
-          <p className="text-sm">
-            Eligible now: {count ?? "Checking…"}. Final eligibility is checked
-            when you confirm.
+          <fieldset className="space-y-3 rounded-xl border bg-muted/20 p-4">
+            <legend className="text-sm font-medium">Who can take it?</legend>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Button
+                type="button"
+                variant={audienceScope === "category" ? "default" : "outline"}
+                aria-pressed={audienceScope === "category"}
+                onClick={() => setAudienceScope("category")}
+              >
+                This category only
+              </Button>
+              <Button
+                type="button"
+                variant={
+                  audienceScope === "all_freelancers" ? "default" : "outline"
+                }
+                aria-pressed={audienceScope === "all_freelancers"}
+                onClick={() => setAudienceScope("all_freelancers")}
+              >
+                All active freelancers
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Category only includes freelancers who selected{" "}
+              {opening?.item.category}. Suspended accounts are never eligible.
+            </p>
+          </fieldset>
+          <label className="block space-y-2 text-sm font-medium">
+            Minimum account age in days
+            <Input
+              type="number"
+              min={0}
+              max={3650}
+              step={1}
+              value={minimumAccountAgeDays}
+              onChange={(event) => setMinimumAccountAgeDays(event.target.value)}
+              aria-describedby="assessment-account-age-help"
+            />
+            <span
+              id="assessment-account-age-help"
+              className="block text-xs text-muted-foreground"
+            >
+              Set 0 to include newly created freelancer accounts.
+            </span>
+          </label>
+          <p
+            className="rounded-lg bg-background px-3 py-2 text-sm"
+            role="status"
+            aria-live="polite"
+          >
+            Eligible now: {count ?? "Checking…"}
+            {count === 0 && ". No freelancers match these settings."}
           </p>
-          <label className="text-sm">
-            Opens at (local time; blank for immediately)
-            <Input
-              type="datetime-local"
-              value={opens}
-              onChange={(e) => setOpens(e.target.value)}
-            />
-          </label>
-          <label className="text-sm">
-            Closes at (local time)
-            <Input
-              type="datetime-local"
-              value={closes}
-              onChange={(e) => setCloses(e.target.value)}
-            />
-          </label>
-          <p className="text-xs text-muted-foreground">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block space-y-2 text-sm font-medium">
+              Opens at (local time; blank for immediately)
+              <Input
+                type="datetime-local"
+                value={opens}
+                onChange={(e) => setOpens(e.target.value)}
+              />
+            </label>
+            <label className="block space-y-2 text-sm font-medium">
+              Closes at (local time)
+              <Input
+                type="datetime-local"
+                value={closes}
+                onChange={(e) => setCloses(e.target.value)}
+              />
+            </label>
+          </div>
+          <p className="text-xs leading-5 text-muted-foreground">
             Change the passing score or timer in Edit assessment before
             publishing.
           </p>
           <Button
-            disabled={busy || !closes || !opening}
+            className="h-11 w-full rounded-xl"
+            disabled={
+              busy || !closes || !opening || count === null || count === 0
+            }
             onClick={() =>
               void action(async () => {
                 if (!opening) return;
@@ -327,6 +429,8 @@ export default function AdminAssessments() {
                   opening.id,
                   opens ? new Date(opens).toISOString() : null,
                   new Date(closes).toISOString(),
+                  audienceScope,
+                  Number(minimumAccountAgeDays),
                 );
                 setOpening(null);
                 await reload();

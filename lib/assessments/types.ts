@@ -26,6 +26,9 @@ export interface OpeningSummary {
   closesAt: string;
   closedAt: string | null;
   status: "open" | "scheduled" | "closed";
+  audienceScope?: "category" | "all_freelancers";
+  minimumAccountAgeDays?: number;
+  eligibleCount?: number;
 }
 export interface AdminAssessment {
   categoryId: string;

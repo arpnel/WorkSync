@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { databaseError } from "@/services/platform/platformService";
 import {
   adminListSchema,
+  openingSettingsSchema,
   memberListSchema,
   evidenceSchema,
   resultsSchema,
@@ -28,28 +29,66 @@ const admin = <T>(action: string, payload: Record<string, unknown> = {}) =>
     p_action: action,
     p_payload: payload,
   });
-export const listAdminAssessments = async (): Promise<AdminAssessment[]> =>
-  parseAssessment(adminListSchema, await admin("list"));
+export const listAdminAssessments = async (): Promise<AdminAssessment[]> => {
+  const rows = parseAssessment(adminListSchema, await admin("list"));
+  const openingIds = rows.flatMap((row) => row.openings.map((opening) => opening.id));
+  if (!openingIds.length) return rows;
+
+  const settings = parseAssessment(
+    openingSettingsSchema,
+    await rpc("worksync_skill_assessment_opening_settings", {
+      p_openings: openingIds,
+    }),
+  );
+  const settingsById = new Map(settings.map((item) => [item.openingId, item]));
+  return rows.map((row) => ({
+    ...row,
+    openings: row.openings.map((opening) => {
+      const setting = settingsById.get(opening.id);
+      return setting
+        ? {
+            ...opening,
+            audienceScope: setting.audienceScope,
+            minimumAccountAgeDays: setting.minimumAccountAgeDays,
+            eligibleCount: setting.eligibleCount,
+          }
+        : opening;
+    }),
+  }));
+};
 export const saveAssessment = (
   categoryId: string,
   expectedVersion: number,
   quiz: Quiz,
 ) => admin<{ version: number }>("save", { categoryId, expectedVersion, quiz });
-export const eligibleCount = (categoryId: string) =>
-  admin<{ count: number }>("eligible", { categoryId });
+export type AssessmentAudienceScope = "category" | "all_freelancers";
+export const eligibleCount = (
+  categoryId: string,
+  audienceScope: AssessmentAudienceScope,
+  minimumAccountAgeDays: number,
+) =>
+  rpc<{ count: number }>("worksync_skill_assessment_eligible_count", {
+    p_category: categoryId,
+    p_audience_scope: audienceScope,
+    p_minimum_account_age_days: minimumAccountAgeDays,
+  });
 export const openAssessment = (
   categoryId: string,
   expectedVersion: number,
   openingId: string,
   opensAt: string | null,
   closesAt: string,
+  audienceScope: AssessmentAudienceScope,
+  minimumAccountAgeDays: number,
 ) =>
-  admin<{ id: string }>("open", {
-    categoryId,
-    expectedVersion,
-    openingId,
-    opensAt,
-    closesAt,
+  rpc<{ id: string; eligible: number }>("worksync_open_skill_assessment", {
+    p_category: categoryId,
+    p_expected_version: expectedVersion,
+    p_opening: openingId,
+    p_opens_at: opensAt,
+    p_closes_at: closesAt,
+    p_audience_scope: audienceScope,
+    p_minimum_account_age_days: minimumAccountAgeDays,
   });
 export const closeAssessment = (openingId: string) =>
   admin("close", { openingId });

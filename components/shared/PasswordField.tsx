@@ -40,6 +40,7 @@ export function PasswordField({
           type={showPassword ? "text" : "password"}
           className="pr-10"
           required
+          aria-invalid={!!error}
           onChange={(event) => {
             setValue(event.target.value);
             onChange?.(event);

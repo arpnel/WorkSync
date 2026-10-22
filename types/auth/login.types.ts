@@ -16,6 +16,7 @@ export interface ValidationResult {
 export interface SigninFormProps {
   email: string;
   loading: boolean;
+  emailError: string;
   passwordError: string;
   showPassword: boolean;
 

@@ -2,6 +2,7 @@ import { after } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { screenNewApplication } from "@/services/project/automaticScreeningServer";
+import { notifyJobApplicationReceived } from "@/services/email/applicationEmails";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -82,6 +83,13 @@ export async function POST(request: Request) {
         applicationId,
       });
     }
+    after(async () => {
+      try {
+        await notifyJobApplicationReceived(applicationId, user.id, request.url);
+      } catch {
+        console.error("Could not prepare new application email");
+      }
+    });
     return json({ applicationId }, 201);
   } catch {
     return json(

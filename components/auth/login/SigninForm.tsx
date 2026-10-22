@@ -11,6 +11,7 @@ import { SigninFormProps } from "../../../types/auth/login.types";
 export function SigninForm({
     email,
     loading,
+    emailError,
     passwordError,
     showPassword,
 
@@ -32,7 +33,7 @@ export function SigninForm({
             className="space-y-5 pt-4"
             onSubmit={onSubmit}
         >
-            <Field>
+            <Field data-invalid={!!emailError}>
                 <FieldLabel>Email</FieldLabel>
 
                 <Input
@@ -40,10 +41,14 @@ export function SigninForm({
                     autoComplete="email"
                     required
                     value={email}
+                    aria-invalid={!!emailError}
                     onChange={(e) =>
                         onEmailChange(e.target.value)
                     }
                 />
+                {emailError && (
+                    <p className="text-sm text-destructive" role="alert">{emailError}</p>
+                )}
             </Field>
 
             <PasswordField

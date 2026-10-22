@@ -121,6 +121,8 @@ export default function SubscriptionPage() {
   }, []);
   const current = plans.find((item) => item.plan_code === plan);
   const offer = plans.find((item) => item.plan_code === "pro") ?? current;
+  const displayPlanName = (name?: string) =>
+    name?.replace(/\bpro\b/gi, "Premium") ?? "Unavailable";
   const monthly =
     role === "client"
       ? current?.monthly_job_limit
@@ -147,7 +149,7 @@ export default function SubscriptionPage() {
           <Card className="border-primary/30">
             <CardHeader>
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <CardTitle>{offer.display_name}</CardTitle>
+                <CardTitle>{displayPlanName(offer.display_name)}</CardTitle>
                 {offer.plan_code === plan && (
                   <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
                     Current plan
@@ -213,7 +215,7 @@ export default function SubscriptionPage() {
         <CardHeader>
           <CardTitle>Current usage</CardTitle>
           <CardDescription>
-            Current plan: {current?.display_name ?? "Unavailable"}. Your {kind}{" "}
+            Current plan: {displayPlanName(current?.display_name)}. Your {kind}{" "}
             listing allowance for this calendar month.
           </CardDescription>
         </CardHeader>

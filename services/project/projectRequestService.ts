@@ -2,7 +2,6 @@ import {
   getPublicIdentities,
   identityName,
 } from "@/services/profile/publicIdentityService";
-import { platformAction } from "@/services/platform/platformService";
 import { supabase } from "@/lib/supabaseClient";
 import { screeningLabel } from "@/lib/ai/screening";
 import { assertFreelancerAvailable } from "@/services/marketplace/freelancerAvailability";
@@ -327,17 +326,25 @@ export async function getProjectRequests(): Promise<ProjectRequestData> {
 }
 
 export async function rejectProjectRequest(applicationId: string) {
-  await platformAction("worksync_respond_application", {
-    p_application: applicationId,
-    p_accept: false,
-  });
+  await respondToApplication(applicationId, false);
 }
 export async function startProjectDiscussion(
   request: ProjectRequest,
 ): Promise<string> {
   if (request.status !== "accepted") await assertFreelancerAvailable(request.freelancerId);
-  return platformAction("worksync_respond_application", {
-    p_application: request.applicationId,
-    p_accept: true,
+  return respondToApplication(request.applicationId, true);
+}
+async function respondToApplication(applicationId: string, accepted: boolean) {
+  const { data, error } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (error || !token) throw new Error("Sign in to respond to this application.");
+  const response = await fetch(`/api/applications/${applicationId}/respond`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ accepted }),
+    cache: "no-store",
   });
+  const result = await response.json().catch(() => null) as { conversationId?: string | null; error?: string } | null;
+  if (!response.ok) throw new Error(result?.error ?? "Unable to respond to this application.");
+  return result?.conversationId ?? "";
 }

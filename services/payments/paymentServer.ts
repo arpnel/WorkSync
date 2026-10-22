@@ -1,4 +1,5 @@
-﻿import "server-only";
+import "server-only";
+import { notifyPaymentConfirmed } from "@/services/email/paymentEmails";
 import { createClient } from "@supabase/supabase-js";
 import {
   PaymentError,
@@ -167,6 +168,13 @@ export async function reconcilePayment(
     throw new PaymentError(
       "Payment received but its record could not be updated. Refresh payment status.",
     );
+  if (row.status !== "paid") {
+    try {
+      await notifyPaymentConfirmed(row.payment_id, row.project_id, row.payer_id);
+    } catch {
+      console.error("Could not prepare payment confirmation email", { kind: "payment_confirmed" });
+    }
+  }
   return true;
 }
 export async function getProjectPayment(

@@ -17,7 +17,7 @@ function load(path, modules = {}, globals = {}) {
     {
       exports,
       require: (name) =>
-        name === "server-only" ? {} : (modules[name] ?? require(name)),
+        name === "server-only" ? {} : (modules[name] ?? (name === "@/services/email/paymentEmails" ? { notifyPaymentConfirmed: async () => {} } : require(name))),
       Buffer,
       URL,
       Response,

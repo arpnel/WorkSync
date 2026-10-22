@@ -11,8 +11,6 @@ import {
   LogOut,
   Loader2,
   MessageCircle,
-  Settings,
-  User,
   Users,
 } from "lucide-react";
 
@@ -414,20 +412,6 @@ export function DashboardHeader() {
             </DropdownMenuTrigger>
 
             <DropdownMenuContent align="end" className="z-[100] w-48">
-              <DropdownMenuItem asChild>
-                <Link href="/home/profile">
-                  <User className="mr-2 h-4 w-4" />
-                  Profile
-                </Link>
-              </DropdownMenuItem>
-
-              <DropdownMenuItem asChild>
-                <Link href="/home/settings">
-                  <Settings className="mr-2 h-4 w-4" />
-                  Settings
-                </Link>
-              </DropdownMenuItem>
-
               <DropdownMenuSeparator />
 
               <DropdownMenuItem

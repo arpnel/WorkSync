@@ -43,7 +43,7 @@ test("receipt PDF renders saved parties, transaction tax lines and registration 
   const details = receipt.receiptDetailsFromSnapshot({ receipt_number: "WS-TR-1", issued_at: "2026-10-21T10:00:00Z", snapshot: { documentTypeLabel: "WorkSync system generated transaction receipt; not a BIR official invoice or receipt.", transactionDate: "2026-10-21T10:00:00Z", projectDescription: "Project", clientPayment: 112, paymentMethod: "PayMongo", client: { name: "Client" }, freelancer: { name: "Freelancer", registeredName: "Freelancer Business" }, workSync: { registeredName: "WorkSync Inc." }, serviceGrossEarnings: 112, freelancerNetPayout: 111.44, withholding: 0.56, freelancerVatBase: 100, freelancerVat: 12, platformServiceFee: null, platformVatBase: null, platformVat: null, platformTaxNote: "Platform fee and related VAT are not recorded.", taxLines: [{ payoutId: "payout-1", taxableBase: 112, withholdingRate: 0.005, withholding: 0.56, withholdingRule: "PH RR 5-2025", exemptionStatus: "none", withholdingDocumentId: "cor-1", withholdingDeclarationId: null, freelancerVatBase: 100, freelancerVatRate: 0.12, freelancerVat: 12, freelancerVatRule: "VAT-inclusive", freelancerVatDocumentId: "vat-doc-1" }] } });
   const pdf = await receipt.createReceiptPdf(details).text();
   assert.match(pdf, /WS-TR-1/); assert.match(pdf, /PHP 112\.00/);
-  assert.match(pdf, /withholding/i); assert.match(pdf, /Freelancer earnings/); assert.match(pdf, /PHP 111\.44/);
+  assert.match(pdf, /Marketplace withholding/); assert.match(pdf, /PH RR 5-2025/); assert.match(pdf, /Freelancer VAT/); assert.match(pdf, /VAT-inclusive/); assert.doesNotMatch(pdf, /Freelancer earnings|PHP 111\.44/);
   assert.match(pdf, /Fee details not recorded/i); assert.match(pdf, /not an official BIR invoice or receipt/i);
   assert.doesNotMatch(pdf, /PayMongo processing fee/i);
   assert.doesNotMatch(pdf, /Payment recorded/);
@@ -57,9 +57,9 @@ test("receipt PDF uses pending states for absent earnings and tax snapshots", as
   const details = receipt.receiptDetailsFromSnapshot({ receipt_number: "WS-TR-COMPLETE-RECEIPT-12345678901234567890", issued_at: "2026-10-22T00:51:00Z", snapshot: { clientPayment: 2356, freelancerNetPayout: 0, transactionDate: "2026-10-21T14:02:00Z", projectDescription: "Design service", paymentMethod: "Card", client: { name: "Client" }, freelancer: { name: "Freelancer" }, platformServiceFee: null } });
   const pdf = await receipt.createReceiptPdf(details).text();
   assert.match(pdf, /PAYMENT RECEIPT/); assert.match(pdf, /TOTAL PAID BY CLIENT/); assert.match(pdf, /PHP 2,356.00/);
-  assert.match(pdf, /Pending calculation/); assert.match(pdf, /Fee details not recorded/); assert.match(pdf, /No payout tax calculation saved yet/);
+  assert.match(pdf, /Fee details not recorded/); assert.match(pdf, /No payout tax calculation saved yet/);
   assert.match(pdf, /WS-TR-COMPLETE-RECEIPT/); assert.match(pdf, /890/);
-  assert.doesNotMatch(pdf, /Freelancer earnings[\\s\\S]{0,300}PHP 0\\.00/);
+  assert.doesNotMatch(pdf, /Freelancer earnings|Pending calculation|PHP 0\\.00/);
   assert.equal((pdf.match(/not an official BIR invoice or receipt/g) ?? []).length, 1);
   assert.doesNotMatch(pdf, /not_configured|BIR official invoice or official receipt/);
 });

@@ -124,9 +124,17 @@ export function createReceiptPdf(details: ReceiptDetails) {
   detail("Client", details.clientName + (details.clientRegisteredName ? " (" + details.clientRegisteredName + ")" : ""));
   detail("Freelancer", details.freelancerName + (details.freelancerRegisteredName ? " (" + details.freelancerRegisteredName + ")" : ""));
   y -= 8; section("Payment breakdown");
-  const taxNotes = details.taxLines.map((taxLine, index) => "Payout " + (index + 1) + ": " + (taxLine.withholding > 0 ? "Withholding " + php(taxLine.withholding) : "No withholding recorded") + "; " + (taxLine.freelancerVat > 0 ? "Freelancer VAT " + php(taxLine.freelancerVat) : "No freelancer VAT recorded"));
-  const taxRowHeight = !details.taxLines.length || details.taxLines.length > 4 ? 39 : Math.max(39, Math.ceil(taxNotes.join(" | ").length / 68) * 13 + 25);
-  const breakdownHeight = 36 + 39 + 39 + taxRowHeight;
+  const taxNotes = details.taxLines.map((taxLine, index) => {
+    const notes = [];
+    if (taxLine.freelancerVat > 0) notes.push("Freelancer VAT: " + php(taxLine.freelancerVat) + " (" + (taxLine.freelancerVatRate * 100).toFixed(2) + "% of " + php(taxLine.freelancerVatBase) + "; " + taxLine.freelancerVatRule + ")");
+    else notes.push("Freelancer VAT: none recorded");
+    if (taxLine.withholding > 0) notes.push("Marketplace withholding: " + php(taxLine.withholding) + " (" + (taxLine.withholdingRate * 100).toFixed(2) + "% of " + php(taxLine.taxableBase) + "; " + taxLine.withholdingRule + "; " + taxLine.exemptionStatus + ")");
+    else notes.push("Marketplace withholding: none recorded (" + taxLine.withholdingRule + "; " + taxLine.exemptionStatus + ")");
+    return "Payout " + (index + 1) + ": " + notes.join("; ");
+  });
+  const taxRowHeight = !details.taxLines.length || details.taxLines.length > 4 ? 39 : Math.max(52, Math.ceil(taxNotes.join(" | ").length / 68) * 13 + 25);
+  const platformVatHeight = details.platformVat != null ? 39 : (details.platformTaxNote ? 48 : 0);
+  const breakdownHeight = 36 + 39 + taxRowHeight + platformVatHeight;
   box(54, y - breakdownHeight - 5, 504, breakdownHeight + 12, "1 1 1", "0.87 0.89 0.91");
   const breakdownRow = (label: string, note: string, value: string, height = 39) => {
     put(label, 70, y, 10, true, "0.13 0.16 0.20");
@@ -135,16 +143,15 @@ export function createReceiptPdf(details: ReceiptDetails) {
     y -= height;
     line(y + 1, "0.90 0.92 0.94");
   };
-  const payoutAvailable = details.taxLines.length > 0;
   breakdownRow("Client payment", "", php(details.amount), 36);
-  breakdownRow("Freelancer earnings", payoutAvailable && details.freelancerNetPayout != null ? "" : "Pending calculation", payoutAvailable && details.freelancerNetPayout != null ? php(details.freelancerNetPayout) : "Not available", 39);
   breakdownRow("WorkSync service fee", details.platformServiceFee == null ? "Fee details not recorded" : "", details.platformServiceFee == null ? "Not available" : php(details.platformServiceFee), 39);
-  if (!details.taxLines.length) breakdownRow("Tax details", "No payout tax calculation saved yet", "Pending", 39);
+  if (details.platformVat != null) breakdownRow("WorkSync platform VAT", details.platformVatRate == null ? "Saved platform VAT amount" : (details.platformVatRate * 100).toFixed(2) + "% of " + php(details.platformVatBase ?? 0) + (details.platformTaxTreatment ? "; " + details.platformTaxTreatment : ""), php(details.platformVat), 39);
+  else if (details.platformTaxNote) breakdownRow("WorkSync platform tax", details.platformTaxNote, "", 48);
+  if (!details.taxLines.length) breakdownRow("Payout tax breakdown", "No payout tax calculation saved yet", "Pending", 39);
   else if (details.taxLines.length <= 4) {
-    const taxNotes = details.taxLines.map((taxLine, index) => "Payout " + (index + 1) + ": " + (taxLine.withholding > 0 ? "Withholding " + php(taxLine.withholding) : "No withholding recorded") + "; " + (taxLine.freelancerVat > 0 ? "Freelancer VAT " + php(taxLine.freelancerVat) : "No freelancer VAT recorded"));
-    breakdownRow("Tax details", taxNotes.join(" | "), "", taxRowHeight);
+    breakdownRow("Payout tax breakdown", taxNotes.join(" | "), "", taxRowHeight);
   } else {
-    breakdownRow("Tax details", "Detailed payout tax breakdown follows", "", 39);
+    breakdownRow("Payout tax breakdown", "Detailed payout tax breakdown follows", "", 39);
   }
   y -= 20;  if (details.taxLines.length > 4) {
     nextPage(); y = 720; section("Saved payout tax breakdown");
@@ -152,9 +159,9 @@ export function createReceiptPdf(details: ReceiptDetails) {
       if (y < 145) { nextPage(); y = 720; section("Saved payout tax breakdown"); }
       put("Payout " + (index + 1), 54, y, 9, true, "0.18 0.24 0.31"); y -= 14;
       const withholdingRate = (taxLine.withholdingRate * 100).toFixed(2) + "%";
-      putLeftLines("Withholding: " + php(taxLine.taxableBase) + " at " + withholdingRate + " = " + php(taxLine.withholding) + "; " + taxLine.exemptionStatus, 70, y, 8, false, "0.39 0.43 0.48", 76); y -= 13;
+      putLeftLines("Marketplace withholding: " + php(taxLine.withholding) + " = " + withholdingRate + " of " + php(taxLine.taxableBase) + "; " + taxLine.withholdingRule + "; " + taxLine.exemptionStatus, 70, y, 8, false, "0.39 0.43 0.48", 76); y -= 13;
       const vatRate = (taxLine.freelancerVatRate * 100).toFixed(2) + "%";
-      putLeftLines("Freelancer VAT: " + php(taxLine.freelancerVatBase) + " at " + vatRate + " = " + php(taxLine.freelancerVat), 70, y, 8, false, "0.39 0.43 0.48", 76); y -= 17;
+      putLeftLines("Freelancer VAT: " + php(taxLine.freelancerVat) + " = " + vatRate + " of " + php(taxLine.freelancerVatBase) + "; " + taxLine.freelancerVatRule, 70, y, 8, false, "0.39 0.43 0.48", 76); y -= 17;
       line(y + 5);
     });
   }

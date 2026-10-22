@@ -30,6 +30,7 @@ export function SigninDialog() {
   const [signingIn, setSigningIn] = React.useState(false);
 
   const [passwordError, setPasswordError] = React.useState("");
+  const [emailError, setEmailError] = React.useState("");
 
   const [showPassword, setShowPassword] = React.useState(false);
 
@@ -40,6 +41,7 @@ export function SigninDialog() {
     setEmail("");
     setPassword("");
     setPasswordError("");
+    setEmailError("");
     setShowPassword(false);
   };
 
@@ -106,6 +108,7 @@ export function SigninDialog() {
 
     if (loading) return;
 
+    setFormError("");
     setLoading(true);
     setSigningIn(true);
 
@@ -118,13 +121,14 @@ export function SigninDialog() {
       if (!validation.valid) {
         if (validation.message?.toLowerCase().includes("password")) {
           setPasswordError(validation.message);
+        } else {
+          setEmailError(validation.message ?? ERROR_MESSAGES.UNKNOWN);
         }
-
-        showMessage(validation.message ?? ERROR_MESSAGES.UNKNOWN);
 
         return;
       }
 
+      setEmailError("");
       setPasswordError("");
 
       const user = await login({
@@ -142,7 +146,8 @@ export function SigninDialog() {
       if (error instanceof Error) {
         switch (error.message) {
           case "INVALID_CREDENTIALS":
-            showMessage(ERROR_MESSAGES.INVALID_CREDENTIALS);
+            setEmailError(ERROR_MESSAGES.INVALID_CREDENTIALS);
+            setPasswordError(ERROR_MESSAGES.INVALID_CREDENTIALS);
             break;
 
           case "EMAIL_NOT_VERIFIED":
@@ -194,14 +199,22 @@ export function SigninDialog() {
       <SigninForm
         email={email}
         loading={loading}
+        emailError={emailError}
         passwordError={passwordError}
         showPassword={showPassword}
-        onEmailChange={setEmail}
+        onEmailChange={(value) => {
+          setEmail(value);
+          if (emailError) setEmailError("");
+          if (passwordError === ERROR_MESSAGES.INVALID_CREDENTIALS) setPasswordError("");
+        }}
         onPasswordChange={(value) => {
           setPassword(value);
 
           if (passwordError) {
             setPasswordError("");
+          }
+          if (emailError === ERROR_MESSAGES.INVALID_CREDENTIALS) {
+            setEmailError("");
           }
         }}
         onTogglePassword={() => setShowPassword((prev) => !prev)}

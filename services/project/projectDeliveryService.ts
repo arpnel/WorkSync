@@ -211,11 +211,17 @@ export async function reviewSubmission(
 ): Promise<SettlementReviewOutcome | null> {
   if (action === "revision" && !instructions.trim())
     throw new Error("Explain the changes needed within the agreed scope.");
-  await platformAction("worksync_review_submission", {
-    p_submission: id,
-    p_action: action,
-    p_instructions: instructions.trim(),
+  const { data, error } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (error || !token) throw new Error("Sign in to review this submission.");
+  const response = await fetch("/api/project-delivery-review", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ projectId, submissionId: id, action, instructions: instructions.trim() }),
+    cache: "no-store",
   });
+  const result = await response.json().catch(() => null) as { error?: string } | null;
+  if (!response.ok) throw new Error(result?.error ?? "Unable to save the project review.");
   if (action === "revision") return null;
 
   return requestProjectSettlementReview(projectId, id);

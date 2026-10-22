@@ -8,6 +8,7 @@ import {
   paymentResponse,
 } from "@/services/payments/paymentServer";
 import { PaymentError } from "@/lib/payments/paymongo";
+import { notifyProjectWorkSubmitted } from "@/services/email/projectEmails";
 export const runtime = "nodejs";
 const input = z
   .object({
@@ -81,6 +82,13 @@ export async function POST(request: Request) {
     );
     const result = await scoped.rpc("worksync_submit_work", body);
     if (result.error) throw new PaymentError(result.error.message, 400);
+    after(async () => {
+      try {
+        await notifyProjectWorkSubmitted(body.p_project, body.p_id, body.p_milestone, request.url);
+      } catch {
+        console.error("Could not prepare project work email");
+      }
+    });
     if (body.p_kind === "delivery")
       after(async () => {
         try {

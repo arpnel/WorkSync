@@ -8,6 +8,7 @@ import { filterAdminPage } from "@/services/admin/adminRecordFilters";
 import AdminPageHeader from "./AdminPageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Search } from "lucide-react";
+import { openSavedTaxReceipt } from "@/lib/payments/receiptClient";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
@@ -40,6 +41,7 @@ import {
   type AdminResult,
   type AdminRow,
 } from "@/services/admin/adminService";
+
 export default function AdminRecords({
   module,
   title,
@@ -173,7 +175,7 @@ export default function AdminRecords({
           <Input
             className="h-10 rounded-xl bg-card pl-10"
             aria-label="Search records"
-            placeholder="Search records…"
+            placeholder="Search recordsâ€¦"
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
@@ -330,6 +332,7 @@ export default function AdminRecords({
                   <TableHead>Name / reference</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Date</TableHead>
+                  {module === "transactions" && <TableHead>Receipt</TableHead>}
                   <TableHead>Details</TableHead>
                 </TableRow>
               </TableHeader>
@@ -353,8 +356,23 @@ export default function AdminRecords({
                     <TableCell className="text-right text-xs text-muted-foreground md:text-left md:text-sm">
                       {row.created_at
                         ? new Date(row.created_at).toLocaleDateString()
-                        : "—"}
+                        : "â€”"}
                     </TableCell>
+                    {module === "transactions" && (
+                      <TableCell className="col-span-2 md:text-left">
+                        {row.status.toLowerCase() === "paid" ? (
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => void openSavedTaxReceipt(row.id).catch(cause => setError(cause instanceof Error ? cause.message : "Receipt unavailable."))}
+                            >
+                              View
+                            </Button>
+                          </div>
+                        ) : <span className="text-xs text-muted-foreground">Available after payment is confirmed</span>}
+                      </TableCell>
+                    )}
                     <TableCell className="col-span-2 md:text-right">
                       <Button
                         variant="outline"
@@ -523,7 +541,7 @@ export default function AdminRecords({
                 </p>
               )}
               <Button disabled={busy || !notes.trim()}>
-                {busy ? "Saving…" : "Confirm action"}
+                {busy ? "Savingâ€¦" : "Confirm action"}
               </Button>
             </form>
           )}

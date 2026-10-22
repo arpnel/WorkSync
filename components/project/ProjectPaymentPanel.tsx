@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { RefreshCw } from "lucide-react";
+import { openSavedTaxReceipt } from "@/lib/payments/receiptClient";
 import { Badge } from "@/components/ui/badge";
 import { ProjectContractDialog } from "./ProjectContractDialog";
 import { Button } from "@/components/ui/button";
@@ -136,12 +137,17 @@ export function PaymentPanel({
       : undefined;
   const money = (amount: number | undefined) =>
     amount == null
-      ? "—"
+      ? "â€”"
       : "PHP " +
         amount.toLocaleString("en-PH", {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
         });
+  const receipt = async () => {
+    if (!payment?.paymentId) return;
+    try { await openSavedTaxReceipt(payment.paymentId); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "Receipt unavailable."); }
+  };
   const statusLabel = !payment
     ? error
       ? "Unavailable"
@@ -198,7 +204,7 @@ export function PaymentPanel({
               >
                 <span>{row.title}</span>
                 <span>
-                  {money(Number(row.amount))} ·{" "}
+                  {money(Number(row.amount))} Â·{" "}
                   {row.status.replaceAll("_", " ")}
                 </span>
               </div>
@@ -206,7 +212,7 @@ export function PaymentPanel({
             {payment.refunds?.map((row) => (
               <div key={row.refund_id} className="mt-3 border-t pt-2">
                 <p>
-                  Cancellation refund: {money(Number(row.amount))} ·{" "}
+                  Cancellation refund: {money(Number(row.amount))} Â·{" "}
                   {row.status.replaceAll("_", " ")}
                 </p>
                 <p className="text-xs text-muted-foreground">
@@ -285,6 +291,13 @@ export function PaymentPanel({
           </p>
         )}
         <div className="flex flex-wrap items-center gap-2">
+          {payment?.status === "paid" && (
+            <>
+              <Button variant="outline" size="sm" onClick={() => void receipt()}>
+                View receipt
+              </Button>
+            </>
+          )}
           {client &&
             payable &&
             payment &&
@@ -296,7 +309,7 @@ export function PaymentPanel({
                 disabled={busy || refreshing || !!error}
               >
                 {busy
-                  ? "Opening checkout…"
+                  ? "Opening checkoutâ€¦"
                   : payment.status === "pending"
                     ? "Continue checkout"
                     : "Pay now"}
@@ -314,7 +327,7 @@ export function PaymentPanel({
                 refreshing ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"
               }
             />
-            {refreshing ? "Checking…" : "Refresh"}
+            {refreshing ? "Checkingâ€¦" : "Refresh"}
           </Button>
         </div>
         {contractDetails && (

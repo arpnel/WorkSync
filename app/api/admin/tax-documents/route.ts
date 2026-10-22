@@ -1,0 +1,81 @@
+import { PaymentError } from "@/lib/payments/paymongo";
+import { paymentResponse, paymentUser } from "@/services/payments/paymentServer";
+
+export const runtime = "nodejs";
+const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
+async function requireAdmin(request: Request) {
+  const { db, user } = await paymentUser(request);
+  const member = await db.from("admin_members").select("user_id").eq("user_id", user.id).maybeSingle();
+  if (member.error || !member.data) throw new PaymentError("Administrator access required.", 403);
+  return { db, user };
+}
+export async function GET(request: Request) {
+  try {
+    const { db } = await requireAdmin(request);
+    const { data, error } = await db.from("tax_documents").select("document_id,user_id,party_type,document_type,registered_name,claimed_tax_treatment,legal_basis,tax_year,issued_at,expires_at,status,submitted_at,reviewed_by,reviewed_at,review_reason,document_path").order("submitted_at", { ascending: false }).limit(300);
+    if (error) throw new PaymentError("Tax documents are unavailable. The tax document migration may not be applied yet.");
+    const profileRows = await db.from("freelancer_tax_profiles").select("user_id,marketplace_withholding_applicable,freelancer_vat_applicable");
+    if (profileRows.error) throw new PaymentError("Freelancer tax settings are unavailable.");
+    const configs = new Map((profileRows.data ?? []).map(row => [row.user_id, row]));
+    const platformConfig = await db.from("platform_tax_configuration").select("marketplace_withholding_enabled").eq("configuration_id", true).maybeSingle();
+    if (platformConfig.error || !platformConfig.data) throw new PaymentError("Platform tax configuration is unavailable.");
+    const marketplaceWithholdingEnabled = platformConfig.data?.marketplace_withholding_enabled === true;
+    const ids = (data ?? []).map(row => row.document_id);
+    const eventsResult = ids.length ? await db.from("tax_document_review_events").select("event_id,document_id,reviewer_id,previous_status,new_status,reason,created_at").in("document_id", ids).order("created_at", { ascending: false }) : { data: [], error: null };
+    if (eventsResult.error) throw new PaymentError("Tax review history is unavailable.");
+    const events = new Map<string, unknown[]>();
+    for (const event of eventsResult.data ?? []) events.set(event.document_id, [...(events.get(event.document_id) ?? []), event]);
+    const documents = await Promise.all((data ?? []).map(async row => {
+      const { data: signed, error: signedError } = await db.storage.from("verification-documents").createSignedUrl(row.document_path, 600);
+      const expired = row.status === "verified" && row.expires_at && row.expires_at < new Date().toISOString().slice(0, 10);
+      const config = configs.get(row.user_id);
+      return { ...row, review_events: events.get(row.document_id) ?? [], marketplace_withholding_applicable: marketplaceWithholdingEnabled && (config?.marketplace_withholding_applicable ?? false), freelancer_vat_applicable: config?.freelancer_vat_applicable ?? false, status: expired ? "expired" : row.status, document_url: signedError ? null : signed.signedUrl };
+    }));
+    return json({ documents, marketplaceWithholdingEnabled });
+  } catch (error) { return paymentResponse(error); }
+}
+export async function POST(request: Request) {
+  try {
+    const { db, user } = await requireAdmin(request);
+    const body = await request.json().catch(() => null) as { action?: unknown; freelancerId?: unknown; vatApplicable?: unknown; marketplaceWithholdingApplicable?: unknown; documentId?: unknown; decision?: unknown; reason?: unknown } | null;
+    const reason = typeof body?.reason === "string" ? body.reason.trim() : "";
+    if (body?.action === "configure_freelancer") {
+      if (typeof body.freelancerId !== "string" || typeof body.vatApplicable !== "boolean" || typeof body.marketplaceWithholdingApplicable !== "boolean" || typeof body.reason !== "string" || !body.reason.trim() || body.reason.length > 2000) throw new PaymentError("Tax configuration changes require a reason up to 2,000 characters.", 400);
+      if (body.marketplaceWithholdingApplicable) {
+        const platformGate = await db.from("platform_tax_configuration").select("marketplace_withholding_enabled").eq("configuration_id", true).maybeSingle();
+        if (platformGate.error || !platformGate.data) throw new PaymentError("Platform withholding configuration is unavailable; no withholding setting can be activated.", 409);
+        if (!platformGate.data.marketplace_withholding_enabled) throw new PaymentError("Marketplace withholding remains disabled pending legal confirmation for WorkSync.", 409);
+      }
+      if (body.vatApplicable) {
+        const today = new Date().toISOString().slice(0, 10);
+        const proof = await db.from("tax_documents").select("document_id").eq("user_id", body.freelancerId).eq("party_type", "freelancer").eq("document_type", "vat_registration").eq("status", "verified").or(`expires_at.is.null,expires_at.gte.${today}`).limit(1).maybeSingle();
+        if (proof.error || !proof.data) throw new PaymentError("VAT treatment requires a current verified registration document.", 409);
+      }
+      const saved = await db.from("freelancer_tax_profiles").upsert({ user_id: body.freelancerId, freelancer_vat_applicable: body.vatApplicable, marketplace_withholding_applicable: body.marketplaceWithholdingApplicable, updated_by: user.id, updated_at: new Date().toISOString(), updated_reason: body.reason.trim() });
+      if (saved.error) throw new PaymentError("Tax configuration could not be saved.");
+      const audit = await db.from("admin_audit_log").insert({ admin_id: user.id, action: "configure_freelancer_tax_treatment", target_id: body.freelancerId, details: { freelancer_vat_applicable: body.vatApplicable, marketplace_withholding_applicable: body.marketplaceWithholdingApplicable, reason: body.reason.trim() } });
+      if (audit.error) throw new PaymentError("Tax configuration was saved, but the supplemental admin audit record failed.");
+      return json({ saved: true });
+    }
+    if (typeof body?.documentId !== "string" || !["verified", "rejected", "expired"].includes(String(body.decision)) || !reason || reason.length > 2000)
+      throw new PaymentError("Choose a document status and enter a review reason up to 2,000 characters.", 400);
+    const { data: current, error: currentError } = await db.from("tax_documents").select("document_id,document_type,claimed_tax_treatment,legal_basis,expires_at,status").eq("document_id", body.documentId).maybeSingle();
+    if (currentError || !current) throw new PaymentError("Tax document not found.", 404);
+    if (body.decision === "verified" && current.document_type === "tax_exemption" && (!current.claimed_tax_treatment?.trim() || !current.legal_basis?.trim()))
+      throw new PaymentError("A special tax treatment cannot be verified without a stated treatment and legal basis.", 400);
+    if (body.decision === "verified" && current.expires_at && current.expires_at < new Date().toISOString().slice(0, 10))
+      throw new PaymentError("This document is expired. Ask the user to submit a renewed copy.", 409);
+    const result = await db.from("tax_documents").update({ status: body.decision, reviewed_by: user.id, reviewed_at: new Date().toISOString(), review_reason: reason }).eq("document_id", body.documentId).in("status", body.decision === "expired" ? ["pending", "verified"] : ["pending"]).select("document_id,user_id,party_type,document_type,status,reviewed_at,review_reason").maybeSingle();
+    if (result.error || !result.data) throw new PaymentError("Pending document not found or already reviewed.", 409);
+    await db.from("admin_audit_log").insert({ admin_id: user.id, action: `tax_document_${body.decision}`, target_id: body.documentId, details: { party_type: result.data.party_type, document_type: result.data.document_type, reason } });
+    return json({ document: result.data });
+  } catch (error) { return paymentResponse(error); }
+}
+
+
+
+
+
+
+
+

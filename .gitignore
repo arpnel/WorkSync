@@ -36,5 +36,6 @@ pnpm-debug.log*
 next-env.d.ts
 
 # Local documentation and development artifacts
-/docs/
+/docs/*
+!/docs/SYSTEM_SCOPE.md
 /.pnpm-store/

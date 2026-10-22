@@ -1,5 +1,7 @@
 "use client";
 import { StyledSelect } from "@/components/ui/styled-select";
+import FreelancerTaxDeclaration from "@/components/account/FreelancerTaxDeclaration";
+import { openSavedTaxReceipt } from "@/lib/payments/receiptClient";
 
 import { useEffect, useState } from "react";
 import { Wallet, ShieldCheck, Loader2, Clock3, CircleCheck, BadgeAlert, type LucideIcon } from "lucide-react";
@@ -32,8 +34,8 @@ type Earnings = {
   available?: boolean;
   settlementEnabled?: boolean;
   mode?: string;
-  summary?: { earned: number; ready: number; processing: number; paid: number; awaitingAccount: number; supportReview: number };
-  payouts?: { id: string; amount: number; status: string; createdAt: string; paidAt: string | null }[];
+  summary?: { earned: number; ready: number; processing: number; paid: number; awaitingAccount: number; supportReview: number; withholding?: number };
+  payouts?: { id: string; transactionId: string; projectId: string; amount: number; grossAmount: number; freelancerVatTaxableAmount: number; freelancerVatAmount: number; freelancerVatRate: number; freelancerVatRule: string; withholdingRule: string; withholdingDate: string | null; withholdingBasis: number; withholdingRate: number; withholdingAmount: number; withholdingExemptionStatus: string; withholdingDeclarationId: string | null; withholdingDocumentId: string | null; freelancerVatDocumentId: string | null; status: string; createdAt: string; paidAt: string | null }[];
 };
 async function payoutEarningsRequest(): Promise<Earnings> {
   const { data: { session } } = await supabase.auth.getSession();
@@ -127,12 +129,27 @@ export default function PayoutSettings() {
             <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Earnings will appear here when payout tracking is enabled for this workspace.</p>
           ) : earnings?.summary ? (
             <>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="flex justify-end">
+                <Button variant="outline" size="sm" onClick={() => {
+                  const rows = earnings.payouts ?? [];
+                  const columns = ["Transaction ID", "Payout ID", "Project ID", "Gross earnings PHP", "Freelancer VAT base PHP", "Freelancer VAT PHP", "Withholding basis PHP", "Withholding rate", "Withholding PHP", "Net payout PHP", "Withholding date", "Withholding rule", "Exemption status", "Withholding declaration ID", "Withholding document ID", "VAT document ID", "Freelancer VAT rule", "Status", "Created", "Paid"];
+                  const csvCell = (value: unknown) => `"${String(value ?? "").replaceAll("\"", "\"\"")}"`;
+                  const csv = [columns, ...rows.map((row) => [row.transactionId, row.id, row.projectId, row.grossAmount, row.freelancerVatTaxableAmount, row.freelancerVatAmount, row.withholdingBasis, `${(row.withholdingRate * 100).toFixed(2)}%`, row.withholdingAmount, row.amount, row.withholdingDate, row.withholdingRule, row.withholdingExemptionStatus, row.withholdingDeclarationId, row.withholdingDocumentId, row.freelancerVatDocumentId, row.freelancerVatRule, row.status, row.createdAt, row.paidAt])].map((line) => line.map(csvCell).join(",")).join("\r\n");
+                  const url = URL.createObjectURL(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
+                  const link = document.createElement("a");
+                  link.href = url;
+                  link.download = "worksync-earnings-report.csv";
+                  link.click();
+                  URL.revokeObjectURL(url);
+                }} disabled={!earnings.payouts?.length}>Download earnings CSV</Button>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                 {([
-                  ["Total earned", earnings.summary.earned, Wallet],
+                  ["Gross earnings", earnings.summary.earned, Wallet],
                   ["Ready for payout", earnings.summary.ready, Wallet],
                   ["Processing", earnings.summary.processing, Clock3],
                   ["Paid out", earnings.summary.paid, CircleCheck],
+                  ["Withholding recorded", earnings.summary.withholding ?? 0, BadgeAlert],
                 ] as [string, number, LucideIcon][]).map(([label, amount, Icon]) => (
                   <div key={label} className="rounded-lg border bg-card p-4">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground"><Icon className="size-4" />{label}</div>
@@ -159,18 +176,21 @@ export default function PayoutSettings() {
                   {earnings.payouts.slice(0, 5).map((payout) => (
                     <div key={payout.id} className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 text-sm sm:grid-cols-[1fr_auto_auto]">
                       <span className="text-muted-foreground">{payoutDate(payout.paidAt || payout.createdAt)}</span>
-                      <span className="text-right font-medium tabular-nums">{php(payout.amount)}</span>
+                      <span className="text-right font-medium tabular-nums">Net {php(payout.amount)} Â· Gross {php(payout.grossAmount)}</span>
                       <span className="col-span-2 text-right capitalize text-muted-foreground sm:col-span-1">{payout.status.replaceAll("_", " ")}</span>
+                      <Button variant="ghost" size="sm" className="col-span-2 justify-self-end sm:col-span-3" onClick={() => void openSavedTaxReceipt(payout.transactionId).catch((cause) => setError(cause instanceof Error ? cause.message : "Receipt unavailable."))}>View transaction receipt</Button>
+                      {payout.withholdingAmount > 0 && <span className="col-span-2 text-xs text-muted-foreground sm:col-span-3">Marketplace withholding: {php(payout.withholdingAmount)} ({(payout.withholdingRate * 100).toFixed(2)}% of {php(payout.withholdingBasis)})</span>}
                     </div>
                   ))}
                 </div>
               )}
             </>
           ) : (
-            <p role="status" className="text-sm text-muted-foreground">Loading earnings…</p>
+            <p role="status" className="text-sm text-muted-foreground">Loading earningsâ€¦</p>
           )}
         </div>
       )}
+      {data?.eligible && <FreelancerTaxDeclaration />}
       {data?.mode === "test" && (
         <p className="rounded-lg bg-muted p-3 text-sm">
           Test mode: use PayMongo test recipient details. This account is

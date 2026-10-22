@@ -36,6 +36,12 @@ export const ADMIN_NAV_GROUPS = [
         description: "Monitor verified payment activity when connected.",
       },
       {
+        href: "/admin/financial/tax",
+        label: "Tax & declarations",
+        icon: ClipboardCheck,
+        description: "Review freelancer tax declarations and settings.",
+      },
+      {
         href: "/admin/jobs",
         label: "Job Monitoring",
         icon: Briefcase,

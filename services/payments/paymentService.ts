@@ -1,9 +1,11 @@
-import { supabase } from "@/lib/supabaseClient";
+﻿import { supabase } from "@/lib/supabaseClient";
 export interface ProjectPayment {
   status: "unpaid" | "pending" | "processing" | "paid";
   mode: "test" | "live";
   amount?: number;
   paidAt?: string | null;
+  paymentId?: string;
+  paymentMethod?: string | null;
   autoReleaseEnabled?: boolean;
   settlementVersion?: number;
   autoAccept?: boolean;
@@ -14,6 +16,17 @@ export interface ProjectPayment {
     title: string;
     status: string;
     amount: number;
+    gross_amount?: number;
+    freelancer_vat_taxable_amount?: number;
+    freelancer_vat_amount?: number;
+    freelancer_vat_rate?: number;
+    freelancer_vat_rule?: string;
+    withholding_basis?: number;
+    withholding_rate?: number;
+    withholding_amount?: number;
+    withholding_date?: string | null;
+    withholding_rule?: string;
+    withholding_exemption_status?: string; withholding_declaration_id?: string | null; withholding_document_id?: string | null; freelancer_vat_document_id?: string | null;
     paid_at: string | null;
   }[];
   refunds?: {
@@ -22,7 +35,7 @@ export interface ProjectPayment {
     amount: number;
     refunded_at: string | null;
   }[];
-  payout?: { status: string; paid_at?: string | null; amount?: number } | null;
+  payout?: { status: string; paid_at?: string | null; amount?: number; gross_amount?: number; freelancer_vat_taxable_amount?: number; freelancer_vat_amount?: number; freelancer_vat_rate?: number; freelancer_vat_rule?: string; withholding_basis?: number; withholding_rate?: number; withholding_amount?: number; withholding_date?: string | null; withholding_rule?: string; withholding_exemption_status?: string; withholding_declaration_id?: string | null; withholding_document_id?: string | null; freelancer_vat_document_id?: string | null } | null;
 }
 async function requestPayment(projectId: string, checkout: boolean) {
   const {

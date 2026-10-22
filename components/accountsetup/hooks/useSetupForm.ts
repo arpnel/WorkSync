@@ -159,7 +159,7 @@ export function useSetupForm(role: "client" | "freelancer") {
     }
     handleChange(field, [...values[field], ...additions]);
   }
-  async function handleSubmit() {
+  async function handleSubmit(afterProfileSaved?: () => Promise<void>) {
     if (submitting.current || isLoadingProfile || loadError) return;
     const result =
       role === "client"
@@ -172,9 +172,12 @@ export function useSetupForm(role: "client" | "freelancer") {
     }
     submitting.current = true;
     setIsSubmitting(true);
+    let profileSaved = false;
     try {
       if (role === "client") await submitClientSetup(values);
       else await submitFreelancerSetup(values);
+      profileSaved = true;
+      await afterProfileSaved?.();
       toast.success(
         "Profile setup saved. Identity verification has its own status.",
       );
@@ -182,9 +185,11 @@ export function useSetupForm(role: "client" | "freelancer") {
       router.refresh();
     } catch (error) {
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Profile setup could not be saved. Please retry.",
+        profileSaved
+          ? `${error instanceof Error ? error.message : "Document submission failed."} Your profile is saved; retry the upload or submit it later in Settings.`
+          : error instanceof Error
+            ? error.message
+            : "Profile setup could not be saved. Please retry.",
       );
     } finally {
       submitting.current = false;

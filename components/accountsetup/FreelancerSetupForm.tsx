@@ -10,8 +10,11 @@ import { SubmitSection } from "./sections/SubmitSection";
 import { useFreelancerSetup } from "./hooks/useFreelancerSetup";
 import VerificationSettings from "@/components/account/VerificationSettings";
 import { Button } from "@/components/ui/button";
+import { useRef } from "react";
+import TaxDocumentOnboarding, { type TaxDocumentOnboardingHandle } from "./TaxDocumentOnboarding";
 
 export function FreelancerSetupForm() {
+  const taxDocumentRef = useRef<TaxDocumentOnboardingHandle>(null);
   const {
     values,
     categories,
@@ -105,6 +108,7 @@ export function FreelancerSetupForm() {
         onRemoveFile={handleRemoveFile}
       />
 
+      <TaxDocumentOnboarding ref={taxDocumentRef} party="freelancer" disabled={isSubmitting} />
       {/* Submit */}
       <VerificationSettings />
 
@@ -112,7 +116,7 @@ export function FreelancerSetupForm() {
         isSubmitting={isSubmitting}
         label="Save Freelancer Profile"
         loadingLabel="Saving..."
-        onSubmit={handleSubmit}
+        onSubmit={() => handleSubmit(() => taxDocumentRef.current?.submit() ?? Promise.resolve())}
       />
     </fieldset>
   );

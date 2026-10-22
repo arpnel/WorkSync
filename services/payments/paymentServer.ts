@@ -1,4 +1,4 @@
-import "server-only";
+﻿import "server-only";
 import { createClient } from "@supabase/supabase-js";
 import {
   PaymentError,
@@ -208,7 +208,7 @@ export async function getProjectPayment(
     ? { data: null, error: null }
     : await db
         .from("project_payouts")
-        .select("status,paid_at,amount")
+        .select("status,paid_at,amount,gross_amount,freelancer_vat_taxable_amount,freelancer_vat_amount,freelancer_vat_rate,freelancer_vat_rule,withholding_basis,withholding_rate,withholding_amount,withholding_date,withholding_rule,withholding_exemption_status,withholding_declaration_id,withholding_document_id,freelancer_vat_document_id")
         .eq("project_id", projectId)
         .eq("mode", paymentMode())
         .maybeSingle();
@@ -219,6 +219,8 @@ export async function getProjectPayment(
         ? "pending"
         : "processing",
     amount: row.amount,
+    paymentId: row.payment_id,
+    paymentMethod: row.payment_method,
     payout: payout.error ? { status: "unavailable" } : payout.data,
     settlementVersion: upgraded ? 2 : 1,
     autoAccept: details?.data?.autoAccept === true,

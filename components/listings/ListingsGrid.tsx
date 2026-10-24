@@ -80,6 +80,30 @@ export function ListingCard({ listing, onArchive, onEdit }: ListingCardProps) {
   ========================================================== */
 
   const status = listing.status;
+  const moderationStatus = listing.moderationStatus;
+  const reviewLocked =
+    moderationStatus === "pending_review" ||
+    moderationStatus === "manual_review";
+  const archiveLocked = moderationStatus !== "approved";
+  const moderationLabel =
+    moderationStatus === "editing"
+      ? "Editing · hidden"
+      : moderationStatus === "pending_review"
+        ? "Pending review"
+        : moderationStatus === "manual_review"
+          ? "Manual review"
+          : moderationStatus === "rejected"
+            ? "Rejected"
+            : moderationStatus === "approved"
+              ? job?.status ?? status
+              : status;
+  const moderationVariant =
+    moderationStatus === "rejected"
+      ? "destructive"
+      : moderationStatus === "pending_review" ||
+          moderationStatus === "manual_review"
+        ? "secondary"
+        : "outline";
 
   /* ==========================================================
      PRICE
@@ -128,8 +152,8 @@ export function ListingCard({ listing, onArchive, onEdit }: ListingCardProps) {
               </p>
             </div>
           </div>
-          <Badge variant="secondary" className="shrink-0 capitalize">
-            {job.status}
+          <Badge variant={moderationVariant} className="shrink-0 capitalize">
+            {moderationLabel}
           </Badge>
         </div>
 
@@ -149,6 +173,18 @@ export function ListingCard({ listing, onArchive, onEdit }: ListingCardProps) {
           <p className="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground">
             {job.description}
           </p>
+          {(moderationStatus === "rejected" ||
+            moderationStatus === "manual_review") &&
+            listing.moderationReason && (
+            <p className="mt-2 rounded-md bg-destructive/5 p-2 text-xs text-destructive">
+              {moderationStatus === "rejected" && listing.moderationCategory
+                ? `${listing.moderationCategory.replaceAll("_", " ")}: `
+                : moderationStatus === "rejected"
+                  ? "Reason: "
+                  : "Review note: "}
+              {listing.moderationReason}
+            </p>
+          )}
 
           <div className="mt-auto grid grid-cols-2 gap-3 border-t pt-4">
             <div className="min-w-0">
@@ -176,14 +212,26 @@ export function ListingCard({ listing, onArchive, onEdit }: ListingCardProps) {
           <div className="mt-4 flex justify-end gap-2 border-t pt-3">
             <button
               type="button"
-              className="rounded-md border px-3 text-sm"
+              className="rounded-md border px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={reviewLocked}
+              title={
+                reviewLocked
+                  ? "Editing is disabled while this listing is under review."
+                  : undefined
+              }
               onClick={onEdit}
             >
-              Edit job
+              {moderationStatus === "rejected"
+                ? "Edit to resubmit"
+                : moderationStatus === "editing"
+                  ? "Continue editing"
+                  : "Edit job"}
             </button>
             <button
               type="button"
-              className="flex h-9 items-center gap-2 rounded-md border px-3 text-sm transition hover:bg-muted"
+              className="flex h-9 items-center gap-2 rounded-md border px-3 text-sm transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={archiveLocked}
+              title={archiveLocked ? "Only approved listings can be archived." : undefined}
               onClick={(event) => {
                 event.stopPropagation();
                 handleArchive();
@@ -236,10 +284,10 @@ export function ListingCard({ listing, onArchive, onEdit }: ListingCardProps) {
         )}
 
         <Badge
-          variant="secondary"
+          variant={moderationVariant}
           className="absolute right-3 top-3 bg-background/90"
         >
-          {status}
+          {moderationLabel}
         </Badge>
 
         {/* LISTING TYPE */}
@@ -301,6 +349,18 @@ export function ListingCard({ listing, onArchive, onEdit }: ListingCardProps) {
         =================================================== */}
 
         <h3 className="line-clamp-2 text-sm font-medium leading-5">{title}</h3>
+        {(moderationStatus === "rejected" ||
+          moderationStatus === "manual_review") &&
+          listing.moderationReason && (
+          <p className="rounded-md bg-destructive/5 p-2 text-xs text-destructive">
+            {moderationStatus === "rejected" && listing.moderationCategory
+              ? `${listing.moderationCategory.replaceAll("_", " ")}: `
+              : moderationStatus === "rejected"
+                ? "Reason: "
+                : "Review note: "}
+            {listing.moderationReason}
+          </p>
+        )}
 
         {/* ===================================================
             CATEGORY
@@ -377,12 +437,28 @@ export function ListingCard({ listing, onArchive, onEdit }: ListingCardProps) {
                 bg-background
                 transition
                 hover:bg-muted
+                disabled:cursor-not-allowed
+                disabled:opacity-50
               "
+              disabled={reviewLocked}
+              title={
+                reviewLocked
+                  ? "Editing is disabled while this listing is under review."
+                  : undefined
+              }
               onClick={(event) => {
                 event.stopPropagation();
                 onEdit?.();
               }}
-              aria-label={isService ? "Edit service" : "Edit job"}
+              aria-label={
+                reviewLocked
+                  ? `Editing ${isService ? "service" : "job"} while under review is unavailable`
+                  : moderationStatus === "rejected"
+                    ? `Edit ${isService ? "service" : "job"} to resubmit`
+                    : moderationStatus === "editing"
+                      ? `Continue editing ${isService ? "service" : "job"}`
+                      : `Edit ${isService ? "service" : "job"}`
+              }
             >
               <Pencil className="h-4 w-4" />
             </button>
@@ -404,7 +480,11 @@ export function ListingCard({ listing, onArchive, onEdit }: ListingCardProps) {
                 transition
                 hover:bg-destructive
                 hover:text-destructive-foreground
+                disabled:cursor-not-allowed
+                disabled:opacity-50
               "
+              disabled={archiveLocked}
+              title={archiveLocked ? "Only approved listings can be archived." : undefined}
               onClick={(event) => {
                 event.stopPropagation();
                 handleArchive();

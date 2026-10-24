@@ -46,6 +46,11 @@ begin
  end if;
  if auth.uid() is distinct from owner and not public.worksync_is_admin() then raise exception 'Only the listing owner can archive or restore this listing'; end if;
  perform pg_advisory_xact_lock(hashtextextended(owner::text,0));
+ select status into status_now from public.listing_submissions
+ where listing_type=listing_kind and listing_id=target_listing_id for update;
+ if status_now is distinct from 'approved' then
+  raise exception 'Only approved listings can be archived or restored';
+ end if;
  if new.is_archived then
   if tg_table_name='jobs' then
    if exists(select 1 from public.job_applications a where a.job_id=target_listing_id and a.status::text='accepted') then raise exception 'Resolve accepted applications before archiving this job'; end if;

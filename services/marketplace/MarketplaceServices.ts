@@ -189,7 +189,18 @@ export interface MarketplaceJob {
    UNIFIED MARKETPLACE ITEM
 ========================================================== */
 
-export type MarketplaceItem = MarketplaceService | MarketplaceJob;
+export type ListingModerationStatus =
+  | "editing"
+  | "pending_review"
+  | "manual_review"
+  | "approved"
+  | "rejected";
+
+export type MarketplaceItem = (MarketplaceService | MarketplaceJob) & {
+  moderationStatus?: ListingModerationStatus;
+  moderationReason?: string | null;
+  moderationCategory?: string | null;
+};
 
 /*
  * Backwards-compatible name.
@@ -751,13 +762,14 @@ async function fetchMyMarketplaceListings(): Promise<MarketplaceItem[]> {
       return [];
     }
 
-    return getMarketplaceServices({
+    const listings = await getMarketplaceServices({
       freelancerId: freelancer.freelancer_id,
 
       listingType: "service",
 
       sort: "latest",
     });
+    return addListingModerationState(listings);
   }
 
   if (userData.role === "client") {
@@ -775,16 +787,50 @@ async function fetchMyMarketplaceListings(): Promise<MarketplaceItem[]> {
       return [];
     }
 
-    return getMarketplaceServices({
+    const listings = await getMarketplaceServices({
       clientId: client.client_id,
 
       listingType: "job",
 
       sort: "latest",
     });
+    return addListingModerationState(listings);
   }
 
   return [];
+}
+
+async function addListingModerationState(
+  listings: MarketplaceItem[],
+): Promise<MarketplaceItem[]> {
+  if (listings.length === 0) return listings;
+  const { data, error } = await supabase
+    .from("listing_submissions")
+    .select("listing_type,listing_id,status,decision_category,decision_reason,failure_reason,ai_explanation")
+    .in(
+      "listing_id",
+      listings.map((listing) =>
+        listing.listing_type === "job" ? listing.job_id : listing.service_id,
+      ),
+    );
+  if (error) throw error;
+  const moderation = new Map(
+    (data ?? []).map((row) => [
+      `${row.listing_type}:${row.listing_id}`,
+      row,
+    ]),
+  );
+  return listings.map((listing) => {
+    const id = listing.listing_type === "job" ? listing.job_id : listing.service_id;
+    const row = moderation.get(`${listing.listing_type}:${id}`);
+    return {
+      ...listing,
+      moderationStatus: row?.status as ListingModerationStatus | undefined,
+      moderationCategory: row?.decision_category ?? null,
+      moderationReason:
+        row?.decision_reason ?? row?.failure_reason ?? row?.ai_explanation ?? null,
+    };
+  });
 }
 
 /* ==========================================================

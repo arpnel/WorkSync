@@ -68,6 +68,7 @@ export default function ModerationPage() {
         "submission_id,listing_type,listing_id,owner_id,title,description,status,ai_risk,ai_explanation,ai_categories,ai_evidence,ai_confidence,failure_reason,rule_results,created_at",
         { count: "exact" },
       )
+      .neq("status", "editing")
       .order("created_at", { ascending: sort === "oldest" })
       .range(offset, offset + PAGE_SIZE - 1);
     if (type !== "all") query = query.eq("listing_type", type);

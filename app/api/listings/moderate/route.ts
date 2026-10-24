@@ -20,6 +20,20 @@ export async function POST(request: Request) {
   if (error || !data) return Response.json({ error: "Listing submission was not found." }, { status: 404 });
   const profile = parsed.data.type === "job" ? (data as { client_profiles?: { user_id?: string } }).client_profiles : (data as { freelancer_profiles?: { user_id?: string } }).freelancer_profiles;
   if (profile?.user_id !== auth.user.id) return Response.json({ error: "You cannot submit another user's listing." }, { status: 403 });
+  const { error: submitError } = await db.rpc("worksync_submit_listing", {
+    p_kind: parsed.data.type,
+    p_listing: parsed.data.id,
+  });
+  if (submitError) {
+    console.error("Listing could not enter moderation", {
+      type: parsed.data.type,
+      code: submitError.code,
+    });
+    return Response.json(
+      { error: "The listing could not be submitted for moderation. It remains hidden; retry from My Listings." },
+      { status: 503 },
+    );
+  }
   try {
     after(() => moderateCreatedListing(parsed.data.type, parsed.data.id, auth.user.id));
   } catch {

@@ -43,6 +43,7 @@ import {
 } from "@/services/serviceP/categoryService";
 import {
   createListing,
+  queueListingForModeration,
   updateServiceMedia,
 } from "@/services/serviceP/serviceService";
 import { validateListingCreationValues } from "@/lib/validation/service.creation.validation";
@@ -395,6 +396,14 @@ export function ServiceDialog({
         const ownerId = isJobListing
           ? listing.client_id
           : listing.freelancer_id;
+        const { error: beginEditError } = await supabase.rpc(
+          "worksync_begin_listing_edit",
+          {
+            p_kind: listing.listing_type,
+            p_listing: listingId,
+          },
+        );
+        if (beginEditError) throw new Error(beginEditError.message);
         const update = isJobListing
           ? {
               title: data.title,
@@ -457,14 +466,19 @@ export function ServiceDialog({
             retainedMediaUrls,
           );
         }
+        await queueListingForModeration(listing.listing_type, listingId);
         invalidatePageReads();
         setDirty(false);
-        toast.success(`${noun} updated successfully.`);
+        toast.success(
+          `${noun} resubmitted for moderation. It will appear in the marketplace after approval.`,
+        );
         await onCreated?.({ listingType: listing.listing_type, id: listingId });
       } else {
         const result = await createListing(payload);
         setDirty(false);
-        toast.success(`${noun} posted successfully.`);
+        toast.success(
+          `${noun} submitted for moderation. It will appear in the marketplace after approval.`,
+        );
         await onCreated?.(result);
       }
       onOpenChange(false);

@@ -410,14 +410,14 @@ async function createListingUncached(
   return createClientJob(user.id, payload);
 }
 
-export async function createListing(
-  ...args: Parameters<typeof createListingUncached>
+export async function queueListingForModeration(
+  listingType: CreateListingResult["listingType"],
+  id: string,
 ) {
-  const result = await createListingUncached(...args);
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session)
     throw new Error(
-      "Your listing was saved but could not be queued for moderation. Contact support before resubmitting.",
+      "Your listing was saved but could not be submitted for moderation. Contact support before retrying.",
     );
   const queued = await fetch("/api/listings/moderate", {
     method: "POST",
@@ -425,7 +425,7 @@ export async function createListing(
       Authorization: `Bearer ${sessionData.session.access_token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ type: result.listingType, id: result.id }),
+    body: JSON.stringify({ type: listingType, id }),
   });
   const queueResult = (await queued.json().catch(() => null)) as {
     error?: string;
@@ -433,9 +433,16 @@ export async function createListing(
   if (!queued.ok)
     throw new Error(
       queueResult?.error ??
-        "Your listing was saved but could not be queued for review.",
+        "Your listing was saved but could not be submitted for review.",
     );
   invalidatePageReads();
+}
+
+export async function createListing(
+  ...args: Parameters<typeof createListingUncached>
+) {
+  const result = await createListingUncached(...args);
+  await queueListingForModeration(result.listingType, result.id);
   return result;
 }
 export const createService = createListing;

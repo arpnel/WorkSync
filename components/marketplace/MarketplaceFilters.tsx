@@ -15,6 +15,7 @@ export interface MarketplaceFiltersValue {
   maxPrice: string;
   rating: number;
   savedOnly: boolean;
+  vatTreatment: "any" | "vat_registered" | "non_vat";
 }
 interface MarketplaceFiltersProps {
   filters: MarketplaceFiltersValue;
@@ -31,7 +32,8 @@ export default function MarketplaceFilters({
     filters.listingType !== "freelancer" ||
     filters.minPrice ||
     filters.maxPrice ||
-    filters.rating,
+    filters.rating ||
+    filters.vatTreatment !== "any",
   );
   return (
     <div aria-label="Marketplace filters" className="space-y-6">
@@ -136,6 +138,7 @@ export default function MarketplaceFilters({
           </StyledSelect>
         </label>
       )}
+      {services && <label className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground"><span>Verified VAT treatment</span><StyledSelect className="h-11 w-full rounded-lg border bg-card px-3 text-sm text-foreground" value={filters.vatTreatment} onChange={event => onChange({ ...filters, vatTreatment: event.target.value as MarketplaceFiltersValue["vatTreatment"] })}><option value="any">Any status</option><option value="vat_registered">VAT-Registered</option><option value="non_vat">Verified Non-VAT</option></StyledSelect></label>}
       {hasFilters && (
         <Button
           type="button"
@@ -149,6 +152,7 @@ export default function MarketplaceFilters({
               minPrice: "",
               maxPrice: "",
               rating: 0,
+              vatTreatment: "any",
             })
           }
         >

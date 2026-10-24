@@ -53,6 +53,7 @@ export interface MarketplaceQuery {
   /** Optional bounded page for marketplace feeds. */
   page?: number;
   pageSize?: number;
+  includeVatClassification?: boolean;
 }
 
 /* ==========================================================
@@ -142,6 +143,9 @@ export interface MarketplaceService {
   client: null;
 
   category: MarketplaceCategory | null;
+
+  /** Public classification returned only after administrator verification. */
+  vat_classification?: "vat_registered" | "non_vat" | "unverified";
 }
 
 /* ==========================================================
@@ -514,7 +518,17 @@ async function getServices(
 
   const rows = data as unknown as ServiceRow[];
   const related = await loadRelatedListings(rows, [], query.guest);
-  return Promise.all(rows.map((row) => buildMarketplaceService(row, related)));
+  const services = await Promise.all(rows.map((row) => buildMarketplaceService(row, related)));
+  if (!query.includeVatClassification) return services;
+  const userIds = [...new Set(services.map((service) => service.freelancer?.user_id).filter((id): id is string => Boolean(id)))];
+  if (!userIds.length) return services.map(service => ({ ...service, vat_classification: "unverified" as const }));
+  const rpcClient = supabase as unknown as { rpc: (name: string, args: Record<string, unknown>) => Promise<{ data: { user_id: string; vat_classification: string }[] | null; error: unknown }> };
+  const classificationResult = await rpcClient.rpc("worksync_public_vat_classifications", { p_user_ids: userIds });
+  const classifications = new Map((classificationResult.error ? [] : classificationResult.data ?? []).map(row => [row.user_id, row.vat_classification]));
+  return services.map(service => ({
+    ...service,
+    vat_classification: classifications.get(service.freelancer?.user_id ?? "") === "vat_registered" ? "vat_registered" : classifications.get(service.freelancer?.user_id ?? "") === "non_vat" ? "non_vat" : "unverified",
+  }));
 }
 
 /* ==========================================================

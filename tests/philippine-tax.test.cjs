@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
 const ts = require("typescript");
+const zlib = require("node:zlib");
 function load(path, globals = {}) {
   const exports = {};
   vm.runInNewContext(ts.transpileModule(fs.readFileSync(path, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, { exports, TextEncoder, Blob, ...globals });
@@ -51,6 +52,69 @@ test("receipt PDF renders saved parties, transaction tax lines and registration 
   const logoPdf = await receipt.createReceiptPdf({ ...details, logoJpeg: new Uint8Array([255, 216, 255, 217]), logoWidth: 305, logoHeight: 277 }).text();
   assert.ok(logoPdf.includes("/XObject << /Im1"));
   assert.ok(logoPdf.includes("/Subtype /Image"));
+});
+
+test("tax uploads accept only matching PDF, JPEG, and PNG signatures under 5 MB", () => {
+  const upload = load("lib/tax/taxDocumentUpload.ts");
+  const pdfBeforeXref = "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n";
+  const xrefOffset = new TextEncoder().encode(pdfBeforeXref).length;
+  const pdfText = `${pdfBeforeXref}xref\n0 2\n0000000000 65535 f \n0000000009 00000 n \ntrailer\n<< /Size 2 /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  const pdf = new TextEncoder().encode(pdfText);
+  const jpeg = Uint8Array.from([0xff,0xd8,0xff,0xc0,0x00,0x0b,0x08,0x00,0x01,0x00,0x01,0x01,0x01,0x11,0x00,0xff,0xda,0x00,0x08,0x01,0x01,0x00,0x00,0x3f,0x00,0x00,0xff,0xd9]);
+  const crc32 = (bytes) => { let crc = 0xffffffff; for (const byte of bytes) { crc ^= byte; for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1)); } return (crc ^ 0xffffffff) >>> 0; };
+  const pngChunk = (name, data) => { const kind = new TextEncoder().encode(name); const chunk = new Uint8Array(12 + data.length); chunk.set([(data.length >>> 24) & 255, (data.length >>> 16) & 255, (data.length >>> 8) & 255, data.length & 255]); chunk.set(kind, 4); chunk.set(data, 8); const crc = crc32(chunk.subarray(4, 8 + data.length)); chunk.set([(crc >>> 24) & 255, (crc >>> 16) & 255, (crc >>> 8) & 255, crc & 255], 8 + data.length); return chunk; };
+  const joinBytes = (...parts) => { const joined = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0)); let offset = 0; for (const part of parts) { joined.set(part, offset); offset += part.length; } return joined; };
+  const png = joinBytes(Uint8Array.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]), pngChunk("IHDR", Uint8Array.from([0,0,0,1,0,0,0,1,8,6,0,0,0])), pngChunk("IDAT", zlib.deflateSync(Buffer.from([0,0,0,0,0]))), pngChunk("IEND", new Uint8Array()));
+  same(upload.inspectTaxDocument("cor.pdf", "application/pdf", pdf), { extension: "pdf", contentType: "application/pdf" });
+  same(upload.inspectTaxDocument("cor.jpg", "image/jpeg", jpeg), { extension: "jpg", contentType: "image/jpeg" });
+  same(upload.inspectTaxDocument("cor.png", "image/png", png), { extension: "png", contentType: "image/png" });
+  assert.throws(() => upload.inspectTaxDocument("cor.docx", "application/pdf", pdf), /PDF, JPG, or PNG/);
+  assert.throws(() => upload.inspectTaxDocument("cor.pdf", "application/pdf", jpeg), /contents are invalid/);
+  assert.throws(() => upload.inspectTaxDocument("cor.jpg", "image/png", jpeg), /does not match/);
+  assert.throws(() => upload.inspectTaxDocument("cor.pdf", "application/pdf", new Uint8Array(5 * 1024 * 1024 + 1)), /5 MB/);
+  assert.throws(() => upload.inspectTaxDocument("empty.png", "image/png", new Uint8Array()), /empty/);
+  assert.throws(() => upload.inspectTaxDocument("broken.pdf", "application/pdf", new TextEncoder().encode("%PDF-1.4\ncorrupt")), /contents are invalid/);
+});
+
+test("receipt API view strips private payout withholding details from client responses", () => {
+  const visibility = load("lib/payments/receiptVisibility.ts");
+  const full = { clientPayment: 1000, serviceGrossEarnings: 1000, freelancerNetPayout: 995, withholding: 5, taxLines: [{ withholding: 5, withholdingDocumentId: "private-doc", freelancerVat: 0.12, freelancerVatRate: 0.12 }] };
+  const client = visibility.receiptSnapshotForAudience(full, "client");
+  assert.equal(client.clientPayment, 1000);
+  assert.equal("withholding" in client, false);
+  assert.equal("freelancerNetPayout" in client, false);
+  assert.deepEqual(JSON.parse(JSON.stringify(client.taxLines[0])), { freelancerVat: 0.12, freelancerVatRate: 0.12 });
+  const freelancer = visibility.receiptSnapshotForAudience(full, "freelancer");
+  assert.equal(freelancer.withholding, 5);
+  assert.equal("withholdingDocumentId" in freelancer.taxLines[0], false);
+  assert.equal(visibility.receiptSnapshotForAudience(full, "admin"), full);
+});
+
+test("tax upload migration restricts storage and publishes only verified VAT classifications", () => {
+  const sql = fs.readFileSync("supabase/migrations/202610240002_tax_uploads_and_vat_classification.sql", "utf8");
+  const uploadUrl = fs.readFileSync("app/api/tax-documents/upload-url/route.ts", "utf8");
+  assert.match(sql, /public = false[\s\S]*file_size_limit = 5242880/);
+  assert.match(sql, /drop policy if exists freelancer_tax_declaration_upload/);
+  assert.match(sql, /worksync_tax_document_upload_allowed/);
+  assert.match(sql, /worksync_public_vat_classifications/);
+  assert.match(sql, /vat_classification in \('vat_registered','non_vat'\)/);
+  assert.match(uploadUrl, /createSignedUploadUrl/);
+  assert.match(uploadUrl, /tax_document_upload_tickets/);
+});
+
+test("client receipt PDF never renders freelancer withholding or earnings, while freelancer view does", async () => {
+  const receipt = load("lib/payments/receiptPdf.ts");
+  const visibility = load("lib/payments/receiptVisibility.ts");
+  const full = { receipt_number: "WS-TR-ROLE-1", issued_at: "2026-10-24T00:00:00Z", snapshot: { clientPayment: 1000, serviceGrossEarnings: 1000, freelancerNetPayout: 995, withholding: 5, freelancerVatBase: 888.89, freelancerVat: 111.11, taxLines: [{ taxableBase: 1000, withholdingRate: 0.005, withholding: 5, withholdingRule: "test rule", exemptionStatus: "none", freelancerVatBase: 888.89, freelancerVatRate: 0.12, freelancerVat: 111.11, freelancerVatRule: "VAT included" }] } };
+  const clientDetails = receipt.receiptDetailsFromSnapshot(visibility.receiptForAudience(full, "client"));
+  const clientPdf = await receipt.createReceiptPdf(clientDetails).text();
+  assert.match(clientPdf, /VAT included in service price/);
+  assert.doesNotMatch(clientPdf, /Marketplace withholding|Gross earnings|Net payout|PHP 5\.00/);
+  const freelancerDetails = receipt.receiptDetailsFromSnapshot(visibility.receiptForAudience(full, "freelancer"));
+  const freelancerPdf = await receipt.createReceiptPdf(freelancerDetails).text();
+  assert.match(freelancerPdf, /Gross earnings/);
+  assert.match(freelancerPdf, /Marketplace withholding/);
+  assert.match(freelancerPdf, /Net payout/);
 });
 test("receipt PDF uses pending states for absent earnings and tax snapshots", async () => {
   const receipt = load("lib/payments/receiptPdf.ts");
@@ -102,13 +166,14 @@ test("onboarding tax uploads are optional and submit through the existing privat
   const setupHook = fs.readFileSync("components/accountsetup/hooks/useSetupForm.ts", "utf8");
   const docsApi = fs.readFileSync("app/api/tax-documents/route.ts", "utf8");
   assert.match(onboarding, /if \(!file\) return/);
-  assert.match(onboarding, /verification-documents/);
   assert.match(onboarding, /fetch\("\/api\/tax-documents"/);
-  assert.match(onboarding, /phase === "uploading"/);
   assert.match(onboarding, /phase === "pending"/);
-  assert.match(onboarding, /partyType: party/);
+  assert.match(onboarding, /\/api\/tax-documents\/upload-url/);
+  assert.match(onboarding, /uploadToSignedUrl/);
   assert.match(setupHook, /await afterProfileSaved\?\./);
   assert.match(docsApi, /roles\.includes\(partyType/);
+  assert.match(docsApi, /inspectTaxDocument/);
+  assert.match(docsApi, /\.download\(path\)/);
   assert.match(docsApi, /db\.from\("tax_documents"\)\.insert/);
 });
 
@@ -125,7 +190,7 @@ test("document review is admin-only and approval does not activate a generic exe
   assert.match(payoutFunction, /withholding_applicable:=withholding_applicable and withholding_globally_enabled/);
   assert.match(payoutFunction, /latest_status='accepted'.*cor_id is not null/s);
   assert.doesNotMatch(payoutFunction, /tax_exemption/);
-  assert.match(adminApi, /requires a current verified registration document/);
+  assert.match(adminApi, /requires a current verified VAT registration document/);
   assert.match(adminApi, /platformGate/);
   assert.match(adminApi, /remains disabled pending legal confirmation/);
 });

@@ -209,6 +209,7 @@ function ProjectsPage() {
             setActiveFilter("In Discussion");
           }}
           onServiceChanged={refetch}
+          onRefreshRequests={requestState.refetch}
         />
       )}
       {activeFilter === "In Discussion" && discussions.length > 0 && (

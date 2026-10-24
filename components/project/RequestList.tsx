@@ -33,6 +33,8 @@ import type { ProjectRequest } from "@/services/project/projectRequestService";
 import { RequestCard } from "./RequestCard";
 import { screeningState } from "@/lib/ai/screening";
 import { ProjectCard, type Project } from "./ProjectCard";
+import { requestApplicantScreening } from "@/services/project/applicantScreeningService";
+import { clearProjectReadCache } from "@/lib/projectReadCache";
 
 interface Props {
   received: ProjectRequest[];
@@ -44,6 +46,7 @@ interface Props {
   onReject: (request: ProjectRequest) => Promise<void>;
   onStartDiscussion: (request: ProjectRequest) => Promise<void>;
   onServiceChanged?: () => Promise<void> | void;
+  onRefreshRequests?: (quiet?: boolean, force?: boolean) => Promise<void>;
 }
 
 function asItems(value: string | null) {
@@ -68,6 +71,7 @@ export function RequestList({
   onReject,
   onStartDiscussion,
   onServiceChanged,
+  onRefreshRequests,
 }: Props) {
   const [selectedRequest, setSelected] = React.useState<ProjectRequest | null>(
     null,
@@ -77,6 +81,13 @@ export function RequestList({
   const [responseErrors, setResponseErrors] = React.useState<
     Record<string, string>
   >({});
+  const [screeningErrors, setScreeningErrors] = React.useState<
+    Record<string, string>
+  >({});
+  const [screeningPendingId, setScreeningPendingId] = React.useState<
+    string | null
+  >(null);
+  const screeningAttempts = React.useRef(new Set<string>());
   const currentRequest = selectedRequest
     ? ([...received, ...sent].find(
         (item) => item.applicationId === selectedRequest.applicationId,
@@ -84,6 +95,69 @@ export function RequestList({
     : null;
   const selected = currentRequest;
   const assessmentState = screeningState(selected?.screening, selected?.createdAt ?? "");
+  const selectedApplicationId = selected?.applicationId ?? null;
+  const selectedCurrentParty = selected?.currentParty ?? null;
+  const selectedHasScreening =
+    selected?.screening?.score !== null &&
+    selected?.screening?.score !== undefined;
+  const selectedIsReceived = Boolean(
+    selected && received.some((item) => item.applicationId === selected.applicationId),
+  );
+  const selectedIsScreening = selected?.applicationId === screeningPendingId;
+  const screeningPreparing =
+    assessmentState === "preparing" || selectedIsScreening;
+  React.useEffect(() => {
+    if (
+      !selectedApplicationId ||
+      selectedCurrentParty !== "client" ||
+      !selectedIsReceived ||
+      selectedHasScreening ||
+      screeningAttempts.current.has(selectedApplicationId)
+    )
+      return;
+
+    const applicationId = selectedApplicationId;
+    screeningAttempts.current.add(applicationId);
+    let active = true;
+    setScreeningPendingId(applicationId);
+    void requestApplicantScreening(applicationId)
+      .then(() => {
+        if (!active) return;
+        setScreeningErrors((current) => {
+          const next = { ...current };
+          delete next[applicationId];
+          return next;
+        });
+        clearProjectReadCache();
+        void onRefreshRequests?.(true, true);
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setScreeningErrors((current) => ({
+          ...current,
+          [applicationId]:
+            error instanceof Error
+              ? error.message
+              : "AI screening could not be completed. Please refresh and try again.",
+        }));
+      })
+      .finally(() => {
+        if (active)
+          setScreeningPendingId((current) =>
+            current === applicationId ? null : current,
+          );
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    selectedApplicationId,
+    selectedCurrentParty,
+    selectedIsReceived,
+    selectedHasScreening,
+    onRefreshRequests,
+  ]);
   const selectedName =
     selected?.currentParty === "freelancer"
       ? selected.clientName
@@ -419,10 +493,10 @@ export function RequestList({
               <div
                 role="status"
                 aria-live="polite"
-                aria-busy={assessmentState === "preparing"}
+                aria-busy={screeningPreparing}
                 className="rounded-xl border bg-muted/30 p-4 text-center"
               >
-                {assessmentState !== "preparing" ? (
+                {!screeningPreparing ? (
                   <Sparkles className="mx-auto h-5 w-5 text-primary" />
                 ) : (
                   <LoaderCircle
@@ -440,7 +514,7 @@ export function RequestList({
                     : `${selected.screening.score}/100`}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {assessmentState === "expired" ? "Expired assessment — review current evidence" : selected.screening?.result || (assessmentState === "preparing" ? "Preparing AI match..." : "Assessment unavailable or delayed")}
+                  {assessmentState === "expired" ? "Expired assessment — review current evidence" : selected.screening?.result || (screeningPreparing ? "Preparing AI match..." : "Assessment unavailable or delayed")}
                 </p>
               </div>
             </div>
@@ -448,7 +522,12 @@ export function RequestList({
               <h3 className="font-semibold">AI screening</h3>
               {!selected.screening && (
                 <p className="text-sm text-muted-foreground">
-                  {assessmentState === "preparing" ? "The assessment will appear here if processing completes successfully." : "No assessment is available. You can still review the application and discuss the project."}
+                  {screeningPreparing ? "The assessment will appear here if processing completes successfully." : "No assessment is available. You can still review the application and discuss the project."}
+                </p>
+              )}
+              {screeningErrors[selected.applicationId] && (
+                <p role="alert" className="text-sm text-destructive">
+                  Screening could not be completed: {screeningErrors[selected.applicationId]}
                 </p>
               )}
               <p className="text-xs text-muted-foreground">

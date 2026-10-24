@@ -43,7 +43,7 @@ export async function POST(request: Request) {
         const proof = await db.from("tax_documents").select("document_id").eq("user_id", body.freelancerId).eq("party_type", "freelancer").eq("document_type", "vat_registration").eq("status", "verified").or(`expires_at.is.null,expires_at.gte.${today}`).limit(1).maybeSingle();
         if (proof.error || !proof.data) throw new PaymentError("VAT treatment requires a current verified VAT registration document.", 409);
       }
-      const result = await db.from("freelancer_tax_profiles").upsert({ user_id: body.freelancerId, marketplace_withholding_applicable: body.marketplaceWithholdingApplicable, freelancer_vat_applicable: body.vatApplicable, updated_by: user.id, updated_at: new Date().toISOString(), updated_reason: body.reason.trim() });
+      const result = await db.from("freelancer_tax_profiles").upsert({ user_id: body.freelancerId, marketplace_withholding_applicable: body.marketplaceWithholdingApplicable, freelancer_vat_applicable: body.vatApplicable, vat_classification: body.vatApplicable ? "vat_registered" : "unverified", updated_by: user.id, updated_at: new Date().toISOString(), updated_reason: body.reason.trim() });
       if (result.error) throw new PaymentError("Tax configuration could not be saved.");
       const audit = await db.from("admin_audit_log").insert({ admin_id: user.id, action: "configure_freelancer_tax_treatment", target_id: body.freelancerId, details: { marketplace_withholding_applicable: body.marketplaceWithholdingApplicable, freelancer_vat_applicable: body.vatApplicable, reason: body.reason.trim() } });
       if (audit.error) throw new PaymentError("Tax configuration was saved, but the supplemental admin audit record failed.");

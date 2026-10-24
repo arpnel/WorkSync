@@ -1,5 +1,6 @@
 import { PaymentError } from "@/lib/payments/paymongo";
 import { paymentResponse, paymentUser } from "@/services/payments/paymentServer";
+import { receiptForAudience, type ReceiptAudience } from "@/lib/payments/receiptVisibility";
 export const runtime = "nodejs";
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 const nameFor = (profile: { display_name?: string | null } | null, fallback: string) => profile?.display_name?.trim() || fallback;
@@ -22,13 +23,14 @@ export async function GET(request: Request) {
     if (client.error || freelancer.error || admin.error || !client.data || !freelancer.data) throw new PaymentError("Payment participants unavailable.");
     if (payment.payer_id !== client.data.user_id) throw new PaymentError("Payment payer does not match the project client.", 409);
     if (user.id !== client.data.user_id && user.id !== freelancer.data.user_id && !admin.data) throw new PaymentError("Only transaction participants may access this receipt.", 403);
+    const audience: ReceiptAudience = admin.data ? "admin" : user.id === client.data.user_id ? "client" : "freelancer";
     const { data: saved, error: savedError } = await db.from("tax_transaction_receipts").select(paidReceiptFields).eq("payment_id", paymentId).maybeSingle();
     if (savedError) throw new PaymentError("Saved receipts are unavailable. The receipt migration may not be applied yet.");
     if (payment.status !== "paid") {
       if (!saved) throw new PaymentError("A receipt is available after payment is confirmed.", 409);
       const correction = await db.from("tax_transaction_receipt_corrections").select(correctionFields).eq("receipt_id", saved.receipt_id).order("issued_at", { ascending: false }).limit(1).maybeSingle();
       if (correction.error) throw new PaymentError("Receipt correction history is unavailable.");
-      return json({ receipt: correction.data ? { receipt_number: correction.data.correction_number, document_type: "system_transaction_receipt_correction", issued_at: correction.data.issued_at, snapshot: correction.data.snapshot } : saved });
+      return json({ receipt: receiptForAudience(correction.data ? { receipt_number: correction.data.correction_number, document_type: "system_transaction_receipt_correction", issued_at: correction.data.issued_at, snapshot: correction.data.snapshot } : saved, audience) });
     }
     const today = new Date().toISOString().slice(0, 10);
     const [clientProfile, freelancerProfile, payouts, freelancerTax, clientTax] = await Promise.all([
@@ -58,7 +60,7 @@ export async function GET(request: Request) {
       if (inserted.error) throw new PaymentError("Receipt could not be recorded.");
       const receipt = inserted.data ?? (await db.from("tax_transaction_receipts").select(paidReceiptFields).eq("payment_id", paymentId).single()).data;
       if (!receipt) throw new PaymentError("Recorded receipt could not be retrieved.");
-      return json({ receipt });
+      return json({ receipt: receiptForAudience(receipt, audience) });
     }
     const latest = await db.from("tax_transaction_receipt_corrections").select(correctionFields).eq("receipt_id", saved.receipt_id).order("issued_at", { ascending: false }).limit(1).maybeSingle();
     if (latest.error) throw new PaymentError("Receipt correction history is unavailable.");
@@ -72,7 +74,7 @@ export async function GET(request: Request) {
     };
     const previousSnapshot = normalizeSnapshot(previous as Record<string, unknown>);
     const currentSnapshot = normalizeSnapshot(snapshot);
-    if (JSON.stringify(previousSnapshot) === JSON.stringify(currentSnapshot)) return json({ receipt: latest.data ? { receipt_number: latest.data.correction_number, document_type: "system_transaction_receipt_correction", issued_at: latest.data.issued_at, snapshot: latest.data.snapshot } : saved });
+    if (JSON.stringify(previousSnapshot) === JSON.stringify(currentSnapshot)) return json({ receipt: receiptForAudience(latest.data ? { receipt_number: latest.data.correction_number, document_type: "system_transaction_receipt_correction", issued_at: latest.data.issued_at, snapshot: latest.data.snapshot } : saved, audience) });
     const differenceKeys = [...new Set([...Object.keys(previousSnapshot), ...Object.keys(currentSnapshot)])].filter(key => JSON.stringify(previousSnapshot[key] ?? null) !== JSON.stringify(currentSnapshot[key] ?? null));
     const differences = Object.fromEntries(differenceKeys.map(key => [key, { previous: previousSnapshot[key] ?? null, current: currentSnapshot[key] ?? null }]));
     const reason = !((previous as Record<string, unknown>).taxLines as unknown[] | undefined)?.length && taxLines.length ? "Saved payout tax details became available after the original receipt was issued." : "Saved transaction snapshot changed; prior receipt remains preserved.";
@@ -83,7 +85,7 @@ export async function GET(request: Request) {
     if (retrieved?.error) throw new PaymentError("Receipt correction was saved but could not be read.");
     const correction = inserted.data ?? retrieved?.data;
     if (!correction) throw new PaymentError("Recorded receipt correction could not be retrieved.");
-    return json({ receipt: { receipt_number: correction.correction_number, document_type: "system_transaction_receipt_correction", issued_at: correction.issued_at, snapshot: correction.snapshot } });
+    return json({ receipt: receiptForAudience({ receipt_number: correction.correction_number, document_type: "system_transaction_receipt_correction", issued_at: correction.issued_at, snapshot: correction.snapshot }, audience) });
   } catch (error) { return paymentResponse(error); }
 }
 

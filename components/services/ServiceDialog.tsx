@@ -18,8 +18,18 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -75,6 +85,40 @@ type ServiceDialogProps = {
   listing?: MarketplaceItem;
 };
 
+function listingSubmissionErrorMessage(error: unknown, noun: string) {
+  const value =
+    error && typeof error === "object"
+      ? (error as { code?: unknown; message?: unknown })
+      : null;
+  const code = typeof value?.code === "string" ? value.code : "";
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof value?.message === "string"
+        ? value.message
+        : "";
+
+  if (
+    code === "P0001" &&
+    /monthly .*submission limit reached/i.test(message)
+  ) {
+    const plan = message
+      .match(/for the ([\w ]+) plan\.?$/i)?.[1]
+      ?.trim()
+      .toLowerCase();
+    const planName =
+      plan === "free"
+        ? "Free"
+        : plan === "pro" || plan === "pro plus"
+          ? "Premium"
+          : null;
+    const planLabel = planName ? `the ${planName} plan` : "your current plan";
+    return `You've reached the monthly ${noun.toLowerCase()} posting limit for ${planLabel}. The listing wasn't created. Check Settings > Subscription to review monthly limits.`;
+  }
+
+  return message || `The ${noun.toLowerCase()} could not be posted. Please try again.`;
+}
+
 export function ServiceDialog({
   open,
   onOpenChange,
@@ -90,6 +134,10 @@ export function ServiceDialog({
   const [allSkills, setAllSkills] = useState<Skill[]>([]);
   const [originalMediaUrls, setOriginalMediaUrls] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionFailure, setSubmissionFailure] = useState<{
+    title: string;
+    message: string;
+  } | null>(null);
   const [dirty, setDirty] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
 
@@ -335,6 +383,7 @@ export function ServiceDialog({
     };
 
     setIsSubmitting(true);
+    setSubmissionFailure(null);
 
     try {
       if (listing) {
@@ -424,13 +473,14 @@ export function ServiceDialog({
         listing ? "Failed to update listing:" : "Failed to create listing:",
         error,
       );
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : listing
-            ? `Failed to update ${noun.toLowerCase()}.`
-            : `Failed to post ${noun.toLowerCase()}.`,
-      );
+      setSubmissionFailure({
+        title: listing ? "Listing could not be updated" : "Listing was not created",
+        message: listing
+          ? error instanceof Error
+            ? error.message
+            : `The ${noun.toLowerCase()} could not be updated. Please try again.`
+          : listingSubmissionErrorMessage(error, noun),
+      });
     } finally {
       setIsSubmitting(false);
       duplicateLock.unlock();
@@ -448,6 +498,11 @@ export function ServiceDialog({
             <DialogTitle className="text-2xl font-semibold">
               {listing ? `Edit ${noun}` : `Post a ${noun}`}
             </DialogTitle>
+            <DialogDescription className="sr-only">
+              {listing
+                ? `Update the details for your ${noun.toLowerCase()}.`
+                : `Enter the details for the ${noun.toLowerCase()} you want to post.`}
+            </DialogDescription>
           </DialogHeader>
         </div>
 
@@ -671,6 +726,28 @@ export function ServiceDialog({
           onOpenChange(false);
         }}
       />
+      <AlertDialog
+        open={Boolean(submissionFailure)}
+        onOpenChange={(open) => {
+          if (!open) setSubmissionFailure(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {submissionFailure?.title ?? "Listing could not be saved"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {submissionFailure?.message ?? "Please try again."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setSubmissionFailure(null)}>
+              OK
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }

@@ -14,6 +14,7 @@ export type ReceiptTaxLine = {
   freelancerVatDocumentId?: string | null;
 };
 export type ReceiptDetails = {
+  audience?: "client" | "freelancer" | "admin";
   receiptNumber: string;
   receiptIssuedAt?: string;
   correctionReason?: string;
@@ -69,6 +70,7 @@ export function receiptDetailsFromSnapshot(receipt: { receipt_number: string; is
   const numeric = (key: string) => Number(snapshot[key] ?? 0);
   const optionalNumeric = (key: string) => snapshot[key] == null || !Number.isFinite(Number(snapshot[key])) ? null : Number(snapshot[key]);
   return {
+    audience: snapshot.receiptAudience === "client" || snapshot.receiptAudience === "freelancer" ? snapshot.receiptAudience : "admin",
     receiptNumber: receipt.receipt_number,
     receiptIssuedAt: receipt.issued_at,
     correctionReason: typeof snapshot.correctionReason === "string" ? snapshot.correctionReason : undefined,
@@ -126,10 +128,11 @@ export function createReceiptPdf(details: ReceiptDetails) {
   y -= 8; section("Payment breakdown");
   const taxNotes = details.taxLines.map((taxLine, index) => {
     const notes = [];
-    if (taxLine.freelancerVat > 0) notes.push("Freelancer VAT: " + php(taxLine.freelancerVat) + " (" + (taxLine.freelancerVatRate * 100).toFixed(2) + "% of " + php(taxLine.freelancerVatBase) + "; " + taxLine.freelancerVatRule + ")");
-    else notes.push("Freelancer VAT: none recorded");
+    if (taxLine.freelancerVat > 0) notes.push((details.audience === "client" ? "VAT included in service price: " : "Freelancer VAT: ") + php(taxLine.freelancerVat) + " (" + (taxLine.freelancerVatRate * 100).toFixed(2) + "% of " + php(taxLine.freelancerVatBase) + (details.audience === "client" ? "" : "; " + taxLine.freelancerVatRule) + ")");
+    else if (details.audience !== "client") notes.push("Freelancer VAT: none recorded");
+    if (details.audience === "client") return "Payout " + (index + 1) + ": " + (notes.length ? notes.join("; ") : "VAT breakdown not recorded");
     if (taxLine.withholding > 0) notes.push("Marketplace withholding: " + php(taxLine.withholding) + " (" + (taxLine.withholdingRate * 100).toFixed(2) + "% of " + php(taxLine.taxableBase) + "; " + taxLine.withholdingRule + "; " + taxLine.exemptionStatus + ")");
-    else notes.push("Marketplace withholding: none recorded (" + taxLine.withholdingRule + "; " + taxLine.exemptionStatus + ")");
+    else if (details.audience === "admin") notes.push("Marketplace withholding: none recorded (" + taxLine.withholdingRule + "; " + taxLine.exemptionStatus + ")");
     return "Payout " + (index + 1) + ": " + notes.join("; ");
   });
   const taxRowHeight = !details.taxLines.length || details.taxLines.length > 4 ? 39 : Math.max(52, Math.ceil(taxNotes.join(" | ").length / 68) * 13 + 25);
@@ -144,16 +147,23 @@ export function createReceiptPdf(details: ReceiptDetails) {
     line(y + 1, "0.90 0.92 0.94");
   };
   breakdownRow("Client payment", "", php(details.amount), 36);
-  breakdownRow("WorkSync service fee", details.platformServiceFee == null ? "Fee details not recorded" : "", details.platformServiceFee == null ? "Not available" : php(details.platformServiceFee), 39);
-  if (details.platformVat != null) breakdownRow("WorkSync platform VAT", details.platformVatRate == null ? "Saved platform VAT amount" : (details.platformVatRate * 100).toFixed(2) + "% of " + php(details.platformVatBase ?? 0) + (details.platformTaxTreatment ? "; " + details.platformTaxTreatment : ""), php(details.platformVat), 39);
-  else if (details.platformTaxNote) breakdownRow("WorkSync platform tax", details.platformTaxNote, "", 48);
-  if (!details.taxLines.length) breakdownRow("Payout tax breakdown", "No payout tax calculation saved yet", "Pending", 39);
-  else if (details.taxLines.length <= 4) {
-    breakdownRow("Payout tax breakdown", taxNotes.join(" | "), "", taxRowHeight);
+  if (details.audience === "client") {
+    if (!details.taxLines.length) breakdownRow("VAT breakdown", "No verified VAT amount is recorded for this payment", "Not recorded", 39);
+    else breakdownRow("VAT included in service price", taxNotes.join(" | "), details.freelancerVat > 0 ? php(details.freelancerVat) : "Not recorded", taxRowHeight);
+  } else if (details.audience === "freelancer") {
+    breakdownRow("Gross earnings", "Saved payout amount before deductions", details.serviceGrossEarnings == null ? "Not recorded" : php(details.serviceGrossEarnings), 39);
+    if (details.freelancerVat > 0) breakdownRow("Freelancer VAT", "Included in the saved agreed amount", php(details.freelancerVat), 39);
+    if (details.withholding > 0) breakdownRow("Marketplace withholding", "Deducted from freelancer payout", php(details.withholding), 39);
+    breakdownRow("Net payout", "After recorded withholding", details.freelancerNetPayout == null ? "Not recorded" : php(details.freelancerNetPayout), 39);
   } else {
-    breakdownRow("Payout tax breakdown", "Detailed payout tax breakdown follows", "", 39);
+    breakdownRow("WorkSync service fee", details.platformServiceFee == null ? "Fee details not recorded" : "", details.platformServiceFee == null ? "Not available" : php(details.platformServiceFee), 39);
+    if (details.platformVat != null) breakdownRow("WorkSync platform VAT", details.platformVatRate == null ? "Saved platform VAT amount" : (details.platformVatRate * 100).toFixed(2) + "% of " + php(details.platformVatBase ?? 0) + (details.platformTaxTreatment ? "; " + details.platformTaxTreatment : ""), php(details.platformVat), 39);
+    else if (details.platformTaxNote) breakdownRow("WorkSync platform tax", details.platformTaxNote, "", 48);
+    if (!details.taxLines.length) breakdownRow("Payout tax breakdown", "No payout tax calculation saved yet", "Pending", 39);
+    else if (details.taxLines.length <= 4) breakdownRow("Payout tax breakdown", taxNotes.join(" | "), "", taxRowHeight);
+    else breakdownRow("Payout tax breakdown", "Detailed payout tax breakdown follows", "", 39);
   }
-  y -= 20;  if (details.taxLines.length > 4) {
+  y -= 20;  if (details.audience !== "client" && details.audience !== "freelancer" && details.taxLines.length > 4) {
     nextPage(); y = 720; section("Saved payout tax breakdown");
     details.taxLines.forEach((taxLine, index) => {
       if (y < 145) { nextPage(); y = 720; section("Saved payout tax breakdown"); }
@@ -165,7 +175,7 @@ export function createReceiptPdf(details: ReceiptDetails) {
       line(y + 5);
     });
   }
-  if (details.correctionReason) {
+  if (details.audience !== "client" && details.correctionReason) {
     section("Receipt correction");
     const correctionLines = ["Reason: " + details.correctionReason, ...(details.correctionDifferences ? Object.entries(details.correctionDifferences).map(([field, values]) => "Changed " + field + ": " + JSON.stringify(values.previous) + " -> " + JSON.stringify(values.current)) : []), "Receipt issued " + (details.receiptIssuedAt ? new Date(details.receiptIssuedAt).toLocaleString("en-PH", { timeZone: "Asia/Manila", month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true }) : "Not recorded")];
     const wrappedCorrection = correctionLines.flatMap(value => wrap(value, 85)); const correctionHeight = wrappedCorrection.length * 13 + 16;

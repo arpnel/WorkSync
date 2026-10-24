@@ -35,22 +35,24 @@ const TaxDocumentOnboarding = forwardRef<TaxDocumentOnboardingHandle, { party: P
       if (!file) return;
       setError("");
       try {
-        if (file.size > 10 * 1024 * 1024) throw new Error("Choose a file up to 10 MB.");
+        if (file.size > 5 * 1024 * 1024) throw new Error("Choose a file up to 5 MB.");
         const extension = file.name.split(".").at(-1)?.toLowerCase();
         if (!extension || !["pdf", "png", "jpg", "jpeg"].includes(extension)) throw new Error("Choose a PDF, PNG, or JPG file.");
         if (type === "bir_cor" && !registeredName.trim()) throw new Error("Enter the registered business name shown on the COR.");
         if (expiresAt && issuedAt && expiresAt < issuedAt) throw new Error("Expiry date cannot be before the issue date.");
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) throw new Error("Your session expired. Sign in again to submit the document.");
-        const path = `${session.user.id}/tax-docs/${party}/${crypto.randomUUID()}.${extension}`;
         setPhase("uploading");
-        const upload = await supabase.storage.from("verification-documents").upload(path, file, { contentType: file.type || "application/octet-stream", upsert: false });
-        if (upload.error) throw new Error("Private document upload failed. You can retry or skip and submit it later in Settings.");
+        const ticketResponse = await fetch("/api/tax-documents/upload-url", { method: "POST", headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ partyType: party, documentType: type, fileName: file.name, contentType: file.type, size: file.size }), cache: "no-store" });
+        const ticket = await ticketResponse.json().catch(() => null);
+        if (!ticketResponse.ok) throw new Error(typeof ticket?.error === "string" ? ticket.error : "Secure upload could not be prepared.");
+        const upload = await supabase.storage.from("verification-documents").uploadToSignedUrl(ticket.path, ticket.token, file, { contentType: ticket.contentType });
+        if (upload.error) throw new Error("Private document upload failed. Retry or skip and submit it later in Settings.");
         setPhase("submitting");
         const response = await fetch("/api/tax-documents", {
           method: "POST",
           headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ partyType: party, documentType: type, documentPath: path, registeredName, claimedTaxTreatment: treatment, legalBasis: basis, issuedAt: issuedAt || null, expiresAt: expiresAt || null }),
+          body: JSON.stringify({ partyType: party, documentType: type, documentPath: ticket.path, registeredName, claimedTaxTreatment: treatment, legalBasis: basis, issuedAt: issuedAt || null, expiresAt: expiresAt || null }),
         });
         const result = await response.json().catch(() => null);
         if (!response.ok) throw new Error(typeof result?.error === "string" ? result.error : "Document could not be submitted. Retry or submit it later in Settings.");
@@ -66,11 +68,11 @@ const TaxDocumentOnboarding = forwardRef<TaxDocumentOnboardingHandle, { party: P
   }), [basis, expiresAt, file, issuedAt, party, registeredName, treatment, type]);
 
   return <section className="space-y-3 rounded-xl border p-4" aria-busy={phase === "uploading" || phase === "submitting"}>
-    <div><h3 className="font-semibold">Optional tax documents</h3><p className="text-sm text-muted-foreground">You can skip this and finish setup. Submitted documents use private storage and remain pending until manual review. Approval alone does not establish a tax exemption. You can add, view, or renew documents later in <Link className="underline" href="/home/settings">Settings</Link>.</p></div>
+    <div><h3 className="font-semibold">Tax Information</h3><p className="text-sm text-muted-foreground">Submit your BIR Certificate of Registration and any applicable withholding-tax documents for administrator verification. You may skip this step and submit your documents later through your profile settings.</p><p className="mt-1 text-sm text-muted-foreground">This step is optional. PDF, JPG, or PNG up to 5 MB. Submitted documents remain pending until manual review; document submission does not automatically change tax treatment. You can manage these records later in <Link className="underline" href="/home/settings">Settings</Link>.</p></div>
     <div className="grid gap-3 sm:grid-cols-2">
       <div className="space-y-2"><Label htmlFor={`${party}-tax-document-type`}>Document type</Label><StyledSelect id={`${party}-tax-document-type`} value={type} onChange={event => setType(event.target.value as DocumentType)} disabled={disabled || phase === "uploading" || phase === "submitting"}>{options.map(option => <option key={option} value={option}>{labels[option]}</option>)}</StyledSelect></div>
-      <div className="space-y-2"><Label htmlFor={`${party}-tax-document-file`}>Document file (optional)</Label><Input id={`${party}-tax-document-file`} type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={disabled || phase === "uploading" || phase === "submitting"} onChange={event => { setFile(event.target.files?.[0] ?? null); setPhase("idle"); setError(""); }} /></div>
-      {file && <Button type="button" variant="outline" disabled={disabled || phase === "uploading" || phase === "submitting"} onClick={() => { setFile(null); setPhase("idle"); setError(""); const input = document.getElementById(`${party}-tax-document-file`) as HTMLInputElement | null; if (input) input.value = ""; }}>Skip this upload</Button>}
+      <div className="space-y-2"><Label htmlFor={`${party}-tax-document-file`}>Upload Document (optional)</Label><Input id={`${party}-tax-document-file`} type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={disabled || phase === "uploading" || phase === "submitting"} onChange={event => { setFile(event.target.files?.[0] ?? null); setPhase("idle"); setError(""); }} /><p className="text-xs text-muted-foreground">PDF, JPG, or PNG · up to 5 MB</p></div>
+      {file && <Button type="button" variant="outline" disabled={disabled || phase === "uploading" || phase === "submitting"} onClick={() => { setFile(null); setPhase("idle"); setError(""); const input = document.getElementById(`${party}-tax-document-file`) as HTMLInputElement | null; if (input) input.value = ""; }}>Skip for Now</Button>}
       {type === "bir_cor" && <div className="space-y-2"><Label htmlFor={`${party}-tax-registered-name`}>Registered business name</Label><Input id={`${party}-tax-registered-name`} value={registeredName} maxLength={200} disabled={disabled} onChange={event => setRegisteredName(event.target.value)} /></div>}
       {type === "tax_exemption" && <><div className="space-y-2"><Label htmlFor={`${party}-tax-treatment`}>Claimed treatment (if known)</Label><Input id={`${party}-tax-treatment`} value={treatment} maxLength={300} disabled={disabled} onChange={event => setTreatment(event.target.value)} /></div><div className="space-y-2"><Label htmlFor={`${party}-tax-basis`}>Stated legal basis (if known)</Label><Input id={`${party}-tax-basis`} value={basis} maxLength={1000} disabled={disabled} onChange={event => setBasis(event.target.value)} /></div></>}
       <div className="space-y-2"><Label htmlFor={`${party}-tax-issued`}>Issue date (optional)</Label><Input id={`${party}-tax-issued`} type="date" value={issuedAt} disabled={disabled} onChange={event => setIssuedAt(event.target.value)} /></div>
@@ -78,9 +80,9 @@ const TaxDocumentOnboarding = forwardRef<TaxDocumentOnboardingHandle, { party: P
     </div>
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     {phase === "uploading" && <p role="status" className="text-sm">Uploading securely to private storage...</p>}
-    {phase === "submitting" && <p role="status" className="text-sm">Submitting for administrator review...</p>}
-    {phase === "pending" && <p role="status" className="text-sm text-muted-foreground">Document submitted - Pending review. Review status and renewal dates are available in Settings.</p>}
-    {file && phase !== "uploading" && phase !== "submitting" && phase !== "pending" && <p className="text-sm text-muted-foreground">Selected: {file.name}. Save setup to upload, or remove the file to skip.</p>}
+    {phase === "submitting" && <p role="status" className="text-sm">Submitting for Verification...</p>}
+    {phase === "pending" && <p role="status" className="text-sm text-muted-foreground">Document submitted — Pending Review. Status and feedback are available in Settings.</p>}
+    {file && phase !== "submitting" && phase !== "pending" && <p className="text-sm text-muted-foreground">Selected: {file.name}. Save setup to submit for verification, or choose Skip for Now.</p>}
   </section>;
 });
 

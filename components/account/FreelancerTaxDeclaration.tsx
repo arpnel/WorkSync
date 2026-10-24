@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { StyledSelect } from "@/components/ui/styled-select";
 
-type Declaration = { declaration_id: string; tax_year: number; reported_threshold_status: string; status: string; submitted_at: string; reviewed_at: string | null; review_notes: string };
+type Declaration = { declaration_id: string; tax_year: number; reported_threshold_status: string; status: string; submitted_at: string; reviewed_at: string | null; review_notes: string; document_url: string | null };
 export default function FreelancerTaxDeclaration() {
   const [rows, setRows] = useState<Declaration[]>([]);
   const [file, setFile] = useState<File | null>(null);
@@ -35,11 +35,14 @@ export default function FreelancerTaxDeclaration() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Sign in to submit a document.");
-      if (file.size > 10 * 1024 * 1024) throw new Error("Choose a file up to 10 MB.");
+      if (file.size > 5 * 1024 * 1024) throw new Error("Choose a file up to 5 MB.");
       const extension = file.name.split(".").at(-1)?.toLowerCase();
       if (!extension || !["pdf", "png", "jpg", "jpeg"].includes(extension)) throw new Error("Upload a PDF, PNG, or JPG.");
-      const path = `${session.user.id}/tax/${year}/${crypto.randomUUID()}.${extension}`;
-      const uploaded = await supabase.storage.from("verification-documents").upload(path, file, { contentType: file.type || "application/octet-stream", upsert: false });
+      const ticketResponse = await fetch("/api/tax-documents/upload-url", { method: "POST", headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ partyType: "freelancer", uploadKind: "withholding_declaration", taxYear: year, fileName: file.name, contentType: file.type, size: file.size }), cache: "no-store" });
+      const ticket = await ticketResponse.json();
+      if (!ticketResponse.ok) throw new Error(ticket.error || "Secure upload could not be prepared.");
+      const path = ticket.path as string;
+      const uploaded = await supabase.storage.from("verification-documents").uploadToSignedUrl(path, ticket.token, file, { contentType: ticket.contentType });
       if (uploaded.error) throw new Error("Document upload failed. Please try again.");
       await request("POST", { taxYear: year, documentPath: path, thresholdStatus });
       setFile(null);
@@ -54,7 +57,7 @@ export default function FreelancerTaxDeclaration() {
   const hasActive = rows.some((row) => row.tax_year === year && row.status === "pending");
   return <section className="space-y-3 rounded-xl border p-4">
     <div><h4 className="font-semibold">Tax records</h4><p className="mt-1 text-sm text-muted-foreground">Submit a BIR-received sworn declaration for manual review. If marketplace withholding is legally applicable and enabled for your account, an accepted declaration and current reviewed COR may support the threshold treatment. Pending or expired records do not establish an exemption.</p></div>
-    {rows.map((row) => <div key={row.declaration_id} className="flex flex-wrap justify-between gap-2 border-t pt-2 text-sm"><span>{row.tax_year} declaration ({row.reported_threshold_status.replaceAll("_", " ")})</span><span className="capitalize">{row.status.replaceAll("_", " ")}</span>{row.review_notes && <p className="w-full text-muted-foreground">{row.review_notes}</p>}</div>)}
+    {rows.map((row) => <div key={row.declaration_id} className="flex flex-wrap justify-between gap-2 border-t pt-2 text-sm"><span>{row.tax_year} declaration ({row.reported_threshold_status.replaceAll("_", " ")})</span><span className="capitalize">{row.status.replaceAll("_", " ")}</span>{row.document_url && <a className="text-primary underline" href={row.document_url} target="_blank" rel="noreferrer">Download document</a>}{row.review_notes && <p className="w-full text-muted-foreground">{row.review_notes}</p>}</div>)}
     {!hasActive && <div className="grid gap-3 sm:grid-cols-[120px_1fr_220px_auto] sm:items-end">
       <div className="space-y-2"><Label htmlFor="tax-declaration-year">Tax year</Label><Input id="tax-declaration-year" type="number" min="2024" max={new Date().getFullYear() + 1} value={year} onChange={(event) => setYear(Number(event.target.value))} /></div>
       <div className="space-y-2"><Label htmlFor="tax-declaration-file">BIR-received sworn declaration</Label><Input id="tax-declaration-file" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /></div>

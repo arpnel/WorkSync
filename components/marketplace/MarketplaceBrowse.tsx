@@ -78,6 +78,7 @@ export default function MarketplaceBrowse({
     maxPrice: "",
     rating: 0,
     savedOnly: false,
+    vatTreatment: "any",
   });
   const [saved, setSaved] = useState<Set<string>>(new Set());
   const savedOnly = filters.savedOnly;
@@ -184,6 +185,7 @@ export default function MarketplaceBrowse({
           listingType: filters.listingType === "job" ? "job" : "service",
           page: pageIndex,
           pageSize: 24,
+          includeVatClassification: filters.vatTreatment !== "any",
           minPrice: filters.minPrice ? Number(filters.minPrice) : null,
           maxPrice: filters.maxPrice ? Number(filters.maxPrice) : null,
         });
@@ -197,9 +199,12 @@ export default function MarketplaceBrowse({
             filters.listingType === "job" ||
             (ratings.get(item.freelancer_id ?? "") ?? 0) >= filters.rating,
         );
+        const vatFiltered = filters.vatTreatment === "any" || filters.listingType === "job"
+          ? rated
+          : rated.filter(item => item.listing_type === "service" && item.vat_classification === filters.vatTreatment);
         const pageItems = filters.listingType === "freelancer"
-          ? rated.filter((item, index, rows) => item.freelancer_id && rows.findIndex((candidate) => candidate.freelancer_id === item.freelancer_id) === index)
-          : rated;
+          ? vatFiltered.filter((item, index, rows) => item.freelancer_id && rows.findIndex((candidate) => candidate.freelancer_id === item.freelancer_id) === index)
+          : vatFiltered;
         if (filters.sort.includes("highestRated"))
           pageItems.sort(
             (a, b) =>

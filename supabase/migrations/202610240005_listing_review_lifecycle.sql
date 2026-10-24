@@ -28,6 +28,28 @@ $$;
 revoke all on function public.worksync_listing_visible(text,uuid) from public;
 grant execute on function public.worksync_listing_visible(text,uuid) to anon,authenticated;
 
+-- Define these policy helpers here as well so this migration does not rely
+-- on the separate participant-access migration having been applied first.
+create or replace function public.worksync_job_participant(p_job uuid)
+returns boolean language sql stable security definer set search_path='' as $$
+ select exists(
+  select 1 from public.job_applications a
+  join public.freelancer_profiles f using(freelancer_id)
+  where a.job_id=p_job and f.user_id=auth.uid()
+ );
+$$;
+create or replace function public.worksync_service_participant(p_service uuid)
+returns boolean language sql stable security definer set search_path='' as $$
+ select exists(
+  select 1 from public.service_orders o
+  join public.client_profiles c using(client_id)
+  join public.freelancer_profiles f using(freelancer_id)
+  where o.service_id=p_service and (c.user_id=auth.uid() or f.user_id=auth.uid())
+ );
+$$;
+revoke all on function public.worksync_job_participant(uuid),public.worksync_service_participant(uuid) from public,anon,authenticated;
+grant execute on function public.worksync_job_participant(uuid),public.worksync_service_participant(uuid) to authenticated;
+
 drop policy if exists jobs_moderation_visibility on public.jobs;
 create policy jobs_moderation_visibility on public.jobs as restrictive for select to authenticated
 using(public.worksync_listing_visible('job',job_id) or public.worksync_job_participant(job_id) or public.worksync_is_admin() or exists(select 1 from public.client_profiles c where c.client_id=jobs.client_id and c.user_id=auth.uid()));

@@ -37,7 +37,8 @@ export async function moderateCreatedListing(type: ListingType, id: string, owne
     const assessment = await assessListing({ type, title: claim.data.title, description: claim.data.description });
     const categoriesAllowedForAutomaticRejection = new Set(["hate_or_abuse", "threat", "scam_or_fraud"]);
     const automaticReject = process.env.LISTING_AUTO_REJECT_ENABLED === "true" && assessment.risk === "critical" && assessment.confidence >= LISTING_MODERATION_POLICY.automaticRejectionConfidence && assessment.evidence.length > 0 && assessment.explanation.length >= 40 && assessment.categories.some((category) => categoriesAllowedForAutomaticRejection.has(category));
-    const status = automaticReject ? "rejected" : assessment.risk === "high" || assessment.risk === "critical" ? "manual_review" : "pending_review";
+    const requiresProfanityReview = assessment.categories.includes("profanity_or_explicit");
+    const status = automaticReject ? "rejected" : requiresProfanityReview || assessment.risk === "high" || assessment.risk === "critical" ? "manual_review" : "pending_review";
     const saved = await client.from("listing_submissions").update({ ai_risk: assessment.risk, ai_explanation: assessment.explanation, ai_categories: assessment.categories, ai_evidence: assessment.evidence, ai_confidence: assessment.confidence, ai_recommendation: assessment.recommendation, status, decision: automaticReject ? "automatic_rejection" : null, assessed_at: new Date().toISOString(), failure_reason: null }).eq("submission_id", claim.data.submission_id);
     if (saved.error) throw saved.error;
     if (automaticReject) {

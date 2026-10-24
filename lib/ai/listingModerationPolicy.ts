@@ -8,6 +8,50 @@ export const LISTING_MODERATION_POLICY = {
   automaticRejectionConfidence: 0.95,
 } as const;
 
+// Keep this as a review signal, not an automatic rejection list. Matching is
+// whole-token after normalization so ordinary words containing a short term
+// (for example, "class") are not flagged.
+const profanityTokens = new Set([
+  "asshole",
+  "bastard",
+  "bitch",
+  "bullshit",
+  "cunt",
+  "fuck",
+  "fucker",
+  "fucking",
+  "motherfucker",
+  "shit",
+  "shitty",
+  "gago",
+  "gaga",
+  "putangina",
+  "puta",
+  "tangina",
+  "tarantado",
+  "ulol",
+]);
+
+function containsProfanity(value: string) {
+  const normalized = value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[0]/g, "o")
+    .replace(/[1!|]/g, "i")
+    .replace(/[3]/g, "e")
+    .replace(/[@4]/g, "a")
+    .replace(/[5$]/g, "s")
+    .replace(/[7]/g, "t");
+  const tokens = normalized
+    .split(/\s+/)
+    .map((token) => token.replace(/[^a-z]/g, ""))
+    .filter(Boolean);
+
+  return tokens.some((token) => profanityTokens.has(token)) ||
+    /putang\s*ina/.test(normalized.replace(/[^a-z]/g, ""));
+}
+
 export function validateListingRules(title: string, description: string): string[] {
   const issues: string[] = [];
   const cleanTitle = title.trim();
@@ -20,5 +64,6 @@ export function validateListingRules(title: string, description: string): string
   const links = cleanDescription.match(/https?:\/\/|www\./gi)?.length ?? 0;
   if (links >= LISTING_MODERATION_POLICY.suspiciousLinkThreshold) issues.push("Remove excessive external links and explain any necessary reference links.");
   if (/\b(pay|message|contact|deal)\s+(me\s+)?(off[- ]platform|outside\s+(worksync|the platform))\b/i.test(cleanDescription)) issues.push("Keep project communication and payment arrangements within WorkSync.");
+  if (containsProfanity(`${cleanTitle}\n${cleanDescription}`)) issues.push("Remove profanity or vulgar insults. Listings containing profanity are held for administrator review.");
   return issues;
 }

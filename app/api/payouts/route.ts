@@ -26,6 +26,7 @@ export async function GET(request: Request) {
 
     const rows: {
       payout_id: string; payment_id: string; project_id: string; amount: number; gross_amount?: number;
+      provider_transfer_id?: string | null;
       freelancer_vat_taxable_amount?: number; freelancer_vat_amount?: number; freelancer_vat_rate?: number;
       freelancer_vat_rule?: string; withholding_basis?: number; withholding_rate?: number; withholding_amount?: number; withholding_date?: string | null;
       withholding_rule?: string;
@@ -34,7 +35,7 @@ export async function GET(request: Request) {
     for (let from = 0; ; from += 500) {
       const result = await db
         .from("project_payouts")
-        .select("payout_id,payment_id,project_id,gross_amount,amount,freelancer_vat_taxable_amount,freelancer_vat_amount,freelancer_vat_rate,freelancer_vat_rule,withholding_basis,withholding_rate,withholding_amount,withholding_date,withholding_rule,withholding_exemption_status,withholding_declaration_id,withholding_document_id,freelancer_vat_document_id,status,created_at,paid_at")
+        .select("payout_id,payment_id,project_id,gross_amount,amount,provider_transfer_id,freelancer_vat_taxable_amount,freelancer_vat_amount,freelancer_vat_rate,freelancer_vat_rule,withholding_basis,withholding_rate,withholding_amount,withholding_date,withholding_rule,withholding_exemption_status,withholding_declaration_id,withholding_document_id,freelancer_vat_document_id,status,created_at,paid_at")
         .eq("recipient_id", user.id)
         .eq("mode", paymentMode())
         .order("created_at", { ascending: false })
@@ -70,6 +71,7 @@ export async function GET(request: Request) {
         projectId: row.project_id,
         amount: Number(row.amount),
         grossAmount: Number(row.gross_amount ?? row.amount),
+        transferReference: row.provider_transfer_id ?? null,
         freelancerVatTaxableAmount: Number(row.freelancer_vat_taxable_amount ?? row.gross_amount ?? row.amount),
         freelancerVatAmount: Number(row.freelancer_vat_amount ?? 0),
         freelancerVatRate: Number(row.freelancer_vat_rate ?? 0),

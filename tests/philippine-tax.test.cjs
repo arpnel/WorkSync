@@ -239,3 +239,79 @@ test("saved receipt corrections render an explicit before-and-after summary", as
   assert.match(pdf, /Reason: Saved transaction snapshot changed/);
   assert.match(pdf, /Changed platformVat: null -> 12/);
 });
+
+test("receipt includes recorded PayMongo references and refunds without inventing dates", async () => {
+  const receipt = load("lib/payments/receiptPdf.ts");
+  const details = receipt.receiptDetailsFromSnapshot({ receipt_number: "WS-TR-REFUND-1", issued_at: "2026-10-25T10:00:00Z", snapshot: {
+    clientPayment: 1000,
+    transactionDate: null,
+    paymentMethod: "gcash",
+    paymentReference: "pay_recorded_1",
+    checkoutReference: "cs_recorded_1",
+    refunds: [
+      { refundId: "refund-pending", amount: 100, status: "pending", refundedAt: null, providerReference: "ref-pending" },
+      { refundId: "refund-confirmed", amount: 200, status: "refunded", refundedAt: "2026-10-24T12:00:00Z", providerReference: "ref-confirmed" },
+    ],
+  } });
+  const pdf = await receipt.createReceiptPdf(details).text();
+  assert.match(pdf, /Payment date not recorded/);
+  assert.match(pdf, /pay_recorded_1/);
+  assert.match(pdf, /cs_recorded_1/);
+  assert.match(pdf, /Refund pending/);
+  assert.match(pdf, /Refund refunded/);
+  assert.match(pdf, /Confirmed refund total/);
+  assert.match(pdf, /PHP 200\.00/);
+  assert.match(pdf, /Net after confirmed refunds/);
+  assert.match(pdf, /PHP 800\.00/);
+});
+
+test("receipt history freezes identity fields and tracks refunds from saved refund rows", () => {
+  const api = fs.readFileSync("app/api/tax-receipts/route.ts", "utf8");
+  assert.match(api, /from\("project_refunds"\)\.select\("refund_id,amount,status,provider_refund_id,refunded_at"\)/);
+  assert.match(api, /transactionDate: payment\.paid_at/);
+  assert.doesNotMatch(api, /transactionDate: payment\.paid_at \?\? new Date\(\)/);
+  assert.match(api, /\["transactionDate", "projectDescription", "client", "freelancer", "workSync"\]/);
+  assert.match(api, /Authoritative refund status changed/);
+});
+
+test("freelancer receipt labels saved payout state and reference instead of implying settlement", async () => {
+  const receipt = load("lib/payments/receiptPdf.ts");
+  const details = receipt.receiptDetailsFromSnapshot({ receipt_number: "WS-TR-PAYOUT-1", issued_at: "2026-10-25T10:00:00Z", snapshot: {
+    clientPayment: 1000,
+    transactionDate: "2026-10-25T09:00:00Z",
+    taxLines: [{ payoutId: "payout-1", taxableBase: 0, withholdingRate: 0, withholding: 0, withholdingRule: "none", exemptionStatus: "not applicable", freelancerVatBase: 1000, freelancerVatRate: 0, freelancerVat: 0, freelancerVatRule: "not configured", payoutStatus: "ready", transferReference: null }],
+    serviceGrossEarnings: 1000,
+    freelancerNetPayout: 1000,
+  } });
+  const pdf = await receipt.createReceiptPdf({ ...details, audience: "freelancer" }).text();
+  assert.match(pdf, /Net payout amount/);
+  assert.match(pdf, /transfer status: ready/);
+  assert.doesNotMatch(pdf, /Transferred PHP 1,000\.00/);
+});
+
+test("payout statements expose saved transfer references and status context", () => {
+  const api = fs.readFileSync("app/api/payouts/route.ts", "utf8");
+  const page = fs.readFileSync("components/account/PayoutSettings.tsx", "utf8");
+  assert.match(api, /provider_transfer_id/);
+  assert.match(api, /transferReference: row\.provider_transfer_id/);
+  assert.match(page, /PayMongo transfer reference/);
+  assert.match(page, /Net transfer amount/);
+  assert.match(page, /PayMongo status confirmed/);
+  assert.match(page, /Status: \{payout\.status/);
+  assert.match(page, /Freelancer VAT recorded/);
+});
+
+test("tax document and declaration approval revocation stays admin-reviewed and auditable", () => {
+  const documentApi = fs.readFileSync("app/api/admin/tax-documents/route.ts", "utf8");
+  const declarationApi = fs.readFileSync("app/api/admin/tax-declarations/route.ts", "utf8");
+  const declarationUi = fs.readFileSync("components/admin/TaxDeclarationReview.tsx", "utf8");
+  const migration = fs.readFileSync("supabase/migrations/202610250005_tax_review_revocation.sql", "utf8");
+  assert.match(documentApi, /body\.decision === "revoked" \? \["verified"\]/);
+  assert.match(declarationApi, /body\.decision === "revoked" \? \["accepted"\]/);
+  assert.match(declarationApi, /paymentUser\(request\)/);
+  assert.match(declarationUi, /Revoke accepted declaration/);
+  assert.match(declarationUi, /review_events/);
+  assert.match(migration, /PREPARED, NOT APPLIED/);
+  assert.match(migration, /freelancer_tax_declaration_events/);
+  assert.match(migration, /worksync_audit_tax_declaration_review/);
+});

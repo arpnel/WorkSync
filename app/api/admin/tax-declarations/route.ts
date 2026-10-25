@@ -13,6 +13,12 @@ export async function GET(request: Request) {
     const { db } = await requireAdmin(request);
     const { data, error } = await db.from("freelancer_tax_declarations").select("declaration_id,user_id,tax_year,reported_threshold_status,document_path,status,submitted_at,reviewed_by,reviewed_at,review_notes").order("submitted_at", { ascending: false }).limit(200);
     if (error) throw new PaymentError("Tax declarations are unavailable.");
+    const declarationIds = (data ?? []).map(row => row.declaration_id);
+    const eventsResult = declarationIds.length
+      ? await db.from("freelancer_tax_declaration_events").select("event_id,declaration_id,reviewer_id,previous_status,new_status,reason,created_at").in("declaration_id", declarationIds).order("created_at", { ascending: false })
+      : { data: [], error: null };
+    const events = new Map<string, unknown[]>();
+    for (const event of eventsResult.data ?? []) events.set(event.declaration_id, [...(events.get(event.declaration_id) ?? []), event]);
     const profileRows = await db.from("freelancer_tax_profiles").select("user_id,marketplace_withholding_applicable,freelancer_vat_applicable");
     if (profileRows.error) throw new PaymentError("Freelancer tax settings are unavailable.");
     const profiles = new Map((profileRows.data ?? []).map(row => [row.user_id, row]));
@@ -22,9 +28,9 @@ export async function GET(request: Request) {
     const declarations = await Promise.all((data ?? []).map(async row => {
       const signed = await db.storage.from("verification-documents").createSignedUrl(row.document_path, 600);
       const config = profiles.get(row.user_id);
-      return { ...row, marketplace_withholding_applicable: marketplaceWithholdingEnabled && (config?.marketplace_withholding_applicable ?? false), freelancer_vat_applicable: config?.freelancer_vat_applicable ?? false, document_url: signed.error ? null : signed.data.signedUrl };
+      return { ...row, review_events: events.get(row.declaration_id) ?? [], marketplace_withholding_applicable: marketplaceWithholdingEnabled && (config?.marketplace_withholding_applicable ?? false), freelancer_vat_applicable: config?.freelancer_vat_applicable ?? false, document_url: signed.error ? null : signed.data.signedUrl };
     }));
-    return json({ declarations, marketplaceWithholdingEnabled });
+    return json({ declarations, marketplaceWithholdingEnabled, revocationAvailable: !eventsResult.error });
   } catch (error) { return paymentResponse(error); }
 }
 export async function POST(request: Request) {
@@ -49,10 +55,11 @@ export async function POST(request: Request) {
       if (audit.error) throw new PaymentError("Tax configuration was saved, but the supplemental admin audit record failed.");
       return json({ saved: true });
     }
-    if (typeof body?.declarationId !== "string" || !["accepted", "rejected"].includes(String(body.decision)) || typeof body.notes !== "string" || !body.notes.trim() || body.notes.length > 2000)
+    if (typeof body?.declarationId !== "string" || !["accepted", "rejected", "revoked"].includes(String(body.decision)) || typeof body.notes !== "string" || !body.notes.trim() || body.notes.length > 2000)
       throw new PaymentError("Choose an outcome and enter review notes up to 2,000 characters.", 400);
-    const result = await db.from("freelancer_tax_declarations").update({ status: body.decision, reviewed_by: user.id, reviewed_at: new Date().toISOString(), review_notes: body.notes.trim() }).eq("declaration_id", body.declarationId).eq("status", "pending").select("declaration_id,user_id,tax_year,status,reviewed_at").maybeSingle();
-    if (result.error || !result.data) throw new PaymentError("Pending tax declaration not found.", 409);
+    const currentStatuses = body.decision === "revoked" ? ["accepted"] : ["pending"];
+    const result = await db.from("freelancer_tax_declarations").update({ status: body.decision, reviewed_by: user.id, reviewed_at: new Date().toISOString(), review_notes: body.notes.trim() }).eq("declaration_id", body.declarationId).in("status", currentStatuses).select("declaration_id,user_id,tax_year,status,reviewed_at").maybeSingle();
+    if (result.error || !result.data) throw new PaymentError(body.decision === "revoked" ? "Accepted declaration not found or revocation is unavailable until the prepared tax-review migration is applied." : "Pending tax declaration not found.", 409);
     await db.from("admin_audit_log").insert({ admin_id: user.id, action: `tax_declaration_${body.decision}`, target_id: body.declarationId, details: { tax_year: result.data.tax_year, notes: body.notes.trim() } });
     return json({ declaration: result.data });
   } catch (error) { return paymentResponse(error); }

@@ -63,7 +63,7 @@ export async function POST(request: Request) {
       if (audit.error) throw new PaymentError("Tax configuration was saved, but the supplemental admin audit record failed.");
       return json({ saved: true });
     }
-    if (typeof body?.documentId !== "string" || !["verified", "rejected", "expired"].includes(String(body.decision)) || !reason || reason.length > 2000)
+    if (typeof body?.documentId !== "string" || !["verified", "rejected", "expired", "revoked"].includes(String(body.decision)) || !reason || reason.length > 2000)
       throw new PaymentError("Choose a document status and enter a review reason up to 2,000 characters.", 400);
     const { data: current, error: currentError } = await db.from("tax_documents").select("document_id,document_type,claimed_tax_treatment,legal_basis,expires_at,status").eq("document_id", body.documentId).maybeSingle();
     if (currentError || !current) throw new PaymentError("Tax document not found.", 404);
@@ -71,9 +71,12 @@ export async function POST(request: Request) {
       throw new PaymentError("A special tax treatment cannot be verified without a stated treatment and legal basis.", 400);
     if (body.decision === "verified" && current.expires_at && current.expires_at < new Date().toISOString().slice(0, 10))
       throw new PaymentError("This document is expired. Ask the user to submit a renewed copy.", 409);
-    const result = await db.from("tax_documents").update({ status: body.decision, reviewed_by: user.id, reviewed_at: new Date().toISOString(), review_reason: reason }).eq("document_id", body.documentId).in("status", body.decision === "expired" ? ["pending", "verified"] : ["pending"]).select("document_id,user_id,party_type,document_type,status,reviewed_at,review_reason").maybeSingle();
-    if (result.error || !result.data) throw new PaymentError("Pending document not found or already reviewed.", 409);
-    await db.from("admin_audit_log").insert({ admin_id: user.id, action: `tax_document_${body.decision}`, target_id: body.documentId, details: { party_type: result.data.party_type, document_type: result.data.document_type, reason } });
+    const allowedCurrentStatuses = body.decision === "expired" ? ["pending", "verified"] : body.decision === "revoked" ? ["verified"] : ["pending"];
+    const result = await db.from("tax_documents").update({ status: body.decision, reviewed_by: user.id, reviewed_at: new Date().toISOString(), review_reason: reason }).eq("document_id", body.documentId).in("status", allowedCurrentStatuses).select("document_id,user_id,party_type,document_type,status,reviewed_at,review_reason").maybeSingle();
+    if (result.error) throw new PaymentError(body.decision === "revoked" ? "Document revocation is unavailable until the prepared tax-review migration is applied." : "Document review could not be saved.", 409);
+    if (!result.data) throw new PaymentError(body.decision === "revoked" ? "Verified document not found or already revoked." : "Pending document not found or already reviewed.", 409);
+    const audit = await db.from("admin_audit_log").insert({ admin_id: user.id, action: `tax_document_${body.decision}`, target_id: body.documentId, details: { party_type: result.data.party_type, document_type: result.data.document_type, reason } });
+    if (audit.error) throw new PaymentError("Document status was saved, but the supplemental admin audit record failed.");
     return json({ document: result.data });
   } catch (error) { return paymentResponse(error); }
 }

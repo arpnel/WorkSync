@@ -16,8 +16,13 @@ function load(path, modules = {}, globals = {}) {
     }).outputText,
     {
       exports,
-      require: (name) =>
-        name === "server-only" ? {} : (modules[name] ?? (name === "@/services/email/paymentEmails" ? { notifyPaymentConfirmed: async () => {} } : require(name))),
+      require: (name) => {
+        if (name === "server-only") return {};
+        if (modules[name]) return modules[name];
+        if (name === "@/services/email/paymentEmails") return { notifyPaymentConfirmed: async () => {} };
+        if (name === "@/services/subscriptions/subscriptionServer") return { processSubscriptionPaymentSession: async () => false };
+        return require(name);
+      },
       Buffer,
       URL,
       Response,

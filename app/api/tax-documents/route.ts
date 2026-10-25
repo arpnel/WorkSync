@@ -37,7 +37,7 @@ export async function GET(request: Request) {
       return json({ documentUrl: signed.signedUrl });
     }
     const today = new Date().toISOString().slice(0, 10);
-    const documents = (data ?? []).map(row => ({ ...row, status: row.status !== "rejected" && row.expires_at && row.expires_at < today ? "expired" : row.status }));
+    const documents = (data ?? []).map(row => ({ ...row, status: row.status === "verified" && row.expires_at && row.expires_at < today ? "expired" : row.status }));
     let vatClassification = profileResult.data?.vat_classification ?? "unverified";
     if (["vat_registered", "non_vat"].includes(vatClassification)) {
       const requiredType = vatClassification === "vat_registered" ? "vat_registration" : "bir_cor";

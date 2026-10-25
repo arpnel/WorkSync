@@ -14,6 +14,9 @@ export function receiptSnapshotForAudience(snapshotValue: unknown, audience: Rec
       clientPayment: snapshot.clientPayment,
       currency: snapshot.currency,
       paymentMethod: snapshot.paymentMethod,
+      paymentReference: snapshot.paymentReference,
+      checkoutReference: snapshot.checkoutReference,
+      refunds: snapshot.refunds,
       client: snapshot.client && typeof snapshot.client === "object"
         ? { name: (snapshot.client as Record<string, unknown>).name }
         : snapshot.client,
@@ -37,6 +40,9 @@ export function receiptSnapshotForAudience(snapshotValue: unknown, audience: Rec
     clientPayment: snapshot.clientPayment,
     currency: snapshot.currency,
     paymentMethod: snapshot.paymentMethod,
+    paymentReference: snapshot.paymentReference,
+    checkoutReference: snapshot.checkoutReference,
+    refunds: snapshot.refunds,
     client: snapshot.client && typeof snapshot.client === "object"
       ? { name: (snapshot.client as Record<string, unknown>).name }
       : snapshot.client,
@@ -49,7 +55,7 @@ export function receiptSnapshotForAudience(snapshotValue: unknown, audience: Rec
     taxLines: taxLines.map((line) => {
       if (!line || typeof line !== "object") return {};
       const row = line as Record<string, unknown>;
-      return { payoutId: row.payoutId, taxableBase: row.taxableBase, withholdingRate: row.withholdingRate, withholding: row.withholding, withholdingRule: row.withholdingRule, exemptionStatus: row.exemptionStatus, freelancerVatBase: row.freelancerVatBase, freelancerVatRate: row.freelancerVatRate, freelancerVat: row.freelancerVat, freelancerVatRule: row.freelancerVatRule, payoutStatus: row.payoutStatus, paidAt: row.paidAt };
+      return { payoutId: row.payoutId, taxableBase: row.taxableBase, withholdingRate: row.withholdingRate, withholding: row.withholding, withholdingRule: row.withholdingRule, exemptionStatus: row.exemptionStatus, freelancerVatBase: row.freelancerVatBase, freelancerVatRate: row.freelancerVatRate, freelancerVat: row.freelancerVat, freelancerVatRule: row.freelancerVatRule, payoutStatus: row.payoutStatus, paidAt: row.paidAt, transferReference: row.transferReference };
     }),
     documentTypeLabel: snapshot.documentTypeLabel,
   };

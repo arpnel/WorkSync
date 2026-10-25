@@ -35,7 +35,7 @@ type Earnings = {
   settlementEnabled?: boolean;
   mode?: string;
   summary?: { earned: number; ready: number; processing: number; paid: number; awaitingAccount: number; supportReview: number; withholding?: number };
-  payouts?: { id: string; transactionId: string; projectId: string; amount: number; grossAmount: number; freelancerVatTaxableAmount: number; freelancerVatAmount: number; freelancerVatRate: number; freelancerVatRule: string; withholdingRule: string; withholdingDate: string | null; withholdingBasis: number; withholdingRate: number; withholdingAmount: number; withholdingExemptionStatus: string; withholdingDeclarationId: string | null; withholdingDocumentId: string | null; freelancerVatDocumentId: string | null; status: string; createdAt: string; paidAt: string | null }[];
+  payouts?: { id: string; transactionId: string; projectId: string; amount: number; grossAmount: number; transferReference: string | null; freelancerVatTaxableAmount: number; freelancerVatAmount: number; freelancerVatRate: number; freelancerVatRule: string; withholdingRule: string; withholdingDate: string | null; withholdingBasis: number; withholdingRate: number; withholdingAmount: number; withholdingExemptionStatus: string; withholdingDeclarationId: string | null; withholdingDocumentId: string | null; freelancerVatDocumentId: string | null; status: string; createdAt: string; paidAt: string | null }[];
 };
 async function payoutEarningsRequest(): Promise<Earnings> {
   const { data: { session } } = await supabase.auth.getSession();
@@ -132,9 +132,9 @@ export default function PayoutSettings() {
               <div className="flex justify-end">
                 <Button variant="outline" size="sm" onClick={() => {
                   const rows = earnings.payouts ?? [];
-                  const columns = ["Transaction ID", "Payout ID", "Project ID", "Gross earnings PHP", "Freelancer VAT base PHP", "Freelancer VAT PHP", "Withholding basis PHP", "Withholding rate", "Withholding PHP", "Net payout PHP", "Withholding date", "Withholding rule", "Exemption status", "Withholding declaration ID", "Withholding document ID", "VAT document ID", "Freelancer VAT rule", "Status", "Created", "Paid"];
+                  const columns = ["Transaction ID", "Payout ID", "Project ID", "Transfer reference", "Gross earnings PHP", "Freelancer VAT base PHP", "Freelancer VAT PHP", "Withholding basis PHP", "Withholding rate", "Withholding PHP", "Net transfer amount PHP", "Withholding date", "Withholding rule", "Exemption status", "Withholding declaration ID", "Withholding document ID", "VAT document ID", "Freelancer VAT rule", "Status", "Created", "Paid status confirmed"];
                   const csvCell = (value: unknown) => `"${String(value ?? "").replaceAll("\"", "\"\"")}"`;
-                  const csv = [columns, ...rows.map((row) => [row.transactionId, row.id, row.projectId, row.grossAmount, row.freelancerVatTaxableAmount, row.freelancerVatAmount, row.withholdingBasis, `${(row.withholdingRate * 100).toFixed(2)}%`, row.withholdingAmount, row.amount, row.withholdingDate, row.withholdingRule, row.withholdingExemptionStatus, row.withholdingDeclarationId, row.withholdingDocumentId, row.freelancerVatDocumentId, row.freelancerVatRule, row.status, row.createdAt, row.paidAt])].map((line) => line.map(csvCell).join(",")).join("\r\n");
+                  const csv = [columns, ...rows.map((row) => [row.transactionId, row.id, row.projectId, row.transferReference, row.grossAmount, row.freelancerVatTaxableAmount, row.freelancerVatAmount, row.withholdingBasis, `${(row.withholdingRate * 100).toFixed(2)}%`, row.withholdingAmount, row.amount, row.withholdingDate, row.withholdingRule, row.withholdingExemptionStatus, row.withholdingDeclarationId, row.withholdingDocumentId, row.freelancerVatDocumentId, row.freelancerVatRule, row.status, row.createdAt, row.paidAt])].map((line) => line.map(csvCell).join(",")).join("\r\n");
                   const url = URL.createObjectURL(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
                   const link = document.createElement("a");
                   link.href = url;
@@ -175,10 +175,12 @@ export default function PayoutSettings() {
                   <h5 className="text-sm font-medium">Recent payout activity</h5>
                   {earnings.payouts.slice(0, 5).map((payout) => (
                     <div key={payout.id} className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 text-sm sm:grid-cols-[1fr_auto_auto]">
-                      <span className="text-muted-foreground">{payoutDate(payout.paidAt || payout.createdAt)}</span>
-                      <span className="text-right font-medium tabular-nums">Net {php(payout.amount)} Â· Gross {php(payout.grossAmount)}</span>
-                      <span className="col-span-2 text-right capitalize text-muted-foreground sm:col-span-1">{payout.status.replaceAll("_", " ")}</span>
+                      <span className="text-muted-foreground">{payout.status === "paid" && payout.paidAt ? `PayMongo status confirmed ${payoutDate(payout.paidAt)}` : `Created ${payoutDate(payout.createdAt)}`}</span>
+                      <span className="text-right font-medium tabular-nums">{payout.status === "paid" ? "Transferred" : "Net transfer amount"} {php(payout.amount)}; Gross {php(payout.grossAmount)}</span>
+                      <span className="col-span-2 text-right capitalize text-muted-foreground sm:col-span-1">Status: {payout.status.replaceAll("_", " ")}</span>
+                      {payout.transferReference && <span className="col-span-2 text-right text-xs text-muted-foreground sm:col-span-3">PayMongo transfer reference: {payout.transferReference}</span>}
                       <Button variant="ghost" size="sm" className="col-span-2 justify-self-end sm:col-span-3" onClick={() => void openSavedTaxReceipt(payout.transactionId).catch((cause) => setError(cause instanceof Error ? cause.message : "Receipt unavailable."))}>View transaction receipt</Button>
+                      {payout.freelancerVatAmount > 0 && <span className="col-span-2 text-xs text-muted-foreground sm:col-span-3">Freelancer VAT recorded: {php(payout.freelancerVatAmount)} ({(payout.freelancerVatRate * 100).toFixed(2)}% of {php(payout.freelancerVatTaxableAmount)}; {payout.freelancerVatRule})</span>}
                       {payout.withholdingAmount > 0 && <span className="col-span-2 text-xs text-muted-foreground sm:col-span-3">Marketplace withholding: {php(payout.withholdingAmount)} ({(payout.withholdingRate * 100).toFixed(2)}% of {php(payout.withholdingBasis)})</span>}
                     </div>
                   ))}

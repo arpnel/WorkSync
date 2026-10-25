@@ -9,9 +9,19 @@ export type ReceiptTaxLine = {
   freelancerVatRate: number;
   freelancerVat: number;
   freelancerVatRule: string;
+  payoutStatus?: string;
+  paidAt?: string | null;
+  transferReference?: string | null;
   withholdingDocumentId?: string | null;
   withholdingDeclarationId?: string | null;
   freelancerVatDocumentId?: string | null;
+};
+export type ReceiptRefund = {
+  refundId: string;
+  amount: number;
+  status: string;
+  refundedAt: string | null;
+  providerReference?: string | null;
 };
 export type ReceiptDetails = {
   audience?: "client" | "freelancer" | "admin";
@@ -22,8 +32,11 @@ export type ReceiptDetails = {
   documentType: string;
   project: string;
   amount: number;
-  paidAt: string;
+  paidAt: string | null;
   paymentMethod: string;
+  paymentReference?: string | null;
+  checkoutReference?: string | null;
+  refunds?: ReceiptRefund[];
   clientName: string;
   clientRegisteredName?: string | null;
   freelancerName: string;
@@ -77,8 +90,11 @@ export function receiptDetailsFromSnapshot(receipt: { receipt_number: string; is
     correctionDifferences: snapshot.differences && typeof snapshot.differences === "object" ? snapshot.differences as Record<string, { previous: unknown; current: unknown }> : undefined,
     documentType: String(snapshot.documentTypeLabel ?? "WorkSync system-generated transaction receipt"),
     project: String(snapshot.projectDescription ?? "Project or service"),
-    amount: numeric("clientPayment"), paidAt: String(snapshot.transactionDate ?? receipt.issued_at),
+    amount: numeric("clientPayment"), paidAt: typeof snapshot.transactionDate === "string" ? snapshot.transactionDate : null,
     paymentMethod: String(snapshot.paymentMethod ?? "Not recorded"),
+    paymentReference: typeof snapshot.paymentReference === "string" ? snapshot.paymentReference : null,
+    checkoutReference: typeof snapshot.checkoutReference === "string" ? snapshot.checkoutReference : null,
+    refunds: Array.isArray(snapshot.refunds) ? snapshot.refunds as ReceiptRefund[] : [],
     clientName: String(client?.name ?? "Client"), clientRegisteredName: client?.registeredName == null ? null : String(client.registeredName),
     freelancerName: String(freelancer?.name ?? "Freelancer"), freelancerRegisteredName: freelancer?.registeredName == null ? null : String(freelancer.registeredName),
     worksyncRegisteredName: workSync?.registeredName == null ? null : String(workSync.registeredName), worksyncTaxRegistrationDetails: workSync?.taxRegistrationDetails == null ? null : String(workSync.taxRegistrationDetails),
@@ -112,7 +128,7 @@ export function createReceiptPdf(details: ReceiptDetails) {
   box(54, 636, 504, 76, "0.97 0.99 0.98", "0.87 0.91 0.89");
   put("TOTAL PAID BY CLIENT", 72, 690, 9, true, "0.39 0.43 0.48");
   put(php(details.amount), 72, 665, 20, true, "0.08 0.11 0.16");
-  put(new Date(details.paidAt).toLocaleString("en-PH", { timeZone: "Asia/Manila", month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true }), 72, 647, 8, false, "0.39 0.43 0.48");
+  put(details.paidAt ? new Date(details.paidAt).toLocaleString("en-PH", { timeZone: "Asia/Manila", month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true }) : "Payment date not recorded", 72, 647, 8, false, "0.39 0.43 0.48");
   y = 610; section("Transaction details");
   const detail = (label: string, value: string) => {
     const count = putRight(value, y, 9, true, "0.13 0.16 0.20");
@@ -123,6 +139,8 @@ export function createReceiptPdf(details: ReceiptDetails) {
   detail("Receipt number", details.receiptNumber);
   detail("Project / Service", details.project);
   detail("Payment method", details.paymentMethod);
+  if (details.paymentReference) detail("PayMongo payment reference", details.paymentReference);
+  if (details.checkoutReference) detail("PayMongo checkout reference", details.checkoutReference);
   detail("Client", details.clientName + (details.clientRegisteredName ? " (" + details.clientRegisteredName + ")" : ""));
   detail("Freelancer", details.freelancerName + (details.freelancerRegisteredName ? " (" + details.freelancerRegisteredName + ")" : ""));
   y -= 8; section("Payment breakdown");
@@ -154,7 +172,12 @@ export function createReceiptPdf(details: ReceiptDetails) {
     breakdownRow("Gross earnings", "Saved payout amount before deductions", details.serviceGrossEarnings == null ? "Not recorded" : php(details.serviceGrossEarnings), 39);
     if (details.freelancerVat > 0) breakdownRow("Freelancer VAT", "Included in the saved agreed amount", php(details.freelancerVat), 39);
     if (details.withholding > 0) breakdownRow("Marketplace withholding", "Deducted from freelancer payout", php(details.withholding), 39);
-    breakdownRow("Net payout", "After recorded withholding", details.freelancerNetPayout == null ? "Not recorded" : php(details.freelancerNetPayout), 39);
+    const payoutStatuses = [...new Set(details.taxLines.map(line => line.payoutStatus).filter((status): status is string => Boolean(status)))];
+    const payoutReferences = [...new Set(details.taxLines.map(line => line.transferReference).filter((reference): reference is string => Boolean(reference)))];
+    const payoutStatusNote = payoutStatuses.length
+      ? `Saved net amount; transfer status: ${payoutStatuses.join(", ")}${payoutReferences.length ? `; PayMongo transfer reference: ${payoutReferences.join(", ")}` : ""}`
+      : "Saved net amount; payout transfer status not recorded";
+    breakdownRow("Net payout amount", payoutStatusNote, details.freelancerNetPayout == null ? "Not recorded" : php(details.freelancerNetPayout), 39);
   } else {
     breakdownRow("WorkSync service fee", details.platformServiceFee == null ? "Fee details not recorded" : "", details.platformServiceFee == null ? "Not available" : php(details.platformServiceFee), 39);
     if (details.platformVat != null) breakdownRow("WorkSync platform VAT", details.platformVatRate == null ? "Saved platform VAT amount" : (details.platformVatRate * 100).toFixed(2) + "% of " + php(details.platformVatBase ?? 0) + (details.platformTaxTreatment ? "; " + details.platformTaxTreatment : ""), php(details.platformVat), 39);
@@ -162,6 +185,22 @@ export function createReceiptPdf(details: ReceiptDetails) {
     if (!details.taxLines.length) breakdownRow("Payout tax breakdown", "No payout tax calculation saved yet", "Pending", 39);
     else if (details.taxLines.length <= 4) breakdownRow("Payout tax breakdown", taxNotes.join(" | "), "", taxRowHeight);
     else breakdownRow("Payout tax breakdown", "Detailed payout tax breakdown follows", "", 39);
+  }
+  if (details.refunds?.length) {
+    y -= 4;
+    section("Refunds and adjustments");
+    for (const refund of details.refunds) {
+      const metadata = [
+        refund.refundedAt ? "confirmed " + new Date(refund.refundedAt).toLocaleDateString("en-PH", { timeZone: "Asia/Manila" }) : "",
+        refund.providerReference ? "reference " + refund.providerReference : "",
+      ].filter(Boolean).join("; ");
+      detail("Refund " + refund.status.replaceAll("_", " "), php(refund.amount) + (metadata ? " (" + metadata + ")" : ""));
+    }
+    const confirmedTotal = details.refunds.filter(refund => refund.status === "refunded").reduce((sum, refund) => sum + refund.amount, 0);
+    if (confirmedTotal > 0) {
+      detail("Confirmed refund total", php(confirmedTotal));
+      detail("Net after confirmed refunds", php(Math.max(0, details.amount - confirmedTotal)));
+    }
   }
   y -= 20;  if (details.audience !== "client" && details.audience !== "freelancer" && details.taxLines.length > 4) {
     nextPage(); y = 720; section("Saved payout tax breakdown");

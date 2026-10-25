@@ -38,6 +38,7 @@ import { getCurrentProfile } from "@/services/profile/profileservice";
 import { NotificationOverview } from "@/components/notifications/NotificationOverview";
 import { logout } from "@/services/auth/signinService";
 import { toast } from "sonner";
+import { usePremiumStatus } from "@/hooks/usePremiumStatus";
 
 const subscribeToClient = () => () => {};
 
@@ -48,6 +49,7 @@ export function DashboardHeader() {
     () => false,
   );
   const router = useRouter();
+  const premium = usePremiumStatus();
 
   /* ==========================================================
      STATE
@@ -255,7 +257,10 @@ export function DashboardHeader() {
           aria-busy="true"
         >
           <div className="flex min-w-48 flex-col items-center gap-3 rounded-2xl border bg-card px-8 py-7 shadow-xl">
-            <Loader2 className="size-8 animate-spin text-primary" aria-hidden="true" />
+            <Loader2
+              className="size-8 animate-spin text-primary"
+              aria-hidden="true"
+            />
             <p className="text-sm font-semibold">Logging you out...</p>
           </div>
         </div>
@@ -348,12 +353,22 @@ export function DashboardHeader() {
           ================================================= */}
 
           <Link
-            href="/home/offers"
+            href={premium.active ? "/home/subscription" : "/home/offers"}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition hover:bg-accent hover:text-accent-foreground"
-            aria-label="Plans and offers"
-            title="Plans and offers"
+            aria-label={
+              premium.active
+                ? "Premium active; manage subscription"
+                : "Plans and offers"
+            }
+            title={
+              premium.active
+                ? "Premium active · manage subscription"
+                : "Plans and offers"
+            }
           >
-            <Crown className="h-5 w-5 text-amber-500 dark:text-amber-400" />
+            <Crown
+              className={`h-5 w-5 text-amber-500 dark:text-amber-400 ${premium.active ? "fill-amber-400 dark:fill-amber-300" : ""}`}
+            />
           </Link>
 
           {/* =================================================

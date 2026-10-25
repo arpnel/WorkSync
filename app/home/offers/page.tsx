@@ -1,5 +1,8 @@
+"use client";
+
 import { Check, Crown } from "lucide-react";
 import Link from "next/link";
+import { usePremiumStatus } from "@/hooks/usePremiumStatus";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -16,6 +19,15 @@ const advantages = [
 ];
 
 export default function OffersPage() {
+  const premium = usePremiumStatus();
+  const endDate = premium.periodEndsAt
+    ? new Date(premium.periodEndsAt).toLocaleString("en-PH", {
+        dateStyle: "medium",
+        timeStyle: "short",
+        timeZone: "Asia/Manila",
+      })
+    : null;
+
   return (
     <div className="mx-auto max-w-5xl space-y-10 py-4 sm:py-8">
       <header className="mx-auto max-w-2xl text-center">
@@ -40,11 +52,16 @@ export default function OffersPage() {
                 Premium
               </CardTitle>
               <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-                3 months free
+                {premium.active
+                  ? "Premium active"
+                  : premium.claimed
+                    ? "Trial already used"
+                    : "3 months free"}
               </span>
             </div>
             <CardDescription className="max-w-prose text-sm leading-relaxed">
-              More listing capacity and review tools to help grow your WorkSync business.
+              More listing capacity and review tools to help grow your WorkSync
+              business.
             </CardDescription>
           </CardHeader>
 
@@ -71,7 +88,13 @@ export default function OffersPage() {
                 </p>
               </div>
               <Button asChild className="sm:min-w-40">
-                <Link href="/home/subscription">Start free trial</Link>
+                <Link href="/home/subscription">
+                  {premium.active
+                    ? "Manage subscription"
+                    : premium.claimed
+                      ? "Renew Premium"
+                      : "Start free trial"}
+                </Link>
               </Button>
             </div>
           </CardContent>
@@ -79,9 +102,9 @@ export default function OffersPage() {
       </section>
 
       <p className="mx-auto max-w-2xl text-center text-xs text-muted-foreground sm:text-sm">
-        The trial is available once per account. After three months, Free limits
-        apply unless you choose to renew Premium manually. Manage your plan and
-        listing usage in Settings.
+        {premium.active
+          ? `Premium is active${endDate ? ` through ${endDate} Philippine Time` : ""}. Manage your plan or pay early to add one month; access will not renew automatically.`
+          : "The trial is available once per account. When Premium access ends, Free limits apply unless you choose a one-time monthly renewal. Manage your plan and listing usage in Settings."}
       </p>
     </div>
   );

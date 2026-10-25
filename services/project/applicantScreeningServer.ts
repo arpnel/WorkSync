@@ -12,6 +12,8 @@ export class ScreeningError extends Error {
   constructor(
     message: string,
     public status = 503,
+    public code?: string,
+    public details?: { used?: number; limit?: number; resetAt?: string | null },
   ) {
     super(message);
   }
@@ -242,41 +244,95 @@ export async function screenApplicant(
       );
     allowance.count += 1;
     attempts.set(rateLimitUserId, allowance);
-    const evaluation = await evaluateApplicant(snapshot.input);
-    const current = await loadInput(db, userId, applicationId);
-    if (current.hash !== snapshot.hash)
-      throw new ScreeningError(
-        "The job or application changed. Please screen it again.",
-        409,
-      );
     // User-scoped reads above enforce RLS. Only the server may persist AI-produced scores.
     const writer = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, secret, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
-    const { data, error } = await writer.rpc("worksync_save_screening", {
-      p_actor: userId,
-      p_application: applicationId,
-      p_application_updated: snapshot.application.updated_at,
-      p_job_updated: snapshot.job.updated_at,
-      p_score: evaluation.score,
-      p_result: JSON.stringify({
-        version: RUBRIC_VERSION,
-        inputHash: snapshot.hash,
-        label: evaluation.result,
-      }),
-      p_strengths: JSON.stringify(evaluation.strengths),
-      p_weaknesses: JSON.stringify(evaluation.weaknesses),
-      p_recommendation: evaluation.recommendation,
-    });
-    if (error || !data) {
-      console.error("Applicant screening persistence failed", {
-        code: error?.code,
-      });
+    const { data: quota, error: quotaError } = await writer.rpc(
+      "worksync_claim_applicant_screening",
+      { p_actor: userId, p_application: applicationId },
+    );
+    if (quotaError || !quota || typeof quota !== "object")
+      throw new ScreeningError("Screening allowance could not be checked.");
+    if (quota.inProgress === true)
       throw new ScreeningError(
-        "Screening could not be saved. Check the screening database setup and retry.",
+        "AI screening is already being prepared for this application.",
+        409,
+        "SCREENING_IN_PROGRESS",
       );
+    if (quota.allowed !== true)
+      throw new ScreeningError(
+        "The Free plan includes five AI screenings every six months. Upgrade to Premium to continue screening applicants.",
+        429,
+        "FREE_SCREENING_LIMIT_REACHED",
+        {
+          used: typeof quota.used === "number" ? quota.used : 5,
+          limit: typeof quota.limit === "number" ? quota.limit : 5,
+          resetAt:
+            typeof quota.resetAt === "string" ? quota.resetAt : null,
+        },
+      );
+    const reservationId =
+      typeof quota.reservationId === "string" ? quota.reservationId : null;
+    let completed = false;
+    try {
+      const evaluation = await evaluateApplicant(snapshot.input);
+      const current = await loadInput(db, userId, applicationId);
+      if (current.hash !== snapshot.hash)
+        throw new ScreeningError(
+          "The job or application changed. Please screen it again.",
+          409,
+        );
+      const { data, error } = await writer.rpc("worksync_save_screening", {
+        p_actor: userId,
+        p_application: applicationId,
+        p_application_updated: snapshot.application.updated_at,
+        p_job_updated: snapshot.job.updated_at,
+        p_score: evaluation.score,
+        p_result: JSON.stringify({
+          version: RUBRIC_VERSION,
+          inputHash: snapshot.hash,
+          label: evaluation.result,
+        }),
+        p_strengths: JSON.stringify(evaluation.strengths),
+        p_weaknesses: JSON.stringify(evaluation.weaknesses),
+        p_recommendation: evaluation.recommendation,
+      });
+      if (error || !data) {
+        console.error("Applicant screening persistence failed", {
+          code: error?.code,
+        });
+        throw new ScreeningError(
+          "Screening could not be saved. Check the screening database setup and retry.",
+        );
+      }
+      completed = true;
+      return {
+        screening: present(data),
+        cached: false,
+        ...(quota.plan === "free"
+          ? {
+              quota: {
+                used: typeof quota.used === "number" ? quota.used : undefined,
+                limit: typeof quota.limit === "number" ? quota.limit : 5,
+                resetAt:
+                  typeof quota.resetAt === "string" ? quota.resetAt : null,
+              },
+            }
+          : {}),
+      };
+    } finally {
+      if (reservationId) {
+        const { error } = await writer.rpc("worksync_release_applicant_screening", {
+          p_reservation: reservationId,
+          p_completed: completed,
+        });
+        if (error)
+          console.error("Applicant screening quota reservation could not be released", {
+            code: error.code,
+          });
+      }
     }
-    return { screening: present(data), cached: false };
   };
   const task = execute();
   running.set(key, task);

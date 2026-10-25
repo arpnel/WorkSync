@@ -11,6 +11,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -33,7 +34,10 @@ import type { ProjectRequest } from "@/services/project/projectRequestService";
 import { RequestCard } from "./RequestCard";
 import { screeningState } from "@/lib/ai/screening";
 import { ProjectCard, type Project } from "./ProjectCard";
-import { requestApplicantScreening } from "@/services/project/applicantScreeningService";
+import {
+  FreeScreeningLimitError,
+  requestApplicantScreening,
+} from "@/services/project/applicantScreeningService";
 import { clearProjectReadCache } from "@/lib/projectReadCache";
 
 interface Props {
@@ -87,6 +91,12 @@ export function RequestList({
   const [screeningPendingId, setScreeningPendingId] = React.useState<
     string | null
   >(null);
+  const [screeningLimit, setScreeningLimit] = React.useState<{
+    used: number;
+    limit: number;
+    resetAt: string | null;
+  } | null>(null);
+  const [screeningLimitOpen, setScreeningLimitOpen] = React.useState(false);
   const screeningAttempts = React.useRef(new Set<string>());
   const currentRequest = selectedRequest
     ? ([...received, ...sent].find(
@@ -112,6 +122,7 @@ export function RequestList({
       selectedCurrentParty !== "client" ||
       !selectedIsReceived ||
       selectedHasScreening ||
+      screeningLimit !== null ||
       screeningAttempts.current.has(selectedApplicationId)
     )
       return;
@@ -121,8 +132,12 @@ export function RequestList({
     let active = true;
     setScreeningPendingId(applicationId);
     void requestApplicantScreening(applicationId)
-      .then(() => {
+      .then((result) => {
         if (!active) return;
+        if (result.quota && result.quota.used >= result.quota.limit) {
+          setScreeningLimit(result.quota);
+          setScreeningLimitOpen(true);
+        }
         setScreeningErrors((current) => {
           const next = { ...current };
           delete next[applicationId];
@@ -133,6 +148,19 @@ export function RequestList({
       })
       .catch((error: unknown) => {
         if (!active) return;
+        if (error instanceof FreeScreeningLimitError) {
+          setScreeningLimit({
+            used: error.used,
+            limit: error.limit,
+            resetAt: error.resetAt,
+          });
+          setScreeningLimitOpen(true);
+          setScreeningErrors((current) => ({
+            ...current,
+            [applicationId]: "Free AI screening limit reached.",
+          }));
+          return;
+        }
         setScreeningErrors((current) => ({
           ...current,
           [applicationId]:
@@ -156,6 +184,7 @@ export function RequestList({
     selectedCurrentParty,
     selectedIsReceived,
     selectedHasScreening,
+    screeningLimit,
     onRefreshRequests,
   ]);
   const selectedName =
@@ -525,6 +554,18 @@ export function RequestList({
                   {screeningPreparing ? "The assessment will appear here if processing completes successfully." : "No assessment is available. You can still review the application and discuss the project."}
                 </p>
               )}
+              {screeningLimit && selectedIsReceived && !selected.screening && (
+                <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
+                  <p className="font-medium">Free AI screening limit reached</p>
+                  <p className="mt-1 text-muted-foreground">
+                    {screeningLimit.used} of {screeningLimit.limit} screenings used in the last six months.
+                    {screeningLimit.resetAt && ` Your next screening becomes available ${new Date(screeningLimit.resetAt).toLocaleDateString()}.`}
+                  </p>
+                  <Button asChild size="sm" className="mt-3">
+                    <Link href="/home/subscription">See Premium options</Link>
+                  </Button>
+                </div>
+              )}
               {screeningErrors[selected.applicationId] && (
                 <p role="alert" className="text-sm text-destructive">
                   Screening could not be completed: {screeningErrors[selected.applicationId]}
@@ -671,6 +712,28 @@ export function RequestList({
             </div>
           </DialogContent>
         )}
+      </Dialog>
+      <Dialog open={screeningLimitOpen} onOpenChange={setScreeningLimitOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Free AI screening limit reached</DialogTitle>
+            <DialogDescription>
+              You have used {screeningLimit?.used ?? 5} of {screeningLimit?.limit ?? 5} free applicant screenings for this rolling six-month period.
+              {screeningLimit?.resetAt && ` Your next screening becomes available ${new Date(screeningLimit.resetAt).toLocaleDateString()}.`}
+            </DialogDescription>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Premium includes unlimited AI applicant screening, up to 20 active marketplace postings across jobs and services, and 30 monthly listing submissions.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setScreeningLimitOpen(false)}>
+              Continue without screening
+            </Button>
+            <Button asChild>
+              <Link href="/home/subscription">View Premium</Link>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
       </Dialog>
     </div>
   );

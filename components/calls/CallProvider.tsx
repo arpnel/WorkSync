@@ -11,7 +11,11 @@ import {
 import { PhoneIncoming, PhoneOff, Video } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabaseClient";
-import { callState, type VideoCall } from "@/lib/calls/callMessage";
+import {
+  CALL_PREFIX,
+  callState,
+  type VideoCall,
+} from "@/lib/calls/callMessage";
 import { callRequest, type CallResponse } from "@/services/calls/callService";
 import { Button } from "@/components/ui/button";
 import {
@@ -95,7 +99,9 @@ export default function CallProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!userId) return;
     const timeout = window.setTimeout(() => void refresh(), 0);
-    const interval = window.setInterval(() => void refresh(), 4000);
+    // Realtime is the fast path. Keep an infrequent check to recover if a
+    // subscription drops an event while the tab is open.
+    const interval = window.setInterval(() => void refresh(), 60000);
     const focus = () => void refresh();
     window.addEventListener("focus", focus);
     const channel = supabase
@@ -103,7 +109,15 @@ export default function CallProvider({ children }: { children: ReactNode }) {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "messages" },
-        focus,
+        (payload) => {
+          const row =
+            payload.eventType === "DELETE" ? payload.old : payload.new;
+          if (
+            typeof row.message === "string" &&
+            row.message.startsWith(CALL_PREFIX)
+          )
+            focus();
+        },
       )
       .subscribe();
     return () => {

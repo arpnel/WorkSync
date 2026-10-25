@@ -1,5 +1,6 @@
 import "server-only";
 import { notifyPaymentConfirmed } from "@/services/email/paymentEmails";
+import { processSubscriptionPaymentSession } from "@/services/subscriptions/subscriptionServer";
 import { createClient } from "@supabase/supabase-js";
 import {
   PaymentError,
@@ -400,11 +401,12 @@ export async function createProjectCheckout(
 }
 export async function processPaymentWebhook(sessionId: string) {
   const db = paymentDatabase();
-  await storageReady(db);
   // Retrieve independently; signed webhook bodies are not used as payment evidence.
   const session = await paymongo(
     `/v1/checkout_sessions/${encodeURIComponent(sessionId)}`,
   );
+  if (await processSubscriptionPaymentSession(db, session, true)) return;
+  await storageReady(db);
   const id = session.attributes.reference_number;
   if (!/^[a-f\d-]{36}$/i.test(id ?? "")) return;
   const row = await findPayment(db, id);

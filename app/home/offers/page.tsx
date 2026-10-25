@@ -1,4 +1,5 @@
 import { Check, Crown } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -10,9 +11,10 @@ import {
 
 const advantages = [
   "Submit up to 30 listings each month",
-  "Keep up to 20 listings active",
-  "Unlimited AI-powered applicant screening for job listings",
-  "Boost listing visibility in marketplace search and browse results",
+  "Keep up to 20 active marketplace postings across jobs and services",
+  "Unlimited AI applicant screening",
+  "AI-assisted listing moderation",
+  "Administrator review, with archive and restore controls",
 ];
 
 export default function OffersPage() {
@@ -31,20 +33,20 @@ export default function OffersPage() {
         </p>
       </header>
 
-      <section aria-label="WorkSync Pro plan" className="mx-auto max-w-2xl">
+      <section aria-label="WorkSync Premium plan" className="mx-auto max-w-2xl">
         <Card className="overflow-hidden border-primary/30 shadow-lg shadow-primary/5">
           <CardHeader className="border-b bg-primary/[0.04] p-6 sm:p-8">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <CardTitle className="flex items-center gap-2 text-2xl">
                 <Crown className="size-5 text-primary" aria-hidden="true" />
-                Pro
+                Premium
               </CardTitle>
               <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-                Planned advantages
+                3 months free
               </span>
             </div>
             <CardDescription className="max-w-prose text-sm leading-relaxed">
-              More capacity and visibility to help grow your WorkSync business.
+              More listing capacity and review tools to help grow your WorkSync business.
             </CardDescription>
           </CardHeader>
 
@@ -63,15 +65,15 @@ export default function OffersPage() {
             <div className="flex flex-col gap-4 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs font-medium text-muted-foreground">
-                  Pricing
+                  Premium
                 </p>
-                <p className="mt-1 font-semibold">To be announced</p>
+                <p className="mt-1 font-semibold">PHP 999.99 / month</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  No payment required yet
+                  One-time manual renewal. No automatic charges.
                 </p>
               </div>
-              <Button className="sm:min-w-40" disabled>
-                Available soon
+              <Button asChild className="sm:min-w-40">
+                <Link href="/home/subscription">Start free trial</Link>
               </Button>
             </div>
           </CardContent>
@@ -79,9 +81,9 @@ export default function OffersPage() {
       </section>
 
       <p className="mx-auto max-w-2xl text-center text-xs text-muted-foreground sm:text-sm">
-        These are sample Pro advantages. Paid plan pricing and plan changes are
-        not available yet. Your current subscription and listing usage are
-        shown in Settings.
+        The trial is available once per account. After three months, Free limits
+        apply unless you choose to renew Premium manually. Manage your plan and
+        listing usage in Settings.
       </p>
     </div>
   );

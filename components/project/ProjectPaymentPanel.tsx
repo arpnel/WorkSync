@@ -88,11 +88,20 @@ export function PaymentPanel({
   }, [projectId, onPayment]);
   useEffect(() => {
     void refresh();
+    const onFocus = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [refresh]);
+  useEffect(() => {
+    if (!payment || !["pending", "processing"].includes(payment.status))
+      return;
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") void refresh();
     }, 30000);
     return () => window.clearInterval(timer);
-  }, [refresh]);
+  }, [payment?.status, refresh]);
   async function pay() {
     if (busy) return;
     setBusy(true);
@@ -137,7 +146,7 @@ export function PaymentPanel({
       : undefined;
   const money = (amount: number | undefined) =>
     amount == null
-      ? "â€”"
+      ? "\u2014"
       : "PHP " +
         amount.toLocaleString("en-PH", {
           minimumFractionDigits: 2,
@@ -204,7 +213,7 @@ export function PaymentPanel({
               >
                 <span>{row.title}</span>
                 <span>
-                  {money(Number(row.amount))} Â·{" "}
+                  {money(Number(row.amount))} {"\u00b7"}{" "}
                   {row.status.replaceAll("_", " ")}
                 </span>
               </div>
@@ -212,7 +221,7 @@ export function PaymentPanel({
             {payment.refunds?.map((row) => (
               <div key={row.refund_id} className="mt-3 border-t pt-2">
                 <p>
-                  Cancellation refund: {money(Number(row.amount))} Â·{" "}
+                  Cancellation refund: {money(Number(row.amount))} {"\u00b7"}{" "}
                   {row.status.replaceAll("_", " ")}
                 </p>
                 <p className="text-xs text-muted-foreground">
@@ -309,7 +318,7 @@ export function PaymentPanel({
                 disabled={busy || refreshing || !!error}
               >
                 {busy
-                  ? "Opening checkoutâ€¦"
+                  ? "Opening checkout\u2026"
                   : payment.status === "pending"
                     ? "Continue checkout"
                     : "Pay now"}
@@ -327,7 +336,7 @@ export function PaymentPanel({
                 refreshing ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"
               }
             />
-            {refreshing ? "Checkingâ€¦" : "Refresh"}
+            Refresh
           </Button>
         </div>
         {contractDetails && (

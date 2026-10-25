@@ -114,14 +114,20 @@ export async function POST(request: Request) {
         ...(freelancers.data ?? []).map((row) => row.user_id),
       ]),
     ];
-    const profiles = relatedIds.length
-      ? await db
-          .from("profiles")
-          .select(
-            "user_id,display_name,first_name,last_name,avatar_url,location,bio,banner_url,created_at,updated_at",
-          )
-          .in("user_id", relatedIds)
-      : { data: [], error: null };
+    const [profiles, roles] = relatedIds.length
+      ? await Promise.all([
+          db
+            .from("profiles")
+            .select(
+              "user_id,display_name,first_name,last_name,avatar_url,location,bio,banner_url,created_at,updated_at",
+            )
+            .in("user_id", relatedIds),
+          db.from("Users").select("user_id,role").in("user_id", relatedIds),
+        ])
+      : [
+          { data: [], error: null },
+          { data: [], error: null },
+        ];
     if (profiles.error)
       return json(
         {
@@ -130,9 +136,6 @@ export async function POST(request: Request) {
         },
         503,
       );
-    const roles = relatedIds.length
-      ? await db.from("Users").select("user_id,role").in("user_id", relatedIds)
-      : { data: [], error: null };
     if (roles.error)
       return json(
         {

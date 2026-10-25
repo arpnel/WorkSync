@@ -69,6 +69,9 @@ export async function POST(
       {
         error:
           error instanceof ScreeningError ? error.message : providerMessage,
+        ...(error instanceof ScreeningError && error.code
+          ? { code: error.code, ...error.details }
+          : {}),
       },
       error instanceof ScreeningError ? error.status : 503,
     );

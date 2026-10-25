@@ -36,6 +36,7 @@ type Ticket = {
   created_at: string;
   requester_email: string;
   admin_response: string | null;
+  current_project_limit: number | null;
 };
 
 const statuses = [
@@ -54,10 +55,11 @@ export default function SupportTickets() {
   const [selected, setSelected] = useState<Ticket | null>(null);
   const [response, setResponse] = useState("");
   const [status, setStatus] = useState("in_progress");
+  const [approveCapacity, setApproveCapacity] = useState(false);
+  const [newProjectLimit, setNewProjectLimit] = useState(15);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    setLoading(true);
     const { data, error } = await supabase.rpc(
       "worksync_admin_support_tickets",
       { p_status: filter === "all" ? null : filter },
@@ -68,7 +70,8 @@ export default function SupportTickets() {
   }, [filter]);
 
   useEffect(() => {
-    void load();
+    const request = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(request);
   }, [load]);
 
   const visible = rows.filter((row) =>
@@ -80,19 +83,29 @@ export default function SupportTickets() {
   async function save() {
     if (!selected || busy || !response.trim()) return;
     setBusy(true);
-    const { error } = await supabase.rpc(
-      "worksync_admin_update_support_ticket",
-      {
-        p_ticket: selected.ticket_id,
-        p_status: status,
-        p_priority: selected.priority,
-        p_response: response.trim(),
-      },
-    );
+    const capacityDecision = selected.category === "Capacity increase" && status === "resolved";
+    const { error } = capacityDecision
+      ? await supabase.rpc("worksync_admin_decide_capacity_ticket", {
+          p_ticket: selected.ticket_id,
+          p_new_limit: approveCapacity ? newProjectLimit : null,
+          p_response: response.trim(),
+        })
+      : await supabase.rpc("worksync_admin_update_support_ticket", {
+          p_ticket: selected.ticket_id,
+          p_status: status,
+          p_priority: selected.priority,
+          p_response: response.trim(),
+        });
     if (error) {
       toast.error(error.message);
     } else {
-      toast.success("Ticket updated and response recorded.");
+      toast.success(
+        capacityDecision
+          ? approveCapacity
+            ? `Capacity limit increased to ${newProjectLimit}.`
+            : "Capacity request declined and response recorded."
+          : "Ticket updated and response recorded.",
+      );
       setSelected(null);
       await load();
     }
@@ -103,6 +116,8 @@ export default function SupportTickets() {
     setSelected(ticket);
     setResponse(ticket.admin_response ?? "");
     setStatus(ticket.status === "open" ? "in_progress" : ticket.status);
+    setApproveCapacity(false);
+    setNewProjectLimit((ticket.current_project_limit ?? 10) + 5);
   }
 
   return (
@@ -244,6 +259,39 @@ export default function SupportTickets() {
                   placeholder="Write a clear, helpful response"
                 />
               </label>
+              {selected.category === "Capacity increase" && (
+                <div className="space-y-3 rounded-xl border bg-muted/20 p-4">
+                  <p className="text-sm font-medium">
+                    Current limit: {selected.current_project_limit ?? 10} commitments
+                  </p>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={approveCapacity}
+                      onChange={(event) => setApproveCapacity(event.target.checked)}
+                    />
+                    Approve a capacity increase
+                  </label>
+                  {approveCapacity && (
+                    <label className="block space-y-1.5 text-sm font-medium">
+                      New limit
+                      <Input
+                        type="number"
+                        min={(selected.current_project_limit ?? 10) + 1}
+                        max={100}
+                        value={newProjectLimit}
+                        onChange={(event) => setNewProjectLimit(Number(event.target.value))}
+                        className="h-10 rounded-lg bg-background font-normal"
+                      />
+                    </label>
+                  )}
+                  {status === "resolved" && (
+                    <p className="text-xs text-muted-foreground">
+                      Saving as resolved applies this decision. Leave approval unchecked to decline the request.
+                    </p>
+                  )}
+                </div>
+              )}
               <div className="flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-end">
                 <Button
                   className="h-10 rounded-lg"

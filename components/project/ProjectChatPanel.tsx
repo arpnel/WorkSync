@@ -327,7 +327,7 @@ export function ProjectChatPanel({
             </p>
           )}
           <p className="mt-1.5 text-[11px] text-muted-foreground">
-            Images, videos, documents, or ZIP files up to 1 GB. Files over 50 MB use secure large-file storage.
+            Images, videos, documents, or ZIP files up to 1 GB.
           </p>
         </div>
       </CardContent>

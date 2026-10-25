@@ -8,7 +8,7 @@ import {
   paymentResponse,
 } from "@/services/payments/paymentServer";
 import { PaymentError } from "@/lib/payments/paymongo";
-import { notifyProjectWorkSubmitted } from "@/services/email/projectEmails";
+import { notifyProjectWorkSubmitted } from "@/services/email/projectReviewEmails";
 export const runtime = "nodejs";
 const input = z
   .object({

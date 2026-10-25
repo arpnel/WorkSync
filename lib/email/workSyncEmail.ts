@@ -5,7 +5,9 @@ export type EmailEventKind =
   | "job_application_decision"
   | "project_work_submitted"
   | "project_work_reviewed"
-  | "payment_confirmed";
+  | "payment_confirmed"
+  | "freelancer_capacity_eligible"
+  | "project_submission_review";
 
 export interface WorkSyncEmailContent {
   kind: EmailEventKind;

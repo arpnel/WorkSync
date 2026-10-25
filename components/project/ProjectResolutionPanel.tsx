@@ -400,7 +400,7 @@ export function ProjectResolutionPanel({
                       <Paperclip className="size-4" />
                       Evidence{" "}
                       <span className="font-normal text-muted-foreground">
-                        Optional, up to 1 GB (files over 50 MB use secure large-file storage)
+                        Optional, max 1 GB
                       </span>
                     </p>
                     <FileUpload

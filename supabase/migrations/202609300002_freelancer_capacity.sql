@@ -1,4 +1,4 @@
--- PREPARED, NOT APPLIED. New freelancers: 10 commitments; 10 completed projects: 15.
+-- PREPARED, NOT APPLIED. Default limit: 10 commitments; admin-approved increases only.
 -- Accepted discussions reserve capacity; pending requests/applications do not.
 -- Existing workflow RPCs, grants and RLS remain unchanged; triggers guard direct writes too.
 begin;
@@ -31,10 +31,20 @@ returns table(commitment text) language sql stable security definer set search_p
 $$;
 revoke all on function public.worksync_freelancer_commitments(uuid) from public,anon,authenticated;
 
+create table if not exists public.freelancer_project_capacity_limits (
+ freelancer_id uuid primary key references public.freelancer_profiles(freelancer_id) on delete cascade,
+ project_limit integer not null check(project_limit between 11 and 100),
+ updated_by uuid not null references public."Users"(user_id),
+ reason text not null check(length(trim(reason)) between 1 and 4000),
+ updated_at timestamptz not null default now()
+);
+alter table public.freelancer_project_capacity_limits enable row level security;
+revoke all on public.freelancer_project_capacity_limits from public,anon,authenticated;
+grant select,insert,update on public.freelancer_project_capacity_limits to service_role;
+
 create or replace function public.worksync_freelancer_project_limit(p_freelancer uuid)
 returns integer language sql stable security definer set search_path='' as $$
- select case when count(*)>=10 then 15 else 10 end from public.projects
- where freelancer_id=p_freelancer and status::text='completed';
+ select coalesce((select l.project_limit from public.freelancer_project_capacity_limits l where l.freelancer_id=p_freelancer),10);
 $$;
 revoke all on function public.worksync_freelancer_project_limit(uuid) from public,anon,authenticated;
 

@@ -28,28 +28,44 @@ function load(path, modules = {}, env = {}, globals = {}) {
   return exports;
 }
 const timing = load("lib/projectSettlement.ts");
-test("automatic review allows seven days for final deliveries and three for intermediate milestones", () => {
+test("automatic review uses the original deadline for standard projects and submission time for milestones", () => {
   assert.equal(
     timing.automaticReviewAt("2026-10-01T10:00:00Z", "2026-10-03T10:00:00Z"),
-    "2026-10-08T10:00:00.000Z",
+    "2026-10-06T10:00:00.000Z",
   );
   assert.equal(
     timing.automaticReviewAt("2026-10-01T10:00:00Z", "2026-11-01T10:00:00Z"),
-    "2026-10-08T10:00:00.000Z",
+    "2026-11-04T10:00:00.000Z",
   );
   assert.equal(
     timing.automaticReviewAt("2026-10-04T10:00:00Z", "2026-10-03T10:00:00Z"),
-    "2026-10-11T10:00:00.000Z",
+    "2026-10-06T10:00:00.000Z",
   );
   assert.equal(
-    timing.automaticReviewAt("2026-10-01T10:00:00Z", null),
-    "2026-10-08T10:00:00.000Z",
+    timing.automaticReviewAt("2026-10-01T10:00:00Z", null, true),
+    "2026-10-04T10:00:00.000Z",
   );
   assert.equal(timing.automaticReviewAt("invalid", null), null);
   assert.equal(
-    timing.automaticReviewAt("2026-10-01T10:00:00Z", null, false),
-    "2026-10-04T10:00:00.000Z",
+    timing.automaticReviewAt("2026-10-01T10:00:00Z", null),
+    null,
   );
+});
+test("review countdowns use elapsed 72-hour periods and never accept unsubmitted standard work", () => {
+  const deadline = "2026-10-03T17:00:00+08:00";
+  assert.equal(
+    timing.automaticReviewAt("2026-10-01T17:00:00+08:00", deadline),
+    "2026-10-06T09:00:00.000Z",
+  );
+  assert.equal(
+    timing.automaticReviewAt("2026-10-06T16:59:59+08:00", deadline),
+    "2026-10-06T09:00:00.000Z",
+  );
+  assert.equal(
+    timing.automaticReviewAt("2026-10-03T17:00:00+08:00", null, true),
+    "2026-10-06T09:00:00.000Z",
+  );
+  assert.equal(timing.automaticReviewAt("2026-10-01T17:00:00+08:00", null), null);
 });
 test("overdue warning leaves terminal projects alone", () => {
   const now = Date.parse("2026-10-03T10:00:00Z");
@@ -217,7 +233,7 @@ function workerHarness({
     },
     async rpc(name) {
       if (name === "worksync_settlement_version")
-        return { data: 2, error: null };
+        return { data: 3, error: null };
       if (name === "worksync_settle_project") {
         reviews++;
         return { error: null };
@@ -343,6 +359,9 @@ test("cron rejects missing credentials and leaves disabled automation inert", as
         return {};
       },
     },
+    "@/services/email/projectReviewEmails": {
+      processDueProjectReviewEmails: async () => ({ processed: 0, sent: 0, failed: 0 }),
+    },
   };
   const disabled = load("app/api/cron/project-settlement/route.ts", modules, {
     CRON_SECRET: "secret",
@@ -362,6 +381,74 @@ test("cron rejects missing credentials and leaves disabled automation inert", as
     200,
   );
   assert.equal(calls, 0);
+});
+
+test("cron settles before draining the idempotent reminder queue", async () => {
+  const calls = [];
+  const route = load("app/api/cron/project-settlement/route.ts", {
+    "@/services/payments/settlementServer": {
+      settleProjects: async () => { calls.push("settle"); return { reviewed: 1 }; },
+    },
+    "@/services/email/projectReviewEmails": {
+      processDueProjectReviewEmails: async () => { calls.push("emails"); return { processed: 1, sent: 1, failed: 0 }; },
+    },
+  }, { CRON_SECRET: "secret", PROJECT_SETTLEMENT_ENABLED: "true" });
+  const response = await route.GET(new Request("https://worksync.website/api/cron/project-settlement", {
+    headers: { authorization: "Bearer secret" },
+  }));
+  assert.equal(response.status, 200);
+  assert.deepEqual(calls, ["settle", "emails"]);
+});
+
+test("review email retries reuse an event idempotency key and record failed attempts", async () => {
+  const event = {
+    event_id: "event-1", submission_id: "submission-1", project_id: "project-1",
+    milestone_id: "milestone-1", event_type: "reminder_24h", recipient_user_id: "client-1",
+    project_title: "Fixture", milestone_title: "First", order_id: "order-1",
+    scheduled_at: "2026-10-04T10:00:00Z", response_deadline: "2026-10-06T10:00:00Z",
+    auto_accept_at: "2026-10-06T10:00:00Z",
+  };
+  let sendFails = true;
+  const sent = [];
+  const finishes = [];
+  const db = { rpc: async (name, args) => {
+    if (name === "worksync_claim_project_review_emails") {
+      assert.equal(args.p_limit, 8);
+      return { data: [event], error: null };
+    }
+    if (name === "worksync_finish_project_review_email") { finishes.push(args.p_sent); return { error: null }; }
+  } };
+  const emails = load("services/email/projectReviewEmails.ts", {
+    "@/lib/email/emailLinks": { workSyncUrl: (path) => `https://worksync.website${path}` },
+    "@/services/email/brevoEmailService": {
+      emailAdminClient: () => db,
+      getTrustedUserEmail: async () => ({ email: "client@example.test", name: "Client" }),
+      sendWorkSyncEmail: async (content) => {
+        sent.push(content);
+        if (sendFails) { sendFails = false; throw new Error("temporary failure"); }
+      },
+    },
+  }, {}, { console: { error() {} } });
+  const first = await emails.processDueProjectReviewEmails("https://worksync.website");
+  const second = await emails.processDueProjectReviewEmails("https://worksync.website");
+  assert.deepEqual([first.processed, first.sent, first.failed], [1, 0, 1]);
+  assert.deepEqual([second.processed, second.sent, second.failed], [1, 1, 0]);
+  assert.deepEqual(finishes, [false, true]);
+  assert.equal(sent[0].eventId, sent[1].eventId);
+  assert.match(sent[0].message, /2026/);
+  assert.equal(sent[1].actionUrl, "https://worksync.website/home/projects/milestone/order-1");
+});
+
+test("prepared SQL stores per-submission email events and gates overdue refunds on settlement", () => {
+  const sql = require("node:fs").readFileSync("supabase/migrations/202610250007_project_review_automation.sql", "utf8");
+  assert.match(sql, /unique\(submission_id,event_type\)/i);
+  assert.match(sql, /for update skip locked/i);
+  assert.match(sql, /interval '72 hours'/i);
+  assert.match(sql, /interval '24 hours'/i);
+  assert.match(sql, /interval '48 hours'/i);
+  assert.match(sql, /status not in \('paid','cancelled'\)/i);
+  assert.match(sql, /project_disputes where project_id=pay\.project_id and status<>'resolved'/i);
+  assert.match(sql, /create or replace function public\.worksync_settlement_version\(\).*select 3/is);
 });
 
 test("a claim exceeding verified funding is quarantined before any transfer", async () => {

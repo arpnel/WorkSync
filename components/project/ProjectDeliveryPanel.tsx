@@ -12,7 +12,6 @@ import {
   readProjectCache,
   clearProjectReadCache,
 } from "@/lib/projectReadCache";
-import { automaticReviewAt } from "@/lib/projectSettlement";
 import { projectProgress } from "@/lib/projectProgress";
 import { reviewableDeliveryIds } from "@/lib/projectDelivery";
 import { Plus } from "lucide-react";
@@ -54,7 +53,7 @@ function settlementReviewNotice(outcome: SettlementReviewOutcome) {
     case "disabled":
       return "Delivery is approved, but settlement is disabled. Set PROJECT_SETTLEMENT_ENABLED=true in the server environment.";
     case "version_unavailable":
-      return "Delivery is approved, but the server could not verify settlement version 2.";
+      return "Delivery is approved, but the server could not verify the project review automation version.";
     case "payment_unavailable":
       return "Delivery is approved, but no paid payment matched the server's test/live mode. Check the PayMongo key mode.";
     case "verification_failed":
@@ -454,7 +453,7 @@ export function ProjectDeliveryPanel({
                           />
                         </label>
                         <div className="space-y-1 text-sm">
-                          <p>Attachment (up to 1 GB; files over 50 MB use secure large-file storage)</p>
+                          <p>Attachment (max 1 GB)</p>
                           <FileUpload
                             file={file ?? null}
                             onFileSelect={(selected) => {

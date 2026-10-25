@@ -197,7 +197,7 @@ export default function MessageInput({
         {enterToSend
           ? "Enter to send · Shift + Enter for a new line"
           : "Enter for a new line"}
-        {allowAttachments ? " · Files up to 1 GB; over 50 MB uses secure large-file storage" : ""}
+        {allowAttachments ? " · Files up to 1 GB" : ""}
       </p>
     </div>
   );

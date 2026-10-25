@@ -24,6 +24,7 @@ const CATEGORIES = [
   "Technical issue",
   "Safety concern",
   "Other",
+  "Capacity increase",
 ];
 export function FaqBubble({
   supportEnabled = false,
@@ -150,6 +151,11 @@ export function FaqBubble({
                       Do not include passwords, recovery codes, or full payment
                       details.
                     </p>
+                    {category === "Capacity increase" && (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Capacity increase requests are reviewed by an administrator.
+                      </p>
+                    )}
                   </div>
                   <label className="grid gap-3 text-xs font-medium">
                     <span>Category</span>

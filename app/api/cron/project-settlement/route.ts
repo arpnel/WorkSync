@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { settleProjects } from "@/services/payments/settlementServer";
+import { processDueProjectReviewEmails } from "@/services/email/projectReviewEmails";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 export async function GET(request: Request) {
@@ -18,7 +19,9 @@ export async function GET(request: Request) {
       { headers: { "Cache-Control": "no-store" } },
     );
   try {
-    return Response.json(await settleProjects(), {
+    const settlement = await settleProjects();
+    const reviewEmails = await processDueProjectReviewEmails(request.url);
+    return Response.json({ settlement, reviewEmails }, {
       headers: { "Cache-Control": "no-store" },
     });
   } catch {

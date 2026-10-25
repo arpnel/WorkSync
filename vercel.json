@@ -1,6 +1,7 @@
 {
   "crons": [
-    { "path": "/api/cron/project-settlement", "schedule": "0 0 * * *" },
-    { "path": "/api/cron/r2-cleanup", "schedule": "0 1 * * *" }
+    { "path": "/api/cron/project-settlement", "schedule": "*/15 * * * *" },
+    { "path": "/api/cron/r2-cleanup", "schedule": "0 1 * * *" },
+    { "path": "/api/cron/freelancer-capacity-notices", "schedule": "15 0 * * *" }
   ]
 }

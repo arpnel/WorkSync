@@ -68,7 +68,7 @@ export async function reviewProjectPayment(projectId: string): Promise<ProjectSe
   if (process.env.PROJECT_SETTLEMENT_ENABLED !== "true") return "disabled";
   const db = paymentDatabase();
   const version = await db.rpc("worksync_settlement_version");
-  if (version.error || version.data !== 2) return "version_unavailable";
+  if (version.error || version.data !== 3) return "version_unavailable";
   const payment = await db
     .from("payments")
     .select(
@@ -105,9 +105,9 @@ export async function settleProjects() {
   const db = paymentDatabase();
   const mode = paymentMode();
   const version = await db.rpc("worksync_settlement_version");
-  if (version.error || version.data !== 2)
+  if (version.error || version.data !== 3)
     throw new PaymentError(
-      "Apply the milestone settlement migration before enabling settlement.",
+      "Apply the project review automation migration before enabling settlement.",
     );
   const refundTracking = await reconcileRefunds(db, Date.now() + 20_000);
   let reviewed = 0,

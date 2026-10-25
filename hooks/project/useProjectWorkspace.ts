@@ -229,7 +229,12 @@ export function useProjectWorkspace(orderId: string) {
     [],
   );
 
-  const sendMessage = async (message: string, attachment?: File) => {
+  const sendMessage = async (
+    message: string,
+    attachment?: File,
+    onProgress?: (percent: number) => void,
+    signal?: AbortSignal,
+  ) => {
     const content = message.trim();
     if ((!content && !attachment) || !workspace) return false;
 
@@ -264,6 +269,8 @@ export function useProjectWorkspace(orderId: string) {
         content,
         messageId,
         attachment,
+        onProgress,
+        signal,
       );
       setWorkspace((current) =>
         current?.orderId === orderId

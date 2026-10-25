@@ -15,9 +15,11 @@ export function attachmentName(value: string) {
 export default function MessageAttachment({
   path,
   type,
+  recordId,
 }: {
   path: string;
   type?: string | null;
+  recordId: string;
 }) {
   const [loading, setLoading] = useState(false);
   const open = async () => {
@@ -27,7 +29,7 @@ export default function MessageAttachment({
     if (tab) tab.opener = null;
     setLoading(true);
     try {
-      const url = await getMessageAttachmentUrl(path);
+      const url = await getMessageAttachmentUrl(path, recordId);
       const parsed = new URL(url);
       if (!["http:", "https:"].includes(parsed.protocol))
         throw new Error("Invalid attachment URL");

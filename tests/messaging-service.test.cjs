@@ -21,6 +21,7 @@ function service(options = {}) {
   const client = {
     auth: {
       getUser: async () => ({ data: { user: { id: "sender" } }, error: null }),
+      getSession: async () => ({ data: { session: { user: { id: "sender" } } }, error: null }),
     },
     from: (table) => {
       const filters = [];
@@ -102,7 +103,23 @@ function service(options = {}) {
   const exports = {};
   vm.runInNewContext(source, {
     exports,
-    require: () => ({ supabase: client }),
+    require: (name) => {
+      if (name.endsWith("/storage/hybridStorage"))
+        return {
+          SUPABASE_MAX_FILE_BYTES: 50 * 1024 * 1024,
+          LARGE_FILE_MAX_BYTES: 1024 * 1024 * 1024,
+          usesR2Storage: (size) => size > 50 * 1024 * 1024,
+        };
+      if (name.endsWith("/storage/hybridStorageClient"))
+        return {
+          uploadLargeFile: async () => { throw new Error("not used for small files"); },
+          deleteUnusedLargeFile: async () => {},
+          getLargeFileUrl: async () => "https://example.test/large",
+        };
+      if (name.endsWith("/pageReadCache"))
+        return { readPageCache: (_key, fetcher) => fetcher() };
+      return { supabase: client };
+    },
     crypto: { randomUUID: () => "unique-id" },
     console,
   });
@@ -128,14 +145,14 @@ test("attachment-only sends use the existing project-chat path and MIME fields",
   assert.equal(writes[0].row.attachment_type, "application/pdf");
   assert.equal(writes[0].row.message, "design brief.pdf");
 });
-test("oversize file and text are rejected before upload or insert", async () => {
+test("files over 1 GB and oversized text are rejected before upload or insert", async () => {
   const { api, writes, uploads } = service();
   await assert.rejects(
     api.sendConversationMessage("chat", "", {
       name: "big.zip",
-      size: 10485761,
+      size: 1024 * 1024 * 1024 + 1,
     }),
-    /10 MB/,
+    /1 GB/,
   );
   await assert.rejects(
     api.sendConversationMessage("chat", "x".repeat(10001)),

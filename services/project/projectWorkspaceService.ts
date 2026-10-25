@@ -5,6 +5,8 @@ import {
   milestoneStatus,
 } from "@/types/project/status";
 import { supabase } from "@/lib/supabaseClient";
+import { LARGE_FILE_MAX_BYTES, SUPABASE_MAX_FILE_BYTES, usesR2Storage } from "@/lib/storage/hybridStorage";
+import { deleteUnusedLargeFile, getLargeFileUrl, uploadLargeFile } from "@/services/storage/hybridStorageClient";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type {
   ProjectWorkspace,
@@ -56,10 +58,19 @@ async function currentUserId(): Promise<string> {
 }
 
 const MESSAGE_ATTACHMENTS_BUCKET = "message-attachments";
-const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
+const MAX_ATTACHMENT_SIZE = LARGE_FILE_MAX_BYTES;
 
-async function attachmentUrl(value: string | null): Promise<string | null> {
+async function attachmentUrl(value: string | null, messageId?: string): Promise<string | null> {
   if (!value || /^https?:\/\//.test(value)) return value;
+  if (value.startsWith("r2:")) {
+    if (!messageId) return null;
+    try {
+      return await getLargeFileUrl("message", messageId);
+    } catch (error) {
+      console.warn("Project attachment is unavailable:", error instanceof Error ? error.message : error);
+      return null;
+    }
+  }
 
   const result = await supabase.storage
     .from(MESSAGE_ATTACHMENTS_BUCKET)
@@ -174,7 +185,7 @@ export async function getProjectWorkspace(
         senderAvatarUrl:
           text(profileMap.get(message.sender_id)?.avatar_url) || null,
         message: message.message,
-        attachmentUrl: await attachmentUrl(message.attachment_url),
+        attachmentUrl: await attachmentUrl(message.attachment_url, message.message_id),
         attachmentType: message.attachment_type,
         createdAt: message.created_at,
         mine: message.sender_id === userId,
@@ -306,6 +317,8 @@ export async function sendProjectMessage(
   message: string,
   messageId: string,
   attachment?: File,
+  onProgress?: (percent: number) => void,
+  signal?: AbortSignal,
 ): Promise<{ attachmentUrl: string | null; attachmentType: string | null }> {
   const senderId = await currentUserId();
   const content = message.trim();
@@ -331,31 +344,41 @@ export async function sendProjectMessage(
   let attachmentUrl: string | null = null;
   let attachmentType: string | null = null;
   let uploadedPath: string | null = null;
+  let r2UploadId: string | null = null;
 
   if (attachment) {
     if (attachment.size > MAX_ATTACHMENT_SIZE) {
-      throw new Error("Attachments must be 10 MB or smaller.");
+      throw new Error("Attachments must be 1 GB or smaller.");
     }
 
-    const safeName = attachment.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const filePath = `${senderId}/${conversation.conversation_id}/${messageId}-${safeName}`;
-    const upload = await supabase.storage
-      .from(MESSAGE_ATTACHMENTS_BUCKET)
-      .upload(filePath, attachment, { upsert: false });
-    if (upload.error) throw new Error(upload.error.message);
-
-    uploadedPath = filePath;
-    const signedUrl = await supabase.storage
-      .from(MESSAGE_ATTACHMENTS_BUCKET)
-      .createSignedUrl(filePath, 60 * 60);
-    if (signedUrl.error) {
-      await supabase.storage
+    if (usesR2Storage(attachment.size)) {
+      const uploaded = await uploadLargeFile(attachment, {
+        purpose: "message",
+        targetId: conversation.conversation_id,
+      }, onProgress, signal);
+      uploadedPath = uploaded.reference;
+      r2UploadId = uploaded.uploadId;
+      attachmentType = uploaded.contentType;
+    } else {
+      if (attachment.size > SUPABASE_MAX_FILE_BYTES)
+        throw new Error("Attachments must be 50 MB or smaller.");
+      const safeName = attachment.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const filePath = `${senderId}/${conversation.conversation_id}/${messageId}-${safeName}`;
+      const upload = await supabase.storage
         .from(MESSAGE_ATTACHMENTS_BUCKET)
-        .remove([filePath]);
-      throw new Error(signedUrl.error.message);
+        .upload(filePath, attachment, { upsert: false });
+      if (upload.error) throw new Error(upload.error.message);
+      uploadedPath = filePath;
+      const signedUrl = await supabase.storage
+        .from(MESSAGE_ATTACHMENTS_BUCKET)
+        .createSignedUrl(filePath, 60 * 60);
+      if (signedUrl.error) {
+        await supabase.storage.from(MESSAGE_ATTACHMENTS_BUCKET).remove([filePath]);
+        throw new Error(signedUrl.error.message);
+      }
+      attachmentUrl = signedUrl.data.signedUrl;
+      attachmentType = attachment.type || "application/octet-stream";
     }
-    attachmentUrl = signedUrl.data.signedUrl;
-    attachmentType = attachment.type || "application/octet-stream";
   }
 
   const { error: messageError } = await supabase.from("messages").insert({
@@ -367,12 +390,22 @@ export async function sendProjectMessage(
     attachment_type: attachmentType,
   });
   if (messageError) {
-    if (uploadedPath) {
+    if (r2UploadId) {
+      await deleteUnusedLargeFile(r2UploadId).catch(() => undefined);
+    } else if (uploadedPath) {
       await supabase.storage
         .from(MESSAGE_ATTACHMENTS_BUCKET)
         .remove([uploadedPath]);
     }
     throw new Error(messageError.message);
+  }
+
+  if (r2UploadId) {
+    try {
+      attachmentUrl = await getLargeFileUrl("message", messageId);
+    } catch {
+      attachmentUrl = null;
+    }
   }
 
   return { attachmentUrl, attachmentType };

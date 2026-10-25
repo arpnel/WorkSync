@@ -11,7 +11,12 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 interface MessageInputProps {
-  onSend: (message: string, attachment?: File) => Promise<boolean> | void;
+  onSend: (
+    message: string,
+    attachment?: File,
+    onProgress?: (percent: number) => void,
+    signal?: AbortSignal,
+  ) => Promise<boolean> | void;
   onAttach?: () => void;
   allowAttachments?: boolean;
   disabled?: boolean;
@@ -31,6 +36,8 @@ export default function MessageInput({
   const [message, setMessage] = useState("");
   const [attachment, setAttachment] = useState<File | undefined>();
   const [submitting, setSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const uploadController = useRef<AbortController | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const busy = useRef(false);
   const typingTimer = useRef<number | null>(null);
@@ -62,8 +69,16 @@ export default function MessageInput({
     stopTyping();
     busy.current = true;
     setSubmitting(true);
+    const largeUpload = Boolean(attachment && attachment.size > 50 * 1024 * 1024);
+    uploadController.current = largeUpload ? new AbortController() : null;
+    if (largeUpload) setUploadProgress(0);
     try {
-      const sent = await onSend(message.trim(), attachment);
+      const sent = await onSend(
+        message.trim(),
+        attachment,
+        largeUpload ? setUploadProgress : undefined,
+        uploadController.current?.signal,
+      );
       if (sent !== false) {
         setMessage("");
         setAttachment(undefined);
@@ -72,6 +87,8 @@ export default function MessageInput({
       toast.error("Message could not be sent. Your draft has been kept.");
     } finally {
       busy.current = false;
+      uploadController.current = null;
+      setUploadProgress(null);
       setSubmitting(false);
     }
   };
@@ -103,7 +120,23 @@ export default function MessageInput({
           >
             <X className="h-4 w-4" />
           </Button>
+          {uploadProgress !== null && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={!submitting}
+              onClick={() => uploadController.current?.abort()}
+            >
+              Cancel upload
+            </Button>
+          )}
         </div>
+      )}
+      {uploadProgress !== null && (
+        <p role="status" className="mb-2 text-xs text-muted-foreground">
+          Uploading large file: {uploadProgress}%
+        </p>
       )}
       <div className="flex items-end gap-2 sm:gap-3">
         {allowAttachments && (
@@ -115,8 +148,8 @@ export default function MessageInput({
             onChange={(event) => {
               const file = event.target.files?.[0];
               event.target.value = "";
-              if (file && file.size > 10 * 1024 * 1024) {
-                toast.error("Files must be 10 MB or smaller.");
+              if (file && file.size > 1024 * 1024 * 1024) {
+                toast.error("Files must be 1 GB or smaller.");
                 return;
               }
               if (file) setAttachment(file);
@@ -132,7 +165,7 @@ export default function MessageInput({
               allowAttachments ? fileInput.current?.click() : onAttach?.()
             }
             disabled={disabled || submitting}
-            aria-label="Attach a file (up to 10 MB)"
+            aria-label="Attach a file (up to 1 GB)"
           >
             <Paperclip className="h-4 w-4" />
           </Button>
@@ -164,7 +197,7 @@ export default function MessageInput({
         {enterToSend
           ? "Enter to send · Shift + Enter for a new line"
           : "Enter for a new line"}
-        {allowAttachments ? " · Files up to 10 MB" : ""}
+        {allowAttachments ? " · Files up to 1 GB; over 50 MB uses secure large-file storage" : ""}
       </p>
     </div>
   );

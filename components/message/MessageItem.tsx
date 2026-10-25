@@ -18,6 +18,7 @@ export interface MessageItemProps {
 }
 
 export default function MessageItem({
+  id,
   sender,
   senderName,
   avatar,
@@ -65,7 +66,7 @@ export default function MessageItem({
           <CallMessage content={content} />
           {attachmentUrl && (
             <div className="mt-2">
-              <MessageAttachment path={attachmentUrl} type={attachmentType} />
+              <MessageAttachment path={attachmentUrl} type={attachmentType} recordId={id} />
             </div>
           )}
         </div>

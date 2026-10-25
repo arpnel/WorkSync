@@ -122,6 +122,7 @@ export default function ChatDetails({
                 <MessageAttachment
                   path={item.path}
                   type={item.message.attachmentType}
+                  recordId={item.message.messageId}
                 />
               )}
               <p className="mt-2 text-xs text-muted-foreground">

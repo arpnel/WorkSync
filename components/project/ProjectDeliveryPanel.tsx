@@ -93,6 +93,8 @@ export function ProjectDeliveryPanel({
   const [kind, setKind] = useState<"progress" | "delivery">("delivery");
   const [milestone, setMilestone] = useState("");
   const [file, setFile] = useState<File>();
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const uploadController = useRef<AbortController | null>(null);
   const [reviewing, setReviewing] = useState<{
     submission: WorkSubmission;
     action: "approve" | "revision";
@@ -365,6 +367,9 @@ export function ProjectDeliveryPanel({
                         e.preventDefault();
                         if (kind === "delivery" && pendingDelivery) return;
                         setUploadError("");
+                        const largeUpload = Boolean(file && file.size > 50 * 1024 * 1024);
+                        uploadController.current = largeUpload ? new AbortController() : null;
+                        if (largeUpload) setUploadProgress(0);
                         void act(async () => {
                           try {
                             await submitProjectWork(
@@ -374,6 +379,8 @@ export function ProjectDeliveryPanel({
                               link,
                               kind,
                               file,
+                              largeUpload ? setUploadProgress : undefined,
+                              uploadController.current?.signal,
                             );
                           } catch (cause) {
                             setUploadError(
@@ -382,6 +389,9 @@ export function ProjectDeliveryPanel({
                                 : "Unable to submit work.",
                             );
                             throw cause;
+                          } finally {
+                            setUploadProgress(null);
+                            uploadController.current = null;
                           }
                           setUploadOpen(false);
                           setBody("");
@@ -444,7 +454,7 @@ export function ProjectDeliveryPanel({
                           />
                         </label>
                         <div className="space-y-1 text-sm">
-                          <p>Attachment (up to 10 MB)</p>
+                          <p>Attachment (up to 1 GB; files over 50 MB use secure large-file storage)</p>
                           <FileUpload
                             file={file ?? null}
                             onFileSelect={(selected) => {
@@ -454,7 +464,7 @@ export function ProjectDeliveryPanel({
                             onFileRemove={() => setFile(undefined)}
                             onFileError={setUploadError}
                             accept="*/*"
-                            maxSizeBytes={10 * 1024 * 1024}
+                            maxSizeBytes={1024 * 1024 * 1024}
                             placeholder="Choose an attachment"
                           />
                         </div>
@@ -481,6 +491,14 @@ export function ProjectDeliveryPanel({
                           {busy ? "Saving…" : "Submit work"}
                         </Button>
                       </fieldset>
+                      {uploadProgress !== null && (
+                        <div className="flex items-center justify-between gap-3 px-1 text-sm" role="status">
+                          <span>Uploading large file: {uploadProgress}%</span>
+                          <Button type="button" variant="ghost" size="sm" onClick={() => uploadController.current?.abort()}>
+                            Cancel upload
+                          </Button>
+                        </div>
+                      )}
                     </form>
                   </DialogContent>
                 </Dialog>
@@ -583,6 +601,7 @@ export function ProjectDeliveryPanel({
                       name={
                         submission.attachment_name ?? "Submitted screenshot"
                       }
+                      submissionId={submission.submission_id}
                     />
                   )}
                   <div className="flex flex-wrap items-center gap-2">
@@ -595,6 +614,8 @@ export function ProjectDeliveryPanel({
                             () =>
                               openProjectAttachment(
                                 submission.attachment_path!,
+                                "submission",
+                                submission.submission_id,
                               ),
                             "",
                           )

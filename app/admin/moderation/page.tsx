@@ -32,6 +32,7 @@ type Submission = {
   ai_evidence: string[];
   ai_confidence: number | null;
   failure_reason: string | null;
+  owner_removed_at: string | null;
   rule_results?: string[];
   created_at: string;
 };
@@ -65,7 +66,7 @@ export default function ModerationPage() {
     let query = supabase
       .from("listing_submissions")
       .select(
-        "submission_id,listing_type,listing_id,owner_id,title,description,status,ai_risk,ai_explanation,ai_categories,ai_evidence,ai_confidence,failure_reason,rule_results,created_at",
+        "submission_id,listing_type,listing_id,owner_id,title,description,status,ai_risk,ai_explanation,ai_categories,ai_evidence,ai_confidence,failure_reason,rule_results,created_at,owner_removed_at",
         { count: "exact" },
       )
       .neq("status", "editing")
@@ -307,6 +308,7 @@ export default function ModerationPage() {
                     {row.ai_risk ?? "assessment pending"}
                   </Badge>
                   <Badge>{row.status.replaceAll("_", " ")}</Badge>
+                  {row.owner_removed_at && <Badge variant="outline">Removed from owner view</Badge>}
                 </span>
                 <span className="mt-2 block break-all text-xs text-muted-foreground">
                   Owner {row.owner_id} ·{" "}

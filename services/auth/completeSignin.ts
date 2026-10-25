@@ -1,12 +1,26 @@
 import { supabase } from "@/lib/supabaseClient";
 
-export async function getPostSigninPath(userId: string): Promise<string> {
+export async function getPostSigninPath(
+  userId: string,
+  requireAdmin = false,
+): Promise<string> {
   // Administrator access is provisioned separately from the client/freelancer
   // account role. A true admin membership should land in the admin workspace.
   const { data: isAdmin, error: adminError } = await supabase.rpc(
     "worksync_is_admin",
   );
-  if (!adminError && isAdmin === true) return "/admin";
+  if (adminError) {
+    if (requireAdmin)
+      throw new Error(
+        "WorkSync could not verify administrator access. Check the admin access database setup and try again.",
+      );
+  } else if (isAdmin === true) {
+    return "/admin";
+  }
+  if (requireAdmin)
+    throw new Error(
+      "This account does not have administrator access. Sign in with an account provisioned for the admin workspace.",
+    );
 
   const { data: profile, error } = await supabase
     .from("profiles")
@@ -38,5 +52,8 @@ export async function completeSignin(href: string): Promise<string> {
     throw new Error(
       "Unable to complete sign-in. Please request a new link or sign in again.",
     );
-  return getPostSigninPath(data.session.user.id);
+  return getPostSigninPath(
+    data.session.user.id,
+    url.searchParams.get("redirectTo") === "/admin",
+  );
 }

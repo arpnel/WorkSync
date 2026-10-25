@@ -3,6 +3,7 @@ import {
   identityName,
 } from "@/services/profile/publicIdentityService";
 import { supabase } from "@/lib/supabaseClient";
+import { invalidatePageReads } from "@/lib/pageReadCache";
 import { screeningLabel } from "@/lib/ai/screening";
 import { assertFreelancerAvailable } from "@/services/marketplace/freelancerAvailability";
 
@@ -346,5 +347,6 @@ async function respondToApplication(applicationId: string, accepted: boolean) {
   });
   const result = await response.json().catch(() => null) as { conversationId?: string | null; error?: string } | null;
   if (!response.ok) throw new Error(result?.error ?? "Unable to respond to this application.");
+  if (accepted) invalidatePageReads();
   return result?.conversationId ?? "";
 }

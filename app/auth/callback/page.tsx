@@ -9,6 +9,9 @@ import { AuthLoadingScreen } from "@/components/auth/AuthLoadingScreen";
 export default function AuthCallbackPage() {
   const [error, setError] = useState("");
   const pending = useRef<Promise<string> | null>(null);
+  const adminSignin =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("redirectTo") === "/admin";
   useEffect(() => {
     let active = true;
     async function finish() {
@@ -36,7 +39,10 @@ export default function AuthCallbackPage() {
       <p role="alert" className="text-sm text-destructive">
         {error}
       </p>
-      <Link href="/login" className="underline">
+      <Link
+        href={adminSignin ? "/login?redirectTo=%2Fadmin" : "/login"}
+        className="underline"
+      >
         Back to sign in
       </Link>
     </main>

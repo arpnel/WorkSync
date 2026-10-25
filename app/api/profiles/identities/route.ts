@@ -3,7 +3,12 @@ import { z } from "zod";
 export const runtime = "nodejs";
 const ids = z.array(z.string().uuid()).max(40).default([]);
 const schema = z
-  .object({ userIds: ids, clientIds: ids, freelancerIds: ids })
+  .object({
+    userIds: ids,
+    clientIds: ids,
+    freelancerIds: ids,
+    includeRole: z.boolean().default(false),
+  })
   .strict();
 const json = (body: unknown, status = 200) =>
   Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
@@ -57,7 +62,7 @@ export async function POST(request: Request) {
       );
     if (error || !user)
       return json({ error: "Your session expired. Sign in again." }, 401);
-    const { clientIds, freelancerIds, userIds } = parsed.data;
+    const { clientIds, freelancerIds, userIds, includeRole } = parsed.data;
     // Only public marketplace identity fields are exposed. Private Users rows,
     // email addresses, resumes, ID documents and Auth metadata never leave here.
     const [clients, freelancers] = await Promise.all([
@@ -122,7 +127,9 @@ export async function POST(request: Request) {
               "user_id,display_name,first_name,last_name,avatar_url,location,bio,banner_url,created_at,updated_at",
             )
             .in("user_id", relatedIds),
-          db.from("Users").select("user_id,role").in("user_id", relatedIds),
+          includeRole
+            ? db.from("Users").select("user_id,role").in("user_id", relatedIds)
+            : Promise.resolve({ data: [], error: null }),
         ])
       : [
           { data: [], error: null },

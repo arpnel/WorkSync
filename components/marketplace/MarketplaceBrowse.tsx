@@ -189,11 +189,15 @@ export default function MarketplaceBrowse({
           minPrice: filters.minPrice ? Number(filters.minPrice) : null,
           maxPrice: filters.maxPrice ? Number(filters.maxPrice) : null,
         });
-        const ratings = await getFreelancerRatings(
-          result.flatMap((item) =>
-            item.freelancer_id ? [item.freelancer_id] : [],
-          ),
-        );
+        const needsRatings =
+          filters.rating > 0 || filters.sort.includes("highestRated");
+        const ratings = needsRatings
+          ? await getFreelancerRatings(
+              result.flatMap((item) =>
+                item.freelancer_id ? [item.freelancer_id] : [],
+              ),
+            )
+          : new Map<string, number>();
         const rated = result.filter(
           (item) =>
             filters.listingType === "job" ||

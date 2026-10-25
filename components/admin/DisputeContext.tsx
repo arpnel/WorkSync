@@ -30,8 +30,12 @@ export default function DisputeContext({ id }: { id: string }) {
       alive = false;
     };
   }, [id, retry]);
-  const file = (path: string) =>
-    void openProjectAttachment(path).catch((e) => setError(e.message));
+  const file = (
+    path: string,
+    purpose: "submission" | "dispute",
+    recordId: string,
+  ) =>
+    void openProjectAttachment(path, purpose, recordId).catch((e) => setError(e.message));
   return (
     <section className="space-y-3 text-sm">
       {error && (
@@ -81,7 +85,7 @@ export default function DisputeContext({ id }: { id: string }) {
           {data.dispute.evidence_path && (
             <Button
               variant="outline"
-              onClick={() => file(data.dispute.evidence_path!)}
+              onClick={() => file(data.dispute.evidence_path!, "dispute", id)}
             >
               Open dispute evidence
             </Button>
@@ -119,7 +123,7 @@ export default function DisputeContext({ id }: { id: string }) {
                 {s.attachment_path && (
                   <Button
                     variant="link"
-                    onClick={() => file(s.attachment_path!)}
+                    onClick={() => file(s.attachment_path!, "submission", s.submission_id)}
                   >
                     {s.attachment_name ?? "Attachment"}
                   </Button>

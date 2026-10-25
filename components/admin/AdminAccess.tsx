@@ -2,15 +2,26 @@
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
-import { platformAction } from "@/services/platform/platformService";
+import { Button } from "@/components/ui/button";
 export default function AdminAccess({ children }: { children: ReactNode }) {
   const [allowed, setAllowed] = useState(false);
   const [error, setError] = useState("");
+  const [checking, setChecking] = useState(true);
   useEffect(() => {
     let alive = true;
     const check = async () => {
+      if (alive) setChecking(true);
       try {
-        const result = await platformAction("worksync_is_admin", {});
+        const { data: result, error: accessError } = await supabase.rpc(
+          "worksync_is_admin",
+        );
+        if (accessError) {
+          if (accessError.code === "PGRST202" || accessError.code === "42883")
+            throw new Error(
+              "Administrator access is not configured in the database yet.",
+            );
+          throw new Error("WorkSync could not verify administrator access.");
+        }
         if (alive) {
           setAllowed(result === true);
           setError(
@@ -28,6 +39,8 @@ export default function AdminAccess({ children }: { children: ReactNode }) {
               : "Cannot verify administrator access.",
           );
         }
+      } finally {
+        if (alive) setChecking(false);
       }
     };
     void check();
@@ -44,13 +57,28 @@ export default function AdminAccess({ children }: { children: ReactNode }) {
   }, []);
   if (!allowed)
     return (
-      <div className="p-8">
-        <p role={error ? "alert" : "status"}>
-          {error || "Checking administrator access…"}
-        </p>
-        <Link className="mt-4 block underline" href="/home/dashboard">
-          Return to WorkSync
-        </Link>
+      <div className="mx-auto flex min-h-[60vh] max-w-lg flex-col justify-center gap-4 p-6">
+        <div className="space-y-2">
+          <h1 className="text-xl font-semibold">Admin sign-in</h1>
+          <p role={error ? "alert" : "status"} className="text-sm text-muted-foreground">
+            {checking
+              ? "Checking administrator access…"
+              : error || "This account does not have administrator access."}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {error && !checking && (
+            <Button variant="outline" onClick={() => window.location.reload()}>
+              Try again
+            </Button>
+          )}
+          <Button asChild>
+            <Link href="/login?redirectTo=%2Fadmin">Sign in as administrator</Link>
+          </Button>
+          <Button asChild variant="ghost">
+            <Link href="/home/dashboard">Return to WorkSync</Link>
+          </Button>
+        </div>
       </div>
     );
   return children;

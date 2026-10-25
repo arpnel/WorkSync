@@ -220,7 +220,10 @@ async function fetchCurrentProfile(
 export async function getPublicProfile(
   userId: string,
 ): Promise<Profile | null> {
-  const identities = await getPublicIdentities({ userIds: [userId] });
+  const identities = await getPublicIdentities({
+    userIds: [userId],
+    includeRole: true,
+  });
   const identity = identities.profiles.find((row) => row.user_id === userId);
   if (!identity) return null;
   const freelancerResult = {

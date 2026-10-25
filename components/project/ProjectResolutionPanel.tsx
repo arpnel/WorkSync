@@ -1,5 +1,5 @@
 ﻿"use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -52,6 +52,8 @@ export function ProjectResolutionPanel({
   > | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const uploadController = useRef<AbortController | null>(null);
   const [mode, setMode] = useState<
     "cancel" | "dispute" | "accept" | "reject" | null
   >(null);
@@ -246,7 +248,7 @@ export function ProjectResolutionPanel({
               <Button
                 variant="link"
                 onClick={() =>
-                  void openProjectAttachment(d.evidence_path!).catch((e) =>
+                  void openProjectAttachment(d.evidence_path!, "dispute", d.dispute_id).catch((e) =>
                     setError(e.message),
                   )
                 }
@@ -295,6 +297,9 @@ export function ProjectResolutionPanel({
                 if (busy) return;
                 setBusy(true);
                 setError("");
+                const largeUpload = Boolean(mode === "dispute" && file && file.size > 50 * 1024 * 1024);
+                uploadController.current = largeUpload ? new AbortController() : null;
+                if (largeUpload) setUploadProgress(0);
                 try {
                   if (mode === "cancel")
                     await requestCancellation(orderId, reason);
@@ -305,6 +310,8 @@ export function ProjectResolutionPanel({
                       category,
                       reason,
                       file,
+                      largeUpload ? setUploadProgress : undefined,
+                      uploadController.current?.signal,
                     );
                   else if (pending)
                     await respondCancellation(
@@ -322,6 +329,8 @@ export function ProjectResolutionPanel({
                       : "Unable to save resolution request.",
                   );
                 } finally {
+                  setUploadProgress(null);
+                  uploadController.current = null;
                   setBusy(false);
                 }
               }}
@@ -391,7 +400,7 @@ export function ProjectResolutionPanel({
                       <Paperclip className="size-4" />
                       Evidence{" "}
                       <span className="font-normal text-muted-foreground">
-                        Optional, up to 10 MB
+                        Optional, up to 1 GB (files over 50 MB use secure large-file storage)
                       </span>
                     </p>
                     <FileUpload
@@ -403,12 +412,20 @@ export function ProjectResolutionPanel({
                       onFileRemove={() => setFile(undefined)}
                       onFileError={setError}
                       accept="*/*"
-                      maxSizeBytes={10 * 1024 * 1024}
+                      maxSizeBytes={1024 * 1024 * 1024}
                       placeholder="Choose evidence"
                       disabled={busy}
                     />
                   </div>
                 </>
+              )}
+              {uploadProgress !== null && (
+                <div className="flex items-center justify-between gap-3 text-sm" role="status">
+                  <span>Uploading large file: {uploadProgress}%</span>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => uploadController.current?.abort()}>
+                    Cancel upload
+                  </Button>
+                </div>
               )}
               <label className="block text-sm">
                 Reason / response

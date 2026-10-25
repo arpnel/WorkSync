@@ -13,8 +13,6 @@ const advantages = [
   "Submit up to 30 listings each month",
   "Keep up to 20 active marketplace postings across jobs and services",
   "Unlimited AI applicant screening",
-  "AI-assisted listing moderation",
-  "Administrator review, with archive and restore controls",
 ];
 
 export default function OffersPage() {
@@ -34,7 +32,7 @@ export default function OffersPage() {
       </header>
 
       <section aria-label="WorkSync Premium plan" className="mx-auto max-w-2xl">
-        <Card className="overflow-hidden border-primary/30 shadow-lg shadow-primary/5">
+        <Card className="gap-0 overflow-hidden border-primary/30 py-0 shadow-lg shadow-primary/5">
           <CardHeader className="border-b bg-primary/[0.04] p-6 sm:p-8">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <CardTitle className="flex items-center gap-2 text-2xl">

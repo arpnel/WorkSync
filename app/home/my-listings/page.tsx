@@ -3,9 +3,9 @@ import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import { WorkspacePageHeader } from "@/components/shared/WorkspacePageHeader";
 
 import { useCallback, useEffect, useState } from "react";
-import { Archive, Loader2, RotateCcw } from "lucide-react";
+import { Archive, Loader2, RotateCcw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getArchivedListings, restoreArchivedListing, type ArchivedListing } from "@/services/marketplace/archiveService";
+import { getArchivedListings, restoreArchivedListing, removeArchivedListing, type ArchivedListing } from "@/services/marketplace/archiveService";
 import { toast } from "sonner";
 
 import {
@@ -42,6 +42,8 @@ export default function Page() {
   const [loading, setLoading] = useState(true);
   const [pendingArchiveId, setPendingArchiveId] = useState<string | null>(null);
   const [archiving, setArchiving] = useState(false);
+  const [pendingRemoval, setPendingRemoval] = useState<ArchivedListing | null>(null);
+  const [removing, setRemoving] = useState(false);
 
   /* ==========================================================
      LOAD MY LISTINGS
@@ -139,6 +141,21 @@ export default function Page() {
       toast.error("The listing could not be archived.");
     } finally {
       setArchiving(false);
+    }
+  };
+
+  const confirmRemoval = async () => {
+    if (!pendingRemoval || removing) return;
+    try {
+      setRemoving(true);
+      await removeArchivedListing(pendingRemoval);
+      setPendingRemoval(null);
+      toast.success("Removed from My Listings. Administrator history is retained.");
+      await loadListings();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to remove this archived listing.");
+    } finally {
+      setRemoving(false);
     }
   };
 
@@ -272,9 +289,18 @@ export default function Page() {
                   <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{item.description}</p>
                   <p className="mt-2 text-xs text-muted-foreground">Posted {new Date(item.createdAt).toLocaleDateString()} · Archived {item.archivedAt ? new Date(item.archivedAt).toLocaleDateString() : "date unavailable"} · Previous status: {item.previousStatus}</p>
                 </div>
-                <Button variant="outline" onClick={async () => { try { await restoreArchivedListing(item); toast.success("Listing restored."); await loadListings(); } catch (error) { toast.error(error instanceof Error ? error.message : "Unable to restore this listing."); } }}>
-                  <RotateCcw className="mr-2 size-4" />Restore
-                </Button>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  {item.canRestore ? (
+                    <Button variant="outline" onClick={async () => { try { await restoreArchivedListing(item); toast.success("Listing restored."); await loadListings(); } catch (error) { toast.error(error instanceof Error ? error.message : "Unable to restore this listing."); } }}>
+                      <RotateCcw className="mr-2 size-4" />Restore
+                    </Button>
+                  ) : (
+                    <span className="self-center rounded-full bg-muted px-3 py-1.5 text-xs text-muted-foreground">Accepted; closed</span>
+                  )}
+                  <Button variant="outline" onClick={() => setPendingRemoval(item)}>
+                    <Trash2 className="mr-2 size-4" />Remove from My Listings
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
@@ -318,6 +344,41 @@ export default function Page() {
                 <Archive className="h-4 w-4" />
               )}
               Archive
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={pendingRemoval !== null}
+        onOpenChange={(open) => {
+          if (!open && !removing) setPendingRemoval(null);
+        }}
+      >
+        <AlertDialogContent className="max-w-sm">
+          <AlertDialogHeader>
+            <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-md bg-muted">
+              <Trash2 className="h-5 w-5" />
+            </div>
+            <AlertDialogTitle>Remove from My Listings?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <span className="font-medium text-foreground">
+                {pendingRemoval?.title ?? "This archived listing"}
+              </span>{" "}
+              will disappear from your archived list. The listing record and moderation history remain available to administrators.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={removing}>Keep listing</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={removing}
+              onClick={(event) => {
+                event.preventDefault();
+                void confirmRemoval();
+              }}
+            >
+              {removing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              Remove from My Listings
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

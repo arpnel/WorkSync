@@ -341,7 +341,12 @@ export function useMessaging() {
   );
 
   const sendMessage = useCallback(
-    async (message: string, attachment?: File): Promise<boolean> => {
+    async (
+      message: string,
+      attachment?: File,
+      onProgress?: (percent: number) => void,
+      signal?: AbortSignal,
+    ): Promise<boolean> => {
       if (!selectedConversationId || sendingRef.current) {
         return false;
       }
@@ -354,6 +359,8 @@ export function useMessaging() {
           selectedConversationId,
           message,
           attachment,
+          onProgress,
+          signal,
         );
         await Promise.all([
           selectedRef.current === selectedConversationId

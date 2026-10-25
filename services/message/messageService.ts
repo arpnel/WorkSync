@@ -1,5 +1,7 @@
 import { readPageCache } from "@/lib/pageReadCache";
 import { supabase } from "@/lib/supabaseClient";
+import { LARGE_FILE_MAX_BYTES, SUPABASE_MAX_FILE_BYTES, usesR2Storage } from "@/lib/storage/hybridStorage";
+import { deleteUnusedLargeFile, getLargeFileUrl, uploadLargeFile } from "@/services/storage/hybridStorageClient";
 import type {
   ChatMessage,
   MessageConversation,
@@ -504,6 +506,8 @@ export async function sendConversationMessage(
   conversationId: string,
   message: string,
   attachment?: File,
+  onProgress?: (percent: number) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   const senderId = await getCurrentUserId();
   const cleanMessage = message.trim();
@@ -511,21 +515,27 @@ export async function sendConversationMessage(
   if (cleanMessage.length > 10000)
     throw new Error("Messages must be 10,000 characters or shorter.");
   let path: string | null = null;
+  let r2UploadId: string | null = null;
+  const messageId = crypto.randomUUID();
   if (attachment) {
-    if (attachment.size > 10 * 1024 * 1024)
-      throw new Error("Files must be 10 MB or smaller.");
-    const name = attachment.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    path =
-      senderId + "/" + conversationId + "/" + crypto.randomUUID() + "-" + name;
-    const { error } = await supabase.storage
-      .from("message-attachments")
-      .upload(path, attachment);
-    if (error)
-      throw new Error(
-        "Unable to upload the file. Please try again or contact support.",
-      );
+    if (attachment.size > LARGE_FILE_MAX_BYTES)
+      throw new Error("Files must be 1 GB or smaller.");
+    if (usesR2Storage(attachment.size)) {
+      const uploaded = await uploadLargeFile(attachment, { purpose: "message", targetId: conversationId }, onProgress, signal);
+      path = uploaded.reference;
+      r2UploadId = uploaded.uploadId;
+    } else {
+      if (attachment.size > SUPABASE_MAX_FILE_BYTES)
+        throw new Error("Files must be 50 MB or smaller.");
+      const name = attachment.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      path = senderId + "/" + conversationId + "/" + crypto.randomUUID() + "-" + name;
+      const { error } = await supabase.storage.from("message-attachments").upload(path, attachment);
+      if (error)
+        throw new Error("Unable to upload the file. Please try again or contact support.");
+    }
   }
   const { error } = await supabase.from("messages").insert({
+    message_id: messageId,
     conversation_id: conversationId,
     sender_id: senderId,
     message: cleanMessage || attachment?.name || "Attachment",
@@ -535,7 +545,8 @@ export async function sendConversationMessage(
       : null,
   });
   if (error) {
-    if (path) await supabase.storage.from("message-attachments").remove([path]);
+    if (r2UploadId) await deleteUnusedLargeFile(r2UploadId).catch(() => undefined);
+    else if (path) await supabase.storage.from("message-attachments").remove([path]);
     throw new Error(error.message);
   }
 }
@@ -606,8 +617,12 @@ export async function setUserBlocked(blockedId: string, blocked: boolean) {
   if (result.error) throw result.error;
 }
 
-export async function getMessageAttachmentUrl(value: string): Promise<string> {
+export async function getMessageAttachmentUrl(value: string, messageId?: string): Promise<string> {
   if (/^https?:\/\//i.test(value)) return value;
+  if (value.startsWith("r2:")) {
+    if (!messageId) throw new Error("This attachment is missing its message reference.");
+    return getLargeFileUrl("message", messageId);
+  }
   const { data, error } = await supabase.storage
     .from("message-attachments")
     .createSignedUrl(value, 60 * 5);

@@ -26,7 +26,12 @@ type Props = {
   messages: WorkspaceMessage[];
   sending: boolean;
   isOtherParticipantTyping: boolean;
-  onSend: (message: string, attachment?: File) => Promise<boolean>;
+  onSend: (
+    message: string,
+    attachment?: File,
+    onProgress?: (percent: number) => void,
+    signal?: AbortSignal,
+  ) => Promise<boolean>;
   onTypingChange: (isTyping: boolean) => void;
 };
 
@@ -92,6 +97,9 @@ export function ProjectChatPanel({
 }: Props) {
   const [draft, setDraft] = useState("");
   const [attachment, setAttachment] = useState<File | null>(null);
+  const [attachmentError, setAttachmentError] = useState("");
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const uploadController = useRef<AbortController | null>(null);
   const messagesViewportRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -123,11 +131,24 @@ export function ProjectChatPanel({
     const content = draft.trim();
     if ((!content && !attachment) || sending) return;
     onTypingChange(false);
-
-    if (await onSend(content, attachment ?? undefined)) {
-      setDraft("");
-      setAttachment(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+    const largeUpload = Boolean(attachment && attachment.size > 50 * 1024 * 1024);
+    uploadController.current = largeUpload ? new AbortController() : null;
+    if (largeUpload) setUploadProgress(0);
+    try {
+      if (await onSend(
+        content,
+        attachment ?? undefined,
+        largeUpload ? setUploadProgress : undefined,
+        uploadController.current?.signal,
+      )) {
+        setDraft("");
+        setAttachment(null);
+        setAttachmentError("");
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
+    } finally {
+      setUploadProgress(null);
+      uploadController.current = null;
     }
   };
 
@@ -238,6 +259,7 @@ export function ProjectChatPanel({
                 variant="ghost"
                 size="icon-sm"
                 aria-label="Remove attachment"
+                disabled={sending}
                 onClick={() => setAttachment(null)}
               >
                 <X className="h-3.5 w-3.5" />
@@ -251,7 +273,12 @@ export function ProjectChatPanel({
               accept="image/*,video/*,.pdf,.doc,.docx,.txt,.zip"
               className="hidden"
               onChange={(event) =>
-                setAttachment(event.target.files?.[0] ?? null)
+                (() => {
+                  const file = event.target.files?.[0] ?? null;
+                  setAttachmentError(file && file.size > 1024 * 1024 * 1024 ? "Files must be 1 GB or smaller." : "");
+                  setAttachment(file && file.size <= 1024 * 1024 * 1024 ? file : null);
+                  event.target.value = "";
+                })()
               }
             />
             <Button
@@ -290,8 +317,17 @@ export function ProjectChatPanel({
               )}
             </Button>
           </div>
+          {attachmentError && <p role="alert" className="mt-2 text-xs text-destructive">{attachmentError}</p>}
+          {uploadProgress !== null && (
+            <p role="status" className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+              <span>Uploading large file: {uploadProgress}%</span>
+              <Button type="button" size="sm" variant="ghost" onClick={() => uploadController.current?.abort()}>
+                Cancel upload
+              </Button>
+            </p>
+          )}
           <p className="mt-1.5 text-[11px] text-muted-foreground">
-            Images, videos, documents, or ZIP files up to 10 MB
+            Images, videos, documents, or ZIP files up to 1 GB. Files over 50 MB use secure large-file storage.
           </p>
         </div>
       </CardContent>

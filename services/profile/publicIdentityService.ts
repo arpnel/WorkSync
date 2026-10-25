@@ -27,6 +27,7 @@ export async function getPublicIdentities(input: {
   userIds?: string[];
   clientIds?: string[];
   freelancerIds?: string[];
+  includeRole?: boolean;
 }): Promise<PublicIdentities> {
   const {
     data: { session },
@@ -43,52 +44,66 @@ export async function getPublicIdentities(input: {
     input.clientIds?.length ?? 0,
     input.freelancerIds?.length ?? 0,
   );
-  for (let offset = 0; offset < length; offset += 40) {
-    const started = Date.now();
-    const response = await fetch("/api/profiles/identities", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${session.access_token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        userIds: input.userIds?.slice(offset, offset + 40) ?? [],
-        clientIds: input.clientIds?.slice(offset, offset + 40) ?? [],
-        freelancerIds: input.freelancerIds?.slice(offset, offset + 40) ?? [],
-      }),
-      cache: "no-store",
-    });
-    const data = await response.json().catch(() => ({
-      error: "The profile server returned an unreadable response.",
-      code: "NON_JSON_RESPONSE",
-    }));
-    if (!response.ok) {
-      console.error(
-        "[WorkSync API] " +
-          JSON.stringify({
-            endpoint: "/api/profiles/identities",
-            method: "POST",
-            status: response.status,
-            code:
-              typeof data?.code === "string" && /^[A-Z_]{1,80}$/.test(data.code)
-                ? data.code
-                : "UNCLASSIFIED_ERROR",
-            upstreamStatus:
-              typeof data?.upstreamStatus === "number"
-                ? data.upstreamStatus
-                : null,
-            elapsedMs: Date.now() - started,
-            databaseCode:
-              typeof data?.databaseCode === "string" &&
-              /^(?:[0-9A-Z]{5}|PGRST\d{3})$/.test(data.databaseCode)
-                ? data.databaseCode
-                : null,
-          }),
-      );
-      throw new Error(
-        data.error || "Marketplace profiles could not be loaded.",
-      );
-    }
+  const offsets = Array.from(
+    { length: Math.ceil(length / 40) },
+    (_, index) => index * 40,
+  );
+  const batches = await Promise.all(
+    offsets.map(async (offset) => {
+      const started = Date.now();
+      const response = await fetch("/api/profiles/identities", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userIds: input.userIds?.slice(offset, offset + 40) ?? [],
+          clientIds: input.clientIds?.slice(offset, offset + 40) ?? [],
+          freelancerIds: input.freelancerIds?.slice(offset, offset + 40) ?? [],
+          includeRole: input.includeRole ?? false,
+        }),
+        cache: "no-store",
+      });
+      const data = await response.json().catch(() => ({
+        error: "The profile server returned an unreadable response.",
+        code: "NON_JSON_RESPONSE",
+      }));
+      if (!response.ok) {
+        console.error(
+          "[WorkSync API] " +
+            JSON.stringify({
+              endpoint: "/api/profiles/identities",
+              method: "POST",
+              status: response.status,
+              code:
+                typeof data?.code === "string" &&
+                /^[A-Z_]{1,80}$/.test(data.code)
+                  ? data.code
+                  : "UNCLASSIFIED_ERROR",
+              upstreamStatus:
+                typeof data?.upstreamStatus === "number"
+                  ? data.upstreamStatus
+                  : null,
+              elapsedMs: Date.now() - started,
+              databaseCode:
+                typeof data?.databaseCode === "string" &&
+                /^(?:[0-9A-Z]{5}|PGRST\d{3})$/.test(data.databaseCode)
+                  ? data.databaseCode
+                  : null,
+            }),
+        );
+        throw new Error(
+          data.error || "Marketplace profiles could not be loaded.",
+        );
+      }
+      return data as Pick<
+        PublicIdentities,
+        "profiles" | "roles" | "clients" | "freelancers"
+      >;
+    }),
+  );
+  for (const data of batches) {
     result.profiles.push(...data.profiles);
     result.roles.push(...(data.roles ?? []));
     result.clients.push(...data.clients);

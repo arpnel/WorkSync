@@ -36,6 +36,9 @@ export function SigninDialog() {
 
   const [formError, setFormError] = React.useState("");
   const showMessage = (message: string) => setFormError(message);
+  const adminSignin =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("redirectTo") === "/admin";
 
   const resetForm = () => {
     setEmail("");
@@ -84,7 +87,8 @@ export function SigninDialog() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          redirectTo: `${window.location.origin}/auth/callback${adminSignin ? "?redirectTo=%2Fadmin" : ""}`,
+          ...(adminSignin ? { queryParams: { prompt: "select_account" } } : {}),
         },
       });
 
@@ -136,7 +140,7 @@ export function SigninDialog() {
         password,
       });
 
-      const destination = await getPostSigninPath(user.id);
+      const destination = await getPostSigninPath(user.id, adminSignin);
 
       resetForm();
       router.replace(destination);
@@ -192,8 +196,12 @@ export function SigninDialog() {
       )}
 
       <AuthHeader
-        title="Welcome Back"
-        description="Sign in to continue to WorkSync."
+        title={adminSignin ? "Admin sign-in" : "Welcome Back"}
+        description={
+          adminSignin
+            ? "Sign in with an account that has administrator access."
+            : "Sign in to continue to WorkSync."
+        }
       />
 
       <SigninForm

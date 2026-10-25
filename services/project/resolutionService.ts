@@ -1,4 +1,6 @@
-﻿import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabaseClient";
+import { LARGE_FILE_MAX_BYTES, SUPABASE_MAX_FILE_BYTES, usesR2Storage } from "@/lib/storage/hybridStorage";
+import { deleteUnusedLargeFile, uploadLargeFile } from "@/services/storage/hybridStorageClient";
 import {
   databaseError,
   platformAction,
@@ -101,6 +103,8 @@ export async function openDispute(
   category: string,
   description: string,
   file?: File,
+  onProgress?: (percent: number) => void,
+  signal?: AbortSignal,
 ) {
   const user = await requireUser();
   const reason = validateReason(description);
@@ -112,15 +116,24 @@ export async function openDispute(
     throw new Error("Choose a dispute category.");
   const id = crypto.randomUUID();
   let path: string | null = null;
+  let r2UploadId: string | null = null;
   try {
     if (file) {
-      if (file.size > 10 * 1024 * 1024)
-        throw new Error("Evidence must be 10 MB or smaller.");
-      path = `${projectId}/${user.id}/${id}/${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-      const { error } = await supabase.storage
-        .from("project-attachments")
-        .upload(path, file, { upsert: false });
-      if (error) throw databaseError(error);
+      if (file.size > LARGE_FILE_MAX_BYTES)
+        throw new Error("Evidence must be 1 GB or smaller.");
+      if (usesR2Storage(file.size)) {
+        const uploaded = await uploadLargeFile(file, { purpose: "dispute", targetId: projectId }, onProgress, signal);
+        path = uploaded.reference;
+        r2UploadId = uploaded.uploadId;
+      } else {
+        if (file.size > SUPABASE_MAX_FILE_BYTES)
+          throw new Error("Evidence must be 50 MB or smaller.");
+        path = `${projectId}/${user.id}/${id}/${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+        const { error } = await supabase.storage
+          .from("project-attachments")
+          .upload(path, file, { upsert: false });
+        if (error) throw databaseError(error);
+      }
     }
     await platformAction("worksync_open_dispute", {
       p_id: id,
@@ -132,7 +145,8 @@ export async function openDispute(
       p_name: file?.name ?? null,
     });
   } catch (error) {
-    if (path) await supabase.storage.from("project-attachments").remove([path]);
+    if (r2UploadId) await deleteUnusedLargeFile(r2UploadId).catch(() => undefined);
+    else if (path) await supabase.storage.from("project-attachments").remove([path]);
     throw error;
   }
 }

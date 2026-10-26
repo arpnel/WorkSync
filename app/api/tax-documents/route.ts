@@ -1,5 +1,5 @@
 import { PaymentError } from "@/lib/payments/paymongo";
-import { inspectTaxDocument, TAX_DOCUMENT_MAX_BYTES } from "@/lib/tax/taxDocumentUpload";
+import { inspectTaxDocument } from "@/lib/tax/taxDocumentUpload";
 import { paymentResponse, paymentUser } from "@/services/payments/paymentServer";
 
 export const runtime = "nodejs";
@@ -23,7 +23,8 @@ export async function GET(request: Request) {
     const profileResult = types.includes("freelancer")
       ? await db.from("freelancer_tax_profiles").select("vat_classification").eq("user_id", user.id).maybeSingle()
       : { data: null, error: null };
-    if (profileResult.error) throw new PaymentError("Freelancer VAT classification is unavailable.");
+    // Tax-document submission must remain available when the optional
+    // VAT-classification column has not been deployed yet.
     const { data, error } = await db.from("tax_documents").select("document_id,party_type,document_type,registered_name,claimed_tax_treatment,legal_basis,tax_year,issued_at,expires_at,status,submitted_at,reviewed_at,review_reason").eq("user_id", user.id).order("submitted_at", { ascending: false });
     if (error) throw new PaymentError("Tax documents are unavailable. The tax document migration may not be applied yet.");
     const documentId = new URL(request.url).searchParams.get("documentId");
@@ -38,7 +39,9 @@ export async function GET(request: Request) {
     }
     const today = new Date().toISOString().slice(0, 10);
     const documents = (data ?? []).map(row => ({ ...row, status: row.status === "verified" && row.expires_at && row.expires_at < today ? "expired" : row.status }));
-    let vatClassification = profileResult.data?.vat_classification ?? "unverified";
+    let vatClassification = profileResult.error
+      ? "unverified"
+      : profileResult.data?.vat_classification ?? "unverified";
     if (["vat_registered", "non_vat"].includes(vatClassification)) {
       const requiredType = vatClassification === "vat_registered" ? "vat_registration" : "bir_cor";
       const currentProof = documents.some(row => row.party_type === "freelancer" && row.document_type === requiredType && row.status === "verified");

@@ -37,7 +37,14 @@ export async function POST(request: Request) {
     if (signedError || !signed?.token) throw new PaymentError("A secure upload could not be prepared.");
     await db.from("tax_document_upload_tickets").delete().lt("expires_at", new Date().toISOString());
     const ticket = await db.from("tax_document_upload_tickets").insert({ document_path: path, user_id: user.id, expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString() });
-    if (ticket.error) throw new PaymentError("A secure upload could not be prepared.");
+    if (ticket.error) {
+      if (["42P01", "PGRST205"].includes(ticket.error.code ?? ""))
+        throw new PaymentError(
+          "Secure tax-document uploads are not enabled in this workspace yet.",
+          503,
+        );
+      throw new PaymentError("A secure upload could not be prepared.");
+    }
     return json({ path, token: signed.token, uploadKind, contentType: body.contentType === "image/jpg" ? "image/jpeg" : body.contentType });
   } catch (error) { return paymentResponse(error); }
 }

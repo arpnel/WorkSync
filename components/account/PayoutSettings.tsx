@@ -121,7 +121,6 @@ export default function PayoutSettings() {
               <h4 className="font-semibold">Your earnings</h4>
               <p className="mt-1 text-sm text-muted-foreground">Approved project earnings and their payout progress.</p>
             </div>
-            {earnings?.mode === "test" && <span className="rounded-full bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-700 dark:text-amber-300">Test mode</span>}
           </div>
           {earningsError ? (
             <p role="alert" className="text-sm text-destructive">{earningsError}</p>
@@ -143,7 +142,7 @@ export default function PayoutSettings() {
                   URL.revokeObjectURL(url);
                 }} disabled={!earnings.payouts?.length}>Download earnings CSV</Button>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {([
                   ["Gross earnings", earnings.summary.earned, Wallet],
                   ["Ready for payout", earnings.summary.ready, Wallet],
@@ -173,32 +172,45 @@ export default function PayoutSettings() {
               {earnings.payouts && earnings.payouts.length > 0 && (
                 <div className="space-y-2 border-t pt-4">
                   <h5 className="text-sm font-medium">Recent payout activity</h5>
-                  {earnings.payouts.slice(0, 5).map((payout) => (
-                    <div key={payout.id} className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 text-sm sm:grid-cols-[1fr_auto_auto]">
-                      <span className="text-muted-foreground">{payout.status === "paid" && payout.paidAt ? `PayMongo status confirmed ${payoutDate(payout.paidAt)}` : `Created ${payoutDate(payout.createdAt)}`}</span>
-                      <span className="text-right font-medium tabular-nums">{payout.status === "paid" ? "Transferred" : "Net transfer amount"} {php(payout.amount)}; Gross {php(payout.grossAmount)}</span>
-                      <span className="col-span-2 text-right capitalize text-muted-foreground sm:col-span-1">Status: {payout.status.replaceAll("_", " ")}</span>
-                      {payout.transferReference && <span className="col-span-2 text-right text-xs text-muted-foreground sm:col-span-3">PayMongo transfer reference: {payout.transferReference}</span>}
-                      <Button variant="ghost" size="sm" className="col-span-2 justify-self-end sm:col-span-3" onClick={() => void openSavedTaxReceipt(payout.transactionId).catch((cause) => setError(cause instanceof Error ? cause.message : "Receipt unavailable."))}>View transaction receipt</Button>
-                      {payout.freelancerVatAmount > 0 && <span className="col-span-2 text-xs text-muted-foreground sm:col-span-3">Freelancer VAT recorded: {php(payout.freelancerVatAmount)} ({(payout.freelancerVatRate * 100).toFixed(2)}% of {php(payout.freelancerVatTaxableAmount)}; {payout.freelancerVatRule})</span>}
-                      {payout.withholdingAmount > 0 && <span className="col-span-2 text-xs text-muted-foreground sm:col-span-3">Marketplace withholding: {php(payout.withholdingAmount)} ({(payout.withholdingRate * 100).toFixed(2)}% of {php(payout.withholdingBasis)})</span>}
-                    </div>
-                  ))}
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    {earnings.payouts.slice(0, 5).map((payout) => (
+                      <article key={payout.id} className="min-w-0 space-y-3 rounded-lg border bg-card p-3 sm:p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-medium">{payout.status === "paid" && payout.paidAt ? `Paid ${payoutDate(payout.paidAt)}` : `Created ${payoutDate(payout.createdAt)}`}</p>
+                            <p className="mt-1 text-xs capitalize text-muted-foreground">{payout.status.replaceAll("_", " ")}</p>
+                          </div>
+                          <Button variant="outline" size="sm" onClick={() => void openSavedTaxReceipt(payout.transactionId).catch((cause) => setError(cause instanceof Error ? cause.message : "Receipt unavailable."))}>View receipt</Button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 rounded-md bg-muted/30 p-3">
+                          <div>
+                            <p className="text-xs text-muted-foreground">Gross earnings</p>
+                            <p className="mt-1 font-medium tabular-nums">{php(payout.grossAmount)}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Net transfer</p>
+                            <p className="mt-1 font-medium tabular-nums">{php(payout.amount)}</p>
+                          </div>
+                        </div>
+                        {payout.transferReference && <p className="break-all text-xs text-muted-foreground">Transfer reference: {payout.transferReference}</p>}
+                        {(payout.freelancerVatAmount > 0 || payout.withholdingAmount > 0) && (
+                          <div className="space-y-1 border-t pt-2 text-xs text-muted-foreground">
+                            {payout.freelancerVatAmount > 0 && <p>VAT recorded: {php(payout.freelancerVatAmount)} at {(payout.freelancerVatRate * 100).toFixed(2)}% of {php(payout.freelancerVatTaxableAmount)}.</p>}
+                            {payout.withholdingAmount > 0 && <p>Withholding: {php(payout.withholdingAmount)} at {(payout.withholdingRate * 100).toFixed(2)}% of {php(payout.withholdingBasis)}.</p>}
+                          </div>
+                        )}
+                      </article>
+                    ))}
+                  </div>
                 </div>
               )}
             </>
           ) : (
-            <p role="status" className="text-sm text-muted-foreground">Loading earningsâ€¦</p>
+            <p role="status" className="text-sm text-muted-foreground">Loading earnings...</p>
           )}
         </div>
       )}
       {data?.eligible && <FreelancerTaxDeclaration />}
-      {data?.mode === "test" && (
-        <p className="rounded-lg bg-muted p-3 text-sm">
-          Test mode: use PayMongo test recipient details. This account is
-          separate from your live payout account.
-        </p>
-      )}
       {error && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/20 bg-destructive/5 p-3">
           <p role="alert" className="text-sm text-destructive">{error}</p>

@@ -5,17 +5,16 @@ import { supabase } from "@/lib/supabaseClient";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { StyledSelect } from "@/components/ui/styled-select";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
 type Party = "client" | "freelancer";
 type DocumentType = "bir_cor" | "vat_registration" | "tax_exemption" | "business_tax_support";
 export type TaxDocumentOnboardingHandle = { submit: () => Promise<void> };
 const labels: Record<DocumentType, string> = {
-  bir_cor: "BIR Certificate of Registration (COR)",
+  bir_cor: "BIR Certificate of Registration (BIR Form 2303)",
   vat_registration: "VAT registration evidence",
-  tax_exemption: "Tax exemption or reduced-rate support",
-  business_tax_support: "Business registration or other tax support",
+  tax_exemption: "BIR-issued tax exemption certificate or ruling",
+  business_tax_support: "Other official BIR supporting document",
 };
 
 const TaxDocumentOnboarding = forwardRef<TaxDocumentOnboardingHandle, { party: Party; disabled?: boolean }>(function TaxDocumentOnboarding({ party, disabled }, ref) {
@@ -28,7 +27,7 @@ const TaxDocumentOnboarding = forwardRef<TaxDocumentOnboardingHandle, { party: P
   const [expiresAt, setExpiresAt] = useState("");
   const [phase, setPhase] = useState<"idle" | "uploading" | "submitting" | "pending" | "error">("idle");
   const [error, setError] = useState("");
-  const options: DocumentType[] = party === "freelancer" ? ["bir_cor", "vat_registration", "tax_exemption"] : ["business_tax_support", "bir_cor", "vat_registration", "tax_exemption"];
+  const options: DocumentType[] = party === "freelancer" ? ["bir_cor", "vat_registration", "tax_exemption", "business_tax_support"] : ["business_tax_support", "bir_cor", "vat_registration", "tax_exemption"];
 
   useImperativeHandle(ref, () => ({
     async submit() {
@@ -68,10 +67,10 @@ const TaxDocumentOnboarding = forwardRef<TaxDocumentOnboardingHandle, { party: P
   }), [basis, expiresAt, file, issuedAt, party, registeredName, treatment, type]);
 
   return <section className="space-y-3 rounded-xl border p-4" aria-busy={phase === "uploading" || phase === "submitting"}>
-    <div><h3 className="font-semibold">Tax Information</h3><p className="text-sm text-muted-foreground">Submit your BIR Certificate of Registration and any applicable withholding-tax documents for administrator verification. You may skip this step and submit your documents later through your profile settings.</p><p className="mt-1 text-sm text-muted-foreground">This step is optional. PDF, JPG, or PNG up to 5 MB. Submitted documents remain pending until manual review; document submission does not automatically change tax treatment. You can manage these records later in <Link className="underline" href="/home/settings">Settings</Link>.</p></div>
+    <div><h3 className="font-semibold">Tax documents</h3><p className="text-sm text-muted-foreground">For VAT exemption, submit your BIR Certificate of Registration (Form 2303) and, if applicable, a BIR-issued exemption certificate or ruling. For withholding exemption, submit a BIR-issued exemption certificate or ruling, a sworn declaration if permitted, or other official BIR supporting documents. Documents go to manual review and do not change tax treatment automatically.</p><p className="mt-1 text-sm text-muted-foreground">PDF, JPG, or PNG up to 5 MB. The sworn declaration form is available in Payouts under Tax records.</p></div>
     <div className="grid gap-3 sm:grid-cols-2">
       <div className="space-y-2"><Label htmlFor={`${party}-tax-document-type`}>Document type</Label><StyledSelect id={`${party}-tax-document-type`} value={type} onChange={event => setType(event.target.value as DocumentType)} disabled={disabled || phase === "uploading" || phase === "submitting"}>{options.map(option => <option key={option} value={option}>{labels[option]}</option>)}</StyledSelect></div>
-      <div className="space-y-2"><Label htmlFor={`${party}-tax-document-file`}>Upload Document (optional)</Label><Input id={`${party}-tax-document-file`} type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={disabled || phase === "uploading" || phase === "submitting"} onChange={event => { setFile(event.target.files?.[0] ?? null); setPhase("idle"); setError(""); }} /><p className="text-xs text-muted-foreground">PDF, JPG, or PNG · up to 5 MB</p></div>
+      <div className="space-y-2"><Label htmlFor={`${party}-tax-document-file`}>Upload Document (optional)</Label><Input id={`${party}-tax-document-file`} type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={disabled || phase === "uploading" || phase === "submitting"} onChange={event => { setFile(event.target.files?.[0] ?? null); setPhase("idle"); setError(""); }} /><p className="text-xs text-muted-foreground">PDF, JPG, or PNG - up to 5 MB</p></div>
       {file && <Button type="button" variant="outline" disabled={disabled || phase === "uploading" || phase === "submitting"} onClick={() => { setFile(null); setPhase("idle"); setError(""); const input = document.getElementById(`${party}-tax-document-file`) as HTMLInputElement | null; if (input) input.value = ""; }}>Skip for Now</Button>}
       {type === "bir_cor" && <div className="space-y-2"><Label htmlFor={`${party}-tax-registered-name`}>Registered business name</Label><Input id={`${party}-tax-registered-name`} value={registeredName} maxLength={200} disabled={disabled} onChange={event => setRegisteredName(event.target.value)} /></div>}
       {type === "tax_exemption" && <><div className="space-y-2"><Label htmlFor={`${party}-tax-treatment`}>Claimed treatment (if known)</Label><Input id={`${party}-tax-treatment`} value={treatment} maxLength={300} disabled={disabled} onChange={event => setTreatment(event.target.value)} /></div><div className="space-y-2"><Label htmlFor={`${party}-tax-basis`}>Stated legal basis (if known)</Label><Input id={`${party}-tax-basis`} value={basis} maxLength={1000} disabled={disabled} onChange={event => setBasis(event.target.value)} /></div></>}
@@ -81,7 +80,7 @@ const TaxDocumentOnboarding = forwardRef<TaxDocumentOnboardingHandle, { party: P
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     {phase === "uploading" && <p role="status" className="text-sm">Uploading securely to private storage...</p>}
     {phase === "submitting" && <p role="status" className="text-sm">Submitting for Verification...</p>}
-    {phase === "pending" && <p role="status" className="text-sm text-muted-foreground">Document submitted — Pending Review. Status and feedback are available in Settings.</p>}
+    {phase === "pending" && <p role="status" className="text-sm text-muted-foreground">Document submitted - Pending Review. Status and feedback are available in Settings.</p>}
     {file && phase !== "submitting" && phase !== "pending" && <p className="text-sm text-muted-foreground">Selected: {file.name}. Save setup to submit for verification, or choose Skip for Now.</p>}
   </section>;
 });

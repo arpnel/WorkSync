@@ -2,6 +2,7 @@
 import { StyledSelect } from "@/components/ui/styled-select";
 import { openSavedTaxReceipt } from "@/lib/payments/receiptClient";
 import { filterPayoutHistory, paginatePayoutHistory, payoutStatusGroup, payoutStatusLabel } from "@/lib/payments/payoutHistory";
+import { buildPayoutCsv, payoutCsvFilename, type PayoutCsvFormat } from "@/lib/payments/payoutCsv";
 
 import { useEffect, useState } from "react";
 import { Wallet, ShieldCheck, Loader2, Clock3, CircleCheck, BadgeAlert, Search, ChevronLeft, ChevronRight, type LucideIcon } from "lucide-react";
@@ -111,6 +112,17 @@ export default function PayoutSettings() {
   const pageSize = 10;
   const pageCount = Math.max(1, Math.ceil(matchingPayouts.length / pageSize));
   const visiblePayouts = paginatePayoutHistory(matchingPayouts, page, pageSize);
+  const downloadCsv = (format: PayoutCsvFormat) => {
+    const rows = earnings?.payouts ?? [];
+    if (!rows.length) return;
+    const csv = buildPayoutCsv(rows, format);
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = payoutCsvFilename(format);
+    link.click();
+    URL.revokeObjectURL(url);
+  };
   if (data?.eligible === false)
     return (
       <p className="text-sm text-muted-foreground">
@@ -119,10 +131,6 @@ export default function PayoutSettings() {
     );
   return (
     <section className="space-y-7">
-      <header>
-        <h2 className="text-2xl font-semibold tracking-tight">Payouts</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Review your project earnings, transfer history, and payout account.</p>
-      </header>
       {data?.eligible && (
         <div className="space-y-4">
           <div className="flex flex-wrap items-end justify-between gap-3">
@@ -130,14 +138,10 @@ export default function PayoutSettings() {
               <h3 className="text-lg font-semibold">Earnings overview</h3>
               <p className="mt-1 text-sm text-muted-foreground">Approved project earnings and their payout progress.</p>
             </div>
-            {earnings?.payouts?.length ? <Button variant="outline" size="sm" onClick={() => {
-              const rows = earnings.payouts ?? [];
-              const columns = ["Transaction ID", "Payout ID", "Project ID", "Transfer reference", "Gross earnings PHP", "Freelancer VAT base PHP", "Freelancer VAT PHP", "Withholding basis PHP", "Withholding rate", "Withholding PHP", "Net transfer amount PHP", "Withholding date", "Withholding rule", "Exemption status", "Withholding declaration ID", "Withholding document ID", "VAT document ID", "Freelancer VAT rule", "Status", "Created", "Paid status confirmed"];
-              const csvCell = (value: unknown) => `"${String(value ?? "").replaceAll("\"", "\"\"")}"`;
-              const csv = [columns, ...rows.map((row) => [row.transactionId, row.id, row.projectId, row.transferReference, row.grossAmount, row.freelancerVatTaxableAmount, row.freelancerVatAmount, row.withholdingBasis, `${(row.withholdingRate * 100).toFixed(2)}%`, row.withholdingAmount, row.amount, row.withholdingDate, row.withholdingRule, row.withholdingExemptionStatus, row.withholdingDeclarationId, row.withholdingDocumentId, row.freelancerVatDocumentId, row.freelancerVatRule, row.status, row.createdAt, row.paidAt])].map((line) => line.map(csvCell).join(",")).join("\r\n");
-              const url = URL.createObjectURL(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
-              const link = document.createElement("a"); link.href = url; link.download = "worksync-earnings-report.csv"; link.click(); URL.revokeObjectURL(url);
-            }}>Download earnings CSV</Button> : null}
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" disabled={!earnings?.payouts?.length} onClick={() => downloadCsv("earnings-summary")}>Earnings Summary CSV</Button>
+              <Button variant="outline" size="sm" disabled={!earnings?.payouts?.length} onClick={() => downloadCsv("payout-tax-records")}>Detailed Payout &amp; Tax CSV</Button>
+            </div>
           </div>
           {earningsError ? (
             <p role="alert" className="text-sm text-destructive">{earningsError}</p>

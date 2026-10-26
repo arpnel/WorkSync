@@ -13,6 +13,7 @@ function load(path, globals = {}) {
 const tax = load("lib/payments/philippineTax.ts");
 const taxDeclaration = load("lib/tax/taxDeclaration.ts");
 const payoutHistory = load("lib/payments/payoutHistory.ts");
+const payoutCsv = load("lib/payments/payoutCsv.ts", { require: (id) => id === "@/lib/payments/payoutHistory" ? payoutHistory : null });
 const same = (actual, expected) => assert.equal(JSON.stringify(actual), JSON.stringify(expected));
 
 test("VAT-inclusive price is split without changing the amount paid", () => same(tax.calculateVat(112, "inclusive", true), { taxableAmount: 100, vatAmount: 12, total: 112, pricing: "inclusive", applies: true }));
@@ -108,13 +109,57 @@ test("payout history keeps desktop table and mobile cards while CSV exports the 
   const api = fs.readFileSync("app/api/payouts/route.ts", "utf8");
   assert.match(page, /hidden overflow-hidden rounded-xl border md:block/);
   assert.match(page, /space-y-3 md:hidden/);
-  assert.match(page, /Download earnings CSV/);
+  assert.match(page, /Earnings Summary CSV/);
+  assert.match(page, /Detailed Payout &amp; Tax CSV/);
   assert.match(page, /payout-search/);
   assert.match(page, /payout-sort/);
   assert.doesNotMatch(page, /payout-from|payout-to|payout-status|Clear filters/);
-  assert.match(page, /const rows = earnings\.payouts \?\? \[\]/);
+  assert.match(page, /const rows = earnings\?\.payouts \?\? \[\]/);
   assert.match(api, /\.eq\("recipient_id", user\.id\)/);
   assert.match(api, /\.range\(from, from \+ 499\)/);
+});
+test("payout CSV exports have the requested columns, values, dates, and filenames", () => {
+  const row = {
+    transactionId: "payment-1", id: "payout-1", projectId: "project-1", transferReference: "transfer-1",
+    createdAt: "2026-10-26T03:04:05.000Z", grossAmount: 100, freelancerVatTaxableAmount: 100,
+    freelancerVatAmount: 0, amount: 99.5, withholdingBasis: 100, withholdingRate: 0.005,
+    withholdingAmount: 0.5, withholdingDate: "2026-10-26T04:05:06.000Z", withholdingRule: "PH rule",
+    withholdingExemptionStatus: "none", withholdingDeclarationId: "decl-1", withholdingDocumentId: "cor-1",
+    freelancerVatDocumentId: null, freelancerVatRule: "not applicable", status: "paid", paidAt: "2026-10-26T05:06:07.000Z",
+  };
+  const summary = payoutCsv.payoutCsvRows([row], "earnings-summary");
+  same(summary[0], ["Created At", "Transaction ID", "Payout ID", "Project ID", "Gross Earnings (PHP)", "Freelancer VAT (PHP)", "Withholding Tax (PHP)", "Net Transfer Amount (PHP)", "Payout Status", "Transfer Reference", "Paid Status", "Confirmed At"]);
+  same(summary[1], ["2026-10-26T03:04:05.000Z", "payment-1", "payout-1", "project-1", 100, 0, 0.5, 99.5, "Paid", "transfer-1", "Confirmed", "2026-10-26T05:06:07.000Z"]);
+  const detailed = payoutCsv.payoutCsvRows([row], "payout-tax-records");
+  same(detailed[0], ["Transaction ID", "Payout ID", "Project ID", "Transfer Reference", "Created At", "Gross Earnings (PHP)", "Freelancer VAT Base (PHP)", "Freelancer VAT (PHP)", "Net Transfer Amount (PHP)", "Withholding Basis (PHP)", "Withholding Rate", "Withholding Amount (PHP)", "Withholding Date", "Withholding Rule", "Exemption Status", "Withholding Declaration ID", "Withholding Document ID", "VAT Document ID", "Freelancer VAT Rule", "Payout Status", "Paid Status", "Confirmed At"]);
+  assert.equal(detailed[1][10], "0.50%");
+  assert.equal(detailed[1][12], "2026-10-26T04:05:06.000Z");
+  assert.equal(detailed[1][17], null);
+  assert.equal(detailed[1][20], "Confirmed");
+  assert.equal(payoutCsv.payoutCsvFilename("earnings-summary", new Date("2026-10-26T03:00:00Z")), "worksync-earnings-summary-2026-10-26.csv");
+  assert.equal(payoutCsv.payoutCsvFilename("payout-tax-records", new Date("2026-10-26T03:00:00Z")), "worksync-payout-tax-records-2026-10-26.csv");
+});
+test("payout CSV keeps unknown confirmation fields blank and protects spreadsheet text", () => {
+  const row = {
+    transactionId: "payment-shared", id: "payout-2", projectId: "project-2", transferReference: '=HYPERLINK("bad")',
+    createdAt: "2026-10-26T03:04:05Z", grossAmount: 50, freelancerVatTaxableAmount: null,
+    freelancerVatAmount: null, amount: 50, withholdingBasis: null, withholdingRate: null,
+    withholdingAmount: null, withholdingDate: null, withholdingRule: 'Rule, "quoted"',
+    withholdingExemptionStatus: "not_applicable", withholdingDeclarationId: null, withholdingDocumentId: null,
+    freelancerVatDocumentId: null, freelancerVatRule: "not recorded", status: "ready", paidAt: null,
+  };
+  const csv = payoutCsv.buildPayoutCsv([row], "payout-tax-records");
+  assert.ok(csv.startsWith("\uFEFF"));
+  assert.match(csv, /"'=HYPERLINK\(""bad""\)"/);
+  assert.match(csv, /"Rule, ""quoted"""/);
+  assert.match(csv, /"Not applicable"/);
+  assert.match(csv, /"Ready","",""/);
+  assert.doesNotMatch(csv, /"Not confirmed"/);
+  const secondMilestone = { ...row, id: "payout-3", projectId: "project-3" };
+  const duplicateTransactionRows = payoutCsv.payoutCsvRows([row, secondMilestone], "earnings-summary");
+  assert.equal(duplicateTransactionRows.length, 3);
+  assert.equal(duplicateTransactionRows[1][1], duplicateTransactionRows[2][1]);
+  assert.notEqual(duplicateTransactionRows[1][2], duplicateTransactionRows[2][2]);
 });
 test("receipt PDF renders saved parties, transaction tax lines and registration context", async () => {
   const receipt = load("lib/payments/receiptPdf.ts");
@@ -387,11 +432,13 @@ test("freelancer receipt labels saved payout state and reference instead of impl
 test("payout statements expose saved transfer references and status context", () => {
   const api = fs.readFileSync("app/api/payouts/route.ts", "utf8");
   const page = fs.readFileSync("components/account/PayoutSettings.tsx", "utf8");
+  const csv = fs.readFileSync("lib/payments/payoutCsv.ts", "utf8");
   assert.match(api, /provider_transfer_id/);
   assert.match(api, /transferReference: row\.provider_transfer_id/);
-  assert.match(page, /Transfer reference/);
+  assert.match(page, /Transfer Reference/i);
   assert.match(page, /Net transfer/);
-  assert.match(page, /Paid status confirmed/);
+  assert.match(csv, /Paid Status/);
+  assert.match(csv, /Confirmed At/);
   assert.match(page, /payoutStatusLabel\(payout\.status\)/);
   assert.match(page, /payout\.withholdingAmount > 0/);
 });

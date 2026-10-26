@@ -6,7 +6,6 @@ import { databaseError } from "@/services/platform/platformService";
 import { saveProjectMeeting } from "@/services/project/projectMeetingService";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { DialogClose } from "@/components/ui/dialog";
 import { CalendarDays } from "lucide-react";
 type Meeting = {
@@ -110,18 +109,18 @@ export default function ProjectMeetings({
     }
   };
   return (
-    <Card className="border-border/80">
+    <div className="space-y-4">
       {editing === false ? (
         <>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Project meetings</CardTitle>
+          <div className="space-y-2">
+            <h2 className="text-base font-semibold">Project meetings</h2>
             <p className="text-sm text-muted-foreground">
               View scheduled meeting times, or schedule a conversation with your
               project partner. Use the project conversation to start a video
               call.
             </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
+          </div>
+          <div className="space-y-4">
             {error && (
               <p role="alert" className="text-sm text-destructive">
                 {error}
@@ -201,24 +200,24 @@ export default function ProjectMeetings({
                     setStart("");
                   }}
                 >
-                  + Schedule meeting
+                  Schedule meeting
                 </Button>
               )}
             </div>
-          </CardContent>
+          </div>
         </>
       ) : (
         <>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">
+          <div className="space-y-2">
+            <h2 className="text-base font-semibold">
               {editing ? "Edit meeting" : "Schedule meeting"}
-            </CardTitle>
+            </h2>
             <p className="text-sm text-muted-foreground">
               Set a title and choose when you want to meet with your project
               partner.
             </p>
-          </CardHeader>
-          <CardContent>
+          </div>
+          <div>
             {error && (
               <p role="alert" className="mb-4 text-sm text-destructive">
                 {error}
@@ -261,16 +260,16 @@ export default function ProjectMeetings({
                     setError("");
                   }}
                 >
-                  ← Back
+                  Back
                 </Button>
                 <Button disabled={busy}>
                   {busy ? "Saving…" : "Save meeting"}
                 </Button>
               </div>
             </form>
-          </CardContent>
+          </div>
         </>
       )}
-    </Card>
+    </div>
   );
 }

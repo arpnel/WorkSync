@@ -1,7 +1,6 @@
 "use client";
 import { ProjectProgressRing } from "./ProjectProgressRing";
 
-import { ProjectResolutionPanel } from "@/components/project/ProjectResolutionPanel";
 import { Badge } from "@/components/ui/badge";
 import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
@@ -241,15 +240,6 @@ export function ProjectCard({ project, onChanged }: ProjectCardProps) {
                 <p className="text-sm text-destructive">{responseError}</p>
               )}
             </div>
-            <ProjectResolutionPanel
-              orderId={project.orderId}
-              projectId={project.projectId}
-              status="pending"
-              userId={project.currentUserId ?? ""}
-              onRefresh={async () => {
-                await onChanged?.();
-              }}
-            />
             {project.counterpartyUserId && (
               <Button
                 type="button"

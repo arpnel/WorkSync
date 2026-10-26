@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { StyledSelect } from "@/components/ui/styled-select";
@@ -137,11 +138,12 @@ export default function TaxDocuments() {
   const options = party === "freelancer" ? freelancerPurposes : clientPurposes;
   const selected = options.find((option) => option.value === purpose) ?? options[0];
   return (
-    <section className="space-y-5 rounded-xl border p-4">
-      <div>
-        <h3 className="font-semibold">Tax documents</h3>
-        <p className="mt-1 text-sm text-muted-foreground">Choose a document to submit for review. PDF, JPG, or PNG up to 5 MB.</p>
-      </div>
+    <Card>
+      <CardHeader>
+        <CardTitle>Tax documents</CardTitle>
+        <CardDescription>Choose a document to submit for review. PDF, JPG, or PNG up to 5 MB.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
       {party === "freelancer" && (
         <div className="grid gap-4 rounded-lg bg-muted/30 p-4 sm:grid-cols-2">
           <div>
@@ -213,7 +215,8 @@ export default function TaxDocuments() {
       )}
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       {notice && <p role="status" className="text-sm text-primary">{notice}</p>}
-    </section>
+      </CardContent>
+    </Card>
   );
 }
 

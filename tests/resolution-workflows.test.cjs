@@ -74,7 +74,9 @@ test("cancellation and dispute eligibility preserves completed and unsigned stag
     assert.equal(s.canRequestCancellation(state), false);
     assert.equal(s.canOpenDispute(state), false);
   }
-  assert.equal(s.canRequestCancellation("accepted"), true);
+  assert.equal(s.canRequestCancellation("accepted"), false);
+  assert.equal(s.canRequestCancellation("accepted", "pending"), false);
+  assert.equal(s.canRequestCancellation("accepted", "active"), true);
   assert.equal(s.canOpenDispute("accepted"), false);
   assert.equal(s.canOpenDispute("Active"), true);
 });

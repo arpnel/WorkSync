@@ -11,6 +11,7 @@ import {
   checkoutUrl,
   type CheckoutSession,
 } from "@/lib/payments/paymongo";
+import { calculateVat } from "@/lib/payments/philippineTax";
 
 export function paymentDatabase() {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY)
@@ -96,7 +97,77 @@ async function projectForUser(db: DB, projectId: string, userId: string) {
       "Only project participants can view this payment.",
       403,
     );
-  return { project, isClient: userId === client.data.user_id };
+  return {
+    project,
+    isClient: userId === client.data.user_id,
+    freelancerUserId: freelancer.data.user_id,
+  };
+}
+
+type ProjectVatBreakdown = {
+  status: "applicable" | "not_recorded" | "unavailable";
+  taxableAmount: number | null;
+  amount: number | null;
+  rate: number | null;
+};
+
+const roundMoney = (amount: number) => Math.round((amount + Number.EPSILON) * 100) / 100;
+
+async function getProjectVatBreakdown(
+  db: DB,
+  project: { project_id: string; order_id: string | null; application_id: string | null; budget: number },
+  freelancerUserId: string,
+  fallbackGross: number,
+): Promise<ProjectVatBreakdown> {
+  const profile = await db.from("freelancer_tax_profiles")
+    .select("freelancer_vat_applicable")
+    .eq("user_id", freelancerUserId)
+    .maybeSingle();
+  if (profile.error) return { status: "unavailable", taxableAmount: null, amount: null, rate: null };
+  if (profile.data?.freelancer_vat_applicable !== true)
+    return { status: "not_recorded", taxableAmount: null, amount: null, rate: null };
+
+  const today = new Date().toISOString().slice(0, 10);
+  const proof = await db.from("tax_documents")
+    .select("document_id")
+    .eq("user_id", freelancerUserId)
+    .eq("party_type", "freelancer")
+    .eq("document_type", "vat_registration")
+    .eq("status", "verified")
+    .or(`expires_at.is.null,expires_at.gte.${today}`)
+    .order("reviewed_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (proof.error) return { status: "unavailable", taxableAmount: null, amount: null, rate: null };
+  if (!proof.data) return { status: "not_recorded", taxableAmount: null, amount: null, rate: null };
+
+  let gross = fallbackGross;
+  const contractQuery = db.from("contracts").select("final_price");
+  const contractResult = project.order_id
+    ? await contractQuery.eq("order_id", project.order_id).maybeSingle()
+    : project.application_id
+      ? await contractQuery.eq("application_id", project.application_id).maybeSingle()
+      : { data: null, error: null };
+  if (contractResult.error || !Number.isFinite(Number(contractResult.data?.final_price)))
+    return { status: "unavailable", taxableAmount: null, amount: null, rate: null };
+  gross = Number(contractResult.data?.final_price);
+  if (!Number.isFinite(gross) || gross < 0)
+    return { status: "unavailable", taxableAmount: null, amount: null, rate: null };
+
+  const milestones = await db.from("milestones").select("amount").eq("project_id", project.project_id).order("display_order", { ascending: true });
+  const milestoneAmounts = (milestones.data ?? []).map((row) => Number(row.amount)).filter((amount) => Number.isFinite(amount) && amount >= 0);
+  const milestoneTotal = roundMoney(milestoneAmounts.reduce((sum, amount) => sum + amount, 0));
+  const grossParts = !milestones.error && milestoneAmounts.length > 0 && milestoneTotal === roundMoney(gross)
+    ? milestoneAmounts
+    : [gross];
+  const vatParts = grossParts.map((amount) => calculateVat(amount, "inclusive", true));
+  const taxableAmount = roundMoney(vatParts.reduce((sum, part) => sum + part.taxableAmount, 0));
+  return {
+    status: "applicable",
+    taxableAmount,
+    amount: roundMoney(vatParts.reduce((sum, part) => sum + part.vatAmount, 0)),
+    rate: vatParts[0]?.applies ? 0.12 : null,
+  };
 }
 async function findPayment(db: DB, id: string) {
   const { data, error } = await db
@@ -183,10 +254,16 @@ export async function getProjectPayment(
   projectId: string,
   userId: string,
 ) {
-  await projectForUser(db, projectId, userId);
+  const { project, freelancerUserId } = await projectForUser(db, projectId, userId);
   await storageReady(db);
   const row = await findPayment(db, paymentId(projectId));
-  if (!row) return { status: "unpaid", mode: paymentMode() };
+  const vatBreakdown = await getProjectVatBreakdown(
+    db,
+    project,
+    freelancerUserId,
+    row?.amount ?? Number(project.budget),
+  );
+  if (!row) return { status: "unpaid", mode: paymentMode(), vatBreakdown };
   let paid = row.status === "paid";
   let paidAt: string | null = null;
   if (row.transaction_reference) {
@@ -221,6 +298,27 @@ export async function getProjectPayment(
         .eq("project_id", projectId)
         .eq("mode", paymentMode())
         .maybeSingle();
+  const settlementPayouts = upgraded
+    ? (details?.data?.payouts ?? []).filter(
+        (r: { mode: string }) => r.mode === paymentMode(),
+      )
+    : payout.data ? [payout.data] : [];
+  const savedVatRows = settlementPayouts.filter((r: Record<string, unknown>) =>
+    Number.isFinite(Number(r.freelancer_vat_taxable_amount)) &&
+    Number.isFinite(Number(r.freelancer_vat_amount)),
+  );
+  const finalVatBreakdown: ProjectVatBreakdown = paid && savedVatRows.length > 0
+    ? {
+        status: savedVatRows.some((r: Record<string, unknown>) => Number(r.freelancer_vat_rate ?? 0) > 0)
+          ? "applicable"
+          : "not_recorded",
+        taxableAmount: roundMoney(savedVatRows.reduce((sum: number, r: Record<string, unknown>) => sum + Number(r.freelancer_vat_taxable_amount), 0)),
+        amount: roundMoney(savedVatRows.reduce((sum: number, r: Record<string, unknown>) => sum + Number(r.freelancer_vat_amount), 0)),
+        rate: savedVatRows.find((r: Record<string, unknown>) => Number(r.freelancer_vat_rate ?? 0) > 0)
+          ? Number(savedVatRows.find((r: Record<string, unknown>) => Number(r.freelancer_vat_rate ?? 0) > 0)?.freelancer_vat_rate)
+          : null,
+      }
+    : vatBreakdown;
   return {
     status: paid
       ? "paid"
@@ -230,15 +328,12 @@ export async function getProjectPayment(
     amount: row.amount,
     paymentId: row.payment_id,
     paymentMethod: row.payment_method,
+    vatBreakdown: finalVatBreakdown,
     payout: payout.error ? { status: "unavailable" } : payout.data,
     settlementVersion: upgraded ? 2 : 1,
     autoAccept: details?.data?.autoAccept === true,
     finalMilestoneId: details?.data?.finalMilestoneId ?? null,
-    payouts: upgraded
-      ? (details?.data?.payouts ?? []).filter(
-          (r: { mode: string }) => r.mode === paymentMode(),
-        )
-      : undefined,
+    payouts: upgraded ? settlementPayouts : undefined,
     refunds: upgraded
       ? (details?.data?.refunds ?? []).filter(
           (r: { mode: string }) => r.mode === paymentMode(),

@@ -42,10 +42,8 @@ export function canRequestCancellation(
   )
     return false;
   const order = orderStatus.toLowerCase();
-  return (
-    ["pending", "accepted"].includes(order) ||
-    (order === "converted" && (project === "active" || project === "revision"))
-  );
+  const projectIsActive = ["active", "in_progress", "revision"].includes(project ?? "");
+  return projectIsActive && ["accepted", "converted", "active", "in_progress"].includes(order);
 }
 export function canOpenDispute(status: string) {
   return ["active", "in_progress", "revision"].includes(status.toLowerCase());

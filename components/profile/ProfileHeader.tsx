@@ -13,6 +13,7 @@ interface ProfileHeaderProps {
   isOwner?: boolean;
 
   onEdit?: () => void;
+  onEditPhoto?: () => void;
 
   onAvatarUpdate?: (file: File) => Promise<boolean>;
   onBannerUpdate?: (file: File) => Promise<boolean>;
@@ -23,6 +24,7 @@ export default function ProfileHeader({
   googleAvatar,
   isOwner = true,
   onEdit,
+  onEditPhoto,
 }: ProfileHeaderProps) {
   const avatar = profile.avatar_url || googleAvatar || undefined;
 
@@ -61,7 +63,7 @@ export default function ProfileHeader({
           <Button
             size="icon"
             aria-label="Edit profile cover"
-            onClick={onEdit}
+            onClick={onEditPhoto ?? onEdit}
             variant="secondary"
             className="absolute right-5 top-5 z-10 rounded-full shadow-lg backdrop-blur"
           >
@@ -74,7 +76,7 @@ export default function ProfileHeader({
       <div className="px-4 pb-5 pt-0 sm:px-6 sm:pb-6">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
           {/* Left */}
-          <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-end">
+          <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-start">
             <Avatar className="-mt-10 h-24 w-24 shrink-0 border-4 border-card shadow-sm">
               <AvatarImage src={avatar} />
               <AvatarFallback className="text-3xl font-semibold">

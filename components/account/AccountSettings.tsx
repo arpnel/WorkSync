@@ -3,7 +3,6 @@
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import TaxDocuments from "@/components/account/TaxDocuments";
 import { useEffect, useState, type FormEvent } from "react";
-import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { PasswordRequirements } from "@/components/auth/PasswordRequirements";
@@ -268,19 +267,6 @@ export default function AccountSettings() {
             }
           >
             Sign out other sessions
-          </Button>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>Profile</CardTitle>
-          <CardDescription>
-            Update your public profile, experience, portfolio and services.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button asChild variant="outline">
-            <Link href="/home/profile">Edit profile</Link>
           </Button>
         </CardContent>
       </Card>

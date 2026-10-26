@@ -124,10 +124,12 @@ export function createReceiptPdf(details: ReceiptDetails) {
 
   put("WorkSync", details.logoJpeg ? 104 : 54, 750, 14, true, "0.10 0.20 0.34");
   if (details.logoJpeg) page.push("q 44 0 0 40 54 725 cm /Im1 Do Q");
-  putRight("PAYMENT RECEIPT", 750, 16, true, "0.08 0.11 0.16");
+  const isFreelancer = details.audience === "freelancer";
+  putRight(isFreelancer ? "FREELANCER PAYOUT STATEMENT" : "PAYMENT RECEIPT", 750, isFreelancer ? 13 : 16, true, "0.08 0.11 0.16");
   box(54, 636, 504, 76, "0.97 0.99 0.98", "0.87 0.91 0.89");
-  put("TOTAL PAID BY CLIENT", 72, 690, 9, true, "0.39 0.43 0.48");
-  put(php(details.amount), 72, 665, 20, true, "0.08 0.11 0.16");
+  const headlineAmount = isFreelancer ? details.freelancerNetPayout : details.amount;
+  put(isFreelancer ? "NET PAYOUT TO FREELANCER" : "TOTAL PAID BY CLIENT", 72, 690, 9, true, "0.39 0.43 0.48");
+  put(headlineAmount == null ? "Not recorded" : php(headlineAmount), 72, 665, 20, true, "0.08 0.11 0.16");
   put(details.paidAt ? new Date(details.paidAt).toLocaleString("en-PH", { timeZone: "Asia/Manila", month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true }) : "Payment date not recorded", 72, 647, 8, false, "0.39 0.43 0.48");
   y = 610; section("Transaction details");
   const detail = (label: string, value: string) => {
@@ -155,7 +157,11 @@ export function createReceiptPdf(details: ReceiptDetails) {
   });
   const taxRowHeight = !details.taxLines.length || details.taxLines.length > 4 ? 39 : Math.max(52, Math.ceil(taxNotes.join(" | ").length / 68) * 13 + 25);
   const platformVatHeight = details.platformVat != null ? 39 : (details.platformTaxNote ? 48 : 0);
-  const breakdownHeight = 36 + 39 + taxRowHeight + platformVatHeight;
+  const breakdownHeight = details.audience === "client"
+    ? 36 + taxRowHeight
+    : details.audience === "freelancer"
+      ? 39 + (details.freelancerVat > 0 ? 39 : 0) + 39 + 39
+      : 36 + 39 + taxRowHeight + platformVatHeight;
   box(54, y - breakdownHeight - 5, 504, breakdownHeight + 12, "1 1 1", "0.87 0.89 0.91");
   const breakdownRow = (label: string, note: string, value: string, height = 39) => {
     put(label, 70, y, 10, true, "0.13 0.16 0.20");
@@ -164,14 +170,14 @@ export function createReceiptPdf(details: ReceiptDetails) {
     y -= height;
     line(y + 1, "0.90 0.92 0.94");
   };
-  breakdownRow("Client payment", "", php(details.amount), 36);
   if (details.audience === "client") {
+    breakdownRow("Client payment", "", php(details.amount), 36);
     if (!details.taxLines.length) breakdownRow("VAT breakdown", "No verified VAT amount is recorded for this payment", "Not recorded", 39);
     else breakdownRow("VAT included in service price", taxNotes.join(" | "), details.freelancerVat > 0 ? php(details.freelancerVat) : "Not recorded", taxRowHeight);
   } else if (details.audience === "freelancer") {
     breakdownRow("Gross earnings", "Saved payout amount before deductions", details.serviceGrossEarnings == null ? "Not recorded" : php(details.serviceGrossEarnings), 39);
     if (details.freelancerVat > 0) breakdownRow("Freelancer VAT", "Included in the saved agreed amount", php(details.freelancerVat), 39);
-    if (details.withholding > 0) breakdownRow("Marketplace withholding", "Deducted from freelancer payout", php(details.withholding), 39);
+    breakdownRow("Marketplace withholding", details.withholding > 0 ? "Deducted from freelancer payout" : "No withholding amount is recorded for this payout", php(details.withholding), 39);
     const payoutStatuses = [...new Set(details.taxLines.map(line => line.payoutStatus).filter((status): status is string => Boolean(status)))];
     const payoutReferences = [...new Set(details.taxLines.map(line => line.transferReference).filter((reference): reference is string => Boolean(reference)))];
     const payoutStatusNote = payoutStatuses.length
@@ -179,6 +185,7 @@ export function createReceiptPdf(details: ReceiptDetails) {
       : "Saved net amount; payout transfer status not recorded";
     breakdownRow("Net payout amount", payoutStatusNote, details.freelancerNetPayout == null ? "Not recorded" : php(details.freelancerNetPayout), 39);
   } else {
+    breakdownRow("Client payment", "", php(details.amount), 36);
     breakdownRow("WorkSync service fee", details.platformServiceFee == null ? "Fee details not recorded" : "", details.platformServiceFee == null ? "Not available" : php(details.platformServiceFee), 39);
     if (details.platformVat != null) breakdownRow("WorkSync platform VAT", details.platformVatRate == null ? "Saved platform VAT amount" : (details.platformVatRate * 100).toFixed(2) + "% of " + php(details.platformVatBase ?? 0) + (details.platformTaxTreatment ? "; " + details.platformTaxTreatment : ""), php(details.platformVat), 39);
     else if (details.platformTaxNote) breakdownRow("WorkSync platform tax", details.platformTaxNote, "", 48);

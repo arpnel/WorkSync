@@ -31,7 +31,7 @@ export function ProjectWorkspaceHeader({
 }: Props) {
   if (compact)
     return (
-      <header className="flex items-start gap-1 border-b pb-4">
+      <header className="flex items-center gap-1 border-b pb-4">
         <Button
           type="button"
           variant="ghost"
@@ -44,10 +44,10 @@ export function ProjectWorkspaceHeader({
           <ChevronLeft className="size-5 sm:size-7" />
           Project
         </Button>
-        <span aria-hidden="true" className="mt-1 text-xl text-muted-foreground">
+        <span aria-hidden="true" className="text-xl text-muted-foreground">
           |
         </span>
-        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-3 pt-1">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-3">
           <h1 className="min-w-0 flex-1 break-words text-xl font-semibold text-foreground dark:text-foreground/65 sm:text-3xl">
             {title}
           </h1>

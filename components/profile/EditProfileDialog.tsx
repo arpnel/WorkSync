@@ -49,6 +49,7 @@ import { Textarea } from "@/components/ui/textarea";
 interface EditProfileDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  initialTab?: "personal" | "photos";
 
   profile: Profile;
 
@@ -66,6 +67,7 @@ export default function EditProfileDialog(props: EditProfileDialogProps) {
 function EditProfileContent({
   open,
   onOpenChange,
+  initialTab = "personal",
   profile,
   onSave,
   onAvatarUpdate,
@@ -327,7 +329,7 @@ function EditProfileContent({
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="personal" className="min-h-0 flex-1 gap-0">
+        <Tabs defaultValue={initialTab} className="min-h-0 flex-1 gap-0">
           <div className="shrink-0 border-b bg-muted/20 px-5 py-3 sm:px-8">
             <TabsList
               className="h-auto w-full justify-start sm:w-auto"

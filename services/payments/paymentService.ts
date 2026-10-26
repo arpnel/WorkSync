@@ -2,6 +2,12 @@
 export interface ProjectPayment {
   status: "unpaid" | "pending" | "processing" | "paid";
   mode: "test" | "live";
+  vatBreakdown?: {
+    status: "applicable" | "not_recorded" | "unavailable";
+    taxableAmount: number | null;
+    amount: number | null;
+    rate: number | null;
+  };
   amount?: number;
   paidAt?: string | null;
   paymentId?: string;

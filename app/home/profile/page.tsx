@@ -29,6 +29,12 @@ export default function ProfilePage() {
   } = useProfile();
 
   const [editOpen, setEditOpen] = useState(false);
+  const [editInitialTab, setEditInitialTab] = useState<"personal" | "photos">("personal");
+
+  const openProfileEditor = (tab: "personal" | "photos") => {
+    setEditInitialTab(tab);
+    setEditOpen(true);
+  };
 
   const handleAvatarUpdate = async (file: File) => {
     return await updateAvatarImage(file);
@@ -67,9 +73,8 @@ export default function ProfilePage() {
         <ProfileHeader
           profile={profile}
           isOwner
-          onEdit={() => {
-            setEditOpen(true);
-          }}
+          onEdit={() => openProfileEditor("personal")}
+          onEditPhoto={() => openProfileEditor("photos")}
         />
 
         <div className="grid min-w-0 items-start gap-6 xl:grid-cols-[280px_minmax(0,1fr)]">
@@ -131,6 +136,7 @@ export default function ProfilePage() {
         <EditProfileDialog
           open={editOpen}
           onOpenChange={setEditOpen}
+          initialTab={editInitialTab}
           profile={profile}
           onSave={handleProfileUpdate}
           onAvatarUpdate={handleAvatarUpdate}

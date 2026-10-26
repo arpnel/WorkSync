@@ -274,9 +274,38 @@ export function PaymentPanel({
         )}
         <dl className="space-y-3 text-sm" aria-label="Payment breakdown">
           <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
-            <dt className="text-muted-foreground">Agreed total</dt>
+            <dt className="text-muted-foreground">
+              {payment?.vatBreakdown?.status === "applicable"
+                ? "Agreed total (VAT included)"
+                : "Agreed total"}
+            </dt>
             <dd className="font-medium tabular-nums">{money(total)}</dd>
           </div>
+          {payment?.vatBreakdown?.status === "applicable" && (
+            <>
+              <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
+                <dt className="text-muted-foreground">Amount before VAT</dt>
+                <dd className="tabular-nums">{money(payment.vatBreakdown.taxableAmount ?? undefined)}</dd>
+              </div>
+              <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
+                <dt className="text-muted-foreground">
+                  VAT included ({((payment.vatBreakdown.rate ?? 0) * 100).toFixed(0)}%)
+                </dt>
+                <dd className="tabular-nums">{money(payment.vatBreakdown.amount ?? undefined)}</dd>
+              </div>
+            </>
+          )}
+          {payment?.vatBreakdown?.status === "not_recorded" && (
+            <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-xs">
+              <dt className="text-muted-foreground">VAT breakdown</dt>
+              <dd className="text-muted-foreground">Not configured</dd>
+            </div>
+          )}
+          {payment?.vatBreakdown?.status === "unavailable" && (
+            <p className="text-xs text-muted-foreground">
+              VAT breakdown is unavailable. The agreed total remains unchanged.
+            </p>
+          )}
           <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
             <dt className="text-muted-foreground">Amount paid</dt>
             <dd className="font-medium tabular-nums">{money(paidAmount)}</dd>

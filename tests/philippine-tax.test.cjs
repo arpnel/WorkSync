@@ -81,22 +81,21 @@ test("declaration UI, submission API, and admin acceptance confirm the selected 
   assert.match(adminApi, /body\.taxYearConfirmed !== true/);
   assert.match(adminApi, /reviewer confirmed the BIR document declares tax year/);
 });
-test("payout history filters by IDs, status, and inclusive Manila calendar dates, then sorts", () => {
+test("payout history searches available IDs and sorts newest or oldest", () => {
   const rows = [
     { id: "p1", transactionId: "payment-a", transferReference: "ref-a", status: "paid", createdAt: "2026-02-01T17:00:00.000Z" },
     { id: "p2", transactionId: "payment-b", transferReference: null, status: "processing", createdAt: "2026-02-01T10:00:00.000Z" },
     { id: "p3", transactionId: "payment-c", transferReference: "ref-c", status: "ready", createdAt: "2026-01-31T16:00:00.000Z" },
     { id: "p4", transactionId: "payment-d", transferReference: null, status: "needs_review", createdAt: "2026-02-02T02:00:00.000Z" },
   ];
-  const filters = (overrides = {}) => ({ search: "", status: "all", startDate: "", endDate: "", sortOrder: "newest", ...overrides });
+  const filters = (overrides = {}) => ({ search: "", sortOrder: "newest", ...overrides });
   assert.deepEqual(payoutHistory.filterPayoutHistory(rows, filters()).map((row) => row.id), ["p4", "p1", "p2", "p3"]);
   assert.deepEqual(payoutHistory.filterPayoutHistory(rows, filters({ sortOrder: "oldest" })).map((row) => row.id), ["p3", "p2", "p1", "p4"]);
-  assert.deepEqual(payoutHistory.filterPayoutHistory(rows, filters({ startDate: "2026-02-02", endDate: "2026-02-02" })).map((row) => row.id), ["p4", "p1"]);
-  assert.deepEqual(payoutHistory.filterPayoutHistory(rows, filters({ status: "processing" })).map((row) => row.id), ["p2"]);
-  assert.deepEqual(payoutHistory.filterPayoutHistory(rows, filters({ status: "paid" })).map((row) => row.id), ["p1"]);
-  assert.deepEqual(payoutHistory.filterPayoutHistory(rows, filters({ status: "failed" })).map((row) => row.id), []);
   assert.deepEqual(payoutHistory.filterPayoutHistory(rows, filters({ search: "REF-C" })).map((row) => row.id), ["p3"]);
   assert.deepEqual(payoutHistory.filterPayoutHistory(rows, filters({ search: "payment-b" })).map((row) => row.id), ["p2"]);
+  assert.deepEqual(payoutHistory.filterPayoutHistory(rows, filters({ search: "no-match" })), []);
+  assert.equal(payoutHistory.payoutStatusGroup("pending"), "processing");
+  assert.equal(payoutHistory.payoutStatusGroup("needs_review"), "needs_review");
 });
 test("payout history pagination returns bounded pages and supports empty results", () => {
   const rows = Array.from({ length: 23 }, (_, index) => index);
@@ -110,6 +109,9 @@ test("payout history keeps desktop table and mobile cards while CSV exports the 
   assert.match(page, /hidden overflow-hidden rounded-xl border md:block/);
   assert.match(page, /space-y-3 md:hidden/);
   assert.match(page, /Download earnings CSV/);
+  assert.match(page, /payout-search/);
+  assert.match(page, /payout-sort/);
+  assert.doesNotMatch(page, /payout-from|payout-to|payout-status|Clear filters/);
   assert.match(page, /const rows = earnings\.payouts \?\? \[\]/);
   assert.match(api, /\.eq\("recipient_id", user\.id\)/);
   assert.match(api, /\.range\(from, from \+ 499\)/);

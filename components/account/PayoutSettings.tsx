@@ -77,9 +77,6 @@ export default function PayoutSettings() {
   const [confirmed, setConfirmed] = useState(false);
   const [repeat, setRepeat] = useState("");
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [page, setPage] = useState(0);
   const [form, setForm] = useState({
@@ -110,15 +107,10 @@ export default function PayoutSettings() {
     };
   }, []);
   const payoutRows = earnings?.payouts ?? [];
-  const availableStatusFilters = ["ready", "processing", "paid", "failed", "needs_review", "awaiting_account", "cancelled"]
-    .filter((filter) => payoutRows.some((row) => payoutStatusGroup(row.status) === filter));
-  const matchingPayouts = filterPayoutHistory(payoutRows, { search, status: statusFilter, startDate, endDate, sortOrder });
+  const matchingPayouts = filterPayoutHistory(payoutRows, { search, sortOrder });
   const pageSize = 10;
   const pageCount = Math.max(1, Math.ceil(matchingPayouts.length / pageSize));
   const visiblePayouts = paginatePayoutHistory(matchingPayouts, page, pageSize);
-  const clearHistoryFilters = () => {
-    setSearch(""); setStatusFilter("all"); setStartDate(""); setEndDate(""); setSortOrder("newest"); setPage(0);
-  };
   if (data?.eligible === false)
     return (
       <p className="text-sm text-muted-foreground">
@@ -194,42 +186,23 @@ export default function PayoutSettings() {
             </div>
             <p className="text-sm text-muted-foreground" aria-live="polite">{matchingPayouts.length} {matchingPayouts.length === 1 ? "transaction" : "transactions"}</p>
           </div>
-          <div className="grid gap-3 rounded-xl border bg-card p-4 sm:grid-cols-2 xl:grid-cols-5">
-            <div className="relative sm:col-span-2 xl:col-span-1">
+          <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:flex-row sm:items-end">
+            <div className="relative min-w-0 flex-1">
               <Label htmlFor="payout-search">Search reference</Label>
               <Search className="pointer-events-none absolute left-3 top-9 size-4 text-muted-foreground" aria-hidden="true" />
               <Input id="payout-search" className="mt-1 pl-9" value={search} placeholder="Payout or transfer ID" onChange={(event) => { setSearch(event.target.value); setPage(0); }} />
             </div>
-            <div>
-              <Label htmlFor="payout-status">Status</Label>
-              <StyledSelect id="payout-status" className="mt-1 h-10 w-full rounded-lg border bg-background px-3 text-sm" value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(0); }}>
-                <option value="all">All statuses</option>
-                {availableStatusFilters.map((status) => <option key={status} value={status}>{payoutStatusLabel(status)}</option>)}
-              </StyledSelect>
-            </div>
-            <div>
-              <Label htmlFor="payout-from">Created from</Label>
-              <Input id="payout-from" className="mt-1" type="date" value={startDate} max={endDate || undefined} onChange={(event) => { setStartDate(event.target.value); setPage(0); }} />
-            </div>
-            <div>
-              <Label htmlFor="payout-to">Created to</Label>
-              <Input id="payout-to" className="mt-1" type="date" value={endDate} min={startDate || undefined} onChange={(event) => { setEndDate(event.target.value); setPage(0); }} />
-            </div>
-            <div>
+            <div className="w-full shrink-0 sm:w-48">
               <Label htmlFor="payout-sort">Sort</Label>
               <StyledSelect id="payout-sort" className="mt-1 h-10 w-full rounded-lg border bg-background px-3 text-sm" value={sortOrder} onChange={(event) => { setSortOrder(event.target.value as "newest" | "oldest"); setPage(0); }}>
                 <option value="newest">Newest first</option><option value="oldest">Oldest first</option>
               </StyledSelect>
             </div>
-            <div className="flex items-end sm:col-span-2 xl:col-span-5">
-              <Button type="button" variant="ghost" size="sm" onClick={clearHistoryFilters} disabled={!search && statusFilter === "all" && !startDate && !endDate && sortOrder === "newest"}>Clear filters</Button>
-              {startDate && endDate && startDate > endDate && <p role="alert" className="ml-3 pb-2 text-xs text-destructive">Start date must be on or before end date.</p>}
-            </div>
           </div>
           {matchingPayouts.length === 0 ? (
             <div className="rounded-xl border border-dashed px-4 py-10 text-center">
-              <p className="font-medium">No transactions match these filters</p>
-              <p className="mt-1 text-sm text-muted-foreground">Try another reference, status, or date range.</p>
+              <p className="font-medium">{search.trim() ? "No transactions match your search" : "No payout transactions yet"}</p>
+              {search.trim() && <p className="mt-1 text-sm text-muted-foreground">Try a different payout, transaction, or transfer reference.</p>}
             </div>
           ) : (
             <>
@@ -255,7 +228,7 @@ export default function PayoutSettings() {
                 </article>)}
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-                <p className="text-muted-foreground">Showing {page * pageSize + 1}–{Math.min((page + 1) * pageSize, matchingPayouts.length)} of {matchingPayouts.length}</p>
+                <p className="text-muted-foreground">Showing {page * pageSize + 1} to {Math.min((page + 1) * pageSize, matchingPayouts.length)} of {matchingPayouts.length}</p>
                 <div className="flex items-center gap-2"><Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((value) => Math.max(0, value - 1))}><ChevronLeft className="mr-1 size-4" />Previous</Button><span className="tabular-nums text-muted-foreground">Page {page + 1} of {pageCount}</span><Button variant="outline" size="sm" disabled={page + 1 >= pageCount} onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))}>Next<ChevronRight className="ml-1 size-4" /></Button></div>
               </div>
             </>

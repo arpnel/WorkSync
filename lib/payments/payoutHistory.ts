@@ -8,9 +8,6 @@ export type PayoutHistoryItem = {
 
 export type PayoutHistoryFilters = {
   search: string;
-  status: string;
-  startDate: string;
-  endDate: string;
   sortOrder: "newest" | "oldest";
 };
 
@@ -29,24 +26,12 @@ export function payoutStatusLabel(status: string) {
   } as Record<string, string>)[status] ?? status.replaceAll("_", " ");
 }
 
-export function payoutCreatedDay(value: string) {
-  const parts = new Intl.DateTimeFormat("en", {
-    year: "numeric", month: "2-digit", day: "2-digit", timeZone: "Asia/Manila",
-  }).formatToParts(new Date(value));
-  const part = (type: string) => parts.find((item) => item.type === type)?.value ?? "";
-  return `${part("year")}-${part("month")}-${part("day")}`;
-}
-
 export function filterPayoutHistory<T extends PayoutHistoryItem>(rows: T[], filters: PayoutHistoryFilters) {
   const needle = filters.search.trim().toLowerCase();
   return rows.filter((row) => {
     const matchesSearch = !needle || [row.id, row.transactionId, row.transferReference]
       .some((value) => value?.toLowerCase().includes(needle));
-    const day = payoutCreatedDay(row.createdAt);
-    return matchesSearch
-      && (filters.status === "all" || payoutStatusGroup(row.status) === filters.status)
-      && (!filters.startDate || day >= filters.startDate)
-      && (!filters.endDate || day <= filters.endDate);
+    return matchesSearch;
   }).sort((a, b) => filters.sortOrder === "newest"
     ? new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     : new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());

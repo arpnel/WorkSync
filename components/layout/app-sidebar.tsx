@@ -124,7 +124,7 @@ export function AppSidebar() {
             )}
           </div>
         </SidebarHeader>
-        <SidebarContent className="overflow-hidden">
+        <SidebarContent className="overscroll-contain">
           <SidebarGroup className={collapsed ? "p-0.5" : "p-3"}>
             {navigation(collapsed)}
           </SidebarGroup>

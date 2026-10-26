@@ -168,7 +168,9 @@ export default function ActivityOverview({
         .catch((cause) => {
           if (alive && request === version)
             setError(
-              cause instanceof Error ? cause.message : "Unable to load activity.",
+              cause instanceof Error
+                ? cause.message
+                : "Unable to load activity.",
             );
         });
     };
@@ -496,7 +498,7 @@ export default function ActivityOverview({
       )}
       {charts && (
         <div
-          className={`col-span-12 min-w-0 @min-[900px]:col-span-1 @min-[900px]:col-start-1 ${tools ? "@min-[900px]:-mt-20" : ""} ${tools && phoneView !== "performance" ? "hidden md:block" : ""}`}
+          className={`col-span-12 min-w-0 @min-[900px]:col-span-1 @min-[900px]:col-start-1 ${tools && phoneView !== "performance" ? "hidden md:block" : ""}`}
         >
           {charts(projectActivity)}
         </div>

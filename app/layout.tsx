@@ -6,6 +6,7 @@ import {
   Source_Serif_4,
   JetBrains_Mono,
 } from "next/font/google";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -89,6 +90,7 @@ export default function RootLayout({
             <Toaster />
           </TooltipProvider>
         </ThemeProvider>
+        <SpeedInsights />
       </body>
     </html>
   );

@@ -28,8 +28,7 @@ export default function ProjectMeetings({
     [busy, setBusy] = useState(false),
     [editing, setEditing] = useState<string | null | false>(false),
     [title, setTitle] = useState(""),
-    [start, setStart] = useState(""),
-    [end, setEnd] = useState("");
+    [start, setStart] = useState("");
   const load = useCallback(async () => {
     try {
       const { data, error } = await supabase
@@ -70,21 +69,26 @@ export default function ProjectMeetings({
     d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
     return d.toISOString().slice(0, 16);
   };
+  const minimumStart = () => {
+    const threshold = Date.now() + 20 * 60_000;
+    const rounded = new Date(threshold);
+    rounded.setSeconds(0, 0);
+    if (rounded.getTime() < threshold) rounded.setMinutes(rounded.getMinutes() + 1);
+    return local(rounded.toISOString());
+  };
   const save = async (cancelledMeeting?: Meeting) => {
     setBusy(true);
     setError("");
     try {
-      if (!cancelledMeeting && new Date(start).getTime() <= Date.now())
-        throw new Error("The meeting must start in the future.");
-      if (!cancelledMeeting && new Date(end).getTime() <= new Date(start).getTime())
-        throw new Error("The meeting end must be after its start.");
+      if (!cancelledMeeting && new Date(start).getTime() < Date.now() + 20 * 60_000)
+        throw new Error("Schedule the meeting at least 20 minutes in advance.");
       await saveProjectMeeting(
         projectId,
         cancelledMeeting ?? {
           meeting_id: editing === false ? null : editing,
           title,
           starts_at: new Date(start).toISOString(),
-          ends_at: new Date(end).toISOString(),
+          ends_at: new Date(new Date(start).getTime() + 30 * 60_000).toISOString(),
           link: null,
         },
         cancelledMeeting ? "cancelled" : "scheduled",
@@ -129,10 +133,7 @@ export default function ProjectMeetings({
               <p className="font-medium">
                 {m.title} · {m.status}
               </p>
-              <p>
-                {new Date(m.starts_at).toLocaleString()} –{" "}
-                {new Date(m.ends_at).toLocaleTimeString()}
-              </p>
+              <p>Starts {new Date(m.starts_at).toLocaleString()}</p>
               {m.status === "scheduled" && (
                 <p className="mt-1 text-xs text-muted-foreground">
                   Start a video call from your project conversation when it is time to meet.
@@ -149,7 +150,6 @@ export default function ProjectMeetings({
                     setEditing(m.meeting_id);
                     setTitle(m.title);
                     setStart(local(m.starts_at));
-                    setEnd(local(m.ends_at));
                   }}
                 >
                   Edit
@@ -174,7 +174,6 @@ export default function ProjectMeetings({
                 setEditing(null);
                 setTitle("");
                 setStart("");
-                setEnd("");
               }}
             >
               Schedule meeting
@@ -201,19 +200,9 @@ export default function ProjectMeetings({
                 <Input
                   type="datetime-local"
                   required
-                  min={local(new Date(Date.now() + 60_000).toISOString())}
+                  min={minimumStart()}
                   value={start}
                   onChange={(e) => setStart(e.target.value)}
-                />
-              </label>
-              <label className="text-sm">
-                Ends
-                <Input
-                  type="datetime-local"
-                  required
-                  min={start || local(new Date(Date.now() + 60_000).toISOString())}
-                  value={end}
-                  onChange={(e) => setEnd(e.target.value)}
                 />
               </label>
               <div className="flex gap-2">

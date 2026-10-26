@@ -1,6 +1,24 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+.sidebar-container {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+.sidebar-container::-webkit-scrollbar {
+  width: 5px;
+}
+.sidebar-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar-container::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+}
+.sidebar-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
 /* Navigation cards share a lift/glow without changing their layout footprint. */
 .navigation-card {
   transition: translate 180ms ease, box-shadow 180ms ease;

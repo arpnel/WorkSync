@@ -1,12 +1,13 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, BadgeCheck, Building2, ChevronRight, FileCheck2, FileText, Landmark, LoaderCircle, ReceiptText, ShieldCheck, UploadCloud } from "lucide-react";
+import { BadgeCheck, Building2, ChevronRight, FileCheck2, FileText, Landmark, LoaderCircle, ReceiptText, ShieldCheck, UploadCloud } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { StyledSelect } from "@/components/ui/styled-select";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 type Party = "freelancer" | "client";
 type Category = "vat" | "withholding";
@@ -194,7 +195,7 @@ export default function TaxDocuments() {
             </div>
           </div>
 
-          {category === null ? <section aria-labelledby="tax-document-categories" className="space-y-3">
+          <section aria-labelledby="tax-document-categories" className="space-y-3">
             <div>
               <h3 id="tax-document-categories" className="text-sm font-semibold">Choose a document category</h3>
               <p className="mt-1 text-sm text-muted-foreground">Select a category to review requirements and submit supporting documents.</p>
@@ -211,17 +212,17 @@ export default function TaxDocuments() {
                 <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
               </button>
             </div>
-          </section> : <section aria-labelledby="tax-document-category-title" className="space-y-5">
-            <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-4">
-              <div className="flex items-start gap-3">
-                <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">{category === "vat" ? <ReceiptText className="size-5" /> : <Landmark className="size-5" />}</span>
-                <div>
-                  <h3 id="tax-document-category-title" className="font-semibold">{category === "vat" ? "VAT Registration and Tax Status" : "Withholding Tax Records"}</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">{category === "vat" ? "Submit BIR records related to your VAT status." : "Submit BIR records related to withholding tax treatment."}</p>
-                </div>
-              </div>
-              <Button type="button" variant="ghost" size="sm" onClick={() => { setCategory(null); setFile(null); setError(""); setNotice(""); }}><ArrowLeft className="mr-2 size-4" />Back</Button>
-            </div>
+          </section>
+
+          <Dialog open={category !== null} onOpenChange={(open) => {
+            if (!open) { setCategory(null); setFile(null); setRegisteredName(""); setError(""); setNotice(""); if (fileInput.current) fileInput.current.value = ""; }
+          }}>
+          {category && <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
+            <DialogHeader className="border-b pb-4 pr-8">
+              <DialogTitle>{category === "vat" ? "VAT Registration and Tax Status" : "Withholding Tax Records"}</DialogTitle>
+              <DialogDescription>{category === "vat" ? "Submit BIR records related to your VAT status." : "Submit BIR records related to withholding tax treatment."}</DialogDescription>
+            </DialogHeader>
+            <section aria-label="Tax document requirements and submission" className="space-y-5">
 
             <div className="rounded-lg border bg-muted/25 p-4">
               <h4 className="flex items-center gap-2 text-sm font-medium"><FileCheck2 className="size-4 text-primary" />Accepted documents</h4>
@@ -291,7 +292,9 @@ export default function TaxDocuments() {
             </div> : <div className="flex gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/10 p-4 text-sm">
               <BadgeCheck className="mt-0.5 size-5 shrink-0 text-emerald-500" /><p className="text-muted-foreground">You already have a pending or approved document for each submission type in this category. You can submit another after it is rejected or expires.</p>
             </div>}
-          </section>}
+            </section>
+          </DialogContent>}
+          </Dialog>
         </>}
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         {notice && <p role="status" className="text-sm text-primary">{notice}</p>}

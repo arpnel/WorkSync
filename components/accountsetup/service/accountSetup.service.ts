@@ -237,7 +237,7 @@ export async function submitFreelancerSetup(
     .maybeSingle();
   check(error, "Find freelancer profile");
   const resume = values.resume
-    ? await upload("verification-documents", user.id, values.resume)
+    ? await upload("verification-documents", `${user.id}/resume`, values.resume)
     : undefined;
   const samples = [];
   for (const file of values.portfolioSamples)

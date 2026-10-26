@@ -97,25 +97,25 @@ export async function getMessageConversations(): Promise<{
 }> {
   const currentUserId = await getCurrentUserId();
 
-  const { data: memberships, error: membershipError } = await supabase
-    .from("conversation_participants")
-    .select("conversation_id")
-    .eq("user_id", currentUserId);
-
-  if (membershipError) {
-    throw membershipError;
-  }
-
+  const { data: summaryRows, error: summaryError } = await supabase.rpc(
+    "worksync_get_message_conversation_summaries",
+  );
+  if (summaryError) throw summaryError;
+  const summaries = (summaryRows ?? []) as {
+    conversation_id: string;
+    last_message: string | null;
+    last_message_at: string;
+    unread_count: number | string;
+  }[];
   const conversationIds = [
-    ...new Set((memberships ?? []).map((row) => row.conversation_id)),
+    ...new Set(summaries.map((row) => row.conversation_id)),
   ];
 
   if (conversationIds.length === 0) {
     return { currentUserId, conversations: [] };
   }
 
-  const [conversationsResult, participantsResult, messagesResult] =
-    await Promise.all([
+  const [conversationsResult, participantsResult] = await Promise.all([
       supabase
         .from("conversations")
         .select("conversation_id, project_id, order_id, job_id, created_at")
@@ -124,13 +124,6 @@ export async function getMessageConversations(): Promise<{
         .from("conversation_participants")
         .select("conversation_id, user_id")
         .in("conversation_id", conversationIds),
-      supabase
-        .from("messages")
-        .select(
-          "message_id, conversation_id, sender_id, message, created_at, read_at",
-        )
-        .in("conversation_id", conversationIds)
-        .order("created_at", { ascending: false }),
     ]);
 
   if (conversationsResult.error) {
@@ -139,10 +132,6 @@ export async function getMessageConversations(): Promise<{
 
   if (participantsResult.error) {
     throw participantsResult.error;
-  }
-
-  if (messagesResult.error) {
-    throw messagesResult.error;
   }
 
   const otherUserIds = [
@@ -311,13 +300,9 @@ export async function getMessageConversations(): Promise<{
     rows.push(participant);
     participantsByConversation.set(participant.conversation_id, rows);
   }
-  const messagesByConversation = new Map<string, typeof messagesResult.data>();
-
-  for (const message of messagesResult.data ?? []) {
-    const existing = messagesByConversation.get(message.conversation_id) ?? [];
-    existing.push(message);
-    messagesByConversation.set(message.conversation_id, existing);
-  }
+  const summaryByConversation = new Map(
+    summaries.map((summary) => [summary.conversation_id, summary]),
+  );
 
   const conversationRows = [
     ...new Map(
@@ -328,8 +313,7 @@ export async function getMessageConversations(): Promise<{
   ];
   const conversations = conversationRows.map(
     (conversation): MessageConversation => {
-      const messages =
-        messagesByConversation.get(conversation.conversation_id) ?? [];
+      const summary = summaryByConversation.get(conversation.conversation_id);
       const participantRows =
         participantsByConversation.get(conversation.conversation_id) ?? [];
       const participant = participantByConversation.get(
@@ -340,8 +324,6 @@ export async function getMessageConversations(): Promise<{
         role: null,
         avatarUrl: null,
       };
-      const lastMessage = messages[0];
-
       const orderId = conversation.order_id;
       const linkedTitle =
         cleanTitle(
@@ -392,12 +374,9 @@ export async function getMessageConversations(): Promise<{
               : "You are now in this chat.";
         })(),
         participant,
-        lastMessage: lastMessage?.message ?? "No messages yet",
-        lastMessageAt: lastMessage?.created_at ?? conversation.created_at,
-        unreadCount: messages.filter(
-          (message) =>
-            message.sender_id !== currentUserId && message.read_at === null,
-        ).length,
+        lastMessage: summary?.last_message ?? "No messages yet",
+        lastMessageAt: summary?.last_message_at ?? conversation.created_at,
+        unreadCount: Number(summary?.unread_count ?? 0),
       };
     },
   );
@@ -676,13 +655,14 @@ export function createMessageTypingChannel(
 export function subscribeToConversationMessages(
   conversationId: string,
   onChange: () => void,
+  event: "*" | "INSERT" = "*",
 ) {
   const channel = supabase
     .channel(`conversation:${conversationId}`)
     .on(
       "postgres_changes",
       {
-        event: "*",
+        event,
         schema: "public",
         table: "messages",
         filter: `conversation_id=eq.${conversationId}`,

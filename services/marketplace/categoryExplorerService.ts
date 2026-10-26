@@ -12,9 +12,14 @@ export type ExplorerCategory = {
   subcategories: ExplorerSubcategory[];
 };
 
-export async function getServiceCategoryExplorer(): Promise<
-  ExplorerCategory[]
-> {
+type ExplorerRpcRow = {
+  category_id: string;
+  category_name: string;
+  listing_count: number | string;
+  subcategory_ids: string[] | null;
+};
+
+async function loadWithClientQueries(): Promise<ExplorerCategory[]> {
   const { data: categoryRows, error: categoryError } = await supabase
     .from("job_categories")
     .select("id,name")
@@ -71,7 +76,8 @@ export async function getServiceCategoryExplorer(): Promise<
     0,
   );
   const hasUnknownCounts = countResults.some((result) => result.count === null);
-  const serviceSampleLimit = totalActiveListings > 100 || hasUnknownCounts ? 1 : 2;
+  const serviceSampleLimit =
+    totalActiveListings > 100 || hasUnknownCounts ? 1 : 2;
   const availableCategories = countResults.filter(
     ({ count }) => count === null || count > 0,
   );
@@ -87,8 +93,14 @@ export async function getServiceCategoryExplorer(): Promise<
         .order("service_id")
         .limit(serviceSampleLimit);
       if (error) {
-        console.warn("Unable to load category specialty samples:", error.message);
-        return { category, rows: [] as { service_skills: { skill_id: string }[] }[] };
+        console.warn(
+          "Unable to load category specialty samples:",
+          error.message,
+        );
+        return {
+          category,
+          rows: [] as { service_skills: { skill_id: string }[] }[],
+        };
       }
       return {
         category,
@@ -100,7 +112,9 @@ export async function getServiceCategoryExplorer(): Promise<
   const skillIds = [
     ...new Set(
       samples.flatMap(({ rows }) =>
-        rows.flatMap((row) => row.service_skills.map((skill) => skill.skill_id)),
+        rows.flatMap((row) =>
+          row.service_skills.map((skill) => skill.skill_id),
+        ),
       ),
     ),
   ];
@@ -108,7 +122,10 @@ export async function getServiceCategoryExplorer(): Promise<
     ? await supabase.from("skills").select("id,name").in("id", skillIds)
     : { data: [], error: null };
   if (skillsError) {
-    console.warn("Unable to load sampled specialty names:", skillsError.message);
+    console.warn(
+      "Unable to load sampled specialty names:",
+      skillsError.message,
+    );
   }
   const skillMap = new Map((skills ?? []).map((skill) => [skill.id, skill]));
 
@@ -116,7 +133,11 @@ export async function getServiceCategoryExplorer(): Promise<
     .filter(({ rows }) => rows.length > 0)
     .map(({ category, rows }) => {
       const sampledSkillIds = [
-        ...new Set(rows.flatMap((row) => row.service_skills.map((skill) => skill.skill_id))),
+        ...new Set(
+          rows.flatMap((row) =>
+            row.service_skills.map((skill) => skill.skill_id),
+          ),
+        ),
       ];
       const subcategories = sampledSkillIds
         .map((id) => skillMap.get(id))
@@ -137,4 +158,72 @@ export async function getServiceCategoryExplorer(): Promise<
         subcategories,
       };
     });
+}
+
+async function fetchServiceCategoryExplorer(): Promise<ExplorerCategory[]> {
+  const { data, error } = await supabase.rpc(
+    "worksync_service_category_explorer",
+  );
+  if (!error) {
+    const rows = (data ?? []) as ExplorerRpcRow[];
+    const ids = [...new Set(rows.flatMap((row) => row.subcategory_ids ?? []))];
+    const skillsResult = ids.length
+      ? await supabase.from("skills").select("id,name").in("id", ids)
+      : { data: [], error: null };
+    if (!skillsResult.error) {
+      const skills = new Map(
+        (skillsResult.data ?? []).map((skill) => [skill.id, skill.name]),
+      );
+      return rows.map((row) => ({
+        id: row.category_id,
+        name: row.category_name,
+        listingCount: Number(row.listing_count),
+        subcategories: [...new Set(row.subcategory_ids ?? [])]
+          .map((id) => ({ id, name: skills.get(id) ?? "" }))
+          .filter((skill) => Boolean(skill.name))
+          .sort((left, right) => left.name.localeCompare(right.name))
+          .slice(0, 5)
+          .map((skill) => ({ ...skill, listingCount: null })),
+      }));
+    }
+    console.warn(
+      "Unable to load sampled specialty names:",
+      skillsResult.error.message,
+    );
+    return rows.map((row) => ({
+      id: row.category_id,
+      name: row.category_name,
+      listingCount: Number(row.listing_count),
+      subcategories: [],
+    }));
+  }
+
+  // Keep the marketplace usable until the prepared RPC migration is applied.
+  if (!["PGRST202", "42883"].includes(error.code ?? "")) {
+    throw new Error(error.message || "Unable to load categories.");
+  }
+  return loadWithClientQueries();
+}
+
+let explorerCache: { loadedAt: number; rows: ExplorerCategory[] } | null = null;
+let explorerRequest: Promise<ExplorerCategory[]> | null = null;
+const EXPLORER_CACHE_MS = 30_000;
+
+export function getServiceCategoryExplorer(): Promise<ExplorerCategory[]> {
+  if (
+    explorerCache &&
+    Date.now() - explorerCache.loadedAt < EXPLORER_CACHE_MS
+  ) {
+    return Promise.resolve(explorerCache.rows);
+  }
+  if (explorerRequest) return explorerRequest;
+  explorerRequest = fetchServiceCategoryExplorer()
+    .then((rows) => {
+      explorerCache = { loadedAt: Date.now(), rows };
+      return rows;
+    })
+    .finally(() => {
+      explorerRequest = null;
+    });
+  return explorerRequest;
 }

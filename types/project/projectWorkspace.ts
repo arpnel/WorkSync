@@ -62,4 +62,5 @@ export interface ProjectWorkspace {
   milestones: WorkspaceMilestone[];
   agreementItems: WorkspaceAgreementItem[];
   messages: WorkspaceMessage[];
+  hasOlderMessages: boolean;
 }

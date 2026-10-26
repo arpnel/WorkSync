@@ -7,6 +7,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   FileText,
   Loader2,
+  ChevronUp,
   MessageSquare,
   Paperclip,
   Send,
@@ -24,6 +25,9 @@ type Props = {
   headerActions?: ReactNode;
   className?: string;
   messages: WorkspaceMessage[];
+  hasOlderMessages?: boolean;
+  loadingOlderMessages?: boolean;
+  onLoadOlderMessages?: () => void;
   sending: boolean;
   isOtherParticipantTyping: boolean;
   onSend: (
@@ -92,6 +96,9 @@ export function ProjectChatPanel({
   messages,
   sending,
   isOtherParticipantTyping,
+  hasOlderMessages = false,
+  loadingOlderMessages = false,
+  onLoadOlderMessages,
   onSend,
   onTypingChange,
 }: Props) {
@@ -103,11 +110,21 @@ export function ProjectChatPanel({
   const messagesViewportRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const preserveScrollRef = useRef<{ height: number; top: number } | null>(
+    null,
+  );
 
   useEffect(() => {
     const viewport = messagesViewportRef.current;
     if (viewport) {
-      viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" });
+      const previous = preserveScrollRef.current;
+      if (previous) {
+        viewport.scrollTop =
+          previous.top + viewport.scrollHeight - previous.height;
+        preserveScrollRef.current = null;
+      } else {
+        viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" });
+      }
     }
   }, [messages, isOtherParticipantTyping]);
 
@@ -131,16 +148,20 @@ export function ProjectChatPanel({
     const content = draft.trim();
     if ((!content && !attachment) || sending) return;
     onTypingChange(false);
-    const largeUpload = Boolean(attachment && attachment.size > 50 * 1024 * 1024);
+    const largeUpload = Boolean(
+      attachment && attachment.size > 50 * 1024 * 1024,
+    );
     uploadController.current = largeUpload ? new AbortController() : null;
     if (largeUpload) setUploadProgress(0);
     try {
-      if (await onSend(
-        content,
-        attachment ?? undefined,
-        largeUpload ? setUploadProgress : undefined,
-        uploadController.current?.signal,
-      )) {
+      if (
+        await onSend(
+          content,
+          attachment ?? undefined,
+          largeUpload ? setUploadProgress : undefined,
+          uploadController.current?.signal,
+        )
+      ) {
         setDraft("");
         setAttachment(null);
         setAttachmentError("");
@@ -174,6 +195,32 @@ export function ProjectChatPanel({
           ref={messagesViewportRef}
           className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4"
         >
+          {hasOlderMessages && onLoadOlderMessages && (
+            <div className="flex justify-center">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={loadingOlderMessages}
+                onClick={() => {
+                  const viewport = messagesViewportRef.current;
+                  if (viewport)
+                    preserveScrollRef.current = {
+                      height: viewport.scrollHeight,
+                      top: viewport.scrollTop,
+                    };
+                  onLoadOlderMessages();
+                }}
+              >
+                {loadingOlderMessages ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <ChevronUp className="mr-2 h-4 w-4" />
+                )}
+                Load older messages
+              </Button>
+            </div>
+          )}
           {messages.length ? (
             messages.map((item) => (
               <div
@@ -275,8 +322,14 @@ export function ProjectChatPanel({
               onChange={(event) =>
                 (() => {
                   const file = event.target.files?.[0] ?? null;
-                  setAttachmentError(file && file.size > 1024 * 1024 * 1024 ? "Files must be 1 GB or smaller." : "");
-                  setAttachment(file && file.size <= 1024 * 1024 * 1024 ? file : null);
+                  setAttachmentError(
+                    file && file.size > 1024 * 1024 * 1024
+                      ? "Files must be 1 GB or smaller."
+                      : "",
+                  );
+                  setAttachment(
+                    file && file.size <= 1024 * 1024 * 1024 ? file : null,
+                  );
                   event.target.value = "";
                 })()
               }
@@ -317,11 +370,23 @@ export function ProjectChatPanel({
               )}
             </Button>
           </div>
-          {attachmentError && <p role="alert" className="mt-2 text-xs text-destructive">{attachmentError}</p>}
+          {attachmentError && (
+            <p role="alert" className="mt-2 text-xs text-destructive">
+              {attachmentError}
+            </p>
+          )}
           {uploadProgress !== null && (
-            <p role="status" className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            <p
+              role="status"
+              className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground"
+            >
               <span>Uploading large file: {uploadProgress}%</span>
-              <Button type="button" size="sm" variant="ghost" onClick={() => uploadController.current?.abort()}>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => uploadController.current?.abort()}
+              >
                 Cancel upload
               </Button>
             </p>

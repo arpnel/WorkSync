@@ -19,8 +19,9 @@ export function validateSetupFile(
       ? ["application/pdf"]
       : kind === "photo"
         ? ["image/jpeg", "image/png", "image/webp"]
-        : ["image/jpeg", "image/png", "image/webp", "application/pdf"];
-  const limit = kind === "photo" ? 5 : 10;
+        : ["image/jpeg", "image/png", "application/pdf"];
+  // The verification-documents Storage bucket is capped at 5 MB per object.
+  const limit = 5;
   if (!types.includes(file.type))
     return kind === "resume"
       ? "Choose a PDF resume."

@@ -108,29 +108,45 @@ test("deep marketplace URLs apply category and skill constraints to service and 
   }
 });
 
-test("category explorer only counts active, non-archived matching skill listings", async () => {
-  const skills = Array.from({ length: 7 }, (_, index) => ({
-    skill_id: `skill-${index}`,
-    skills: { id: `skill-${index}`, name: `Skill ${index}` },
-  }));
-  const db = queryDb((entry) =>
-    entry.table === "job_categories"
-      ? {
-          data: [
-            { id: "category-1", name: "Creative", category_skills: skills },
-          ],
-          error: null,
-        }
-      : {
-          count: entry.filters.some(
-            ([column, value]) =>
-              column === "service_skills.skill_id" && value === "skill-2",
-          )
-            ? 4
-            : 0,
-          error: null,
+test("category explorer loads counts and sampled skills through one RPC", async () => {
+  const rpcCalls = [];
+  const db = {
+    rpc(name) {
+      rpcCalls.push(name);
+      return Promise.resolve({
+        data: [
+          {
+            category_id: "category-1",
+            category_name: "Creative",
+            listing_count: 120,
+            subcategory_ids: Array.from(
+              { length: 7 },
+              (_, index) => `skill-${index}`,
+            ),
+          },
+        ],
+        error: null,
+      });
+    },
+    from(table) {
+      assert.equal(table, "skills");
+      const query = {
+        select() {
+          return query;
         },
-  );
+        in() {
+          return Promise.resolve({
+            data: Array.from({ length: 7 }, (_, index) => ({
+              id: `skill-${index}`,
+              name: `Skill ${index}`,
+            })),
+            error: null,
+          });
+        },
+      };
+      return query;
+    },
+  };
   const exports = {};
   vm.runInNewContext(
     ts.transpileModule(
@@ -153,34 +169,8 @@ test("category explorer only counts active, non-archived matching skill listings
     },
   );
   const result = await exports.getServiceCategoryExplorer();
-  assert.equal(result[0].totalSubcategories, 7);
+  assert.equal(result[0].listingCount, 120);
   assert.equal(result[0].subcategories.length, 5);
-  assert.equal(
-    result[0].subcategories.find((item) => item.id === "skill-2").listingCount,
-    4,
-  );
-  const counts = db.queries.filter((item) => item.table === "services");
-  assert.equal(counts.length, 5);
-  for (const query of counts) {
-    assert.equal(query.options.count, "exact");
-    assert.equal(query.options.head, true);
-    assert.ok(
-      query.filters.some(
-        ([column, value]) => column === "status" && value === "Active",
-      ),
-    );
-    assert.ok(
-      query.filters.some(
-        ([column, value]) => column === "is_archived" && value === false,
-      ),
-    );
-    assert.ok(
-      query.filters.some(
-        ([column, value]) => column === "category_id" && value === "category-1",
-      ),
-    );
-    assert.ok(
-      query.filters.some(([column]) => column === "service_skills.skill_id"),
-    );
-  }
+  assert.equal(rpcCalls.length, 1);
+  assert.equal(rpcCalls[0], "worksync_service_category_explorer");
 });

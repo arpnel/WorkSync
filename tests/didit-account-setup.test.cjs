@@ -478,8 +478,24 @@ test("files enforce allowed MIME, nonzero size and size limits", () => {
     ),
     undefined,
   );
+  assert.equal(
+    validation.validateSetupFile(
+      { type: "application/pdf", size: 5 * 1024 * 1024 },
+      "resume",
+    ),
+    undefined,
+  );
+  assert.ok(
+    validation.validateSetupFile(
+      { type: "application/pdf", size: 5 * 1024 * 1024 + 1 },
+      "resume",
+    ),
+  );
   assert.ok(
     validation.validateSetupFile({ type: "image/svg+xml", size: 123 }, "photo"),
+  );
+  assert.ok(
+    validation.validateSetupFile({ type: "image/webp", size: 123 }, "document"),
   );
   assert.ok(
     validation.validateSetupFile(
@@ -496,9 +512,14 @@ test("files enforce allowed MIME, nonzero size and size limits", () => {
 });
 function setupHarness(failureTable) {
   const writes = [];
+  const roleRequests = [];
   const db = {
     auth: {
       getUser: async () => ({ data: { user: { id: userId } }, error: null }),
+      getSession: async () => ({
+        data: { session: { access_token: "test-access-token" } },
+        error: null,
+      }),
     },
     from(table) {
       let operation = "select",
@@ -561,17 +582,27 @@ function setupHarness(failureTable) {
   };
   return {
     writes,
-    service: load("components/accountsetup/service/accountSetup.service.ts", {
-      "@/lib/supabaseClient": { supabase: db },
-      "@/lib/validation/account-setup.validation": validation,
-    }),
+    roleRequests,
+    service: load(
+      "components/accountsetup/service/accountSetup.service.ts",
+      {
+        "@/lib/supabaseClient": { supabase: db },
+        "@/lib/validation/account-setup.validation": validation,
+      },
+      {
+        fetch: async (_url, init) => {
+          roleRequests.push(JSON.parse(init.body));
+          return { ok: true, json: async () => ({ ok: true }) };
+        },
+      },
+    ),
   };
 }
 test("setup completion is last, role matches selection, and existing relationships/files are preserved", async () => {
   const h = setupHarness();
   await h.service.submitFreelancerSetup(profile);
   assert.equal(h.writes.at(-1).values.account_setup_completed, true);
-  assert.equal(h.writes.at(-2).values.role, "freelancer");
+  assert.deepEqual(h.roleRequests, [{ role: "freelancer" }]);
   assert.equal(
     h.writes.filter((w) =>
       ["freelancer_skills", "freelancer_categories"].includes(w.table),

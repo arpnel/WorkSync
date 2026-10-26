@@ -25,8 +25,10 @@ export function StandardProjectWorkspace({ orderId }: { orderId: string }) {
     updatingAgreement,
     updatingApprovalKey,
     sending,
+    loadingOlderMessages,
     isOtherParticipantTyping,
     sendMessage,
+    loadOlderMessages,
     sendTyping,
     error,
     respondToAgreement,
@@ -172,6 +174,9 @@ export function StandardProjectWorkspace({ orderId }: { orderId: string }) {
           <ProjectChatPanel
             conversationId={workspace.conversationId}
             messages={workspace.messages}
+            hasOlderMessages={workspace.hasOlderMessages}
+            loadingOlderMessages={loadingOlderMessages}
+            onLoadOlderMessages={loadOlderMessages}
             sending={sending}
             isOtherParticipantTyping={isOtherParticipantTyping}
             onSend={sendMessage}

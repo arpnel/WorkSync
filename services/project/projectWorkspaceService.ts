@@ -6,8 +6,17 @@ import {
 } from "@/types/project/status";
 import { supabase } from "@/lib/supabaseClient";
 import { getActiveAccountContext } from "@/services/marketplace/AccountServices";
-import { LARGE_FILE_MAX_BYTES, SUPABASE_MAX_FILE_BYTES, usesR2Storage } from "@/lib/storage/hybridStorage";
-import { deleteUnusedLargeFile, getLargeFileUrl, uploadLargeFile } from "@/services/storage/hybridStorageClient";
+import {
+  LARGE_FILE_MAX_BYTES,
+  SUPABASE_MAX_FILE_BYTES,
+  usesR2Storage,
+} from "@/lib/storage/hybridStorage";
+import {
+  deleteUnusedLargeFile,
+  getLargeFileUrl,
+  uploadLargeFile,
+} from "@/services/storage/hybridStorageClient";
+import { createSignedUrlMap } from "@/services/storage/signedUrlBatch";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type {
   ProjectWorkspace,
@@ -60,15 +69,53 @@ async function currentUserId(): Promise<string> {
 
 const MESSAGE_ATTACHMENTS_BUCKET = "message-attachments";
 const MAX_ATTACHMENT_SIZE = LARGE_FILE_MAX_BYTES;
+const PROJECT_MESSAGE_PAGE_SIZE = 50;
 
-async function attachmentUrl(value: string | null, messageId?: string): Promise<string | null> {
+async function messageAttachmentUrls(
+  rows: Array<{ message_id: string; attachment_url: string | null }>,
+): Promise<Map<string, string | null>> {
+  const paths = rows
+    .map((row) => row.attachment_url)
+    .filter(
+      (path): path is string =>
+        typeof path === "string" &&
+        !/^https?:\/\//.test(path) &&
+        !path.startsWith("r2:"),
+    );
+  const signed = await createSignedUrlMap(
+    supabase,
+    MESSAGE_ATTACHMENTS_BUCKET,
+    paths,
+    60 * 60,
+  );
+  const resolved = new Map<string, string | null>();
+  await Promise.all(
+    rows.map(async (row) => {
+      const path = row.attachment_url;
+      if (!path) return;
+      if (/^https?:\/\//.test(path)) resolved.set(row.message_id, path);
+      else if (path.startsWith("r2:"))
+        resolved.set(row.message_id, await attachmentUrl(path, row.message_id));
+      else resolved.set(row.message_id, signed.get(path) ?? null);
+    }),
+  );
+  return resolved;
+}
+
+async function attachmentUrl(
+  value: string | null,
+  messageId?: string,
+): Promise<string | null> {
   if (!value || /^https?:\/\//.test(value)) return value;
   if (value.startsWith("r2:")) {
     if (!messageId) return null;
     try {
       return await getLargeFileUrl("message", messageId);
     } catch (error) {
-      console.warn("Project attachment is unavailable:", error instanceof Error ? error.message : error);
+      console.warn(
+        "Project attachment is unavailable:",
+        error instanceof Error ? error.message : error,
+      );
       return null;
     }
   }
@@ -123,20 +170,36 @@ export async function getProjectWorkspace(
   const freelancer = record(row.freelancer_profiles);
   const clientUserId = text(client?.user_id);
   const freelancerUserId = text(freelancer?.user_id);
-  const activeRoleOwnsOrder = account.profileId != null &&
+  const activeRoleOwnsOrder =
+    account.profileId != null &&
     (account.role === "client"
       ? row.client_id === account.profileId
       : row.freelancer_id === account.profileId);
   if (!activeRoleOwnsOrder)
     throw new Error("This project is not part of your active account role.");
   const categoryId = requestCategoryId || text(service?.category_id);
-  const categoryResult = categoryId
-    ? await supabase
-        .from("job_categories")
-        .select("name")
-        .eq("id", categoryId)
-        .maybeSingle()
-    : { data: null, error: null };
+  const participantIds = [clientUserId, freelancerUserId].filter(Boolean);
+  const [categoryResult, profilesResult, conversationResult] =
+    await Promise.all([
+      categoryId
+        ? supabase
+            .from("job_categories")
+            .select("name")
+            .eq("id", categoryId)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+      participantIds.length
+        ? supabase
+            .from("profiles")
+            .select("user_id, display_name, first_name, last_name, avatar_url")
+            .in("user_id", participantIds)
+        : Promise.resolve({ data: [], error: null }),
+      supabase
+        .from("conversations")
+        .select("conversation_id")
+        .eq("order_id", orderId)
+        .maybeSingle(),
+    ]);
   if (categoryResult.error) {
     console.warn(
       "Project category is unavailable:",
@@ -144,13 +207,6 @@ export async function getProjectWorkspace(
     );
   }
 
-  const participantIds = [clientUserId, freelancerUserId].filter(Boolean);
-  const profilesResult = participantIds.length
-    ? await supabase
-        .from("profiles")
-        .select("user_id, display_name, first_name, last_name, avatar_url")
-        .in("user_id", participantIds)
-    : { data: [], error: null };
   if (profilesResult.error) throw new Error(profilesResult.error.message);
   const profileMap = new Map(
     (profilesResult.data ?? []).map((item) => [
@@ -159,11 +215,7 @@ export async function getProjectWorkspace(
     ]),
   );
 
-  const { data: conversation, error: conversationError } = await supabase
-    .from("conversations")
-    .select("conversation_id")
-    .eq("order_id", orderId)
-    .maybeSingle();
+  const { data: conversation, error: conversationError } = conversationResult;
   if (conversationError) {
     console.warn(
       "Project conversation is unavailable:",
@@ -171,6 +223,7 @@ export async function getProjectWorkspace(
     );
   }
   let messages: WorkspaceMessage[] = [];
+  let hasOlderMessages = false;
   if (!conversationError && conversation?.conversation_id) {
     const result = await supabase
       .from("messages")
@@ -178,25 +231,30 @@ export async function getProjectWorkspace(
         "message_id, sender_id, message, attachment_url, attachment_type, created_at",
       )
       .eq("conversation_id", conversation.conversation_id)
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: false })
+      .order("message_id", { ascending: false })
+      .limit(PROJECT_MESSAGE_PAGE_SIZE + 1);
     if (result.error) throw new Error(result.error.message);
-    messages = await Promise.all(
-      (result.data ?? []).map(async (message) => ({
-        id: message.message_id,
-        senderId: message.sender_id,
-        senderName: displayName(
-          profileMap.get(message.sender_id) ?? null,
-          message.sender_id === userId ? "You" : "Project member",
-        ),
-        senderAvatarUrl:
-          text(profileMap.get(message.sender_id)?.avatar_url) || null,
-        message: message.message,
-        attachmentUrl: await attachmentUrl(message.attachment_url, message.message_id),
-        attachmentType: message.attachment_type,
-        createdAt: message.created_at,
-        mine: message.sender_id === userId,
-      })),
-    );
+    hasOlderMessages = (result.data?.length ?? 0) > PROJECT_MESSAGE_PAGE_SIZE;
+    const page = (result.data ?? [])
+      .slice(0, PROJECT_MESSAGE_PAGE_SIZE)
+      .reverse();
+    const attachments = await messageAttachmentUrls(page);
+    messages = page.map((message) => ({
+      id: message.message_id,
+      senderId: message.sender_id,
+      senderName: displayName(
+        profileMap.get(message.sender_id) ?? null,
+        message.sender_id === userId ? "You" : "Project member",
+      ),
+      senderAvatarUrl:
+        text(profileMap.get(message.sender_id)?.avatar_url) || null,
+      message: message.message,
+      attachmentUrl: attachments.get(message.message_id) ?? null,
+      attachmentType: message.attachment_type,
+      createdAt: message.created_at,
+      mine: message.sender_id === userId,
+    }));
   }
 
   let agreementItems: WorkspaceAgreementItem[] = [];
@@ -315,7 +373,114 @@ export async function getProjectWorkspace(
     milestones,
     agreementItems,
     messages,
+    hasOlderMessages,
   };
+}
+
+export async function getOlderProjectMessages(
+  conversationId: string,
+  currentUserId: string,
+  before: { createdAt: string; messageId: string },
+): Promise<{ messages: WorkspaceMessage[]; hasOlderMessages: boolean }> {
+  const { data, error } = await supabase
+    .from("messages")
+    .select(
+      "message_id, sender_id, message, attachment_url, attachment_type, created_at",
+    )
+    .eq("conversation_id", conversationId)
+    .or(
+      `created_at.lt.${before.createdAt},and(created_at.eq.${before.createdAt},message_id.lt.${before.messageId})`,
+    )
+    .order("created_at", { ascending: false })
+    .order("message_id", { ascending: false })
+    .limit(PROJECT_MESSAGE_PAGE_SIZE + 1);
+  if (error) throw new Error(error.message);
+  const hasOlderMessages = (data?.length ?? 0) > PROJECT_MESSAGE_PAGE_SIZE;
+  const rows = (data ?? []).slice(0, PROJECT_MESSAGE_PAGE_SIZE).reverse();
+  if (!rows.length) return { messages: [], hasOlderMessages: false };
+
+  const senderIds = [...new Set(rows.map((message) => message.sender_id))];
+  const profilesResult = await supabase
+    .from("profiles")
+    .select("user_id, display_name, first_name, last_name, avatar_url")
+    .in("user_id", senderIds);
+  if (profilesResult.error) throw new Error(profilesResult.error.message);
+  const profileMap = new Map(
+    (profilesResult.data ?? []).map((profile) => [profile.user_id, profile]),
+  );
+  const attachments = await messageAttachmentUrls(rows);
+
+  const messages = rows.map((message) => {
+    const profile = profileMap.get(message.sender_id);
+    return {
+      id: message.message_id,
+      senderId: message.sender_id,
+      senderName:
+        message.sender_id === currentUserId
+          ? "You"
+          : displayName(profile ?? null, "Project member"),
+      senderAvatarUrl: profile?.avatar_url ?? null,
+      message: message.message,
+      attachmentUrl: attachments.get(message.message_id) ?? null,
+      attachmentType: message.attachment_type,
+      createdAt: message.created_at,
+      mine: message.sender_id === currentUserId,
+    };
+  });
+  return { messages, hasOlderMessages };
+}
+
+export async function getProjectConversationMessages(
+  conversationId: string,
+  currentUserId: string,
+  after?: { createdAt: string; messageId: string },
+): Promise<WorkspaceMessage[]> {
+  let query = supabase
+    .from("messages")
+    .select(
+      "message_id, sender_id, message, attachment_url, attachment_type, created_at",
+    )
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: true })
+    .order("message_id", { ascending: true })
+    .limit(500);
+  if (after) {
+    query = query.or(
+      `created_at.gt.${after.createdAt},and(created_at.eq.${after.createdAt},message_id.gt.${after.messageId})`,
+    );
+  }
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  if (!data?.length) return [];
+
+  const senderIds = [...new Set(data.map((message) => message.sender_id))];
+  const profilesResult = await supabase
+    .from("profiles")
+    .select("user_id, display_name, first_name, last_name, avatar_url")
+    .in("user_id", senderIds);
+  if (profilesResult.error) throw new Error(profilesResult.error.message);
+  const profileMap = new Map(
+    (profilesResult.data ?? []).map((profile) => [profile.user_id, profile]),
+  );
+  const attachments = await messageAttachmentUrls(data);
+
+  return data.map((message) => {
+    const profile = profileMap.get(message.sender_id);
+    return {
+      id: message.message_id,
+      senderId: message.sender_id,
+      senderName:
+        message.sender_id === currentUserId
+          ? "You"
+          : displayName(profile ?? null, "Project member"),
+      senderAvatarUrl: profile?.avatar_url ?? null,
+      message: message.message,
+      attachmentUrl: attachments.get(message.message_id) ?? null,
+      attachmentType: message.attachment_type,
+      createdAt: message.created_at,
+      mine: message.sender_id === currentUserId,
+    };
+  });
 }
 
 export async function sendProjectMessage(
@@ -325,11 +490,15 @@ export async function sendProjectMessage(
   attachment?: File,
   onProgress?: (percent: number) => void,
   signal?: AbortSignal,
-): Promise<{ attachmentUrl: string | null; attachmentType: string | null }> {
+): Promise<{
+  attachmentUrl: string | null;
+  attachmentType: string | null;
+  conversationId: string | null;
+}> {
   const senderId = await currentUserId();
   const content = message.trim();
   if (!content && !attachment) {
-    return { attachmentUrl: null, attachmentType: null };
+    return { attachmentUrl: null, attachmentType: null, conversationId: null };
   }
   const { data: conversationId, error: conversationError } = await supabase.rpc(
     "worksync_ensure_order_conversation",
@@ -349,10 +518,15 @@ export async function sendProjectMessage(
     }
 
     if (usesR2Storage(attachment.size)) {
-      const uploaded = await uploadLargeFile(attachment, {
-        purpose: "message",
-        targetId: conversationId,
-      }, onProgress, signal);
+      const uploaded = await uploadLargeFile(
+        attachment,
+        {
+          purpose: "message",
+          targetId: conversationId,
+        },
+        onProgress,
+        signal,
+      );
       uploadedPath = uploaded.reference;
       r2UploadId = uploaded.uploadId;
       attachmentType = uploaded.contentType;
@@ -370,7 +544,9 @@ export async function sendProjectMessage(
         .from(MESSAGE_ATTACHMENTS_BUCKET)
         .createSignedUrl(filePath, 60 * 60);
       if (signedUrl.error) {
-        await supabase.storage.from(MESSAGE_ATTACHMENTS_BUCKET).remove([filePath]);
+        await supabase.storage
+          .from(MESSAGE_ATTACHMENTS_BUCKET)
+          .remove([filePath]);
         throw new Error(signedUrl.error.message);
       }
       attachmentUrl = signedUrl.data.signedUrl;
@@ -405,7 +581,7 @@ export async function sendProjectMessage(
     }
   }
 
-  return { attachmentUrl, attachmentType };
+  return { attachmentUrl, attachmentType, conversationId };
 }
 
 export function createProjectTypingChannel(

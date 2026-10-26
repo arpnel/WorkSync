@@ -7,6 +7,8 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   createProjectTypingChannel,
+  getProjectConversationMessages,
+  getOlderProjectMessages,
   getProjectWorkspace,
   respondToProjectAgreement,
   respondToProjectAgreementItem,
@@ -43,6 +45,7 @@ export function useProjectWorkspace(orderId: string) {
   const [workspace, setWorkspace] = useState<ProjectWorkspace | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [updatingAgreement, setUpdatingAgreement] = useState(false);
   const [updatingApprovalKey, setUpdatingApprovalKey] = useState<string | null>(
     null,
@@ -50,6 +53,10 @@ export function useProjectWorkspace(orderId: string) {
   const [isOtherParticipantTyping, setIsOtherParticipantTyping] =
     useState(false);
   const [error, setError] = useState<string | null>(null);
+  const workspaceRef = useRef(workspace);
+  useEffect(() => {
+    workspaceRef.current = workspace;
+  }, [workspace]);
   const activeOrder = useRef(orderId);
   const loadVersion = useRef(0);
   const sendTypingRef = useRef<(isTyping: boolean) => void>(() => undefined);
@@ -78,6 +85,8 @@ export function useProjectWorkspace(orderId: string) {
                   current.messages,
                   freshWorkspace.messages,
                 ),
+                hasOlderMessages:
+                  current.hasOlderMessages && freshWorkspace.hasOlderMessages,
               },
         );
       } catch (cause) {
@@ -94,6 +103,67 @@ export function useProjectWorkspace(orderId: string) {
     },
     [orderId],
   );
+
+  const refreshProjectMessages = useCallback(async () => {
+    const current = workspaceRef.current;
+    if (!current?.conversationId) {
+      void load(false);
+      return;
+    }
+    const lastMessage = current.messages.at(-1);
+    try {
+      const fresh = await getProjectConversationMessages(
+        current.conversationId,
+        current.currentUserId,
+        lastMessage
+          ? { createdAt: lastMessage.createdAt, messageId: lastMessage.id }
+          : undefined,
+      );
+      if (!fresh.length) return;
+      setWorkspace((latest) =>
+        latest?.conversationId === current.conversationId
+          ? { ...latest, messages: mergeMessages(latest.messages, fresh) }
+          : latest,
+      );
+    } catch (cause) {
+      console.warn(
+        "Unable to refresh project messages:",
+        cause instanceof Error ? cause.message : cause,
+      );
+    }
+  }, [load]);
+
+  const loadOlderMessages = useCallback(async () => {
+    const current = workspaceRef.current;
+    const firstMessage = current?.messages[0];
+    if (!current?.conversationId || !firstMessage || loadingOlderMessages)
+      return;
+    setLoadingOlderMessages(true);
+    try {
+      const older = await getOlderProjectMessages(
+        current.conversationId,
+        current.currentUserId,
+        { createdAt: firstMessage.createdAt, messageId: firstMessage.id },
+      );
+      setWorkspace((latest) =>
+        latest?.conversationId === current.conversationId
+          ? {
+              ...latest,
+              messages: mergeMessages(latest.messages, older.messages),
+              hasOlderMessages: older.hasOlderMessages,
+            }
+          : latest,
+      );
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Unable to load older messages.",
+      );
+    } finally {
+      setLoadingOlderMessages(false);
+    }
+  }, [loadingOlderMessages]);
 
   useEffect(() => {
     activeOrder.current = orderId;
@@ -117,17 +187,14 @@ export function useProjectWorkspace(orderId: string) {
   }, [load, orderId]);
 
   useEffect(() => {
-    const refreshMessages = () => {
-      void load(false);
-    };
-
     return workspace?.conversationId
       ? subscribeToConversationMessages(
           workspace.conversationId,
-          refreshMessages,
+          () => void refreshProjectMessages(),
+          "INSERT",
         )
-      : subscribeToUserConversations(refreshMessages);
-  }, [load, workspace?.conversationId]);
+      : subscribeToUserConversations(() => void load(false));
+  }, [load, refreshProjectMessages, workspace?.conversationId]);
 
   useEffect(() => {
     if (!workspace?.contractId) return;
@@ -282,14 +349,20 @@ export function useProjectWorkspace(orderId: string) {
         current?.orderId === orderId
           ? {
               ...current,
+              conversationId: uploaded.conversationId ?? current.conversationId,
               messages: current.messages.map((item) =>
-                item.id === messageId ? { ...item, ...uploaded } : item,
+                item.id === messageId
+                  ? {
+                      ...item,
+                      attachmentUrl: uploaded.attachmentUrl,
+                      attachmentType: uploaded.attachmentType,
+                    }
+                  : item,
               ),
             }
           : current,
       );
       clearProjectReadCache();
-      await load(false);
       return true;
     } catch (cause) {
       setWorkspace((current) =>
@@ -388,6 +461,7 @@ export function useProjectWorkspace(orderId: string) {
     workspace: workspace?.orderId === orderId ? workspace : null,
     loading: loading || (!!workspace && workspace.orderId !== orderId),
     sending,
+    loadingOlderMessages,
     updatingAgreement,
     updatingApprovalKey,
     isOtherParticipantTyping,
@@ -397,6 +471,7 @@ export function useProjectWorkspace(orderId: string) {
       return load(false);
     },
     sendMessage,
+    loadOlderMessages,
     sendTyping,
     respondToAgreement,
     respondToAgreementItem,

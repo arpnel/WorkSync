@@ -77,7 +77,7 @@ export function VerificationSection({
               {field === "portfolioSamples" ? "work samples" : "certificates"}
             </Button>
             <p className="text-xs text-muted-foreground">
-              JPG, PNG, WebP or PDF · Up to 10 MB each · 10 files maximum
+              JPG, PNG or PDF · Up to 5 MB each · 10 files maximum
             </p>
             {errors[field] && (
               <p role="alert" className="text-xs text-destructive">

@@ -46,7 +46,16 @@ export function ListingActions({
     );
   return (
     <div className={buttonClassName ? "flex w-full items-center justify-between gap-2 p-0" : "flex items-center justify-between gap-2 px-2 py-2"}>
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog
+        open={open}
+        onOpenChange={(nextOpen) => {
+          setOpen(nextOpen);
+          if (nextOpen) {
+            setFeedback("");
+            setError("");
+          }
+        }}
+      >
         <DialogTrigger asChild>
           <Button variant={buttonVariant} size="sm" className={buttonClassName}>
             <Flag />
@@ -61,7 +70,12 @@ export function ListingActions({
             </DialogDescription>
           </DialogHeader>
           {feedback ? (
-            <p role="status">{feedback}</p>
+            <div className="space-y-4">
+              <p role="status">{feedback}</p>
+              <Button type="button" onClick={() => setOpen(false)}>
+                Done
+              </Button>
+            </div>
           ) : (
             <form
               className="space-y-4"

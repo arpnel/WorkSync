@@ -281,8 +281,10 @@ export default function Page() {
             </div>
           )}
           {!loading && !error && !contacts.length && (
-            <p className="text-sm text-muted-foreground">
-              People you work with will appear here.
+            <p className="py-8 text-center text-lg font-medium text-muted-foreground">
+              {role === "client"
+                ? "Your list of freelancers will appear here."
+                : "Your list of clients will appear here."}
             </p>
           )}
         </>

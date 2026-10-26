@@ -146,9 +146,9 @@ function ChartLoading() {
 }
 
 export default function AnalyticsPage() {
-  const { data, payments, paymentLoading, error, retry } = useWorkAnalytics();
+  const { data, role, payments, paymentLoading, error, retry } = useWorkAnalytics();
   const { from, to } = period(30);
-  const party = "all";
+  const party = role ?? "all";
   const valid =
     Boolean(
       from &&
@@ -196,22 +196,11 @@ export default function AnalyticsPage() {
   }).length;
   const financialReady =
     !paymentLoading && !unavailable && !undated && !missingAmounts;
-  const paymentChartHasRealValues = trend.some(
-    (point) => point.earnings > 0 || point.spending > 0,
+  const showEarnings = role === "freelancer";
+  const paymentMetric = showEarnings ? "earnings" : "spending";
+  const paymentChartHasValues = trend.some(
+    (point) => point[paymentMetric] > 0,
   );
-  const useSamplePaymentChart = !financialReady || !paymentChartHasRealValues;
-  const paymentChartData = useSamplePaymentChart
-    ? [0, 18000, 9500, 27000, 16000, 32000].map((earnings, index) => {
-        const fromTime = Date.parse(`${start}T00:00:00Z`);
-        const toTime = Date.parse(`${end}T00:00:00Z`);
-        const date = new Date(fromTime + ((toTime - fromTime) * index) / 5);
-        return {
-          month: dateKey(date),
-          earnings,
-          spending: [0, 12000, 22000, 14000, 28000, 24000][index],
-        };
-      })
-    : trend;
   const hasActivity =
     summary.requests + summary.started + summary.completed > 0;
   const financialStatus = paymentLoading ? "Loading" : "Unavailable";
@@ -268,7 +257,10 @@ export default function AnalyticsPage() {
       Icon: Wallet,
       financial: true,
     },
-  ];
+  ].filter(({ key }) =>
+    key === "started" || key === "completed" ||
+    (showEarnings ? key === "earnings" : key === "spending"),
+  );
   return (
     <div className="@container mx-auto w-full max-w-[1600px] space-y-6">
       <WorkspacePageHeader
@@ -402,37 +394,28 @@ export default function AnalyticsPage() {
               )}
             </Panel>
             <Panel
-              title="Payments over time"
-              description="Confirmed payments by date. Sample chart values are labeled when payment records are unavailable."
+              title={showEarnings ? "Gross earnings over time" : "Client spending over time"}
+              description="Confirmed payments by date, including recorded test-mode payments."
               className="col-span-12 @min-[900px]:col-span-6"
             >
               {paymentLoading ? (
                 <ChartLoading />
               ) : (
                 <div>
-                  {useSamplePaymentChart && (
-                    <p
-                      role="note"
-                      className="mb-3 rounded-md border border-amber-200/70 bg-amber-50/60 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200"
-                    >
-                      Sample chart values for visual preview only. They are not
-                      real transactions and are excluded from all financial
-                      totals.
-                    </p>
-                  )}
                   {!financialReady && (
                     <p
                       role="status"
                       className="mb-3 text-xs text-muted-foreground"
                     >
-                      Payment records are incomplete. Financial totals remain
-                      unavailable while this chart uses sample values.
+                      Payment records are incomplete. This chart shows confirmed records available; summary totals remain unavailable.
                     </p>
                   )}
-                  <div className="h-60">
+                  {!paymentChartHasValues ? (
+                    <Empty>No confirmed payments in this period.</Empty>
+                  ) : <div className="h-60">
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart
-                        data={paymentChartData}
+                        data={trend}
                         accessibilityLayer
                         margin={{ right: 12, left: -10 }}
                       >
@@ -464,35 +447,17 @@ export default function AnalyticsPage() {
                         <Legend wrapperStyle={{ fontSize: 12 }} />
                         <Area
                           type="monotone"
-                          dataKey="earnings"
-                          name={
-                            useSamplePaymentChart
-                              ? "Sample earnings"
-                              : "Gross earnings"
-                          }
-                          fill={palette.completed}
-                          fillOpacity={0.12}
-                          stroke={palette.completed}
-                          strokeWidth={2}
-                          isAnimationActive={false}
-                        />
-                        <Area
-                          type="monotone"
-                          dataKey="spending"
-                          name={
-                            useSamplePaymentChart
-                              ? "Sample spending"
-                              : "Client spending"
-                          }
-                          fill={palette.spending}
+                          dataKey={paymentMetric}
+                          name={showEarnings ? "Gross earnings" : "Client spending"}
+                          fill={showEarnings ? palette.completed : palette.spending}
                           fillOpacity={0.08}
-                          stroke={palette.spending}
+                          stroke={showEarnings ? palette.completed : palette.spending}
                           strokeWidth={2}
                           isAnimationActive={false}
                         />
                       </AreaChart>
                     </ResponsiveContainer>
-                  </div>
+                  </div>}
                 </div>
               )}{" "}
             </Panel>
@@ -573,8 +538,7 @@ export default function AnalyticsPage() {
                           "Requests",
                           "Started",
                           "Completed",
-                          "Gross earnings",
-                          "Client spending",
+                          showEarnings ? "Gross earnings" : "Client spending",
                         ].map((name) => (
                           <th
                             key={name}
@@ -594,12 +558,7 @@ export default function AnalyticsPage() {
                           <td className="p-3 tabular-nums">{m.completed}</td>
                           <td className="whitespace-nowrap p-3 tabular-nums">
                             {financialReady
-                              ? money(m.earnings)
-                              : financialStatus}
-                          </td>
-                          <td className="whitespace-nowrap p-3 tabular-nums">
-                            {financialReady
-                              ? money(m.spending)
+                              ? money(showEarnings ? m.earnings : m.spending)
                               : financialStatus}
                           </td>
                         </tr>

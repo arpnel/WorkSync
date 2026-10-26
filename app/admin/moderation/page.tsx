@@ -33,7 +33,6 @@ type Submission = {
   ai_confidence: number | null;
   failure_reason: string | null;
   owner_removed_at: string | null;
-  rule_results?: string[];
   created_at: string;
 };
 const PAGE_SIZE = 25;
@@ -66,7 +65,7 @@ export default function ModerationPage() {
     let query = supabase
       .from("listing_submissions")
       .select(
-        "submission_id,listing_type,listing_id,owner_id,title,description,status,ai_risk,ai_explanation,ai_categories,ai_evidence,ai_confidence,failure_reason,rule_results,created_at,owner_removed_at",
+        "submission_id,listing_type,listing_id,owner_id,title,description,status,ai_risk,ai_explanation,ai_categories,ai_evidence,ai_confidence,failure_reason,created_at,owner_removed_at",
         { count: "exact" },
       )
       .neq("status", "editing")
@@ -396,16 +395,6 @@ export default function ModerationPage() {
             <p className="whitespace-pre-wrap break-words">
               {selected?.description}
             </p>
-            {(selected?.rule_results?.length ?? 0) > 0 && (
-              <section className="space-y-2 rounded-xl border bg-background p-4">
-                <p className="font-semibold">Rule-based checks</p>
-                <ul className="list-inside list-disc text-muted-foreground">
-                  {selected?.rule_results?.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              </section>
-            )}
             <section className="space-y-2 rounded-xl border bg-muted/30 p-4">
               <p className="font-semibold">
                 AI assessment: {selected?.ai_risk ?? "Not available"}

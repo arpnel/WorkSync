@@ -79,7 +79,7 @@ export default function WorkAnalytics({
   projectActivity?: ReactNode;
 }) {
   const router = useRouter();
-  const { data, payments, paymentLoading, error, retry } = useWorkAnalytics();
+  const { data, role, payments, paymentLoading, error, retry } = useWorkAnalytics();
   const [party, setParty] = useState("all");
   const [from, setFrom] = useState(() => {
     const date = new Date();
@@ -111,8 +111,11 @@ export default function WorkAnalytics({
       Number.isFinite(Date.parse(from)) &&
       Number.isFinite(Date.parse(to)),
     ) && Number(to.slice(0, 4)) - Number(from.slice(0, 4)) <= 10;
+  const selectedParty = reports ? party : role ?? "all";
+  const showEarnings = selectedParty === "freelancer";
+  const paymentMetric = showEarnings ? "earnings" : "spending";
   const projects = data.projects.filter(
-    (p) => party === "all" || p.party === party,
+    (p) => selectedParty === "all" || p.party === selectedParty,
   );
   const start = valid ? from : dateKey(new Date());
   const end = valid ? to : start;
@@ -136,6 +139,10 @@ export default function WorkAnalytics({
     return payment?.status === "paid" && !payment.paidAt;
   }).length;
   const financialReady = !paymentLoading && !unavailable && !undated;
+  const hasPaymentValues =
+    selectedParty === "all"
+      ? months.some((month) => month.earnings > 0 || month.spending > 0)
+      : months.some((month) => month[paymentMetric] > 0);
   const rows = projects.filter(
     (p) =>
       inPeriod(p.createdAt, start, end) ||
@@ -198,7 +205,7 @@ export default function WorkAnalytics({
             <>
               <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
                 {[
-                  {
+                  ...(selectedParty !== "client" ? [{
                     title: "Gross earnings",
                     value: financialReady
                       ? money(summary.earnings)
@@ -207,8 +214,8 @@ export default function WorkAnalytics({
                       ? growth(summary.earnings, baseline.earnings)
                       : "Payment data is loading or incomplete",
                     color: "text-emerald-700 dark:text-emerald-300",
-                  },
-                  {
+                  }] : []),
+                  ...(selectedParty !== "freelancer" ? [{
                     title: "Client spending",
                     value: financialReady
                       ? money(summary.spending)
@@ -217,7 +224,7 @@ export default function WorkAnalytics({
                       ? growth(summary.spending, baseline.spending)
                       : "Payment data is loading or incomplete",
                     color: "text-violet-700 dark:text-violet-300",
-                  },
+                  }] : []),
                   {
                     title: "Projects started",
                     value: summary.started,
@@ -250,9 +257,11 @@ export default function WorkAnalytics({
               </div>
               <p className="text-muted-foreground">
                 Compared with {previous.from} to {previous.to}, an equally long
-                period. Gross earnings use confirmed payments for your freelance
-                work in the configured payment mode, before fees and expenses;
-                they are not net profit or a payout balance.
+                period. {selectedParty === "all"
+                  ? "Gross earnings and client spending use confirmed payments in the configured payment mode."
+                  : showEarnings
+                    ? "Gross earnings include confirmed payments for freelance work in the configured payment mode, before fees and expenses; they are not net profit or a payout balance."
+                    : "Client spending includes confirmed payments for work you commissioned in the configured payment mode."}
               </p>
             </>
           )}
@@ -440,7 +449,11 @@ export default function WorkAnalytics({
                     href="/home/analytics"
                     className="hover:text-primary hover:underline"
                   >
-                    Earnings & spending
+                    {selectedParty === "freelancer"
+                      ? "Gross earnings"
+                      : selectedParty === "client"
+                        ? "Client spending"
+                        : "Earnings & spending"}
                   </Link>
                 </CardTitle>
                 <CardDescription>
@@ -454,14 +467,21 @@ export default function WorkAnalytics({
                     label="Loading payment analytics"
                     count={1}
                   />
-                ) : !financialReady ? (
-                  <p role="status" className="py-8 text-muted-foreground">
-                    Payment analytics are incomplete: {unavailable} project
-                    payments could not be verified; {undated} paid records have
-                    no payment date. Work analytics remain available.
-                  </p>
                 ) : (
-                  <div className="h-64 sm:h-72">
+                  <>
+                    {!financialReady && (
+                      <p role="status" className="mb-3 text-muted-foreground">
+                        Payment data is incomplete: {unavailable} records could
+                        not be verified and {undated} paid records have no
+                        payment date. The chart shows the confirmed records
+                        available.
+                      </p>
+                    )}
+                    {!hasPaymentValues ? (
+                      <p className="py-8 text-center text-muted-foreground">
+                        No confirmed payments in this period.
+                      </p>
+                    ) : <div className="h-64 sm:h-72">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={months} accessibilityLayer>
                         <CartesianGrid
@@ -494,7 +514,7 @@ export default function WorkAnalytics({
                               aria-label="Explore payment analytics"
                               className="flex flex-wrap justify-center gap-4 text-sm"
                             >
-                              <Link
+                              {selectedParty !== "client" && <Link
                                 href="/home/analytics"
                                 className="hover:text-primary hover:underline"
                               >
@@ -504,8 +524,8 @@ export default function WorkAnalytics({
                                   style={{ backgroundColor: colors[1] }}
                                 />
                                 Gross earnings
-                              </Link>
-                              <Link
+                              </Link>}
+                              {selectedParty !== "freelancer" && <Link
                                 href="/home/analytics"
                                 className="hover:text-primary hover:underline"
                               >
@@ -515,11 +535,11 @@ export default function WorkAnalytics({
                                   style={{ backgroundColor: colors[3] }}
                                 />
                                 Client spending
-                              </Link>
+                              </Link>}
                             </nav>
                           )}
                         />
-                        <Bar
+                        {selectedParty !== "client" && <Bar
                           radius={[3, 3, 0, 0]}
                           maxBarSize={28}
                           dataKey="earnings"
@@ -528,8 +548,8 @@ export default function WorkAnalytics({
                           name="Gross earnings"
                           fill={colors[1]}
                           isAnimationActive={false}
-                        />
-                        <Bar
+                        />}
+                        {selectedParty !== "freelancer" && <Bar
                           radius={[3, 3, 0, 0]}
                           maxBarSize={28}
                           dataKey="spending"
@@ -538,10 +558,11 @@ export default function WorkAnalytics({
                           name="Client spending"
                           fill={colors[3]}
                           isAnimationActive={false}
-                        />
+                        />}
                       </BarChart>
                     </ResponsiveContainer>
-                  </div>
+                    </div>}
+                  </>
                 )}
                 {!paymentLoading && summary.testPayments > 0 && (
                   <p className="mt-3 text-muted-foreground">
@@ -582,8 +603,8 @@ export default function WorkAnalytics({
                             "Requests",
                             "Started",
                             "Completed",
-                            "Gross earnings",
-                            "Client spending",
+                            ...(selectedParty !== "client" ? ["Gross earnings"] : []),
+                            ...(selectedParty !== "freelancer" ? ["Client spending"] : []),
                           ].map((h) => (
                             <th
                               key={h}
@@ -609,16 +630,16 @@ export default function WorkAnalytics({
                             <td data-label="Completed" className="p-3">
                               {m.completed}
                             </td>
-                            <td data-label="Earnings" className="p-3">
-                              {financialReady
-                                ? money(m.earnings)
-                                : "Unavailable"}
-                            </td>
-                            <td data-label="Spending" className="p-3">
-                              {financialReady
-                                ? money(m.spending)
-                                : "Unavailable"}
-                            </td>
+                            {selectedParty !== "client" && (
+                              <td data-label="Earnings" className="p-3">
+                                {financialReady ? money(m.earnings) : "Unavailable"}
+                              </td>
+                            )}
+                            {selectedParty !== "freelancer" && (
+                              <td data-label="Spending" className="p-3">
+                                {financialReady ? money(m.spending) : "Unavailable"}
+                              </td>
+                            )}
                           </tr>
                         ))}
                       </tbody>

@@ -6,8 +6,13 @@ import {
 } from "@/services/dashboard/dashboardService";
 import { getProjectPayment } from "@/services/payments/paymentService";
 import type { PaymentMap } from "@/lib/workAnalytics";
+import {
+  getCurrentUserRole,
+  type UserRole,
+} from "@/services/marketplace/AccountServices";
 export function useWorkAnalytics() {
   const [data, setData] = useState<DashboardActivity | null>(null);
+  const [role, setRole] = useState<UserRole | null>(null);
   const [payments, setPayments] = useState<PaymentMap>({});
   const [paymentLoading, setPaymentLoading] = useState(true);
   const [error, setError] = useState("");
@@ -16,9 +21,13 @@ export function useWorkAnalytics() {
     let alive = true;
     void (async () => {
       try {
-        const projects = await getDashboardProjects();
+        const [currentRole, projects] = await Promise.all([
+          getCurrentUserRole(),
+          getDashboardProjects(),
+        ]);
         const result = { projects, listings: [], notifications: [] };
         if (!alive) return;
+        setRole(currentRole);
         setData(result);
         const queue = result.projects.filter((p) => p.projectId);
         const next: PaymentMap = {};
@@ -50,6 +59,7 @@ export function useWorkAnalytics() {
     })();
     const onRoleChanged = () => {
       setData(null);
+      setRole(null);
       setPayments({});
       setPaymentLoading(true);
       setError("");
@@ -66,5 +76,5 @@ export function useWorkAnalytics() {
     setPaymentLoading(true);
     setAttempt((value) => value + 1);
   };
-  return { data, payments, paymentLoading, error, retry };
+  return { data, role, payments, paymentLoading, error, retry };
 }

@@ -13,15 +13,12 @@ import { WorkspacePageHeader } from "@/components/shared/WorkspacePageHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { PremiumExpiryNotice } from "@/components/account/PremiumExpiryNotice";
 
 type Plan = {
   plan_code: string;
   display_name: string;
-  monthly_job_limit: number;
-  monthly_service_limit: number;
   active_listing_limit: number;
-  active_job_limit: number;
-  active_service_limit: number;
   provisional_monthly_price: number | null;
 };
 type Assignment = {
@@ -37,12 +34,12 @@ export default function SubscriptionPage() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [plan, setPlan] = useState("free");
   const [assignment, setAssignment] = useState<Assignment | null>(null);
-  const [role, setRole] = useState("client");
-  const [usage, setUsage] = useState({ used: 0, active: 0 });
+  const [usage, setUsage] = useState({ active: 0 });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(false);
   const [checkoutStatus, setCheckoutStatus] = useState("");
+  const [clockNow, setClockNow] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -52,19 +49,14 @@ export default function SubscriptionPage() {
       if (authError || !auth.user)
         throw new Error("Sign in to view your subscription.");
       const userId = auth.user.id;
-      const [planResult, assignmentResult, profile] = await Promise.all([
+      const [planResult, assignmentResult] = await Promise.all([
         supabase
           .from("subscription_plans")
-          .select("*")
-          .order("monthly_job_limit"),
+          .select("plan_code,display_name,active_listing_limit,provisional_monthly_price")
+          .order("active_listing_limit"),
         supabase
           .from("user_subscriptions")
           .select("plan_code,period_ends_at,access_type,trial_claimed_at")
-          .eq("user_id", userId)
-          .maybeSingle(),
-        supabase
-          .from("Users")
-          .select("role")
           .eq("user_id", userId)
           .maybeSingle(),
       ]);
@@ -76,40 +68,24 @@ export default function SubscriptionPage() {
       const activePlan =
         activeAssignment?.plan_code === "pro" &&
         Date.parse(activeAssignment.period_ends_at) > Date.now();
-      const activeRole =
-        profile.data?.role === "freelancer" ? "freelancer" : "client";
-      const type = activeRole === "client" ? "job" : "service";
-      const start = new Date();
-      start.setDate(1);
-      start.setHours(0, 0, 0, 0);
       const activeListings = supabase
         .from("listing_submissions")
         .select("submission_id", { count: "exact", head: true })
         .eq("owner_id", userId)
         .eq("status", "approved")
         .is("archived_at", null);
-      if (!activePlan) activeListings.eq("listing_type", type);
-      const [submitted, active] = await Promise.all([
-        supabase
-          .from("listing_submissions")
-          .select("submission_id", { count: "exact", head: true })
-          .eq("owner_id", userId)
-          .eq("listing_type", type)
-          .gte("created_at", start.toISOString()),
-        activeListings,
-      ]);
-      if (profile.error || submitted.error || active.error)
+      const active = await activeListings;
+      if (active.error)
         throw new Error(
           "Your subscription usage could not be loaded. Please try again.",
         );
       setPlans((planResult.data ?? []) as Plan[]);
       setAssignment(activeAssignment);
       setPlan(activePlan ? "pro" : "free");
+      setClockNow(Date.now());
       if (typeof window !== "undefined")
         window.dispatchEvent(new Event("worksync:subscription-updated"));
-      setRole(activeRole);
       setUsage({
-        used: submitted.count ?? 0,
         active: active.count ?? 0,
       });
     } catch (cause) {
@@ -262,17 +238,7 @@ export default function SubscriptionPage() {
   const offer = plans.find((item) => item.plan_code === "pro") ?? current;
   const displayPlanName = (name?: string) =>
     name?.replace(/\bpro\b/gi, "Premium");
-  const monthly =
-    role === "client"
-      ? current?.monthly_job_limit
-      : current?.monthly_service_limit;
-  const kind = role === "client" ? "job" : "service";
-  const activeLimit =
-    plan === "pro"
-      ? current?.active_listing_limit
-      : role === "client"
-        ? current?.active_job_limit
-        : current?.active_service_limit;
+  const activeLimit = current?.active_listing_limit;
   const hasActivePremium = plan === "pro" && assignment;
   const price = offer?.provisional_monthly_price;
   const priceLabel =
@@ -285,21 +251,9 @@ export default function SubscriptionPage() {
   const planName =
     displayPlanName(current?.display_name) ??
     (plan === "pro" ? "Premium" : "Free");
-  const usedPercent = monthly ? Math.min(100, (usage.used / monthly) * 100) : 0;
   const activePercent = activeLimit
     ? Math.min(100, (usage.active / activeLimit) * 100)
     : 0;
-  const periodEnd = assignment?.period_ends_at
-    ? new Date(assignment.period_ends_at).toLocaleString("en-PH", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        timeZone: "Asia/Manila",
-      })
-    : null;
-
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6 pb-8">
       <WorkspacePageHeader
@@ -402,21 +356,24 @@ export default function SubscriptionPage() {
                     </h2>
                     <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
                       {hasActivePremium
-                        ? `Premium is active${assignment.access_type === "trial" ? " on your three-month trial" : ""}${periodEnd ? ` until ${periodEnd} Philippine Time` : ""}. Access returns to Free at that time unless you renew. Renewals are manual; you will not be charged automatically.`
+                        ? `Your Premium ${assignment.access_type === "trial" ? "trial" : "access"} is active. Renewals are manual.`
                         : "Your Free plan is active. Upgrade when you need more marketplace capacity or AI screening."}
                     </p>
                   </div>
+                  {hasActivePremium && assignment && (
+                    <PremiumExpiryNotice
+                      periodEndsAt={assignment.period_ends_at}
+                      now={clockNow}
+                    />
+                  )}
                   <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted-foreground">
                     <span className="inline-flex items-center gap-2">
                       <Check className="size-4 text-primary" />
-                      {monthly ?? "—"} monthly {kind} submissions
                     </span>
                     <span className="inline-flex items-center gap-2">
                       <Check className="size-4 text-primary" />
                       {activeLimit ?? "—"} active{" "}
-                      {plan === "pro"
-                        ? "listings across jobs and services"
-                        : `${kind} postings`}
+                      listings across jobs and services
                     </span>
                     <span className="inline-flex items-center gap-2">
                       <Sparkles className="size-4 text-primary" />
@@ -493,24 +450,14 @@ export default function SubscriptionPage() {
                 </p>
               </div>
               <p className="text-xs text-muted-foreground">
-                Listing submissions reset on the first day of each month.
+                Approved jobs and services count together. Pending listings need an available slot before approval.
               </p>
             </div>
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2">
               <UsageCard
-                title="Monthly listing submissions"
-                value={`${usage.used} of ${monthly ?? "—"}`}
-                caption={`${monthly == null ? "Limit unavailable" : `${Math.max(0, monthly - usage.used)} submissions remaining`} · ${kind} listings`}
-                progress={usedPercent}
-              />
-              <UsageCard
-                title="Active marketplace postings"
+                title="Active listings"
                 value={`${usage.active} of ${activeLimit ?? "—"}`}
-                caption={
-                  plan === "pro"
-                    ? "Jobs and services combined"
-                    : `Active ${kind} postings`
-                }
+                caption="Jobs and services combined"
                 progress={activePercent}
               />
               <Card className="gap-0 p-5 sm:p-6">
@@ -534,11 +481,6 @@ export default function SubscriptionPage() {
                 </p>
               </Card>
             </div>
-            <p className="text-xs leading-5 text-muted-foreground">
-              Every recorded listing submission counts toward the monthly
-              allowance, including listings awaiting review or rejected. Active
-              postings count approved, unarchived listings.
-            </p>
           </section>
 
           {plan === "free" && offer && (
@@ -553,7 +495,6 @@ export default function SubscriptionPage() {
                     Premium plan
                   </p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    {offer.monthly_job_limit} monthly submissions,{" "}
                     {offer.active_listing_limit} active listings across jobs and
                     services, and unlimited AI screening.
                   </p>

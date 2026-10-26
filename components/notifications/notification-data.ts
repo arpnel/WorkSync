@@ -24,6 +24,7 @@ export function getNotificationHref(
   type: string | null,
   relatedId: string | null,
 ) {
+  if (type === "subscription_expiry") return "/home/subscription";
   if (type === "skill_assessment")
     return relatedId
       ? `/home/assessments?opening=${encodeURIComponent(relatedId)}`
@@ -55,7 +56,7 @@ export function getNotificationTone(
     return "declined";
   if (
     /deadline|due soon|due date|approaching/.test(normalizedTitle) ||
-    /deadline/.test(normalizedType)
+    /deadline|subscription_expiry/.test(normalizedType)
   )
     return "deadline";
   return "default";

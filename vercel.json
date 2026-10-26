@@ -1,6 +1,7 @@
 {
   "crons": [
     { "path": "/api/cron/r2-cleanup", "schedule": "0 1 * * *" },
-    { "path": "/api/cron/freelancer-capacity-notices", "schedule": "15 0 * * *" }
+    { "path": "/api/cron/freelancer-capacity-notices", "schedule": "15 0 * * *" },
+    { "path": "/api/cron/subscription-expiry-notices", "schedule": "30 0 * * *" }
   ]
 }

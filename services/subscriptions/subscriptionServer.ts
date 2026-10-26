@@ -12,6 +12,82 @@ import {
 type Database = SupabaseClient;
 const orderIdPattern = /^[a-f\d]{8}-[a-f\d]{4}-[1-5][a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/i;
 
+type OpenSubscriptionOrder = {
+  order_id: string;
+  amount: number;
+  status: string;
+  transaction_reference: string | null;
+  checkout_url: string | null;
+  livemode: boolean;
+};
+
+async function resumeSubscriptionCheckout(
+  db: Database,
+  userId: string,
+  order: OpenSubscriptionOrder,
+  mode: "test" | "live",
+) {
+  if (order.status === "needs_review")
+    throw new PaymentError(
+      "Your previous Premium checkout needs support review before another can be started.",
+      409,
+    );
+  if (!order.transaction_reference)
+    throw new PaymentError(
+      "Your Premium checkout is still being confirmed. Retry shortly; do not start another payment.",
+      409,
+    );
+
+  const existing = await paymongo(
+    `/v1/checkout_sessions/${encodeURIComponent(order.transaction_reference)}`,
+  );
+  if (
+    existing.id !== order.transaction_reference ||
+    existing.attributes.reference_number !== order.order_id ||
+    existing.attributes.metadata?.kind !== "subscription" ||
+    existing.attributes.metadata?.user_id !== userId ||
+    existing.attributes.livemode !== order.livemode ||
+    order.livemode !== (mode === "live")
+  )
+    throw new PaymentError("The existing Premium checkout needs support review.", 409);
+
+  await processSubscriptionPaymentSession(db, existing);
+  const { data: latest, error: latestError } = await db
+    .from("subscription_orders")
+    .select("status")
+    .eq("order_id", order.order_id)
+    .maybeSingle();
+  if (latestError)
+    throw new PaymentError("Unable to verify Premium checkout status.");
+  if (latest?.status === "paid")
+    throw new PaymentError("Premium was renewed. Refresh your subscription status.", 409);
+
+  if (existing.attributes.status === "expired") {
+    const { error } = await db
+      .from("subscription_orders")
+      .update({ status: "failed" })
+      .eq("order_id", order.order_id)
+      .eq("status", "pending");
+    if (error)
+      throw new PaymentError("Expired Premium checkout could not be closed safely.");
+    return null;
+  }
+
+  const url = checkoutUrl(existing);
+  if (order.checkout_url && order.checkout_url !== url)
+    throw new PaymentError("The existing Premium checkout needs support review.", 409);
+  if (!order.checkout_url) {
+    const { error } = await db
+      .from("subscription_orders")
+      .update({ checkout_url: url })
+      .eq("order_id", order.order_id)
+      .eq("status", "pending");
+    if (error)
+      throw new PaymentError("Checkout URL could not be saved safely.");
+  }
+  return { checkoutUrl: url, orderId: order.order_id };
+}
+
 export async function createSubscriptionCheckout(
   db: Database,
   userId: string,
@@ -29,47 +105,15 @@ export async function createSubscriptionCheckout(
 
   const { data: pending, error: pendingError } = await db
     .from("subscription_orders")
-    .select("order_id,amount,transaction_reference,checkout_url,livemode")
+    .select("order_id,amount,status,transaction_reference,checkout_url,livemode")
     .eq("user_id", userId)
-    .eq("status", "pending")
+    .in("status", ["pending", "needs_review"])
     .maybeSingle();
   if (pendingError)
     throw new PaymentError("Unable to check for an existing Premium checkout.");
   if (pending) {
-    if (!pending.transaction_reference)
-      throw new PaymentError(
-        "A Premium checkout is still being confirmed. Contact support before trying again.",
-        409,
-      );
-    const existing = await paymongo(
-      `/v1/checkout_sessions/${encodeURIComponent(pending.transaction_reference)}`,
-    );
-    if (
-      existing.id !== pending.transaction_reference ||
-      existing.attributes.reference_number !== pending.order_id ||
-      existing.attributes.metadata?.kind !== "subscription" ||
-      existing.attributes.metadata?.user_id !== userId ||
-      existing.attributes.livemode !== pending.livemode ||
-      pending.livemode !== (mode === "live")
-    )
-      throw new PaymentError("The existing Premium checkout needs support review.", 409);
-    await processSubscriptionPaymentSession(db, existing);
-    const { data: latest } = await db
-      .from("subscription_orders")
-      .select("status")
-      .eq("order_id", pending.order_id)
-      .maybeSingle();
-    if (latest?.status === "paid")
-      throw new PaymentError("Premium was renewed. Refresh your subscription status.", 409);
-    if (existing.attributes.status === "expired") {
-      await db
-        .from("subscription_orders")
-        .update({ status: "failed" })
-        .eq("order_id", pending.order_id)
-        .eq("status", "pending");
-    } else if (pending.checkout_url) {
-      return { checkoutUrl: pending.checkout_url, orderId: pending.order_id };
-    }
+    const resumed = await resumeSubscriptionCheckout(db, userId, pending, mode);
+    if (resumed) return resumed;
   }
 
   const orderId = crypto.randomUUID();
@@ -80,11 +124,23 @@ export async function createSubscriptionCheckout(
     status: "pending",
     livemode: mode === "live",
   });
+  if (reserveError?.code === "23505") {
+    const { data: winner, error } = await db
+      .from("subscription_orders")
+      .select("order_id,amount,status,transaction_reference,checkout_url,livemode")
+      .eq("user_id", userId)
+      .in("status", ["pending", "needs_review"])
+      .maybeSingle();
+    if (error)
+      throw new PaymentError("Unable to check the existing Premium checkout.");
+    if (winner) {
+      const resumed = await resumeSubscriptionCheckout(db, userId, winner, mode);
+      if (resumed) return resumed;
+    }
+  }
   if (reserveError)
     throw new PaymentError(
-      reserveError.code === "23505"
-        ? "A Premium checkout is already being prepared. Refresh subscription status."
-        : "Premium checkout could not be reserved. Please try again.",
+      "Premium checkout could not be reserved. Please try again.",
       409,
     );
 

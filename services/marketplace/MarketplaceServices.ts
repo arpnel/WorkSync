@@ -198,6 +198,7 @@ export type ListingModerationStatus =
 
 export type MarketplaceItem = (MarketplaceService | MarketplaceJob) & {
   moderationStatus?: ListingModerationStatus;
+  moderationDecision?: string | null;
   moderationReason?: string | null;
   moderationCategory?: string | null;
 };
@@ -806,7 +807,7 @@ async function addListingModerationState(
   if (listings.length === 0) return listings;
   const { data, error } = await supabase
     .from("listing_submissions")
-    .select("listing_type,listing_id,status,decision_category,decision_reason,failure_reason,ai_explanation")
+    .select("listing_type,listing_id,status,decision,decision_category,decision_reason,failure_reason,ai_explanation")
     .in(
       "listing_id",
       listings.map((listing) =>
@@ -826,6 +827,7 @@ async function addListingModerationState(
     return {
       ...listing,
       moderationStatus: row?.status as ListingModerationStatus | undefined,
+      moderationDecision: row?.decision ?? null,
       moderationCategory: row?.decision_category ?? null,
       moderationReason:
         row?.decision_reason ?? row?.failure_reason ?? row?.ai_explanation ?? null,

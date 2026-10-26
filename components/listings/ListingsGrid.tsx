@@ -81,17 +81,17 @@ export function ListingCard({ listing, onArchive, onEdit }: ListingCardProps) {
 
   const status = listing.status;
   const moderationStatus = listing.moderationStatus;
-  const reviewLocked =
-    moderationStatus === "pending_review" ||
-    moderationStatus === "manual_review";
+  const moderationReasonLabel = listing.moderationDecision?.startsWith("administrator_")
+    ? "Administrator note: "
+    : "Automated check: ";
   const archiveLocked = moderationStatus !== "approved";
   const moderationLabel =
     moderationStatus === "editing"
       ? "Editing · hidden"
       : moderationStatus === "pending_review"
-        ? "Pending review"
+        ? "Awaiting review"
         : moderationStatus === "manual_review"
-          ? "Manual review"
+          ? "Awaiting review"
           : moderationStatus === "rejected"
             ? "Rejected"
             : moderationStatus === "approved"
@@ -181,7 +181,7 @@ export function ListingCard({ listing, onArchive, onEdit }: ListingCardProps) {
                 ? `${listing.moderationCategory.replaceAll("_", " ")}: `
                 : moderationStatus === "rejected"
                   ? "Reason: "
-                  : "Review note: "}
+                  : moderationReasonLabel}
               {listing.moderationReason}
             </p>
           )}
@@ -213,15 +213,12 @@ export function ListingCard({ listing, onArchive, onEdit }: ListingCardProps) {
             <button
               type="button"
               className="rounded-md border px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={reviewLocked}
-              title={
-                reviewLocked
-                  ? "Editing is disabled while this listing is under review."
-                  : undefined
-              }
               onClick={onEdit}
             >
-              {moderationStatus === "rejected"
+              {moderationStatus === "pending_review" ||
+              moderationStatus === "manual_review"
+                ? "Edit and resubmit"
+                : moderationStatus === "rejected"
                 ? "Edit to resubmit"
                 : moderationStatus === "editing"
                   ? "Continue editing"
@@ -357,7 +354,7 @@ export function ListingCard({ listing, onArchive, onEdit }: ListingCardProps) {
               ? `${listing.moderationCategory.replaceAll("_", " ")}: `
               : moderationStatus === "rejected"
                 ? "Reason: "
-                : "Review note: "}
+                : moderationReasonLabel}
             {listing.moderationReason}
           </p>
         )}
@@ -440,19 +437,14 @@ export function ListingCard({ listing, onArchive, onEdit }: ListingCardProps) {
                 disabled:cursor-not-allowed
                 disabled:opacity-50
               "
-              disabled={reviewLocked}
-              title={
-                reviewLocked
-                  ? "Editing is disabled while this listing is under review."
-                  : undefined
-              }
               onClick={(event) => {
                 event.stopPropagation();
                 onEdit?.();
               }}
               aria-label={
-                reviewLocked
-                  ? `Editing ${isService ? "service" : "job"} while under review is unavailable`
+                moderationStatus === "pending_review" ||
+                moderationStatus === "manual_review"
+                  ? `Edit and resubmit ${isService ? "service" : "job"}`
                   : moderationStatus === "rejected"
                     ? `Edit ${isService ? "service" : "job"} to resubmit`
                     : moderationStatus === "editing"

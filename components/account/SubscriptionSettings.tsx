@@ -5,6 +5,7 @@ import { CalendarDays, Crown, LoaderCircle, RefreshCw } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { PremiumExpiryNotice } from "@/components/account/PremiumExpiryNotice";
 
 type Subscription = {
   plan_code: string;
@@ -20,6 +21,7 @@ export default function SubscriptionSettings() {
   const [acting, setActing] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [clockNow, setClockNow] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -47,6 +49,7 @@ export default function SubscriptionSettings() {
       }
       setSubscription(assignment.data as Subscription | null);
       setPrice(plan.data?.provisional_monthly_price ?? null);
+      setClockNow(Date.now());
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -67,15 +70,6 @@ export default function SubscriptionSettings() {
     subscription?.plan_code === "pro" &&
     Date.parse(subscription.period_ends_at) > Date.now();
   const trialClaimed = subscription?.trial_claimed_at != null;
-  const endDate =
-    active && subscription?.period_ends_at
-      ? new Date(subscription.period_ends_at).toLocaleString("en-PH", {
-          dateStyle: "long",
-          timeStyle: "short",
-          timeZone: "Asia/Manila",
-        })
-      : null;
-
   async function managePremium() {
     if (acting) return;
     setActing(true);
@@ -146,7 +140,7 @@ export default function SubscriptionSettings() {
               {loading
                 ? "Loading your subscription…"
                 : active
-                  ? `Access ends ${endDate} Philippine Time. You return to Free then unless you renew. No automatic charge.`
+                  ? "Your Premium access is active. Renewals are manual; you will not be charged automatically."
                   : trialClaimed
                     ? "Your one-time trial has been used. Choose a manual monthly renewal to activate Premium."
                     : "Claim your one-time three-month Premium trial, or choose a manual monthly renewal."}
@@ -163,6 +157,13 @@ export default function SubscriptionSettings() {
           Refresh
         </Button>
       </div>
+
+      {active && subscription && (
+        <PremiumExpiryNotice
+          periodEndsAt={subscription.period_ends_at}
+          now={clockNow}
+        />
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
         <div>

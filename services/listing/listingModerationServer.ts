@@ -12,7 +12,8 @@ const db = () => {
 
 export async function moderateCreatedListing(type: ListingType, id: string, ownerId: string) {
   const client = db();
-  const claim = await client.from("listing_submissions").update({ assessment_started_at: new Date().toISOString() }).eq("listing_type", type).eq("listing_id", id).eq("owner_id", ownerId).is("assessment_started_at", null).select("submission_id,title,description").maybeSingle();
+  const assessmentStartedAt = new Date().toISOString();
+  const claim = await client.from("listing_submissions").update({ assessment_started_at: assessmentStartedAt }).eq("listing_type", type).eq("listing_id", id).eq("owner_id", ownerId).eq("status", "pending_review").is("assessment_started_at", null).select("submission_id,title,description").maybeSingle();
   if (claim.error) throw new Error(`MODERATION_CLAIM_FAILED:${claim.error.code}`);
   if (!claim.data) return;
   try {
@@ -21,8 +22,9 @@ export async function moderateCreatedListing(type: ListingType, id: string, owne
       const saved = await client.from("listing_submissions").update({
         status: "manual_review",
         failure_reason: ruleIssues.join(" "),
-      }).eq("submission_id", claim.data.submission_id);
+      }).eq("submission_id", claim.data.submission_id).eq("status", "pending_review").eq("assessment_started_at", assessmentStartedAt).select("submission_id").maybeSingle();
       if (saved.error) throw saved.error;
+      if (!saved.data) return;
       await notifyOwner(
         client,
         ownerId,
@@ -39,8 +41,9 @@ export async function moderateCreatedListing(type: ListingType, id: string, owne
     const automaticReject = process.env.LISTING_AUTO_REJECT_ENABLED === "true" && assessment.risk === "critical" && assessment.confidence >= LISTING_MODERATION_POLICY.automaticRejectionConfidence && assessment.evidence.length > 0 && assessment.explanation.length >= 40 && assessment.categories.some((category) => categoriesAllowedForAutomaticRejection.has(category));
     const requiresProfanityReview = assessment.categories.includes("profanity_or_explicit");
     const status = automaticReject ? "rejected" : requiresProfanityReview || assessment.risk === "high" || assessment.risk === "critical" ? "manual_review" : "pending_review";
-    const saved = await client.from("listing_submissions").update({ ai_risk: assessment.risk, ai_explanation: assessment.explanation, ai_categories: assessment.categories, ai_evidence: assessment.evidence, ai_confidence: assessment.confidence, ai_recommendation: assessment.recommendation, status, decision: automaticReject ? "automatic_rejection" : null, decision_category: automaticReject ? assessment.categories[0] ?? "prohibited_content" : null, decision_reason: automaticReject ? assessment.explanation : null, assessed_at: new Date().toISOString(), failure_reason: null }).eq("submission_id", claim.data.submission_id);
+    const saved = await client.from("listing_submissions").update({ ai_risk: assessment.risk, ai_explanation: assessment.explanation, ai_categories: assessment.categories, ai_evidence: assessment.evidence, ai_confidence: assessment.confidence, ai_recommendation: assessment.recommendation, status, decision: automaticReject ? "automatic_rejection" : null, decision_category: automaticReject ? assessment.categories[0] ?? "prohibited_content" : null, decision_reason: automaticReject ? assessment.explanation : null, assessed_at: new Date().toISOString(), failure_reason: null }).eq("submission_id", claim.data.submission_id).eq("status", "pending_review").eq("assessment_started_at", assessmentStartedAt).select("submission_id").maybeSingle();
     if (saved.error) throw saved.error;
+    if (!saved.data) return;
     if (automaticReject) {
       await notifyOwner(
         client,
@@ -57,12 +60,12 @@ export async function moderateCreatedListing(type: ListingType, id: string, owne
         id,
         claim.data.submission_id,
         "Listing held for administrator review",
-        `“${claim.data.title}” is hidden while an administrator reviews it. The automated review flagged ${assessment.categories.join(", ") || "a potential policy concern"}: ${assessment.explanation}`,
+        `“${claim.data.title}” is hidden while awaiting administrator review. The automated review flagged ${assessment.categories.join(", ") || "a potential policy concern"}: ${assessment.explanation}`,
       );
     }
   } catch (error) {
     const reason = error instanceof Error ? error.message.slice(0, 300) : "Unknown moderation error";
-    await client.from("listing_submissions").update({ status: "manual_review", failure_reason: reason }).eq("submission_id", claim.data.submission_id);
+    await client.from("listing_submissions").update({ status: "manual_review", failure_reason: reason }).eq("submission_id", claim.data.submission_id).eq("status", "pending_review").eq("assessment_started_at", assessmentStartedAt);
     console.error("Listing moderation failed; submission remains hidden for manual review", { submissionId: claim.data.submission_id, reason });
   }
 }

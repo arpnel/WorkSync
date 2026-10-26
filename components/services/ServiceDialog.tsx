@@ -87,36 +87,14 @@ type ServiceDialogProps = {
 };
 
 function listingSubmissionErrorMessage(error: unknown, noun: string) {
-  const value =
-    error && typeof error === "object"
-      ? (error as { code?: unknown; message?: unknown })
-      : null;
-  const code = typeof value?.code === "string" ? value.code : "";
   const message =
     error instanceof Error
       ? error.message
-      : typeof value?.message === "string"
-        ? value.message
+      : error && typeof error === "object" &&
+          "message" in error &&
+          typeof error.message === "string"
+        ? error.message
         : "";
-
-  if (
-    code === "P0001" &&
-    /monthly .*submission limit reached/i.test(message)
-  ) {
-    const plan = message
-      .match(/for the ([\w ]+) plan\.?$/i)?.[1]
-      ?.trim()
-      .toLowerCase();
-    const planName =
-      plan === "free"
-        ? "Free"
-        : plan === "pro" || plan === "pro plus"
-          ? "Premium"
-          : null;
-    const planLabel = planName ? `the ${planName} plan` : "your current plan";
-    return `You've reached the monthly ${noun.toLowerCase()} posting limit for ${planLabel}. The listing wasn't created. Check Settings > Subscription to review monthly limits.`;
-  }
-
   return message || `The ${noun.toLowerCase()} could not be posted. Please try again.`;
 }
 

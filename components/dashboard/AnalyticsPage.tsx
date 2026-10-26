@@ -292,10 +292,16 @@ export default function AnalyticsPage() {
           <section aria-label="Summary" className="space-y-3">
             <div className="grid grid-cols-12 gap-4">
               {stats.map(
-                ({ key, color, title, value, detail, Icon, financial }) => (
+                ({ key, color, title, value, detail, Icon, financial }, index) => (
                   <div
                     key={key}
-                    className="col-span-12 @min-[480px]:col-span-6 @min-[1100px]:col-span-3"
+                    className={
+                      stats.length === 3 && index === 2
+                        ? "col-span-12 @min-[480px]:col-span-6 @min-[480px]:col-start-4 @min-[1100px]:col-span-4 @min-[1100px]:col-start-auto"
+                        : stats.length === 3
+                          ? "col-span-12 @min-[480px]:col-span-6 @min-[1100px]:col-span-4"
+                          : "col-span-12 @min-[480px]:col-span-6 @min-[1100px]:col-span-3"
+                    }
                   >
                     <MetricTrendCard
                       title={title}
@@ -395,7 +401,7 @@ export default function AnalyticsPage() {
             </Panel>
             <Panel
               title={showEarnings ? "Gross earnings over time" : "Client spending over time"}
-              description="Confirmed payments by date, including recorded test-mode payments."
+              description="Confirmed payments by date."
               className="col-span-12 @min-[900px]:col-span-6"
             >
               {paymentLoading ? (

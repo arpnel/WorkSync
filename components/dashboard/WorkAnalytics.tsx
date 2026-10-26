@@ -457,8 +457,7 @@ export default function WorkAnalytics({
                   </Link>
                 </CardTitle>
                 <CardDescription>
-                  Confirmed payments in PHP, grouped by payment date. Payments
-                  from the current test or live mode are shown.
+                  Confirmed payments in PHP, grouped by payment date.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -563,12 +562,6 @@ export default function WorkAnalytics({
                     </ResponsiveContainer>
                     </div>}
                   </>
-                )}
-                {!paymentLoading && summary.testPayments > 0 && (
-                  <p className="mt-3 text-muted-foreground">
-                    Recorded test payments included in this chart:{" "}
-                    {money(summary.testPayments)}.
-                  </p>
                 )}
               </CardContent>
             </Card>

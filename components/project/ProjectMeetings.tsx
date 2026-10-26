@@ -180,13 +180,13 @@ export default function ProjectMeetings({
             </Button>
           ) : (
             <form
-              className="grid gap-3 sm:grid-cols-2"
+              className="grid gap-4"
               onSubmit={(e) => {
                 e.preventDefault();
                 void save();
               }}
             >
-              <label className="text-sm sm:col-span-2">
+              <label className="text-sm">
                 Meeting title
                 <Input
                   required
@@ -205,16 +205,8 @@ export default function ProjectMeetings({
                   onChange={(e) => setStart(e.target.value)}
                 />
               </label>
-              <div className="flex gap-2">
-                <Button disabled={busy}>Save meeting</Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  disabled={busy}
-                  onClick={() => setEditing(false)}
-                >
-                  Close
-                </Button>
+              <div className="flex justify-end border-t pt-3">
+                <Button className="w-full sm:w-auto" disabled={busy}>Save meeting</Button>
               </div>
             </form>
           ))}

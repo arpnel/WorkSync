@@ -4,6 +4,7 @@ import { CalendarDays } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -27,7 +28,7 @@ export function ProjectMeetingsDialog({
           Meetings
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent showCloseButton={false} className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Project meetings</DialogTitle>
           <DialogDescription>
@@ -38,6 +39,11 @@ export function ProjectMeetingsDialog({
           </DialogDescription>
         </DialogHeader>
         <ProjectMeetings projectId={projectId} active={active} />
+        <div className="flex justify-end border-t pt-3">
+          <DialogClose asChild>
+            <Button variant="outline">Close</Button>
+          </DialogClose>
+        </div>
       </DialogContent>
     </Dialog>
   );

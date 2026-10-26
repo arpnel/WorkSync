@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +9,7 @@ import { Input } from "@/components/ui/input";
 type Requirement = { requirement_id: string; user_id: string; document_type: string; requirement_label: string; required_for_publishing: boolean; status: string; current_submission_id: string | null; review_reason: string };
 type Submission = { submission_id: string; requirement_id: string; document_path: string; registered_name: string; status: string; submitted_at: string; review_reason: string; document_url: string | null };
 type Event = { event_id: string; requirement_id: string; action: string; reason: string; created_at: string };
-type Queue = { requirements: Requirement[]; submissions: Submission[]; events: Event[] };
+type Queue = { requirements: Requirement[]; submissions: Submission[]; events: Event[]; documentationMigrationReady?: boolean; legacyBirPendingCount?: number };
 
 export function FreelancerSellerVerificationReview() {
   const [queue, setQueue] = useState<Queue | null>(null);
@@ -56,9 +57,10 @@ export function FreelancerSellerVerificationReview() {
   }
   const submissions = queue?.submissions ?? [];
   return <div className="space-y-4">
-    <div className="flex items-center justify-between"><div><h1 className="text-xl font-semibold">Freelancer seller verification</h1><p className="text-sm text-muted-foreground">Review service seller documents. This queue is separate from identity and tax reviews.</p></div><Button variant="outline" onClick={() => void load().catch(cause => setError(cause instanceof Error ? cause.message : "Refresh failed."))}>Refresh</Button></div>
+    <div className="flex items-center justify-between"><div><h1 className="text-xl font-semibold">Additional seller requirements</h1><p className="text-sm text-muted-foreground">Review account-specific seller requirements beyond identity verification and Form 2303.</p></div><Button variant="outline" onClick={() => void load().catch(cause => setError(cause instanceof Error ? cause.message : "Refresh failed."))}>Refresh</Button></div>
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-    <section className="space-y-3 rounded-xl border bg-card p-4"><h2 className="font-semibold">Configure an additional seller document</h2><p className="text-sm text-muted-foreground">BIR Form 2303 is reviewed in Tax Documents. Use this queue only for other account-specific seller requirements.</p><div className="grid gap-3 sm:grid-cols-2"><Input aria-label="Freelancer user ID" placeholder="Freelancer user ID" value={userId} onChange={event => setUserId(event.target.value)} /><Input aria-label="Requirement label" value={label} maxLength={200} onChange={event => setLabel(event.target.value)} /><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={required} onChange={event => setRequired(event.target.checked)} />Required before service publishing</label><Input aria-label="Configuration reason" placeholder="Reason for this requirement" value={reason.configure ?? ""} maxLength={2000} onChange={event => setReason(prev => ({ ...prev, configure: event.target.value }))} /></div><Button disabled={busy === "configure"} onClick={() => void configure()}>Save requirement</Button></section>
+    <section className="space-y-3 rounded-xl border border-primary/30 bg-primary/5 p-4"><div><h2 className="font-semibold">Review Form 2303 and tax documents</h2><p className="mt-1 text-sm text-muted-foreground">Freelancer Form 2303 submissions are reviewed in Tax &amp; declarations. {queue?.documentationMigrationReady ? "The unified document workflow is available." : `The unified documentation schema is not available yet.${(queue?.legacyBirPendingCount ?? 0) > 0 ? ` There are ${queue?.legacyBirPendingCount} legacy Form 2303 submission${queue?.legacyBirPendingCount === 1 ? "" : "s"} pending; they will appear in the unified review queue after the prerequisite migrations are applied.` : " Existing legacy submissions will be carried into the unified review queue after the prerequisite migrations are applied."}`}</p></div><Button asChild variant="outline" size="sm"><Link href="/admin/financial/tax">Open Tax &amp; declarations</Link></Button></section>
+    <details className="rounded-xl border bg-card p-4"><summary className="cursor-pointer font-semibold">Configure an additional seller requirement</summary><div className="mt-3 space-y-3"><p className="text-sm text-muted-foreground">Use this only for an account-specific requirement beyond identity verification and Form 2303.</p><div className="grid gap-3 sm:grid-cols-2"><Input aria-label="Freelancer user ID" placeholder="Freelancer user ID" value={userId} onChange={event => setUserId(event.target.value)} /><Input aria-label="Requirement label" value={label} maxLength={200} onChange={event => setLabel(event.target.value)} /><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={required} onChange={event => setRequired(event.target.checked)} />Required before service publishing</label><Input aria-label="Configuration reason" placeholder="Reason for this requirement" value={reason.configure ?? ""} maxLength={2000} onChange={event => setReason(prev => ({ ...prev, configure: event.target.value }))} /></div><Button disabled={busy === "configure"} onClick={() => void configure()}>Save requirement</Button></div></details>
     {queue?.requirements.map(item => {
       const current = submissions.find(row => row.submission_id === item.current_submission_id);
       const history = queue.events.filter(event => event.requirement_id === item.requirement_id);
@@ -70,6 +72,6 @@ export function FreelancerSellerVerificationReview() {
         {history.length > 0 && <details><summary className="cursor-pointer text-sm">Review history ({history.length})</summary><ul className="mt-2 space-y-1 text-xs text-muted-foreground">{history.map(event => <li key={event.event_id}>{event.action} · {new Date(event.created_at).toLocaleString()} · {event.reason}</li>)}</ul></details>}
       </article>;
     })}
-    {queue && queue.requirements.length === 0 && <p className="rounded-xl border p-6 text-center text-muted-foreground">No freelancer seller documents are awaiting review.</p>}
+    {queue && queue.requirements.length === 0 && <p className="rounded-xl border p-6 text-center text-muted-foreground">No additional seller requirements are awaiting review.</p>}
   </div>;
 }

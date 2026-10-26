@@ -4,6 +4,9 @@ import { notifySellerDocumentReviewed } from "@/services/email/sellerVerificatio
 
 export const runtime = "nodejs";
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
+function isCanonicalColumnUnavailable(error: { code?: string } | null) {
+  return !!error && ["42703", "PGRST204", "PGRST205", "42P01"].includes(error.code ?? "");
+}
 async function requireAdmin(request: Request) {
   const auth = await paymentUser(request);
   const member = await auth.db.from("admin_members").select("user_id").eq("user_id", auth.user.id).maybeSingle();
@@ -14,6 +17,15 @@ async function requireAdmin(request: Request) {
 export async function GET(request: Request) {
   try {
     const { db } = await requireAdmin(request);
+    const canonicalDocumentSchema = await db.from("tax_documents").select("is_canonical_bir_cor").limit(1);
+    if (canonicalDocumentSchema.error && !isCanonicalColumnUnavailable(canonicalDocumentSchema.error)) throw new PaymentError("Unable to check the unified documentation schema.");
+    const documentationMigrationReady = !canonicalDocumentSchema.error;
+    let legacyBirPendingCount = 0;
+    if (!documentationMigrationReady) {
+      const legacyPending = await db.from("freelancer_seller_verification_requirements").select("requirement_id", { count: "exact", head: true }).eq("document_type", "bir_cor").eq("status", "pending");
+      if (legacyPending.error) throw new PaymentError("Legacy Form 2303 review status is unavailable.");
+      legacyBirPendingCount = legacyPending.count ?? 0;
+    }
     const result = await db.from("freelancer_seller_verification_requirements").select("requirement_id,user_id,freelancer_id,document_type,requirement_label,required_for_publishing,status,current_submission_id,review_reason,updated_at").neq("document_type", "bir_cor").order("updated_at", { ascending: false }).limit(500);
     if (result.error) throw new PaymentError("Seller verification queue is unavailable. The prepared migration may not be applied.", 503);
     const ids = (result.data ?? []).map(row => row.requirement_id);
@@ -26,7 +38,7 @@ export async function GET(request: Request) {
       const signed = await db.storage.from("verification-documents").createSignedUrl(row.document_path, 600, { download: true });
       return { ...row, document_url: signed.error ? null : signed.data.signedUrl };
     }));
-    return json({ requirements: result.data ?? [], submissions: signedRows, events: events.data ?? [] });
+    return json({ requirements: result.data ?? [], submissions: signedRows, events: events.data ?? [], documentationMigrationReady, legacyBirPendingCount });
   } catch (error) { return paymentResponse(error); }
 }
 

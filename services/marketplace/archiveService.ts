@@ -3,6 +3,12 @@ import { invalidatePageReads } from "@/lib/pageReadCache";
 import { getActiveAccountContext } from "@/services/marketplace/AccountServices";
 
 export type ArchivedListing = { id: string; kind: "job" | "service"; title: string; description: string; createdAt: string; archivedAt: string | null; previousStatus: string; canRestore: boolean };
+export const ARCHIVED_LISTING_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+
+export function archivedListingCutoff(now = Date.now()) {
+  return new Date(now - ARCHIVED_LISTING_RETENTION_MS).toISOString();
+}
+
 export async function getArchivedListings(): Promise<ArchivedListing[]> {
   const account = await getActiveAccountContext();
   if (!account.profileId) return [];
@@ -12,6 +18,7 @@ export async function getArchivedListings(): Promise<ArchivedListing[]> {
     .eq("owner_id", account.userId)
     .eq("listing_type", account.role === "client" ? "job" : "service")
     .not("archived_at", "is", null)
+    .gte("archived_at", archivedListingCutoff())
     .is("owner_removed_at", null)
     .order("archived_at", { ascending: false });
   if (error) throw error;

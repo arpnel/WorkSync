@@ -18,6 +18,10 @@ import {
   getMarketplaceJob,
   type MarketplaceJob,
 } from "@/services/marketplace/MarketplaceServices";
+import {
+  getPublicJobHiringStats,
+  type PublicJobHiringStats,
+} from "@/services/marketplace/jobPublicStats";
 import { applyForJob } from "@/services/marketplace/listingActions";
 import {
   getOwnJobApplication,
@@ -67,6 +71,8 @@ export default function MarketplaceJobDetails({
     null,
   );
   const [applicationReady, setApplicationReady] = useState(false);
+  const [hiringStats, setHiringStats] =
+    useState<PublicJobHiringStats | null>(null);
   useEffect(() => {
     let alive = true;
     void Promise.all([
@@ -90,6 +96,19 @@ export default function MarketplaceJobDetails({
       alive = false;
     };
   }, [jobId, guest]);
+  useEffect(() => {
+    let alive = true;
+    void getPublicJobHiringStats(jobId)
+      .then((stats) => {
+        if (alive) setHiringStats(stats);
+      })
+      .catch(() => {
+        if (alive) setHiringStats(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [jobId]);
   if (loading) return <ContentSkeleton label="Loading job" variant="job" />;
   if (!job) return <p role="alert">{error || "Job not found."}</p>;
   if (
@@ -229,6 +248,31 @@ export default function MarketplaceJobDetails({
                 </p>
               </div>
             </div>
+            {hiringStats && (
+              <section
+                aria-label="Public hiring activity"
+                className="grid gap-3 rounded-xl border bg-background p-4 sm:grid-cols-3"
+              >
+                <div>
+                  <p className="text-xs text-muted-foreground">Freelancers applied</p>
+                  <p className="mt-1 font-semibold">{hiringStats.applicantCount}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Currently in discussion</p>
+                  <p className="mt-1 font-semibold">{hiringStats.discussionCount}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Hiring status</p>
+                  <p className="mt-1 font-semibold">
+                    {hiringStats.hiredCount > 0
+                      ? `${hiringStats.hiredCount} freelancer${hiringStats.hiredCount === 1 ? "" : "s"} hired`
+                      : hiringStats.connectedCount > 0
+                        ? `Connected with ${hiringStats.connectedCount} freelancer${hiringStats.connectedCount === 1 ? "" : "s"}`
+                        : "No freelancer selected yet"}
+                  </p>
+                </div>
+              </section>
+            )}
             <section
               aria-labelledby="job-description-heading"
               className="space-y-3"
@@ -407,6 +451,16 @@ export default function MarketplaceJobDetails({
                     Number(price),
                     Number(days),
                   );
+                  if (!application) {
+                    setHiringStats((current) =>
+                      current
+                        ? {
+                            ...current,
+                            applicantCount: current.applicantCount + 1,
+                          }
+                        : current,
+                    );
+                  }
                   setSent(true);
                   setApplication({
                     application_id: applicationId,

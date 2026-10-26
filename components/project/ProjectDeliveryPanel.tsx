@@ -69,6 +69,7 @@ export function ProjectDeliveryPanel({
   autoReleaseEnabled = false,
   finalMilestoneId,
   autoAccept = false,
+  readOnly = false,
   actions,
 }: {
   project: ProjectWorkspace;
@@ -77,6 +78,7 @@ export function ProjectDeliveryPanel({
   autoReleaseEnabled?: boolean;
   finalMilestoneId?: string | null;
   autoAccept?: boolean;
+  readOnly?: boolean;
   actions?: ReactNode;
 }) {
   const [history, setHistory] = useState<Awaited<
@@ -250,6 +252,7 @@ export function ProjectDeliveryPanel({
       ? Math.max(0, project.revisions - history.revisions.length)
       : null;
   const completed = project.status.toLowerCase() === "completed";
+  const cancelled = project.status.toLowerCase() === "cancelled";
   const reviewable = reviewableDeliveryIds(
     history?.submissions ?? [],
     project.milestones,
@@ -283,237 +286,266 @@ export function ProjectDeliveryPanel({
   if (!project.projectId) return null;
   return (
     <div className="space-y-5">
-      <section
-        className="space-y-2 rounded-lg bg-muted/30 p-3 sm:p-4"
-        aria-label="Project progress"
-      >
-        <div className="flex items-center justify-between text-sm">
-          <span className="font-medium">
-            {completed
-              ? "Completed"
-              : project.type === "milestone"
-                ? "Approved milestones"
-                : "Work activity"}
-          </span>
-          <strong>{progress}%</strong>
-        </div>
-        <div
-          role="progressbar"
+      {!cancelled && (
+        <section
+          className="space-y-2 rounded-lg bg-muted/30 p-3 sm:p-4"
           aria-label="Project progress"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={progress}
-          className="h-2 overflow-hidden rounded-full bg-muted"
         >
+          <div className="flex items-center justify-between text-sm">
+            <span className="font-medium">
+              {completed
+                ? "Completed"
+                : project.type === "milestone"
+                  ? "Approved milestones"
+                  : "Work activity"}
+            </span>
+            <strong>{progress}%</strong>
+          </div>
           <div
-            className="h-full rounded-full bg-primary transition-all"
-            style={{ width: progress + "%" }}
-          />
-        </div>
-        <p className="text-xs text-muted-foreground">
-          {completed
-            ? "The final delivery was approved."
-            : project.type === "milestone"
-              ? project.milestones.filter((m) => m.status === "approved")
-                  .length +
-                " of " +
-                project.milestones.length +
-                " milestones approved. Each milestone has equal weight."
-              : "Each saved progress update adds 10%, up to 90%. This shows activity; one client approval of the final delivery completes the project."}
-        </p>
-      </section>
+            role="progressbar"
+            aria-label="Project progress"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progress}
+            className="h-2 overflow-hidden rounded-full bg-muted"
+          >
+            <div
+              className="h-full rounded-full bg-primary transition-all"
+              style={{ width: progress + "%" }}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {completed
+              ? "The final delivery was approved."
+              : project.type === "milestone"
+                ? project.milestones.filter((m) => m.status === "approved")
+                    .length +
+                  " of " +
+                  project.milestones.length +
+                  " milestones approved. Each milestone has equal weight."
+                : "Each saved progress update adds 10%, up to 90%. This shows activity; one client approval of the final delivery completes the project."}
+          </p>
+        </section>
+      )}
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <CardTitle>
-              {completed ? "Completed work & reviews" : "Project work"}
+              {cancelled
+                ? "Project work history"
+                : completed
+                  ? "Completed work & reviews"
+                  : "Project work"}
             </CardTitle>
-            <div className="grid w-full grid-cols-1 gap-2 sm:ml-auto sm:flex sm:w-auto sm:flex-wrap sm:items-center">
-              {actions}
-              {active && project.currentParty === "freelancer" && (
-                <Dialog
-                  open={uploadOpen}
-                  onOpenChange={(open) => {
-                    if (!busy) {
-                      setUploadOpen(open);
-                      if (open) setUploadError("");
-                    }
-                  }}
-                >
-                  <DialogTrigger asChild>
-                    <Button
-                      type="button"
-                      size="sm"
-                      aria-label="Submit project work"
-                      title="Upload project work"
-                      disabled={busy || !history || !paid}
-                    >
-                      <Plus className="h-4 w-4" />
-                      Submit work
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
-                    <DialogHeader>
-                      <DialogTitle>Upload project work</DialogTitle>
-                      <DialogDescription>
-                        Share a progress update or deliver finished work for
-                        approval.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <form
-                      className="space-y-3"
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        if (kind === "delivery" && pendingDelivery) return;
-                        setUploadError("");
-                        const largeUpload = Boolean(file && file.size > 50 * 1024 * 1024);
-                        uploadController.current = largeUpload ? new AbortController() : null;
-                        if (largeUpload) setUploadProgress(0);
-                        void act(async () => {
-                          try {
-                            await submitProjectWork(
-                              projectId,
-                              milestone || null,
-                              body,
-                              link,
-                              kind,
-                              file,
-                              largeUpload ? setUploadProgress : undefined,
-                              uploadController.current?.signal,
-                            );
-                          } catch (cause) {
-                            setUploadError(
-                              cause instanceof Error
-                                ? cause.message
-                                : "Unable to submit work.",
-                            );
-                            throw cause;
-                          } finally {
-                            setUploadProgress(null);
-                            uploadController.current = null;
-                          }
-                          setUploadOpen(false);
-                          setBody("");
-                          setLink("");
-                          setFile(undefined);
-                        }, "Work submitted. Your previous submissions remain in the history.");
-                      }}
-                    >
-                      <fieldset disabled={busy} className="space-y-3">
-                        <label className="block text-sm">
-                          Submission type
-                          <StyledSelect
-                            className="mt-1 w-full rounded-md border bg-background p-2"
-                            value={kind}
-                            onChange={(e) =>
-                              setKind(e.target.value as "progress" | "delivery")
+            {(actions || (active && project.currentParty === "freelancer")) && (
+              <div className="grid w-full grid-cols-1 gap-2 sm:ml-auto sm:flex sm:w-auto sm:flex-wrap sm:items-center">
+                {actions}
+                {active && project.currentParty === "freelancer" && (
+                  <Dialog
+                    open={uploadOpen}
+                    onOpenChange={(open) => {
+                      if (!busy) {
+                        setUploadOpen(open);
+                        if (open) setUploadError("");
+                      }
+                    }}
+                  >
+                    <DialogTrigger asChild>
+                      <Button
+                        type="button"
+                        size="sm"
+                        aria-label="Submit project work"
+                        title="Upload project work"
+                        disabled={busy || !history || !paid}
+                      >
+                        <Plus className="h-4 w-4" />
+                        Submit work
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
+                      <DialogHeader>
+                        <DialogTitle>Upload project work</DialogTitle>
+                        <DialogDescription>
+                          Share a progress update or deliver finished work for
+                          approval.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <form
+                        className="space-y-3"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          if (kind === "delivery" && pendingDelivery) return;
+                          setUploadError("");
+                          const largeUpload = Boolean(
+                            file && file.size > 50 * 1024 * 1024,
+                          );
+                          uploadController.current = largeUpload
+                            ? new AbortController()
+                            : null;
+                          if (largeUpload) setUploadProgress(0);
+                          void act(async () => {
+                            try {
+                              await submitProjectWork(
+                                projectId,
+                                milestone || null,
+                                body,
+                                link,
+                                kind,
+                                file,
+                                largeUpload ? setUploadProgress : undefined,
+                                uploadController.current?.signal,
+                              );
+                            } catch (cause) {
+                              setUploadError(
+                                cause instanceof Error
+                                  ? cause.message
+                                  : "Unable to submit work.",
+                              );
+                              throw cause;
+                            } finally {
+                              setUploadProgress(null);
+                              uploadController.current = null;
                             }
-                          >
-                            <option value="delivery">
-                              Deliver work for approval
-                            </option>
-                            <option value="progress">Progress update</option>
-                          </StyledSelect>
-                        </label>
-                        {project.type === "milestone" && (
+                            setUploadOpen(false);
+                            setBody("");
+                            setLink("");
+                            setFile(undefined);
+                          }, "Work submitted. Your previous submissions remain in the history.");
+                        }}
+                      >
+                        <fieldset disabled={busy} className="space-y-3">
                           <label className="block text-sm">
-                            Milestone
+                            Submission type
                             <StyledSelect
-                              required
                               className="mt-1 w-full rounded-md border bg-background p-2"
-                              value={milestone}
-                              onChange={(e) => setMilestone(e.target.value)}
+                              value={kind}
+                              onChange={(e) =>
+                                setKind(
+                                  e.target.value as "progress" | "delivery",
+                                )
+                              }
                             >
-                              <option value="">Choose milestone</option>
-                              {project.milestones
-                                .filter((m) => m.id === currentMilestone?.id)
-                                .map((m) => (
-                                  <option key={m.id} value={m.id}>
-                                    {m.title}
-                                  </option>
-                                ))}
+                              <option value="delivery">
+                                Deliver work for approval
+                              </option>
+                              <option value="progress">Progress update</option>
                             </StyledSelect>
                           </label>
-                        )}
-                        <label className="block text-sm">
-                          Freelancer notes
-                          <Textarea
-                            placeholder="Explain what you created, what changed, and what the client should review."
-                            maxLength={10000}
-                            value={body}
-                            onChange={(e) => setBody(e.target.value)}
-                          />
-                        </label>
-                        <label className="block text-sm">
-                          Link (optional)
-                          <Input
-                            type="url"
-                            value={link}
-                            onChange={(e) => setLink(e.target.value)}
-                          />
-                        </label>
-                        <div className="space-y-1 text-sm">
-                          <p>Attachment (max 1 GB)</p>
-                          <FileUpload
-                            file={file ?? null}
-                            onFileSelect={(selected) => {
-                              setUploadError("");
-                              setFile(selected);
-                            }}
-                            onFileRemove={() => setFile(undefined)}
-                            onFileError={setUploadError}
-                            accept="*/*"
-                            maxSizeBytes={1024 * 1024 * 1024}
-                            placeholder="Choose an attachment"
-                          />
-                        </div>
-                        {kind === "delivery" && pendingDelivery && (
-                          <p className="text-sm text-muted-foreground">
-                            This delivery is awaiting review. Wait for approval
-                            or a revision request before sending another final
-                            delivery.
-                          </p>
-                        )}
-                        {uploadError && (
-                          <p role="alert" className="text-sm text-destructive">
-                            {uploadError}
-                          </p>
-                        )}
-                        <Button
-                          disabled={
-                            busy ||
-                            !history ||
-                            (kind === "delivery" && pendingDelivery) ||
-                            (!body.trim() && !link.trim() && !file)
-                          }
-                        >
-                          {busy ? "Saving…" : "Submit work"}
-                        </Button>
-                      </fieldset>
-                      {uploadProgress !== null && (
-                        <div className="flex items-center justify-between gap-3 px-1 text-sm" role="status">
-                          <span>Uploading large file: {uploadProgress}%</span>
-                          <Button type="button" variant="ghost" size="sm" onClick={() => uploadController.current?.abort()}>
-                            Cancel upload
+                          {project.type === "milestone" && (
+                            <label className="block text-sm">
+                              Milestone
+                              <StyledSelect
+                                required
+                                className="mt-1 w-full rounded-md border bg-background p-2"
+                                value={milestone}
+                                onChange={(e) => setMilestone(e.target.value)}
+                              >
+                                <option value="">Choose milestone</option>
+                                {project.milestones
+                                  .filter((m) => m.id === currentMilestone?.id)
+                                  .map((m) => (
+                                    <option key={m.id} value={m.id}>
+                                      {m.title}
+                                    </option>
+                                  ))}
+                              </StyledSelect>
+                            </label>
+                          )}
+                          <label className="block text-sm">
+                            Freelancer notes
+                            <Textarea
+                              placeholder="Explain what you created, what changed, and what the client should review."
+                              maxLength={10000}
+                              value={body}
+                              onChange={(e) => setBody(e.target.value)}
+                            />
+                          </label>
+                          <label className="block text-sm">
+                            Link (optional)
+                            <Input
+                              type="url"
+                              value={link}
+                              onChange={(e) => setLink(e.target.value)}
+                            />
+                          </label>
+                          <div className="space-y-1 text-sm">
+                            <p>Attachment (max 1 GB)</p>
+                            <FileUpload
+                              file={file ?? null}
+                              onFileSelect={(selected) => {
+                                setUploadError("");
+                                setFile(selected);
+                              }}
+                              onFileRemove={() => setFile(undefined)}
+                              onFileError={setUploadError}
+                              accept="*/*"
+                              maxSizeBytes={1024 * 1024 * 1024}
+                              placeholder="Choose an attachment"
+                            />
+                          </div>
+                          {kind === "delivery" && pendingDelivery && (
+                            <p className="text-sm text-muted-foreground">
+                              This delivery is awaiting review. Wait for
+                              approval or a revision request before sending
+                              another final delivery.
+                            </p>
+                          )}
+                          {uploadError && (
+                            <p
+                              role="alert"
+                              className="text-sm text-destructive"
+                            >
+                              {uploadError}
+                            </p>
+                          )}
+                          <Button
+                            disabled={
+                              busy ||
+                              !history ||
+                              (kind === "delivery" && pendingDelivery) ||
+                              (!body.trim() && !link.trim() && !file)
+                            }
+                          >
+                            {busy ? "Saving…" : "Submit work"}
                           </Button>
-                        </div>
-                      )}
-                    </form>
-                  </DialogContent>
-                </Dialog>
-              )}
-            </div>
+                        </fieldset>
+                        {uploadProgress !== null && (
+                          <div
+                            className="flex items-center justify-between gap-3 px-1 text-sm"
+                            role="status"
+                          >
+                            <span>Uploading large file: {uploadProgress}%</span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => uploadController.current?.abort()}
+                            >
+                              Cancel upload
+                            </Button>
+                          </div>
+                        )}
+                      </form>
+                    </DialogContent>
+                  </Dialog>
+                )}
+              </div>
+            )}
           </div>
           <p className="text-sm text-muted-foreground">
-            {project.currentParty === "client"
-              ? "Review submitted work and let your freelancer know what comes next."
-              : "Send finished work for approval, or share an update while you are working."}
+            {cancelled
+              ? "Submitted work, progress updates, and feedback from before cancellation."
+              : project.currentParty === "client"
+                ? "Review submitted work and let your freelancer know what comes next."
+                : "Send finished work for approval, or share an update while you are working."}
           </p>
-          <p className="text-sm font-medium">
-            {remaining == null
-              ? "Revision allowance unavailable"
-              : `${remaining} change requests remaining`}
-          </p>
+          {!cancelled && (
+            <p className="text-sm font-medium">
+              {remaining == null
+                ? "Revision allowance unavailable"
+                : `${remaining} change requests remaining`}
+            </p>
+          )}
         </CardHeader>
         <CardContent className="space-y-5">
           {error && (
@@ -553,6 +585,7 @@ export function ProjectDeliveryPanel({
               milestones={project.milestones}
               reviewable={reviewable}
               isClient={project.currentParty === "client"}
+              readOnly={readOnly || cancelled}
               renderSubmission={(submission) => (
                 <article
                   key={submission.submission_id}
@@ -629,6 +662,7 @@ export function ProjectDeliveryPanel({
                     projectId={projectId}
                     submissionId={submission.submission_id}
                     currentUserId={project.currentUserId}
+                    readOnly={readOnly || cancelled}
                     otherParty={
                       project.currentParty === "client"
                         ? "Freelancer"

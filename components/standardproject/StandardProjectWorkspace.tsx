@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ContractSummary } from "@/components/project/ContractSummary";
 import { ProjectAgreementCard } from "@/components/project/ProjectAgreementCard";
 import { ProjectWorkspaceHeader } from "@/components/project/ProjectWorkspaceHeader";
+import { CancelledProjectWorkspace } from "@/components/project/CancelledProjectWorkspace";
 import { useProjectWorkspace } from "@/hooks/project/useProjectWorkspace";
 
 export function StandardProjectWorkspace({ orderId }: { orderId: string }) {
@@ -46,6 +47,17 @@ export function StandardProjectWorkspace({ orderId }: { orderId: string }) {
   }
 
   if (workspace.type !== "standard") return null;
+
+  if (workspace.status.toLowerCase() === "cancelled") {
+    return (
+      <CancelledProjectWorkspace
+        project={workspace}
+        error={error}
+        onRefresh={refresh}
+        onBack={() => router.push("/home/projects")}
+      />
+    );
+  }
 
   if (
     ["active", "revision", "completed"].includes(workspace.status.toLowerCase())

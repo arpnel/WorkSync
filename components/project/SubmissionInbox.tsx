@@ -1,7 +1,6 @@
 "use client";
 import { StyledSelect } from "@/components/ui/styled-select";
 
-
 import { useRef, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
@@ -23,12 +22,14 @@ export function SubmissionInbox({
   milestones,
   reviewable,
   isClient,
+  readOnly = false,
   renderSubmission,
 }: {
   submissions: WorkSubmission[];
   milestones: { id: string; title: string }[];
   reviewable: Set<string>;
   isClient: boolean;
+  readOnly?: boolean;
   renderSubmission: (submission: WorkSubmission) => ReactNode;
 }) {
   const [query, setQuery] = useState("");
@@ -138,9 +139,11 @@ export function SubmissionInbox({
           </label>
         </div>
         <p className="text-xs leading-5 text-muted-foreground">
-          {isClient
-            ? "Choose a submission to view the work, then approve it or ask for changes."
-            : "Choose a submission to see what you sent and read your client?s feedback."}
+          {readOnly
+            ? "Browse work submitted before this project was cancelled."
+            : isClient
+              ? "Choose a submission to view the work, then approve it or ask for changes."
+              : "Choose a submission to see what you sent and read your client?s feedback."}
         </p>
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-3 size-4 text-muted-foreground" />
@@ -162,7 +165,9 @@ export function SubmissionInbox({
         >
           {[
             ["all", "All work"],
-            ["review", isClient ? "To review" : "Awaiting review"],
+            ...(!readOnly
+              ? [["review", isClient ? "To review" : "Awaiting review"]]
+              : []),
             ["progress", "Progress updates"],
           ].map(([value, label]) => (
             <Button
@@ -182,7 +187,7 @@ export function SubmissionInbox({
               }}
             >
               {label}
-              {value === "review" && reviewable.size > 0
+              {!readOnly && value === "review" && reviewable.size > 0
                 ? ` (${reviewable.size})`
                 : ""}
             </Button>
@@ -193,9 +198,11 @@ export function SubmissionInbox({
         <div className="p-8 text-center text-sm text-muted-foreground">
           {submissions.length
             ? "No submissions match your search or filter."
-            : isClient
-              ? "No work has been submitted yet. Your freelancer?s work and updates will appear here."
-              : "Ready to share your work? Use Submit work above to send files, a link, or an update."}
+            : readOnly
+              ? "No work was submitted before the project was cancelled."
+              : isClient
+                ? "No work has been submitted yet. Your freelancer?s work and updates will appear here."
+                : "Ready to share your work? Use Submit work above to send files, a link, or an update."}
         </div>
       ) : (
         <div className="@min-[520px]:grid @min-[520px]:grid-cols-[190px_minmax(0,1fr)]">

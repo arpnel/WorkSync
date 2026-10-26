@@ -15,6 +15,7 @@ import { ProjectAgreementCard } from "@/components/project/ProjectAgreementCard"
 import { ProjectWorkspaceHeader } from "@/components/project/ProjectWorkspaceHeader";
 import { useProjectWorkspace } from "@/hooks/project/useProjectWorkspace";
 import { MilestoneWorkspaceList } from "./MilestoneWorkspaceList";
+import { CancelledProjectWorkspace } from "@/components/project/CancelledProjectWorkspace";
 
 export function MilestoneProjectWorkspace({ orderId }: { orderId: string }) {
   const router = useRouter();
@@ -44,6 +45,17 @@ export function MilestoneProjectWorkspace({ orderId }: { orderId: string }) {
     (sum, milestone) => sum + milestone.amount,
     0,
   );
+
+  if (workspace.status.toLowerCase() === "cancelled") {
+    return (
+      <CancelledProjectWorkspace
+        project={workspace}
+        error={error}
+        onRefresh={refresh}
+        onBack={() => router.push("/home/projects")}
+      />
+    );
+  }
 
   if (
     ["active", "revision", "completed"].includes(workspace.status.toLowerCase())

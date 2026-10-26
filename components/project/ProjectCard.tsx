@@ -103,10 +103,23 @@ export function ProjectCard({ project, onChanged }: ProjectCardProps) {
         >
           <Card className="overflow-hidden transition hover:border-primary/40 hover:shadow-md">
             <CardContent className="p-0">
-              <div className="flex flex-col gap-4 p-4 sm:p-5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
+              <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:p-5">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="font-semibold">{project.title}</h2>
                     <Badge variant="secondary">Service request</Badge>
+                    <Badge
+                      variant="outline"
+                      className={
+                        project.currentParty === "freelancer"
+                          ? "border-amber-200 bg-amber-50 text-amber-700"
+                          : ""
+                      }
+                    >
+                      {project.currentParty === "freelancer"
+                        ? "Needs your response"
+                        : "Awaiting response"}
+                    </Badge>
                     {project.requestCategoryName && (
                       <Badge variant="outline" className="font-normal">
                         <Tag className="mr-1 h-3 w-3" />
@@ -114,68 +127,58 @@ export function ProjectCard({ project, onChanged }: ProjectCardProps) {
                       </Badge>
                     )}
                   </div>
-                  <Badge
-                    variant="outline"
-                    className={
-                      project.currentParty === "freelancer"
-                        ? "shrink-0 border-amber-200 bg-amber-50 font-normal text-amber-700"
-                        : "shrink-0 font-normal"
-                    }
-                  >
-                    {project.currentParty === "freelancer"
-                      ? "Needs your response"
-                      : "Awaiting response"}
-                  </Badge>
-                </div>
-
-                <div>
-                  <h2 className="font-semibold sm:text-base">
-                    {project.title}
-                  </h2>
-                  <p className="mt-1.5 line-clamp-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {project.currentParty === "client"
+                      ? "Freelancer"
+                      : "Client"}
+                    : {project.counterpartyName ?? project.client}
+                  </p>
+                  <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
                     {project.requestDescription ||
                       "No additional project details were provided."}
                   </p>
-                  <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <CalendarDays className="h-3.5 w-3.5" />
-                    Requested{" "}
-                    {format(
-                      new Date(project.createdAt),
-                      "MMM d, yyyy 'at' h:mm a",
-                    )}
-                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <span className="inline-flex items-center gap-1.5">
+                      <CalendarDays className="h-3.5 w-3.5" />
+                      Requested{" "}
+                      {format(
+                        new Date(project.createdAt),
+                        "MMM d, yyyy 'at' h:mm a",
+                      )}
+                    </span>
+                    <span className="inline-flex items-center gap-1 font-medium text-primary">
+                      {project.currentParty === "freelancer"
+                        ? "Review request"
+                        : "View sent request"}
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </span>
+                  </div>
                 </div>
 
-                <p className="text-sm text-muted-foreground">
-                  {project.currentParty === "client" ? "Freelancer" : "Client"}:{" "}
-                  {project.counterpartyName ?? project.client}
-                </p>
-                <div className="flex flex-wrap gap-2 text-sm">
-                  <span className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2.5 py-1.5">
-                    <BriefcaseBusiness className="h-3.5 w-3.5 text-muted-foreground" />
-                    ₱{project.budget.toLocaleString()}
-                  </span>
-                  <span className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2.5 py-1.5">
-                    <Clock3 className="h-3.5 w-3.5 text-muted-foreground" />
-                    {project.deliveryDays == null
-                      ? "Delivery not set"
-                      : `${project.deliveryDays} days`}
-                  </span>
-                  <span className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2.5 py-1.5">
-                    <RotateCcw className="h-3.5 w-3.5 text-muted-foreground" />
-                    {project.revisions == null
-                      ? "Revisions not set"
-                      : `${project.revisions} ${project.revisions === 1 ? "revision" : "revisions"}`}
-                  </span>
-                </div>
-
-                <div className="flex justify-end border-t pt-3 text-xs">
-                  <span className="inline-flex w-fit items-center gap-1.5 rounded-md bg-primary/10 px-3 py-1.5 font-medium text-primary">
-                    {project.currentParty === "freelancer"
-                      ? "Review request"
-                      : "View request"}
-                    <ArrowRight className="h-4 w-4" />
-                  </span>
+                <div className="grid grid-cols-3 gap-3 border-t pt-3 text-sm sm:min-w-[300px] sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Budget</p>
+                    <p className="mt-1 inline-flex items-center gap-1 font-medium">
+                      <BriefcaseBusiness className="h-3.5 w-3.5 text-muted-foreground" />
+                      PHP {project.budget.toLocaleString()}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Delivery</p>
+                    <p className="mt-1 inline-flex items-center gap-1 font-medium">
+                      <Clock3 className="h-3.5 w-3.5 text-muted-foreground" />
+                      {project.deliveryDays == null
+                        ? "Not set"
+                        : `${project.deliveryDays} days`}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Revisions</p>
+                    <p className="mt-1 inline-flex items-center gap-1 font-medium">
+                      <RotateCcw className="h-3.5 w-3.5 text-muted-foreground" />
+                      {project.revisions ?? "Not set"}
+                    </p>
+                  </div>
                 </div>
               </div>
             </CardContent>

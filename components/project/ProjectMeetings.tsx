@@ -80,6 +80,7 @@ export default function ProjectMeetings({
       rounded.setMinutes(rounded.getMinutes() + 1);
     return local(rounded.toISOString());
   };
+  const visibleRows = rows.filter((meeting) => meeting.status !== "cancelled");
   const save = async (cancelledMeeting?: Meeting) => {
     setBusy(true);
     setError("");
@@ -135,7 +136,7 @@ export default function ProjectMeetings({
               <h3 className="mb-2 text-sm font-semibold">Scheduled meetings</h3>
               {loading ? (
                 <ContentSkeleton label="Loading meetings" variant="list" />
-              ) : !rows.length ? (
+              ) : !visibleRows.length ? (
                 <div className="flex min-h-24 flex-col items-center justify-center gap-1 rounded-xl bg-muted/60 px-4 py-5 text-center">
                   <CalendarDays className="mb-1 h-5 w-5 text-muted-foreground" />
                   <p className="text-sm font-medium">No meetings scheduled</p>
@@ -147,7 +148,7 @@ export default function ProjectMeetings({
                 </div>
               ) : null}
             </div>
-            {rows.map((m) => (
+            {visibleRows.map((m) => (
               <div
                 key={m.meeting_id}
                 className="flex flex-wrap items-center justify-between gap-2 rounded border p-3 text-sm"

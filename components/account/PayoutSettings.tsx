@@ -1,6 +1,5 @@
 "use client";
 import { StyledSelect } from "@/components/ui/styled-select";
-import FreelancerTaxDeclaration from "@/components/account/FreelancerTaxDeclaration";
 import { openSavedTaxReceipt } from "@/lib/payments/receiptClient";
 
 import { useEffect, useState } from "react";
@@ -210,7 +209,6 @@ export default function PayoutSettings() {
           )}
         </div>
       )}
-      {data?.eligible && <FreelancerTaxDeclaration />}
       {error && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/20 bg-destructive/5 p-3">
           <p role="alert" className="text-sm text-destructive">{error}</p>

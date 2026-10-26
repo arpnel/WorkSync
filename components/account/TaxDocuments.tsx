@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { StyledSelect } from "@/components/ui/styled-select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import FreelancerTaxDeclaration from "@/components/account/FreelancerTaxDeclaration";
 
 type Party = "freelancer" | "client";
 type Category = "vat" | "withholding";
@@ -239,7 +240,7 @@ export default function TaxDocuments() {
                 <div><p className="flex items-center gap-2 font-medium"><Building2 className="size-4 text-muted-foreground" />Name on document</p><p className="mt-1 text-muted-foreground">Submit a BIR document that identifies the freelancer. For Form 2303, enter the registered name exactly as shown.</p></div>
                 <div><p className="flex items-center gap-2 font-medium"><Landmark className="size-4 text-muted-foreground" />Where to get it</p><p className="mt-1 text-muted-foreground">Request the applicable record from the BIR office or official BIR channel that issued it.</p></div>
               </div>
-              {category === "withholding" && <p className="mt-3 border-t pt-3 text-xs text-muted-foreground">Sworn declarations are submitted separately in Payouts under Tax records.</p>}
+              {category === "withholding" && <p className="mt-3 border-t pt-3 text-xs text-muted-foreground">The year-specific sworn declaration is a separate record. Submit it in the Withholding tax declaration section below.</p>}
             </div>
 
             <div className="space-y-3">
@@ -295,6 +296,7 @@ export default function TaxDocuments() {
             </section>
           </DialogContent>}
           </Dialog>
+          {freelancerAvailable && <FreelancerTaxDeclaration />}
         </>}
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         {notice && <p role="status" className="text-sm text-primary">{notice}</p>}

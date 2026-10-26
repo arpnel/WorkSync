@@ -55,8 +55,8 @@ export default function FreelancerTaxDeclaration() {
     finally { setBusy(false); }
   }
   const hasActive = rows.some((row) => row.tax_year === year && row.status === "pending");
-  return <section className="space-y-3 rounded-xl border p-4">
-    <div><h4 className="font-semibold">Sworn declaration of income or exemption</h4><p className="mt-1 text-sm text-muted-foreground">Upload the BIR-received declaration for manual review when this document is permitted for your circumstances.</p></div>
+  return <section className="space-y-4 border-t pt-5">
+    <div><h3 className="font-semibold">Withholding tax declaration</h3><p className="mt-1 text-sm text-muted-foreground">Submit the BIR-received sworn declaration for the selected tax year. This is reviewed separately from your supporting tax documents.</p></div>
     {rows.map((row) => <div key={row.declaration_id} className="flex flex-wrap justify-between gap-2 border-t pt-2 text-sm"><span>{row.tax_year} declaration ({row.reported_threshold_status.replaceAll("_", " ")})</span><span className="capitalize">{row.status.replaceAll("_", " ")}</span>{row.document_url && <a className="text-primary underline" href={row.document_url} target="_blank" rel="noreferrer">Download document</a>}{row.review_notes && <p className="w-full text-muted-foreground">{row.review_notes}</p>}</div>)}
     {!hasActive && <div className="grid gap-4 sm:grid-cols-2">
       <div className="space-y-2"><Label htmlFor="tax-declaration-year">Tax year</Label><Input id="tax-declaration-year" type="number" min="2024" max={new Date().getFullYear() + 1} value={year} onChange={(event) => setYear(Number(event.target.value))} /></div>

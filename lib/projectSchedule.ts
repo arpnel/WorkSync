@@ -150,7 +150,7 @@ export function buildProjectDeadlines(
     }
     if (!completed)
       for (const meeting of meetings.filter(
-        (m) => m.project_id === project.project_id,
+        (m) => m.project_id === project.project_id && Date.parse(m.starts_at) > now.getTime(),
       ))
         add(
           `meeting:${meeting.meeting_id}`,

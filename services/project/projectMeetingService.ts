@@ -14,12 +14,12 @@ export async function saveProjectMeeting(
   status: "scheduled" | "cancelled",
 ) {
   return platformAction("worksync_save_meeting", {
-    p_meeting_id: meeting.meeting_id,
-    p_project_id: projectId,
-    p_starts_at: meeting.starts_at,
-    p_ends_at: meeting.ends_at,
-    p_status: status,
+    p_id: meeting.meeting_id,
+    p_project: projectId,
     p_title: meeting.title,
+    p_start: meeting.starts_at,
+    p_end: meeting.ends_at,
     p_link: meeting.link,
+    p_cancel: status === "cancelled",
   });
 }

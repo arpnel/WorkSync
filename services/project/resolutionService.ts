@@ -78,6 +78,15 @@ export async function getResolutionHistory(
     disputes: (d.data ?? []) as Dispute[],
   };
 }
+export async function getCancellationHistory(orderId: string) {
+  const { data, error } = await supabase
+    .from("project_cancellations")
+    .select("cancellation_id,order_id,requested_by,reason,status,response,created_at")
+    .eq("order_id", orderId)
+    .order("created_at", { ascending: false });
+  if (error) throw databaseError(error);
+  return (data ?? []) as Cancellation[];
+}
 export async function requestCancellation(orderId: string, reason: string) {
   return platformAction("worksync_request_cancellation", {
     p_order: orderId,

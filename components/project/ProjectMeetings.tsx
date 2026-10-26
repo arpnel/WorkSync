@@ -29,8 +29,7 @@ export default function ProjectMeetings({
     [editing, setEditing] = useState<string | null | false>(false),
     [title, setTitle] = useState(""),
     [start, setStart] = useState(""),
-    [end, setEnd] = useState(""),
-    [link, setLink] = useState("");
+    [end, setEnd] = useState("");
   const load = useCallback(async () => {
     try {
       const { data, error } = await supabase
@@ -75,8 +74,10 @@ export default function ProjectMeetings({
     setBusy(true);
     setError("");
     try {
-      if (!cancelledMeeting && link && !/^https?:\/\//i.test(link))
-        throw new Error("Use an HTTP or HTTPS meeting link.");
+      if (!cancelledMeeting && new Date(start).getTime() <= Date.now())
+        throw new Error("The meeting must start in the future.");
+      if (!cancelledMeeting && new Date(end).getTime() <= new Date(start).getTime())
+        throw new Error("The meeting end must be after its start.");
       await saveProjectMeeting(
         projectId,
         cancelledMeeting ?? {
@@ -84,7 +85,7 @@ export default function ProjectMeetings({
           title,
           starts_at: new Date(start).toISOString(),
           ends_at: new Date(end).toISOString(),
-          link: link || null,
+          link: null,
         },
         cancelledMeeting ? "cancelled" : "scheduled",
       );
@@ -132,18 +133,11 @@ export default function ProjectMeetings({
                 {new Date(m.starts_at).toLocaleString()} –{" "}
                 {new Date(m.ends_at).toLocaleTimeString()}
               </p>
-              {m.link &&
-                m.status === "scheduled" &&
-                /^https?:\/\//i.test(m.link) && (
-                  <a
-                    href={m.link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline"
-                  >
-                    Open meeting link
-                  </a>
-                )}
+              {m.status === "scheduled" && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Start a video call from your project conversation when it is time to meet.
+                </p>
+              )}
             </div>
             {active && m.status === "scheduled" && (
               <div className="flex gap-2">
@@ -156,7 +150,6 @@ export default function ProjectMeetings({
                     setTitle(m.title);
                     setStart(local(m.starts_at));
                     setEnd(local(m.ends_at));
-                    setLink(m.link ?? "");
                   }}
                 >
                   Edit
@@ -182,7 +175,6 @@ export default function ProjectMeetings({
                 setTitle("");
                 setStart("");
                 setEnd("");
-                setLink("");
               }}
             >
               Schedule meeting
@@ -205,29 +197,23 @@ export default function ProjectMeetings({
                 />
               </label>
               <label className="text-sm">
-                Starts (local time)
+                Starts
                 <Input
                   type="datetime-local"
                   required
+                  min={local(new Date(Date.now() + 60_000).toISOString())}
                   value={start}
                   onChange={(e) => setStart(e.target.value)}
                 />
               </label>
               <label className="text-sm">
-                Ends (local time)
+                Ends
                 <Input
                   type="datetime-local"
                   required
+                  min={start || local(new Date(Date.now() + 60_000).toISOString())}
                   value={end}
                   onChange={(e) => setEnd(e.target.value)}
-                />
-              </label>
-              <label className="text-sm sm:col-span-2">
-                Meeting link (optional)
-                <Input
-                  type="url"
-                  value={link}
-                  onChange={(e) => setLink(e.target.value)}
                 />
               </label>
               <div className="flex gap-2">

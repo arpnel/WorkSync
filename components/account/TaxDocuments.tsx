@@ -38,7 +38,9 @@ const clientPurposes: PurposeOption[] = [
 ];
 
 export default function TaxDocuments() {
-  const [parties, setParties] = useState<Party[]>([]);
+  // Render the submission controls immediately while account roles load. The
+  // API still validates the selected role before accepting an upload.
+  const [parties, setParties] = useState<Party[]>(["freelancer", "client"]);
   const [party, setParty] = useState<Party>("freelancer");
   const [rows, setRows] = useState<DocumentRow[]>([]);
   const [purpose, setPurpose] = useState<UploadPurpose>("vat_cor");

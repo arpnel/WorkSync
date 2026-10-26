@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { MessageCircle } from "lucide-react";
 import {
   Card,
@@ -110,21 +109,6 @@ export default function MessageSettings() {
             </div>
           </section>
         ))}
-        <section className="space-y-2">
-          <h3 className="text-sm font-semibold">Notifications & Sounds</h3>
-          <div className="rounded-xl bg-muted/50 p-4">
-            <p className="text-sm font-medium">Message notifications</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Choose whether message updates appear in your notification list.
-            </p>
-            <Link
-              href="/home/settings#notifications"
-              className="mt-3 inline-flex min-h-10 items-center text-sm font-medium text-primary underline-offset-4 hover:underline"
-            >
-              Manage notification preferences
-            </Link>
-          </div>
-        </section>
         {error && (
           <p role="alert" className="text-sm text-destructive">
             {error}

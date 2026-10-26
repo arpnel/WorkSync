@@ -149,3 +149,34 @@ test("deadline priority covers overdue, two-day and seven-day boundaries, missin
   assert.equal(task.dueDate, "");
   assert.equal(task.priority, "low");
 });
+
+test("upcoming project meetings appear on each participant's linked schedule", () => {
+  const row = order();
+  row.current_user_id = "c";
+  const meetings = [
+    { meeting_id: "meeting-1", project_id: "p", title: "Planning", starts_at: "2026-09-19T12:30:00.000Z" },
+    { meeting_id: "meeting-past", project_id: "p", title: "Past", starts_at: "2026-09-18T12:30:00.000Z" },
+  ];
+  const cards = api.buildProjectDeadlines([row], meetings, now);
+  const meeting = cards.find(card => card.kind === "meeting");
+  assert.equal(meeting?.id, "meeting:meeting-1");
+  assert.equal(meeting?.title, "Meeting: Planning");
+  row.current_user_id = "f";
+  assert.ok(api.buildProjectDeadlines([row], meetings, now).some(card => card.id === "meeting:meeting-1"));
+  row.current_user_id = "other";
+  assert.equal(api.buildProjectDeadlines([row], meetings, now).length, 0);
+});
+
+test("meeting form enforces future times and the reminder worker is secret protected and idempotent", () => {
+  const form = fs.readFileSync("components/project/ProjectMeetings.tsx", "utf8");
+  const migration = fs.readFileSync("supabase/migrations/20261026190000_project_meeting_reminders.sql", "utf8");
+  const worker = fs.readFileSync("app/api/cron/project-meeting-reminders/route.ts", "utf8");
+  assert.match(form, /The meeting must start in the future/);
+  assert.match(form, /min=\{local\(new Date\(Date\.now\(\) \+ 60_000\)/);
+  assert.doesNotMatch(form, /Meeting link \(optional\)|Starts \(local time\)/);
+  assert.match(migration, /unique\(meeting_id,user_id,starts_at\)/);
+  assert.match(migration, /pg_advisory_xact_lock/);
+  assert.match(migration, /starts within 30 minutes/);
+  assert.match(worker, /timingSafeEqual/);
+  assert.match(worker, /worksync_claim_project_meeting_reminders/);
+});

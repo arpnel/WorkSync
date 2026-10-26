@@ -39,6 +39,7 @@ export function useProjectSchedule() {
       "milestones",
       "contracts",
       "service_orders",
+      "project_meetings",
     ])
       channel.on(
         "postgres_changes",

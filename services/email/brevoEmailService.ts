@@ -14,7 +14,12 @@ class BrevoConfigurationError extends Error {
 export function emailAdminClient() {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (!key || !url) throw new Error("Email recipient lookup is not configured.");
+  if (!key || !url) {
+    console.error("WorkSync email recipient lookup is not configured", {
+      missing: [!key && "SUPABASE_SERVICE_ROLE_KEY", !url && "NEXT_PUBLIC_SUPABASE_URL"].filter(Boolean),
+    });
+    throw new Error("Email recipient lookup is not configured.");
+  }
   return createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
@@ -22,7 +27,13 @@ export function emailAdminClient() {
 
 export async function getTrustedUserEmail(userId: string) {
   const { data, error } = await emailAdminClient().auth.admin.getUserById(userId);
-  if (error || !data.user?.email) return null;
+  if (error || !data.user?.email) {
+    console.warn("WorkSync email recipient lookup failed", {
+      reason: error ? "auth_admin_lookup_failed" : "recipient_email_unavailable",
+      code: error?.code ?? null,
+    });
+    return null;
+  }
   const first = data.user.user_metadata?.first_name;
   const last = data.user.user_metadata?.last_name;
   const name = [first, last].filter((part) => typeof part === "string").join(" ");

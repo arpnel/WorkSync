@@ -7,6 +7,7 @@ import {
   Bell,
   MessageSquare,
   ShieldCheck,
+  BadgeCheck,
   UserRound,
   ArrowLeft,
   ChevronRight,
@@ -31,6 +32,12 @@ const sections = [
     label: "Verification",
     description: "Manage your identity verification",
     Icon: ShieldCheck,
+  },
+  {
+    id: "seller-verification",
+    label: "Seller verification",
+    description: "Submit documents required to offer services",
+    Icon: BadgeCheck,
   },
   {
     id: "notifications",

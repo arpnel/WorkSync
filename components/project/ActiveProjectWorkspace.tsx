@@ -9,6 +9,7 @@ import { ProjectMeetingsDialog } from "./ProjectMeetingsDialog";
 import { ProjectDeliveryPanel } from "./ProjectDeliveryPanel";
 import { ProjectPaymentPanel } from "./ProjectPaymentPanel";
 import { ProjectResolutionPanel } from "./ProjectResolutionPanel";
+import { ProjectCancellationNotice } from "./ProjectCancellationNotice";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -32,6 +33,7 @@ export function ActiveProjectWorkspace({
 }) {
   const [mobileSection, setMobileSection] = useState("work");
   const [payment, setPayment] = useState<ProjectPayment | null>(null);
+  const [resolutionOpen, setResolutionOpen] = useState(false);
   const paid =
     payment?.status === "paid" && Number(payment.amount) === project.budget;
   const [now, setNow] = useState(() => Date.now());
@@ -108,6 +110,7 @@ export function ActiveProjectWorkspace({
               </p>
             </section>
           )}
+          {project.projectId && project.orderId && <ProjectCancellationNotice project={project} onReview={() => setResolutionOpen(true)} />}
           {!paid && !completed && (
             <section className="flex items-start gap-3 rounded-xl border bg-muted/20 p-4 text-sm">
               <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
@@ -138,7 +141,7 @@ export function ActiveProjectWorkspace({
             autoAccept={payment?.autoAccept ?? false}
             actions={<>
               {project.projectId && <ProjectMeetingsDialog projectId={project.projectId} active={!completed} />}
-              <Dialog>
+              <Dialog open={resolutionOpen} onOpenChange={setResolutionOpen}>
                 <DialogTrigger asChild>
                   <Button variant="outline" size="sm">
                     Project resolution

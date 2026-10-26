@@ -84,6 +84,12 @@ export const ADMIN_NAV_GROUPS = [
         description: "Review submitted identity and address documents.",
       },
       {
+        href: "/admin/seller-verification",
+        label: "Seller verification",
+        icon: ShieldCheck,
+        description: "Review freelancer documents required to offer services.",
+      },
+      {
         href: "/admin/disputes",
         label: "Disputes",
         icon: Scale,

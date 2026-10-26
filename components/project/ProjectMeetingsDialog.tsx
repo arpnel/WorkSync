@@ -31,9 +31,9 @@ export function ProjectMeetingsDialog({
         <DialogHeader>
           <DialogTitle>Project meetings</DialogTitle>
           <DialogDescription>
-            View meeting times and links
+            View scheduled meeting times
             {active
-              ? ", or schedule a conversation with your project partner."
+              ? ", or schedule a conversation with your project partner. Use the project conversation to start a video call."
               : " for this project."}
           </DialogDescription>
         </DialogHeader>

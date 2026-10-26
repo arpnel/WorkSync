@@ -40,7 +40,7 @@ export function ProjectMeetingsDialog({
               : " for this project."}
           </DialogDescription>
         </DialogHeader>
-        <ProjectMeetings projectId={projectId} active={active} />
+        <ProjectMeetings projectId={projectId} active={active} inDialog />
       </DialogContent>
     </Dialog>
   );

@@ -19,9 +19,11 @@ type Meeting = {
 export default function ProjectMeetings({
   projectId,
   active,
+  inDialog = false,
 }: {
   projectId: string;
   active: boolean;
+  inDialog?: boolean;
 }) {
   const [rows, setRows] = useState<Meeting[]>([]),
     [error, setError] = useState(""),
@@ -189,9 +191,11 @@ export default function ProjectMeetings({
               </div>
             ))}
             <div className="flex justify-end gap-2 border-t pt-4">
-              <DialogClose asChild>
-                <Button variant="outline">Close</Button>
-              </DialogClose>
+              {inDialog && (
+                <DialogClose asChild>
+                  <Button variant="outline">Close</Button>
+                </DialogClose>
+              )}
               {active && (
                 <Button
                   onClick={() => {

@@ -25,6 +25,7 @@ import {
 import AdminPageHeader from "@/components/admin/AdminPageHeader";
 import { AdminFilterPanel } from "@/components/admin/admin-ui";
 import { toast } from "sonner";
+import { RefreshCw, Search } from "lucide-react";
 
 type Ticket = {
   ticket_id: string;
@@ -60,6 +61,7 @@ export default function SupportTickets() {
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
+    setLoading(true);
     const { data, error } = await supabase.rpc(
       "worksync_admin_support_tickets",
       { p_status: filter === "all" ? null : filter },
@@ -124,14 +126,20 @@ export default function SupportTickets() {
     <div className="min-w-0 space-y-7">
       <AdminPageHeader title="Support tickets" />
       <AdminFilterPanel ariaLabel="Search and filter support tickets">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(12rem,0.45fr)]">
-          <Input
-            className="h-10 rounded-lg bg-background"
-            aria-label="Search support tickets"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search subject, requester, or ticket ID"
-          />
+        <div className="grid items-end gap-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(12rem,0.4fr)_auto]">
+          <label className="grid min-w-0 gap-1.5 text-sm font-medium">
+            Search tickets
+            <span className="relative block">
+              <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-3 size-4 text-muted-foreground" />
+              <Input
+                className="h-10 rounded-lg bg-background pl-10 font-normal"
+                aria-label="Search support tickets"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Subject, requester, or ticket ID"
+              />
+            </span>
+          </label>
           <label className="grid gap-1.5 text-sm font-medium">
             Status
             <Select value={filter} onValueChange={setFilter}>
@@ -149,6 +157,15 @@ export default function SupportTickets() {
               </SelectContent>
             </Select>
           </label>
+          <div className="flex flex-col gap-2 sm:flex-row xl:justify-end">
+            <Button variant="outline" className="h-10 rounded-lg" onClick={() => void load()} disabled={loading}>
+              <RefreshCw className={loading ? "size-4 animate-spin" : "size-4"} />
+              Refresh
+            </Button>
+            <Button variant="ghost" className="h-10 rounded-lg" onClick={() => { setSearch(""); setFilter("all"); }}>
+              Reset filters
+            </Button>
+          </div>
         </div>
       </AdminFilterPanel>
       <Card className="rounded-xl shadow-sm">

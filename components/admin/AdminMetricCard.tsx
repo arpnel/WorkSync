@@ -45,23 +45,23 @@ export default function AdminMetricCard({
   const { Icon, tone } = styles[index % styles.length];
   return (
     <Card>
-      <CardContent className="relative space-y-4 pt-5">
-        <div className="flex items-start justify-between gap-3">
-          <p className="text-sm capitalize text-muted-foreground">
+      <CardContent className="flex h-full min-w-0 items-start justify-between gap-4 p-4 sm:p-5">
+        <div className="min-w-0 flex-1 space-y-3">
+          <p className="min-w-0 text-sm capitalize leading-5 text-muted-foreground">
             {label.replaceAll("_", " ")}
           </p>
-          <span
-            className={
-              "flex size-10 shrink-0 items-center justify-center rounded-xl " +
-              tone
-            }
-          >
-            <Icon className="size-5" aria-hidden="true" />
-          </span>
+          <p className="break-words text-2xl font-semibold tracking-tight tabular-nums sm:text-3xl">
+            {value}
+          </p>
         </div>
-        <p className="text-3xl font-semibold tracking-tight tabular-nums">
-          {value}
-        </p>
+        <span
+          className={
+            "flex size-9 shrink-0 items-center justify-center rounded-lg " +
+            tone
+          }
+        >
+          <Icon className="size-4" aria-hidden="true" />
+        </span>
       </CardContent>
     </Card>
   );

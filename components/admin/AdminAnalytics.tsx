@@ -9,6 +9,7 @@ import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getAdminAnalytics } from "@/services/admin/adminService";
 import { Button } from "@/components/ui/button";
+import { RefreshCw } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -86,7 +87,7 @@ export default function AdminAnalytics() {
     <div className="min-w-0 space-y-6">
       <AdminPageHeader title="Platform analytics" />
       <AdminFilterPanel ariaLabel="Filter analytics">
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_minmax(12rem,1fr)_auto]">
+        <div className="grid items-end gap-4 sm:grid-cols-2 xl:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_minmax(12rem,1fr)_auto_auto]">
           <label className="grid gap-1.5 text-sm font-medium">
             From
             <Input
@@ -135,8 +136,21 @@ export default function AdminAnalytics() {
             className="h-10 rounded-lg"
             variant="outline"
             onClick={() => void load()}
+            disabled={loading}
           >
+            <RefreshCw className={loading ? "size-4 animate-spin" : "size-4"} />
             Refresh
+          </Button>
+          <Button
+            className="h-10 rounded-lg"
+            variant="ghost"
+            onClick={() => {
+              setFrom(`${new Date().getFullYear()}-01-01`);
+              setTo(new Date().toISOString().slice(0, 10));
+              setStatus("all");
+            }}
+          >
+            Reset filters
           </Button>
         </div>
       </AdminFilterPanel>
@@ -155,7 +169,7 @@ export default function AdminAnalytics() {
       ) : (
         data && (
           <>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))] gap-3">
               {Object.entries({
                 ...data.counts,
                 completion_rate:

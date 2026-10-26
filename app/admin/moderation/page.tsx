@@ -9,7 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { RefreshCw, Search } from "lucide-react";
+import AdminMetricCard from "@/components/admin/AdminMetricCard";
 import {
   Dialog,
   DialogContent,
@@ -41,6 +43,7 @@ const RISKS = ["low", "medium", "high", "critical"];
 
 export default function ModerationPage() {
   const [rows, setRows] = useState<Submission[]>([]);
+  const [loading, setLoading] = useState(true);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [type, setType] = useState("all");
   const [risk, setRisk] = useState("all");
@@ -61,6 +64,7 @@ export default function ModerationPage() {
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
+    setLoading(true);
     setError("");
     let query = supabase
       .from("listing_submissions")
@@ -96,6 +100,7 @@ export default function ModerationPage() {
     if (error) {
       setError(error.message);
       setRows([]);
+      setLoading(false);
       return;
     }
     setRows((data ?? []) as Submission[]);
@@ -124,6 +129,7 @@ export default function ModerationPage() {
       high_risk: high.count ?? 0,
       critical_risk: critical.count ?? 0,
     });
+    setLoading(false);
   }, [type, risk, status, search, fromDate, toDate, sort, offset]);
   useEffect(() => {
     const timer = setTimeout(() => void load(), 180);
@@ -160,42 +166,36 @@ export default function ModerationPage() {
   return (
     <div className="min-w-0 space-y-7">
       <AdminPageHeader title="Listing moderation" />
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,14rem),1fr))] gap-3">
         {[
-          [
-            "Pending review",
-            (counts.pending_review ?? 0) + (counts.manual_review ?? 0),
-          ],
-          ["Approved", counts.approved ?? 0],
-          ["Rejected", counts.rejected ?? 0],
-          ["High risk", counts.high_risk ?? 0],
-          ["Critical risk", counts.critical_risk ?? 0],
-          ["Manual review", counts.manual_review ?? 0],
-        ].map(([label, value]) => (
-          <Card key={label} className="rounded-xl shadow-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-muted-foreground">
-                {label}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="text-3xl font-semibold tabular-nums">
-              {value}
-            </CardContent>
-          </Card>
+          { label: "Pending review", value: (counts.pending_review ?? 0) + (counts.manual_review ?? 0) },
+          { label: "Approved", value: counts.approved ?? 0 },
+          { label: "Rejected", value: counts.rejected ?? 0 },
+          { label: "High risk", value: counts.high_risk ?? 0 },
+          { label: "Critical risk", value: counts.critical_risk ?? 0 },
+          { label: "Manual review", value: counts.manual_review ?? 0 },
+        ].map(({ label, value }, index) => (
+          <AdminMetricCard key={label} label={label} value={value} index={index} />
         ))}
       </div>
       <AdminFilterPanel ariaLabel="Filter listing submissions">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          <Input
-            className="h-10 rounded-lg bg-background sm:col-span-2 xl:col-span-1"
-            aria-label="Search submissions"
-            placeholder="Search title or owner ID"
-            value={search}
-            onChange={(event) => {
-              setSearch(event.target.value);
-              setOffset(0);
-            }}
-          />
+        <div className="grid items-end gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <label className="grid min-w-0 gap-1.5 text-sm font-medium sm:col-span-2 xl:col-span-2">
+            Search submissions
+            <span className="relative block">
+              <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-3 size-4 text-muted-foreground" />
+              <Input
+                className="h-10 rounded-lg bg-background pl-10 font-normal"
+                aria-label="Search submissions"
+                placeholder="Listing title or owner ID"
+                value={search}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  setOffset(0);
+                }}
+              />
+            </span>
+          </label>
           <label className="grid gap-1.5 text-sm font-medium">
             Listing type
             <StyledSelect
@@ -247,8 +247,8 @@ export default function ModerationPage() {
               ))}
             </StyledSelect>
           </label>
-          <label className="grid gap-1.5 text-sm font-medium">
-            From
+          <label className="grid min-w-0 gap-1.5 text-sm font-medium">
+            Created from
             <Input
               className="h-10 rounded-lg bg-background font-normal"
               type="date"
@@ -259,8 +259,8 @@ export default function ModerationPage() {
               }}
             />
           </label>
-          <label className="grid gap-1.5 text-sm font-medium">
-            Through
+          <label className="grid min-w-0 gap-1.5 text-sm font-medium">
+            Created through
             <Input
               className="h-10 rounded-lg bg-background font-normal"
               type="date"
@@ -276,12 +276,21 @@ export default function ModerationPage() {
             <StyledSelect
               className="h-10 w-full rounded-lg border bg-background px-3 font-normal"
               value={sort}
-              onChange={(event) => setSort(event.target.value)}
+              onChange={(event) => { setSort(event.target.value); setOffset(0); }}
             >
               <option value="newest">Newest first</option>
               <option value="oldest">Oldest first</option>
             </StyledSelect>
           </label>
+          <div className="flex flex-col gap-2 sm:flex-row xl:col-span-2 xl:justify-end">
+            <Button variant="outline" className="h-10 rounded-lg" onClick={() => void load()} disabled={loading}>
+              <RefreshCw className={loading ? "size-4 animate-spin" : "size-4"} />
+              Refresh queue
+            </Button>
+            <Button variant="ghost" className="h-10 rounded-lg" onClick={() => { setSearch(""); setType("all"); setRisk("all"); setStatus("all"); setFromDate(""); setToDate(""); setSort("newest"); setOffset(0); }}>
+              Reset filters
+            </Button>
+          </div>
         </div>
       </AdminFilterPanel>
       {error && (
@@ -293,7 +302,8 @@ export default function ModerationPage() {
         </p>
       )}
       <section className="space-y-3" aria-label="Listing submissions">
-        {rows.map((row) => (
+        {loading && <div role="status" className="rounded-xl border bg-card px-4 py-8 text-center text-sm text-muted-foreground">Loading listing submissions…</div>}
+        {!loading && rows.map((row) => (
           <Card key={row.submission_id} className="rounded-xl shadow-sm">
             <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
               <button
@@ -348,7 +358,7 @@ export default function ModerationPage() {
             </CardContent>
           </Card>
         ))}
-        {rows.length === 0 && (
+        {!loading && !error && rows.length === 0 && (
           <div className="rounded-xl border border-dashed bg-card px-4 py-12 text-center text-sm text-muted-foreground">
             No submissions match these filters.
           </div>

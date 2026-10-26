@@ -7,7 +7,7 @@ import AdminStatusChart from "./AdminStatusChart";
 import { filterAdminPage } from "@/services/admin/adminRecordFilters";
 import AdminPageHeader from "./AdminPageHeader";
 import { Badge } from "@/components/ui/badge";
-import { Search } from "lucide-react";
+import { RefreshCw, Search } from "lucide-react";
 import { openSavedTaxReceipt } from "@/lib/payments/receiptClient";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -155,7 +155,7 @@ export default function AdminRecords({
         </Button>
       </div>
       {data?.stats && (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))] gap-3">
           {Object.entries(data.stats).map(([label, value], index) => (
             <AdminMetricCard
               key={label}
@@ -166,29 +166,29 @@ export default function AdminRecords({
           ))}
         </div>
       )}
-      {module !== "overview" && (
-        <div className="relative max-w-xl">
-          <Search
-            aria-hidden="true"
-            className="pointer-events-none absolute left-3 top-3 size-4 text-muted-foreground"
-          />
-          <Input
-            className="h-10 rounded-xl bg-card pl-10"
-            aria-label="Search records"
-            placeholder="Search recordsâ€¦"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setOffset(0);
-              setPreviousOffsets([]);
-            }}
-          />
-        </div>
-      )}
       <AdminFilterPanel ariaLabel="Filter records">
-        <div className="grid grid-cols-1 items-end gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(9rem,1fr)_minmax(11rem,1.4fr)_minmax(11rem,1.4fr)_minmax(9rem,1fr)_auto]">
+        <div className="grid grid-cols-1 items-end gap-4 sm:grid-cols-2 xl:grid-cols-6">
+          {module !== "overview" && (
+            <label className="grid min-w-0 gap-1.5 text-sm font-medium sm:col-span-2 xl:col-span-2">
+              Search records
+              <span className="relative block">
+                <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-3 size-4 text-muted-foreground" />
+                <Input
+                  className="h-10 w-full rounded-lg bg-background pl-10 font-normal"
+                  aria-label="Search records"
+                  placeholder="Name, email, ID, or reference"
+                  value={search}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setOffset(0);
+                    setPreviousOffsets([]);
+                  }}
+                />
+              </span>
+            </label>
+          )}
           <label className="grid min-w-0 gap-1.5 text-sm font-medium">
-            Page status
+            Status
             <StyledSelect
               className="h-10 w-full rounded-lg border bg-background px-3 font-normal"
               value={statusFilter}
@@ -206,7 +206,7 @@ export default function AdminRecords({
             </StyledSelect>
           </label>
           <label className="grid min-w-0 gap-1.5 text-sm font-medium">
-            From
+            Created from
             <Input
               className="h-10 w-full rounded-lg bg-background font-normal"
               type="date"
@@ -216,7 +216,7 @@ export default function AdminRecords({
             />
           </label>
           <label className="grid min-w-0 gap-1.5 text-sm font-medium">
-            Through
+            Created through
             <Input
               className="h-10 w-full rounded-lg bg-background font-normal"
               type="date"
@@ -226,7 +226,7 @@ export default function AdminRecords({
             />
           </label>
           <label className="grid min-w-0 gap-1.5 text-sm font-medium">
-            Sort page
+            Sort by
             <StyledSelect
               className="h-10 w-full rounded-lg border bg-background px-3 font-normal"
               value={sort}
@@ -237,26 +237,31 @@ export default function AdminRecords({
               <option value="name">Name order</option>
             </StyledSelect>
           </label>
-          <Button
-            type="button"
-            variant="outline"
-            className="h-10 w-full rounded-lg lg:w-auto"
-            onClick={() => {
-              setStatusFilter("all");
-              setFromDate("");
-              setToDate("");
-              setSort("newest");
-              setSearch("");
-              setOffset(0);
-              setPreviousOffsets([]);
-            }}
-          >
-            Reset filters
-          </Button>
+          <div className="flex flex-col gap-2 sm:flex-row xl:col-span-2 xl:justify-end">
+            <Button type="button" variant="outline" className="h-10 rounded-lg" onClick={() => void load()} disabled={loading}>
+              <RefreshCw className={loading ? "size-4 animate-spin" : "size-4"} />
+              Refresh
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-10 rounded-lg"
+              onClick={() => {
+                setStatusFilter("all");
+                setFromDate("");
+                setToDate("");
+                setSort("newest");
+                setSearch("");
+                setOffset(0);
+                setPreviousOffsets([]);
+              }}
+            >
+              Reset filters
+            </Button>
+          </div>
         </div>
         <p className="mt-3 text-xs leading-5 text-muted-foreground">
-          Search checks all records. Status, dates and sorting apply to the
-          loaded page.
+          Search checks all records. Status, dates, and sorting apply to the loaded page.
         </p>
       </AdminFilterPanel>
       {!loading &&
@@ -356,7 +361,7 @@ export default function AdminRecords({
                     <TableCell className="text-right text-xs text-muted-foreground md:text-left md:text-sm">
                       {row.created_at
                         ? new Date(row.created_at).toLocaleDateString()
-                        : "â€”"}
+                        : "—"}
                     </TableCell>
                     {module === "transactions" && (
                       <TableCell className="col-span-2 md:text-left">
@@ -541,7 +546,7 @@ export default function AdminRecords({
                 </p>
               )}
               <Button disabled={busy || !notes.trim()}>
-                {busy ? "Savingâ€¦" : "Confirm action"}
+                {busy ? "Saving…" : "Confirm action"}
               </Button>
             </form>
           )}

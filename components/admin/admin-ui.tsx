@@ -23,8 +23,7 @@ export function AdminStats({
   return (
     <div
       className={cn(
-        "grid grid-cols-2 gap-4",
-        items.length === 5 ? "xl:grid-cols-5" : "xl:grid-cols-4",
+        "grid grid-cols-[repeat(auto-fit,minmax(min(100%,14rem),1fr))] gap-3",
       )}
     >
       {items.map((item) => (

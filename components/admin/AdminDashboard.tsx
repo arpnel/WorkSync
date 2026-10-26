@@ -127,7 +127,7 @@ export default function AdminDashboard() {
       ) : (
         <>
           {stats && (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))] gap-3">
               {["freelancers", "clients", "active_projects", "open_jobs"]
                 .filter((key) => typeof stats[key] === "number")
                 .map((key, index) => (

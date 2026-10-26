@@ -7,6 +7,8 @@ import { saveProjectMeeting } from "@/services/project/projectMeetingService";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { DialogClose } from "@/components/ui/dialog";
+import { CalendarDays } from "lucide-react";
 type Meeting = {
   meeting_id: string;
   title: string;
@@ -73,14 +75,18 @@ export default function ProjectMeetings({
     const threshold = Date.now() + 20 * 60_000;
     const rounded = new Date(threshold);
     rounded.setSeconds(0, 0);
-    if (rounded.getTime() < threshold) rounded.setMinutes(rounded.getMinutes() + 1);
+    if (rounded.getTime() < threshold)
+      rounded.setMinutes(rounded.getMinutes() + 1);
     return local(rounded.toISOString());
   };
   const save = async (cancelledMeeting?: Meeting) => {
     setBusy(true);
     setError("");
     try {
-      if (!cancelledMeeting && new Date(start).getTime() < Date.now() + 20 * 60_000)
+      if (
+        !cancelledMeeting &&
+        new Date(start).getTime() < Date.now() + 20 * 60_000
+      )
         throw new Error("Schedule the meeting at least 20 minutes in advance.");
       await saveProjectMeeting(
         projectId,
@@ -88,7 +94,9 @@ export default function ProjectMeetings({
           meeting_id: editing === false ? null : editing,
           title,
           starts_at: new Date(start).toISOString(),
-          ends_at: new Date(new Date(start).getTime() + 30 * 60_000).toISOString(),
+          ends_at: new Date(
+            new Date(start).getTime() + 30 * 60_000,
+          ).toISOString(),
           link: null,
         },
         cancelledMeeting ? "cancelled" : "scheduled",
@@ -102,83 +110,120 @@ export default function ProjectMeetings({
     }
   };
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Project meetings</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {error && (
-          <p role="alert" className="text-sm text-destructive">
-            {error}
-            <Button variant="ghost" onClick={() => void load()}>
-              Retry
-            </Button>
-          </p>
-        )}
-        {loading ? (
-          <ContentSkeleton label="Loading meetings" variant="list" />
-        ) : (
-          !rows.length && (
+    <Card className="border-border/80">
+      {editing === false ? (
+        <>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Project meetings</CardTitle>
             <p className="text-sm text-muted-foreground">
-              No meetings scheduled.
+              View scheduled meeting times, or schedule a conversation with your
+              project partner. Use the project conversation to start a video
+              call.
             </p>
-          )
-        )}
-        {rows.map((m) => (
-          <div
-            key={m.meeting_id}
-            className="flex flex-wrap items-center justify-between gap-2 rounded border p-3 text-sm"
-          >
-            <div>
-              <p className="font-medium">
-                {m.title} · {m.status}
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {error && (
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+                <Button variant="ghost" onClick={() => void load()}>
+                  Retry
+                </Button>
               </p>
-              <p>Starts {new Date(m.starts_at).toLocaleString()}</p>
-              {m.status === "scheduled" && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Start a video call from your project conversation when it is time to meet.
-                </p>
-              )}
+            )}
+            <div className="border-t pt-4">
+              <h3 className="mb-2 text-sm font-semibold">Scheduled meetings</h3>
+              {loading ? (
+                <ContentSkeleton label="Loading meetings" variant="list" />
+              ) : !rows.length ? (
+                <div className="flex min-h-24 flex-col items-center justify-center gap-1 rounded-xl bg-muted/60 px-4 py-5 text-center">
+                  <CalendarDays className="mb-1 h-5 w-5 text-muted-foreground" />
+                  <p className="text-sm font-medium">No meetings scheduled</p>
+                  {active && (
+                    <p className="text-xs text-muted-foreground">
+                      Schedule a meeting to get started.
+                    </p>
+                  )}
+                </div>
+              ) : null}
             </div>
-            {active && m.status === "scheduled" && (
-              <div className="flex gap-2">
+            {rows.map((m) => (
+              <div
+                key={m.meeting_id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded border p-3 text-sm"
+              >
+                <div>
+                  <p className="font-medium">
+                    {m.title} · {m.status}
+                  </p>
+                  <p>Starts {new Date(m.starts_at).toLocaleString()}</p>
+                  {m.status === "scheduled" && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Start a video call from your project conversation when it
+                      is time to meet.
+                    </p>
+                  )}
+                </div>
+                {active && m.status === "scheduled" && (
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => {
+                        setEditing(m.meeting_id);
+                        setTitle(m.title);
+                        setStart(local(m.starts_at));
+                      }}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => void save(m)}
+                    >
+                      Cancel meeting
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ))}
+            <div className="flex justify-end gap-2 border-t pt-4">
+              <DialogClose asChild>
+                <Button variant="outline">Close</Button>
+              </DialogClose>
+              {active && (
                 <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={busy}
                   onClick={() => {
-                    setEditing(m.meeting_id);
-                    setTitle(m.title);
-                    setStart(local(m.starts_at));
+                    setEditing(null);
+                    setTitle("");
+                    setStart("");
                   }}
                 >
-                  Edit
+                  + Schedule meeting
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={busy}
-                  onClick={() => void save(m)}
-                >
-                  Cancel meeting
-                </Button>
-              </div>
+              )}
+            </div>
+          </CardContent>
+        </>
+      ) : (
+        <>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">
+              {editing ? "Edit meeting" : "Schedule meeting"}
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Set a title and choose when you want to meet with your project
+              partner.
+            </p>
+          </CardHeader>
+          <CardContent>
+            {error && (
+              <p role="alert" className="mb-4 text-sm text-destructive">
+                {error}
+              </p>
             )}
-          </div>
-        ))}
-        {active &&
-          (editing === false ? (
-            <Button
-              variant="outline"
-              onClick={() => {
-                setEditing(null);
-                setTitle("");
-                setStart("");
-              }}
-            >
-              Schedule meeting
-            </Button>
-          ) : (
             <form
               className="grid gap-4"
               onSubmit={(e) => {
@@ -186,17 +231,18 @@ export default function ProjectMeetings({
                 void save();
               }}
             >
-              <label className="text-sm">
+              <label className="grid gap-1.5 text-sm font-medium">
                 Meeting title
                 <Input
                   required
                   maxLength={200}
+                  placeholder="Enter meeting title"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                 />
               </label>
-              <label className="text-sm">
-                Starts
+              <label className="grid gap-1.5 text-sm font-medium">
+                Date and time
                 <Input
                   type="datetime-local"
                   required
@@ -205,12 +251,26 @@ export default function ProjectMeetings({
                   onChange={(e) => setStart(e.target.value)}
                 />
               </label>
-              <div className="flex justify-end border-t pt-3">
-                <Button className="w-full sm:w-auto" disabled={busy}>Save meeting</Button>
+              <div className="flex justify-end gap-2 border-t pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => {
+                    setEditing(false);
+                    setError("");
+                  }}
+                >
+                  ← Back
+                </Button>
+                <Button disabled={busy}>
+                  {busy ? "Saving…" : "Save meeting"}
+                </Button>
               </div>
             </form>
-          ))}
-      </CardContent>
+          </CardContent>
+        </>
+      )}
     </Card>
   );
 }

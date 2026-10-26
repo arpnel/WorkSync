@@ -4,7 +4,6 @@ import { CalendarDays } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
-  DialogClose,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -28,10 +27,13 @@ export function ProjectMeetingsDialog({
           Meetings
         </Button>
       </DialogTrigger>
-      <DialogContent showCloseButton={false} className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent
+        showCloseButton={false}
+        className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl"
+      >
         <DialogHeader>
-          <DialogTitle>Project meetings</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="sr-only">Project meetings</DialogTitle>
+          <DialogDescription className="sr-only">
             View scheduled meeting times
             {active
               ? ", or schedule a conversation with your project partner. Use the project conversation to start a video call."
@@ -39,11 +41,6 @@ export function ProjectMeetingsDialog({
           </DialogDescription>
         </DialogHeader>
         <ProjectMeetings projectId={projectId} active={active} />
-        <div className="flex justify-end border-t pt-3">
-          <DialogClose asChild>
-            <Button variant="outline">Close</Button>
-          </DialogClose>
-        </div>
       </DialogContent>
     </Dialog>
   );

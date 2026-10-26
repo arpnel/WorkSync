@@ -10,16 +10,6 @@ export type ExplorerCategory = {
   name: string;
   listingCount: number | null;
   subcategories: ExplorerSubcategory[];
-  totalSubcategories: number;
-};
-type CategoryRow = {
-  id: string;
-  name: string;
-  listingCount: number | null;
-  category_skills: Array<{
-    skill_id: string;
-    skills: { id: string; name: string } | null;
-  }>;
 };
 
 export async function getServiceCategoryExplorer(): Promise<
@@ -45,120 +35,106 @@ export async function getServiceCategoryExplorer(): Promise<
         : categoryError.message || "Unable to load categories.",
     );
   }
-  const categories: CategoryRow[] = (categoryRows ?? []).map((row) => ({
+  const categories: {
+    id: string;
+    name: string;
+    listingCount: number | null;
+  }[] = (categoryRows ?? []).map((row) => ({
     id: row.id,
     name: row.name,
     listingCount: null,
-    category_skills: [] as CategoryRow["category_skills"],
   }));
   if (!categories.length) return [];
 
-  const { data: categorySkills, error: categorySkillsError } =
-    await supabase.from("category_skills").select("category_id,skill_id");
-  if (categorySkillsError) {
-    console.warn(
-      "Unable to load category specialties:",
-      categorySkillsError.message,
-    );
-  }
+  // Keep the exact count for category ranking, but avoid the old exact-count
+  // query for every category/specialty pair. Those multiplied into dozens of
+  // requests even though the UI only displays a handful of specialties.
+  const countResults = await Promise.all(
+    categories.map(async (category) => {
+      const { count, error } = await supabase
+        .from("services")
+        .select("service_id", { count: "exact", head: true })
+        .eq("category_id", category.id)
+        .eq("status", "Active")
+        .eq("is_archived", false);
+      if (error) {
+        console.warn("Unable to count category services:", error.message);
+        return { category, count: null };
+      }
+      category.listingCount = count ?? 0;
+      return { category, count: count ?? 0 };
+    }),
+  );
+
+  const totalActiveListings = countResults.reduce(
+    (total, result) => total + (result.count ?? 0),
+    0,
+  );
+  const hasUnknownCounts = countResults.some((result) => result.count === null);
+  const serviceSampleLimit = totalActiveListings > 100 || hasUnknownCounts ? 1 : 2;
+  const availableCategories = countResults.filter(
+    ({ count }) => count === null || count > 0,
+  );
+  const samples = await Promise.all(
+    availableCategories.map(async ({ category }) => {
+      const { data, error } = await supabase
+        .from("services")
+        .select("service_id,service_skills(skill_id)")
+        .eq("category_id", category.id)
+        .eq("status", "Active")
+        .eq("is_archived", false)
+        .order("created_at", { ascending: false })
+        .order("service_id")
+        .limit(serviceSampleLimit);
+      if (error) {
+        console.warn("Unable to load category specialty samples:", error.message);
+        return { category, rows: [] as { service_skills: { skill_id: string }[] }[] };
+      }
+      return {
+        category,
+        rows: (data ?? []) as { service_skills: { skill_id: string }[] }[],
+      };
+    }),
+  );
+
   const skillIds = [
-    ...new Set((categorySkills ?? []).map((row) => row.skill_id)),
+    ...new Set(
+      samples.flatMap(({ rows }) =>
+        rows.flatMap((row) => row.service_skills.map((skill) => skill.skill_id)),
+      ),
+    ),
   ];
   const { data: skills, error: skillsError } = skillIds.length
     ? await supabase.from("skills").select("id,name").in("id", skillIds)
     : { data: [], error: null };
   if (skillsError) {
-    console.warn("Unable to load specialty names:", skillsError.message);
+    console.warn("Unable to load sampled specialty names:", skillsError.message);
   }
   const skillMap = new Map((skills ?? []).map((skill) => [skill.id, skill]));
-  const skillsByCategory = new Map<string, CategoryRow["category_skills"]>();
-  for (const row of categorySkills ?? []) {
-    const skill = skillMap.get(row.skill_id);
-    if (!skill) continue;
-    const rows = skillsByCategory.get(row.category_id) ?? [];
-    rows.push({ skill_id: row.skill_id, skills: skill });
-    skillsByCategory.set(row.category_id, rows);
-  }
-  categories.forEach((category) => {
-    category.category_skills = skillsByCategory.get(category.id) ?? [];
-  });
-  const tasks = categories.map((category) => {
-    const skills = [
-      ...new Map(
-        category.category_skills
-          .map((row) => row.skills)
-          .filter((skill): skill is NonNullable<typeof skill> => Boolean(skill))
-          .map((skill) => [skill.id, skill]),
-      ).values(),
-    ].sort((a, b) => a.name.localeCompare(b.name));
-    return {
-      category,
-      skills,
-      subcategories: skills.slice(0, 5).map(
-        (skill): ExplorerSubcategory => ({
-          id: skill.id,
-          name: skill.name,
-          listingCount: null,
-        }),
-      ),
-    };
-  });
-  const countTasks = tasks.flatMap(({ category, subcategories }) => [
-    {
-      categoryId: category.id,
-      subcategory: null,
-      setCategoryCount: (count: number | null) => {
-        category.listingCount = count;
-      },
-    },
-    ...subcategories.map((subcategory) => ({
-      categoryId: category.id,
-      subcategory,
-      setCategoryCount: (count: number | null) => {
-        subcategory.listingCount = count;
-      },
-    })),
-  ]);
-  for (let offset = 0; offset < countTasks.length; offset += 8) {
-    await Promise.all(
-      countTasks
-        .slice(offset, offset + 8)
-        .map(async ({ categoryId, subcategory, setCategoryCount }) => {
-          const { count, error: countError } = subcategory
-            ? await supabase
-                .from("services")
-                .select("service_id,service_skills!inner(skill_id)", {
-                  count: "exact",
-                  head: true,
-                })
-                .eq("category_id", categoryId)
-                .eq("service_skills.skill_id", subcategory.id)
-                .eq("status", "Active")
-                .eq("is_archived", false)
-            : await supabase
-                .from("services")
-                .select("service_id", { count: "exact", head: true })
-                .eq("category_id", categoryId)
-                .eq("status", "Active")
-                .eq("is_archived", false);
-          if (countError) {
-            console.warn(
-              "Unable to load category service count:",
-              countError.message,
-            );
-            setCategoryCount(null);
-            return;
-          }
-          if (subcategory) subcategory.listingCount = count ?? 0;
-          else setCategoryCount(count ?? 0);
-        }),
-    );
-  }
-  return tasks.map(({ category, skills, subcategories }) => ({
-    id: category.id,
-    name: category.name,
-    listingCount: category.listingCount,
-    subcategories,
-    totalSubcategories: skills.length,
-  }));
+
+  return samples
+    .filter(({ rows }) => rows.length > 0)
+    .map(({ category, rows }) => {
+      const sampledSkillIds = [
+        ...new Set(rows.flatMap((row) => row.service_skills.map((skill) => skill.skill_id))),
+      ];
+      const subcategories = sampledSkillIds
+        .map((id) => skillMap.get(id))
+        .filter((skill): skill is NonNullable<typeof skill> => Boolean(skill))
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .slice(0, 5)
+        .map(
+          (skill): ExplorerSubcategory => ({
+            id: skill.id,
+            name: skill.name,
+            listingCount: null,
+          }),
+        );
+      return {
+        id: category.id,
+        name: category.name,
+        listingCount: category.listingCount,
+        subcategories,
+      };
+    });
 }

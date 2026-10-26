@@ -123,8 +123,8 @@ export default function ServiceCategoryExplorer() {
             Explore Services by Category
           </h1>
           <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg">
-            Browse real service categories and see how many active listings are
-            available in each specialty.
+            Browse categories with active services. Featured specialties are
+            sampled from recent listings to keep this page quick to load.
           </p>
         </section>
         {error ? (
@@ -182,10 +182,9 @@ export default function ServiceCategoryExplorer() {
                         {category.name}
                       </Link>
                       <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
-                        {category.totalSubcategories}{" "}
-                        {category.totalSubcategories === 1
-                          ? "specialty"
-                          : "specialties"}
+                        {category.listingCount === null
+                          ? "Active services"
+                          : `${category.listingCount} ${category.listingCount === 1 ? "service" : "services"}`}
                       </span>
                     </div>
                     <ul className="mt-4 space-y-1">
@@ -208,11 +207,6 @@ export default function ServiceCategoryExplorer() {
                         </li>
                       ))}
                     </ul>
-                    {category.totalSubcategories > 5 && (
-                      <p className="mt-2 px-2 text-xs text-muted-foreground">
-                        Showing 5 of {category.totalSubcategories} specialties
-                      </p>
-                    )}
                     <Button
                       asChild
                       variant="outline"

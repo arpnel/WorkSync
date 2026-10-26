@@ -331,22 +331,13 @@ export async function sendProjectMessage(
   if (!content && !attachment) {
     return { attachmentUrl: null, attachmentType: null };
   }
-  const { data: existingConversation, error } = await supabase
-    .from("conversations")
-    .select("conversation_id")
-    .eq("order_id", orderId)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  let conversation = existingConversation;
-  if (!conversation) {
-    const result = await supabase
-      .from("conversations")
-      .insert({ order_id: orderId })
-      .select("conversation_id")
-      .single();
-    if (result.error) throw new Error(result.error.message);
-    conversation = result.data;
-  }
+  const { data: conversationId, error: conversationError } = await supabase.rpc(
+    "worksync_ensure_order_conversation",
+    { p_order: orderId },
+  );
+  if (conversationError) throw new Error(conversationError.message);
+  if (typeof conversationId !== "string")
+    throw new Error("Unable to open the project conversation.");
   let attachmentUrl: string | null = null;
   let attachmentType: string | null = null;
   let uploadedPath: string | null = null;
@@ -360,7 +351,7 @@ export async function sendProjectMessage(
     if (usesR2Storage(attachment.size)) {
       const uploaded = await uploadLargeFile(attachment, {
         purpose: "message",
-        targetId: conversation.conversation_id,
+        targetId: conversationId,
       }, onProgress, signal);
       uploadedPath = uploaded.reference;
       r2UploadId = uploaded.uploadId;
@@ -369,7 +360,7 @@ export async function sendProjectMessage(
       if (attachment.size > SUPABASE_MAX_FILE_BYTES)
         throw new Error("Attachments must be 50 MB or smaller.");
       const safeName = attachment.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const filePath = `${senderId}/${conversation.conversation_id}/${messageId}-${safeName}`;
+      const filePath = `${senderId}/${conversationId}/${messageId}-${safeName}`;
       const upload = await supabase.storage
         .from(MESSAGE_ATTACHMENTS_BUCKET)
         .upload(filePath, attachment, { upsert: false });
@@ -389,7 +380,7 @@ export async function sendProjectMessage(
 
   const { error: messageError } = await supabase.from("messages").insert({
     message_id: messageId,
-    conversation_id: conversation.conversation_id,
+    conversation_id: conversationId,
     sender_id: senderId,
     message: content || attachment?.name || "Attachment",
     attachment_url: uploadedPath,

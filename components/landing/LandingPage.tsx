@@ -207,10 +207,9 @@ export default function LandingPage() {
                           {category.name}
                         </Link>
                         <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
-                          {category.totalSubcategories}{" "}
-                          {category.totalSubcategories === 1
-                            ? "specialty"
-                            : "specialties"}
+                          {category.listingCount === null
+                            ? "Active services"
+                            : `${category.listingCount} ${category.listingCount === 1 ? "service" : "services"}`}
                         </span>
                       </div>
                       <ul className="mt-4 space-y-1">

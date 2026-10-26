@@ -499,7 +499,7 @@ export async function uploadAvatar(
   const { error: uploadError } = await supabase.storage
     .from(AVATARS_BUCKET)
     .upload(filePath, file, {
-      upsert: true,
+      upsert: false,
     });
 
   if (uploadError) {

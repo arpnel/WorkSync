@@ -13,9 +13,10 @@ import FreelancerTaxDeclaration from "@/components/account/FreelancerTaxDeclarat
 type Party = "freelancer" | "client";
 type Category = "vat" | "withholding";
 type DocType = "bir_cor" | "vat_registration" | "tax_exemption" | "business_tax_support";
-type UploadPurpose = "vat_cor" | "vat_exemption" | "withholding_exemption" | "withholding_support";
-type DocumentRow = { document_id: string; party_type: Party; document_type: DocType; registered_name: string; claimed_tax_treatment: string | null; legal_basis: string; tax_year: number | null; issued_at: string | null; expires_at: string | null; status: string; submitted_at: string; reviewed_at: string | null; review_reason: string };
+type UploadPurpose = "vat_exemption" | "withholding_exemption" | "withholding_support";
+type DocumentRow = { document_id: string; party_type: Party; document_type: DocType; registered_name: string; claimed_tax_treatment: string | null; legal_basis: string; tax_year: number | null; issued_at: string | null; expires_at: string | null; status: string; submitted_at: string; reviewed_at: string | null; review_reason: string; is_canonical_bir_cor?: boolean };
 type PurposeOption = { value: UploadPurpose; label: string; documentType: DocType; treatment: string };
+type CanonicalBirCorState = { document: DocumentRow | null; needsReview: boolean };
 
 const labels: Record<DocType, string> = {
   bir_cor: "BIR Certificate of Registration (BIR Form 2303)",
@@ -24,13 +25,12 @@ const labels: Record<DocType, string> = {
   business_tax_support: "Other official BIR supporting document",
 };
 const purposes: PurposeOption[] = [
-  { value: "vat_cor", label: labels.bir_cor, documentType: "bir_cor", treatment: "VAT exemption" },
   { value: "vat_exemption", label: labels.tax_exemption, documentType: "tax_exemption", treatment: "VAT exemption" },
   { value: "withholding_exemption", label: labels.tax_exemption, documentType: "tax_exemption", treatment: "Withholding tax exemption" },
   { value: "withholding_support", label: labels.business_tax_support, documentType: "business_tax_support", treatment: "Withholding tax exemption" },
 ];
 const categoryPurposes: Record<Category, UploadPurpose[]> = {
-  vat: ["vat_cor", "vat_exemption"],
+  vat: ["vat_exemption"],
   withholding: ["withholding_exemption", "withholding_support"],
 };
 const activeStatuses = new Set(["pending", "verified"]);
@@ -58,7 +58,7 @@ function rowBelongsToCategory(row: DocumentRow, category: Category) {
   if (row.party_type !== "freelancer") return false;
   const treatment = (row.claimed_tax_treatment ?? "").toLowerCase();
   if (category === "vat") {
-    return row.document_type === "bir_cor" || (row.document_type === "tax_exemption" && (!treatment || treatment.includes("vat")));
+    return row.document_type === "tax_exemption" && (!treatment || treatment.includes("vat"));
   }
   return row.document_type === "business_tax_support" || (row.document_type === "tax_exemption" && (!treatment || treatment.includes("withholding")));
 }
@@ -66,8 +66,9 @@ function rowBelongsToCategory(row: DocumentRow, category: Category) {
 export default function TaxDocuments() {
   const [freelancerAvailable, setFreelancerAvailable] = useState<boolean | null>(null);
   const [rows, setRows] = useState<DocumentRow[]>([]);
+  const [canonicalBirCor, setCanonicalBirCor] = useState<CanonicalBirCorState>({ document: null, needsReview: false });
   const [category, setCategory] = useState<Category | null>(null);
-  const [purpose, setPurpose] = useState<UploadPurpose>("vat_cor");
+  const [purpose, setPurpose] = useState<UploadPurpose>("vat_exemption");
   const [file, setFile] = useState<File | null>(null);
   const [registeredName, setRegisteredName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -75,6 +76,7 @@ export default function TaxDocuments() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
+  const birFileInput = useRef<HTMLInputElement>(null);
 
   const request = useCallback(async (method: "GET" | "POST", body?: unknown) => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -95,6 +97,7 @@ export default function TaxDocuments() {
     const availableParties = (result.partyTypes ?? []) as Party[];
     setFreelancerAvailable(availableParties.includes("freelancer"));
     setRows(result.documents ?? []);
+    setCanonicalBirCor(result.canonicalBirCor ?? { document: null, needsReview: false });
   }, [request]);
 
   useEffect(() => {
@@ -130,7 +133,6 @@ export default function TaxDocuments() {
       if (file.size > 5 * 1024 * 1024) throw new Error("Choose a file up to 5 MB.");
       const ext = file.name.split(".").at(-1)?.toLowerCase();
       if (!ext || !["pdf", "png", "jpg", "jpeg"].includes(ext)) throw new Error("Upload a PDF, PNG, or JPG.");
-      if (selected.documentType === "bir_cor" && !registeredName.trim()) throw new Error("Enter the registered name shown on Form 2303.");
       const uploadResponse = await fetch("/api/tax-documents/upload-url", {
         method: "POST",
         headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
@@ -145,7 +147,7 @@ export default function TaxDocuments() {
         partyType: "freelancer",
         documentType: selected.documentType,
         documentPath: ticket.path,
-        registeredName: selected.documentType === "bir_cor" ? registeredName : "",
+        registeredName: "",
         claimedTaxTreatment: selected.treatment,
         legalBasis: "",
       });
@@ -156,6 +158,41 @@ export default function TaxDocuments() {
       setNotice("Document submitted for review. Submission alone does not change tax treatment.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Document could not be submitted.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitBirCor() {
+    if (!file || busy || canonicalBirCor.document?.status === "pending") return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Sign in to submit Form 2303.");
+      if (!registeredName.trim()) throw new Error("Enter the registered name shown on Form 2303.");
+      if (file.size > 5 * 1024 * 1024) throw new Error("Choose a file up to 5 MB.");
+      const ext = file.name.split(".").at(-1)?.toLowerCase();
+      if (!ext || !["pdf", "png", "jpg", "jpeg"].includes(ext)) throw new Error("Upload a PDF, PNG, or JPG.");
+      const uploadResponse = await fetch("/api/tax-documents/upload-url", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ partyType: "freelancer", documentType: "bir_cor", fileName: file.name, contentType: file.type, size: file.size }),
+        cache: "no-store",
+      });
+      const ticket = await uploadResponse.json();
+      if (!uploadResponse.ok) throw new Error(ticket.error || "Secure upload could not be prepared.");
+      const upload = await supabase.storage.from("verification-documents").uploadToSignedUrl(ticket.path, ticket.token, file, { contentType: ticket.contentType });
+      if (upload.error) throw new Error("Document upload failed. Try again or submit it later.");
+      await request("POST", { partyType: "freelancer", documentType: "bir_cor", documentPath: ticket.path, registeredName: registeredName.trim(), claimedTaxTreatment: "", legalBasis: "" });
+      setFile(null);
+      setRegisteredName("");
+      if (birFileInput.current) birFileInput.current.value = "";
+      await load();
+      setNotice("Form 2303 submitted for review. Seller approval and relevant tax checks will use this same reviewed record.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Form 2303 could not be submitted.");
     } finally {
       setBusy(false);
     }
@@ -182,8 +219,8 @@ export default function TaxDocuments() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Tax Documentation</CardTitle>
-        <CardDescription>Manage your tax documents and verification status.</CardDescription>
+        <CardTitle>Documentation</CardTitle>
+        <CardDescription>Submit required seller registration and any applicable tax records. Reviews remain separate from tax treatment decisions.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
         {loading && <div className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" /> Loading tax documents…</div>}
@@ -196,6 +233,25 @@ export default function TaxDocuments() {
             </div>
           </div>
 
+          {freelancerAvailable && <section aria-labelledby="seller-registration-title" className="space-y-4 rounded-lg border p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div><h3 id="seller-registration-title" className="font-semibold">Seller Registration <span className="text-xs font-normal text-primary">Required</span></h3><p className="mt-1 text-sm text-muted-foreground">Submit BIR Form 2303 (Certificate of Registration). A current, verified record is required for seller approval; this does not replace identity or other mandatory checks.</p></div>
+              {canonicalBirCor.document && <span className={`h-fit rounded-full border px-2.5 py-1 text-xs font-medium ${statusClass(canonicalBirCor.document.status)}`}>{canonicalBirCor.needsReview ? "Admin review needed" : statusLabel(canonicalBirCor.document.status)}</span>}
+            </div>
+            {canonicalBirCor.needsReview && <p role="status" className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">Multiple latest Form 2303 records have conflicting or tied review histories. Seller approval and tax checks are paused until an administrator selects the canonical record.</p>}
+            {canonicalBirCor.document && <article className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/30 p-3 text-sm">
+              <div><p className="font-medium">{labels.bir_cor}{canonicalBirCor.document.registered_name ? ` · ${canonicalBirCor.document.registered_name}` : ""}</p><p className="text-xs text-muted-foreground">Submitted {new Date(canonicalBirCor.document.submitted_at).toLocaleDateString()}{canonicalBirCor.document.review_reason ? ` · ${canonicalBirCor.document.review_reason}` : ""}</p></div>
+              <Button type="button" size="sm" variant="outline" onClick={() => void viewDocument(canonicalBirCor.document!.document_id)}><FileText className="mr-2 size-4" />View document</Button>
+            </article>}
+            {canonicalBirCor.document?.status === "rejected" && <p className="text-sm text-destructive">Review the administrator’s feedback, then submit a corrected Form 2303.</p>}
+            {canonicalBirCor.document?.status !== "pending" && <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2"><Label htmlFor="canonical-bir-registered-name">Registered name shown on Form 2303</Label><Input id="canonical-bir-registered-name" value={registeredName} maxLength={200} onChange={event => setRegisteredName(event.target.value)} disabled={busy} /></div>
+              <div className="space-y-2"><Label htmlFor="canonical-bir-file">Form 2303 document</Label><input ref={birFileInput} id="canonical-bir-file" className="block w-full rounded-md border bg-background px-3 py-2 text-sm" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={busy} onChange={event => { const next = event.target.files?.[0] ?? null; if (next && next.size > 5 * 1024 * 1024) { setFile(null); setError("Choose a file up to 5 MB."); event.target.value = ""; return; } setFile(next); setError(""); }} /><p className="text-xs text-muted-foreground">Private file · PDF, JPG, or PNG up to 5 MB.</p></div>
+            </div>}
+            {error && <p role="alert" className="text-sm text-destructive">{error}</p>}{notice && <p role="status" className="text-sm text-emerald-600">{notice}</p>}
+            {canonicalBirCor.document?.status !== "pending" && <Button type="button" onClick={() => void submitBirCor()} disabled={!file || !registeredName.trim() || busy || canonicalBirCor.needsReview}>{busy && <LoaderCircle className="mr-2 size-4 animate-spin" />}{busy ? "Submitting…" : canonicalBirCor.document?.status === "rejected" ? "Submit corrected Form 2303" : "Submit Form 2303 for review"}</Button>}
+          </section>}
+
           <section aria-labelledby="tax-document-categories" className="space-y-3">
             <div>
               <h3 id="tax-document-categories" className="text-sm font-semibold">Choose a document category</h3>
@@ -204,12 +260,12 @@ export default function TaxDocuments() {
             <div className="grid gap-3 sm:grid-cols-2">
               <button type="button" onClick={() => openCategory("vat")} className="group flex min-h-28 items-center gap-4 rounded-lg border bg-card p-4 text-left transition-colors hover:border-primary/60 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <span className="grid size-11 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><ReceiptText className="size-5" /></span>
-                <span className="min-w-0 flex-1"><span className="block font-medium">VAT Registration and Tax Status</span><span className="mt-1 block text-sm text-muted-foreground">BIR registration and applicable VAT exemption records</span></span>
+                <span className="min-w-0 flex-1"><span className="block font-medium">VAT Registration and Tax Status <span className="text-xs font-normal text-muted-foreground">Conditional</span></span><span className="mt-1 block text-sm text-muted-foreground">Upload VAT registration or applicable special-treatment records when relevant</span></span>
                 <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
               </button>
               <button type="button" onClick={() => openCategory("withholding")} className="group flex min-h-28 items-center gap-4 rounded-lg border bg-card p-4 text-left transition-colors hover:border-primary/60 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <span className="grid size-11 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Landmark className="size-5" /></span>
-                <span className="min-w-0 flex-1"><span className="block font-medium">Withholding Tax Records</span><span className="mt-1 block text-sm text-muted-foreground">Applicable BIR exemption certificates and supporting records</span></span>
+                <span className="min-w-0 flex-1"><span className="block font-medium">Withholding Tax Records <span className="text-xs font-normal text-muted-foreground">Conditional</span></span><span className="mt-1 block text-sm text-muted-foreground">Applicable exemption certificates and supporting records</span></span>
                 <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
               </button>
             </div>
@@ -229,7 +285,7 @@ export default function TaxDocuments() {
               <h4 className="flex items-center gap-2 text-sm font-medium"><FileCheck2 className="size-4 text-primary" />Accepted documents</h4>
               <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
                 {category === "vat" ? <>
-                  <li>BIR Certificate of Registration (BIR Form 2303)</li>
+                  <li>Form 2303 is submitted once in the required Seller Registration section above.</li>
                   <li>BIR-issued VAT exemption certificate or ruling, if applicable</li>
                 </> : <>
                   <li>BIR-issued tax exemption certificate or ruling, if applicable</li>
@@ -237,7 +293,7 @@ export default function TaxDocuments() {
                 </>}
               </ul>
               <div className="mt-4 grid gap-3 border-t pt-3 text-sm sm:grid-cols-2">
-                <div><p className="flex items-center gap-2 font-medium"><Building2 className="size-4 text-muted-foreground" />Name on document</p><p className="mt-1 text-muted-foreground">Submit a BIR document that identifies the freelancer. For Form 2303, enter the registered name exactly as shown.</p></div>
+                <div><p className="flex items-center gap-2 font-medium"><Building2 className="size-4 text-muted-foreground" />Name on document</p><p className="mt-1 text-muted-foreground">Submit a BIR document that identifies the freelancer. Enter the registered name exactly as shown.</p></div>
                 <div><p className="flex items-center gap-2 font-medium"><Landmark className="size-4 text-muted-foreground" />Where to get it</p><p className="mt-1 text-muted-foreground">Request the applicable record from the BIR office or official BIR channel that issued it.</p></div>
               </div>
               {category === "withholding" && <p className="mt-3 border-t pt-3 text-xs text-muted-foreground">The year-specific sworn declaration is a separate record. Submit it in the Withholding tax declaration section below.</p>}

@@ -1,9 +1,22 @@
 -- PREPARED, NOT APPLIED. Treat contract.final_price as the service base price
 -- for new payments and freeze the verified VAT treatment at checkout.
 -- Historical payments without these snapshots keep their existing amounts.
--- Depends on 202609300004_milestone_settlement.sql, the existing tax document
--- and receipt structures, and 202610250007_project_review_automation.sql.
+-- Depends on 202609300004_milestone_settlement.sql,
+-- 202610240002_tax_uploads_and_vat_classification.sql, the existing tax
+-- document and receipt structures, and 202610250007_project_review_automation.sql.
 begin;
+
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema='public' and table_name='freelancer_tax_profiles'
+      and column_name='vat_classification'
+  ) then
+    raise exception 'Apply prerequisite migration 202610240002_tax_uploads_and_vat_classification.sql before this migration';
+  end if;
+end;
+$$;
 
 alter table public.payments
   add column if not exists freelancer_service_vat_taxable_base numeric,

@@ -35,8 +35,8 @@ const sections = [
   },
   {
     id: "seller-verification",
-    label: "Seller verification",
-    description: "Submit documents required to offer services",
+    label: "Documentation",
+    description: "Manage seller registration and tax documents",
     Icon: BadgeCheck,
   },
   {

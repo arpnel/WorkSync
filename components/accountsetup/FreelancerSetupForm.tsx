@@ -10,13 +10,9 @@ import { SubmitSection } from "./sections/SubmitSection";
 import { useFreelancerSetup } from "./hooks/useFreelancerSetup";
 import VerificationSettings from "@/components/account/VerificationSettings";
 import { Button } from "@/components/ui/button";
-import { useRef } from "react";
-import TaxDocumentOnboarding, { type TaxDocumentOnboardingHandle } from "./TaxDocumentOnboarding";
-import { FreelancerSellerVerification, type FreelancerSellerVerificationHandle } from "@/components/account/FreelancerSellerVerification";
+import Link from "next/link";
 
 export function FreelancerSetupForm() {
-  const taxDocumentRef = useRef<TaxDocumentOnboardingHandle>(null);
-  const sellerVerificationRef = useRef<FreelancerSellerVerificationHandle>(null);
   const {
     values,
     categories,
@@ -110,8 +106,11 @@ export function FreelancerSetupForm() {
         onRemoveFile={handleRemoveFile}
       />
 
-      <TaxDocumentOnboarding ref={taxDocumentRef} party="freelancer" disabled={isSubmitting} />
-      <FreelancerSellerVerification ref={sellerVerificationRef} disabled={isSubmitting} compact />
+      <section className="space-y-2 rounded-xl border p-4">
+        <h2 className="font-semibold">Seller and tax documentation</h2>
+        <p className="text-sm text-muted-foreground">Manage Form 2303, additional seller requirements, and applicable tax documents together in Settings.</p>
+        <Button asChild variant="outline" size="sm"><Link href="/home/settings#seller-verification">Open Documentation</Link></Button>
+      </section>
       {/* Submit */}
       <VerificationSettings />
 
@@ -119,11 +118,7 @@ export function FreelancerSetupForm() {
         isSubmitting={isSubmitting}
         label="Save Freelancer Profile"
         loadingLabel="Saving..."
-        onSubmit={() => handleSubmit(async () => {
-          await sellerVerificationRef.current?.refresh();
-          await sellerVerificationRef.current?.submit();
-          await taxDocumentRef.current?.submit();
-        })}
+        onSubmit={() => handleSubmit()}
       />
     </fieldset>
   );

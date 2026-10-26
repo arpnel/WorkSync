@@ -9,7 +9,7 @@ export async function POST(request: Request) {
     const { db, user } = await paymentUser(request);
     const body = await request.json().catch(() => null) as Record<string, unknown> | null;
     const type = body?.documentType;
-    if (type !== "bir_cor" && type !== "seller_registration_support") throw new PaymentError("Choose a valid seller document type.", 400);
+    if (type !== "seller_registration_support") throw new PaymentError("BIR Form 2303 is submitted in Documentation. Choose a valid additional seller document type.", 400);
     if (typeof body?.fileName !== "string" || typeof body.contentType !== "string" || typeof body.size !== "number" || body.size < 1 || body.size > TAX_DOCUMENT_MAX_BYTES) throw new PaymentError("Choose a PDF, JPG, or PNG file up to 5 MB.", 400);
     const ext = body.fileName.split(".").at(-1)?.toLowerCase();
     const valid = (ext === "pdf" && body.contentType === "application/pdf") || (["jpg", "jpeg"].includes(ext ?? "") && ["image/jpeg", "image/jpg"].includes(body.contentType)) || (ext === "png" && body.contentType === "image/png");

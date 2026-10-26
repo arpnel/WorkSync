@@ -16,7 +16,6 @@ export function FreelancerSellerVerificationReview() {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [userId, setUserId] = useState("");
-  const [docType, setDocType] = useState("seller_registration_support");
   const [label, setLabel] = useState("Additional BIR seller document");
   const [required, setRequired] = useState(false);
   const load = useCallback(async () => {
@@ -48,7 +47,7 @@ export function FreelancerSellerVerificationReview() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Administrator sign-in required.");
-      const response = await fetch("/api/admin/seller-verification", { method: "POST", headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ action: "configure", userId: userId.trim(), documentType: docType, label: label.trim(), required, reason: reason.configure.trim() }) });
+      const response = await fetch("/api/admin/seller-verification", { method: "POST", headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ action: "configure", userId: userId.trim(), documentType: "seller_registration_support", label: label.trim(), required, reason: reason.configure.trim() }) });
       const result = await response.json().catch(() => null);
       if (!response.ok) throw new Error(result?.error ?? "Requirement could not be configured.");
       setReason(prev => ({ ...prev, configure: "" })); await load();
@@ -59,7 +58,7 @@ export function FreelancerSellerVerificationReview() {
   return <div className="space-y-4">
     <div className="flex items-center justify-between"><div><h1 className="text-xl font-semibold">Freelancer seller verification</h1><p className="text-sm text-muted-foreground">Review service seller documents. This queue is separate from identity and tax reviews.</p></div><Button variant="outline" onClick={() => void load().catch(cause => setError(cause instanceof Error ? cause.message : "Refresh failed."))}>Refresh</Button></div>
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-    <section className="space-y-3 rounded-xl border bg-card p-4"><h2 className="font-semibold">Configure an additional seller document</h2><p className="text-sm text-muted-foreground">Use only when a freelancer needs an account specific supporting document.</p><div className="grid gap-3 sm:grid-cols-2"><Input aria-label="Freelancer user ID" placeholder="Freelancer user ID" value={userId} onChange={event => setUserId(event.target.value)} /><select aria-label="Document type" className="h-10 rounded-md border bg-background px-3 text-sm" value={docType} onChange={event => setDocType(event.target.value)}><option value="seller_registration_support">Additional BIR supporting document</option><option value="bir_cor">BIR Certificate of Registration</option></select><Input aria-label="Requirement label" value={label} maxLength={200} onChange={event => setLabel(event.target.value)} /><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={required} onChange={event => setRequired(event.target.checked)} />Required before service publishing</label><Input aria-label="Configuration reason" placeholder="Reason for this requirement" value={reason.configure ?? ""} maxLength={2000} onChange={event => setReason(prev => ({ ...prev, configure: event.target.value }))} /></div><Button disabled={busy === "configure"} onClick={() => void configure()}>Save requirement</Button></section>
+    <section className="space-y-3 rounded-xl border bg-card p-4"><h2 className="font-semibold">Configure an additional seller document</h2><p className="text-sm text-muted-foreground">BIR Form 2303 is reviewed in Tax Documents. Use this queue only for other account-specific seller requirements.</p><div className="grid gap-3 sm:grid-cols-2"><Input aria-label="Freelancer user ID" placeholder="Freelancer user ID" value={userId} onChange={event => setUserId(event.target.value)} /><Input aria-label="Requirement label" value={label} maxLength={200} onChange={event => setLabel(event.target.value)} /><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={required} onChange={event => setRequired(event.target.checked)} />Required before service publishing</label><Input aria-label="Configuration reason" placeholder="Reason for this requirement" value={reason.configure ?? ""} maxLength={2000} onChange={event => setReason(prev => ({ ...prev, configure: event.target.value }))} /></div><Button disabled={busy === "configure"} onClick={() => void configure()}>Save requirement</Button></section>
     {queue?.requirements.map(item => {
       const current = submissions.find(row => row.submission_id === item.current_submission_id);
       const history = queue.events.filter(event => event.requirement_id === item.requirement_id);

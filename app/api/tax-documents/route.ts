@@ -25,7 +25,7 @@ export async function GET(request: Request) {
       : { data: null, error: null };
     // Tax-document submission must remain available when the optional
     // VAT-classification column has not been deployed yet.
-    const { data, error } = await db.from("tax_documents").select("document_id,party_type,document_type,registered_name,claimed_tax_treatment,legal_basis,tax_year,issued_at,expires_at,status,submitted_at,reviewed_at,review_reason").eq("user_id", user.id).order("submitted_at", { ascending: false });
+    const { data, error } = await db.from("tax_documents").select("document_id,party_type,document_type,registered_name,claimed_tax_treatment,legal_basis,tax_year,issued_at,expires_at,status,submitted_at,reviewed_at,review_reason,is_canonical_bir_cor").eq("user_id", user.id).order("submitted_at", { ascending: false });
     if (error) throw new PaymentError("Tax documents are unavailable. The tax document migration may not be applied yet.");
     const documentId = new URL(request.url).searchParams.get("documentId");
     if (documentId) {
@@ -44,10 +44,15 @@ export async function GET(request: Request) {
       : profileResult.data?.vat_classification ?? "unverified";
     if (["vat_registered", "non_vat"].includes(vatClassification)) {
       const requiredType = vatClassification === "vat_registered" ? "vat_registration" : "bir_cor";
-      const currentProof = documents.some(row => row.party_type === "freelancer" && row.document_type === requiredType && row.status === "verified");
+      const currentProof = documents.some(row => row.party_type === "freelancer" && row.document_type === requiredType && row.status === "verified" && (requiredType !== "bir_cor" || row.is_canonical_bir_cor === true));
       if (!currentProof) vatClassification = "expired";
     }
-    return json({ partyTypes: types, vatClassification, documents });
+    const birRows = documents.filter(row => row.party_type === "freelancer" && row.document_type === "bir_cor");
+    const canonical = birRows.find(row => row.is_canonical_bir_cor === true) ?? null;
+    const latestTime = birRows.reduce<string | null>((max, row) => max === null || row.submitted_at > max ? row.submitted_at : max, null);
+    const latestRows = latestTime ? birRows.filter(row => row.submitted_at === latestTime) : [];
+    const canonicalBirCor = { document: canonical ?? (latestRows.length === 1 ? latestRows[0] : null), needsReview: !canonical && latestRows.length > 1 };
+    return json({ partyTypes: types, vatClassification, documents, canonicalBirCor });
   } catch (error) { return paymentResponse(error); }
 }
 
@@ -72,6 +77,12 @@ export async function POST(request: Request) {
     if (type === "bir_cor" && !registeredName) throw new PaymentError("Enter the registered business name shown on the COR.", 400);
     const roles = await partyTypes(db, user.id);
     if (!roles.includes(partyType as "client" | "freelancer")) throw new PaymentError("That account role is not available.", 403);
+    if (partyType === "freelancer" && type === "bir_cor") {
+      const existing = await db.from("tax_documents").select("document_id,status,submitted_at").eq("user_id", user.id).eq("party_type", "freelancer").eq("document_type", "bir_cor").order("submitted_at", { ascending: false }).limit(2);
+      if (existing.error) throw new PaymentError("Unable to check your existing Form 2303 submission.");
+      if (existing.data?.[0]?.status === "pending") throw new PaymentError("Your Form 2303 is already awaiting review.", 409);
+      if (existing.data?.length === 2 && existing.data[0].submitted_at === existing.data[1].submitted_at) throw new PaymentError("An administrator must resolve the existing Form 2303 review before you submit another copy.", 409);
+    }
     const ticket = await db.from("tax_document_upload_tickets").select("document_path").eq("document_path", path).eq("user_id", user.id).gt("expires_at", new Date().toISOString()).maybeSingle();
     if (ticket.error || !ticket.data) throw new PaymentError("This upload session expired. Start the document upload again.", 403);
     const { data: file, error: fileError } = await db.storage.from("verification-documents").download(path);

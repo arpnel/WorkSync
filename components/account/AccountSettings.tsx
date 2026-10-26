@@ -1,7 +1,6 @@
 ﻿"use client";
 
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
-import TaxDocuments from "@/components/account/TaxDocuments";
 import { useEffect, useState, type FormEvent } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
@@ -149,7 +148,6 @@ export default function AccountSettings() {
           </StyledSelect>
         </CardContent>
       </Card>
-      <TaxDocuments />
       <Card>
         <CardHeader>
           <CardTitle>Security</CardTitle>

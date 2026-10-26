@@ -6,6 +6,7 @@ import MessageSettings from "@/components/message/MessageSettings";
 import { SettingsWorkspace } from "@/components/account/SettingsWorkspace";
 import SubscriptionSettings from "@/components/account/SubscriptionSettings";
 import { FreelancerSellerVerification } from "@/components/account/FreelancerSellerVerification";
+import TaxDocuments from "@/components/account/TaxDocuments";
 import { WorkspacePageHeader } from "@/components/shared/WorkspacePageHeader";
 export default function Page() {
   return (
@@ -19,7 +20,7 @@ export default function Page() {
           payouts: <PayoutSettings />,
           account: <AccountSettings />,
           verification: <VerificationSettings />,
-          "seller-verification": <FreelancerSellerVerification />,
+          "seller-verification": <div className="space-y-6"><TaxDocuments /><FreelancerSellerVerification /></div>,
           notifications: <NotificationSettings />,
           messaging: <MessageSettings />,
           subscription: <SubscriptionSettings />,

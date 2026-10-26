@@ -18,7 +18,7 @@ const labels: Record<DocumentType, string> = {
 };
 
 const TaxDocumentOnboarding = forwardRef<TaxDocumentOnboardingHandle, { party: Party; disabled?: boolean }>(function TaxDocumentOnboarding({ party, disabled }, ref) {
-  const [type, setType] = useState<DocumentType>(party === "freelancer" ? "bir_cor" : "business_tax_support");
+  const [type, setType] = useState<DocumentType>(party === "freelancer" ? "vat_registration" : "business_tax_support");
   const [file, setFile] = useState<File | null>(null);
   const [registeredName, setRegisteredName] = useState("");
   const [treatment, setTreatment] = useState("");
@@ -27,7 +27,7 @@ const TaxDocumentOnboarding = forwardRef<TaxDocumentOnboardingHandle, { party: P
   const [expiresAt, setExpiresAt] = useState("");
   const [phase, setPhase] = useState<"idle" | "uploading" | "submitting" | "pending" | "error">("idle");
   const [error, setError] = useState("");
-  const options: DocumentType[] = party === "freelancer" ? ["bir_cor", "vat_registration", "tax_exemption", "business_tax_support"] : ["business_tax_support", "bir_cor", "vat_registration", "tax_exemption"];
+  const options: DocumentType[] = party === "freelancer" ? ["vat_registration", "tax_exemption", "business_tax_support"] : ["business_tax_support", "bir_cor", "vat_registration", "tax_exemption"];
 
   useImperativeHandle(ref, () => ({
     async submit() {
@@ -67,7 +67,7 @@ const TaxDocumentOnboarding = forwardRef<TaxDocumentOnboardingHandle, { party: P
   }), [basis, expiresAt, file, issuedAt, party, registeredName, treatment, type]);
 
   return <section className="space-y-3 rounded-xl border p-4" aria-busy={phase === "uploading" || phase === "submitting"}>
-    <div><h3 className="font-semibold">Tax documents</h3><p className="text-sm text-muted-foreground">For VAT exemption, submit your BIR Certificate of Registration (Form 2303) and, if applicable, a BIR-issued exemption certificate or ruling. For withholding exemption, submit a BIR-issued exemption certificate or ruling, a sworn declaration if permitted, or other official BIR supporting documents. Documents go to manual review and do not change tax treatment automatically.</p><p className="mt-1 text-sm text-muted-foreground">PDF, JPG, or PNG up to 5 MB. Submit the year-specific sworn declaration later in Settings under General → Tax Documentation.</p></div>
+    <div><h3 className="font-semibold">Optional tax documents</h3><p className="text-sm text-muted-foreground">Form 2303 is submitted once in Settings under Documentation. Upload any applicable VAT or withholding supporting records here; documents go to manual review and do not change tax treatment automatically.</p><p className="mt-1 text-sm text-muted-foreground">PDF, JPG, or PNG up to 5 MB. Submit the year-specific sworn declaration later in Settings under Documentation.</p></div>
     <div className="grid gap-3 sm:grid-cols-2">
       <div className="space-y-2"><Label htmlFor={`${party}-tax-document-type`}>Document type</Label><StyledSelect id={`${party}-tax-document-type`} value={type} onChange={event => setType(event.target.value as DocumentType)} disabled={disabled || phase === "uploading" || phase === "submitting"}>{options.map(option => <option key={option} value={option}>{labels[option]}</option>)}</StyledSelect></div>
       <div className="space-y-2"><Label htmlFor={`${party}-tax-document-file`}>Upload Document (optional)</Label><Input id={`${party}-tax-document-file`} type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={disabled || phase === "uploading" || phase === "submitting"} onChange={event => { setFile(event.target.files?.[0] ?? null); setPhase("idle"); setError(""); }} /><p className="text-xs text-muted-foreground">PDF, JPG, or PNG - up to 5 MB</p></div>

@@ -1,9 +1,10 @@
 "use client";
 import { StyledSelect } from "@/components/ui/styled-select";
 import { openSavedTaxReceipt } from "@/lib/payments/receiptClient";
+import { filterPayoutHistory, paginatePayoutHistory, payoutStatusGroup, payoutStatusLabel } from "@/lib/payments/payoutHistory";
 
 import { useEffect, useState } from "react";
-import { Wallet, ShieldCheck, Loader2, Clock3, CircleCheck, BadgeAlert, type LucideIcon } from "lucide-react";
+import { Wallet, ShieldCheck, Loader2, Clock3, CircleCheck, BadgeAlert, Search, ChevronLeft, ChevronRight, type LucideIcon } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,11 +54,19 @@ const php = (amount: number) => new Intl.NumberFormat("en-PH", {
 const payoutDate = (value: string) => new Intl.DateTimeFormat("en-PH", {
   dateStyle: "medium", timeZone: "Asia/Manila",
 }).format(new Date(value));
+const statusStyle = (status: string) => {
+  const group = payoutStatusGroup(status);
+  if (group === "paid") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-600";
+  if (group === "ready") return "border-blue-500/30 bg-blue-500/10 text-blue-600";
+  if (group === "processing") return "border-amber-500/30 bg-amber-500/10 text-amber-700";
+  if (group === "failed" || group === "needs_review") return "border-destructive/30 bg-destructive/10 text-destructive";
+  return "border-muted-foreground/25 bg-muted text-muted-foreground";
+};
 export default function PayoutSettings() {
   const [data, setData] = useState<{
     eligible: boolean;
     mode?: string;
-    account?: { bank_label: string; account_last4: string } | null;
+    account?: { bank_label: string; account_last4: string; provider?: "instapay" | "pesonet" | null } | null;
   } | null>(null);
   const [earnings, setEarnings] = useState<Earnings | null>(null);
   const [earningsError, setEarningsError] = useState("");
@@ -67,6 +76,12 @@ export default function PayoutSettings() {
   const [editing, setEditing] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [repeat, setRepeat] = useState("");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
+  const [page, setPage] = useState(0);
   const [form, setForm] = useState({
     bankLabel: "",
     name: "",
@@ -94,6 +109,16 @@ export default function PayoutSettings() {
       active = false;
     };
   }, []);
+  const payoutRows = earnings?.payouts ?? [];
+  const availableStatusFilters = ["ready", "processing", "paid", "failed", "needs_review", "awaiting_account", "cancelled"]
+    .filter((filter) => payoutRows.some((row) => payoutStatusGroup(row.status) === filter));
+  const matchingPayouts = filterPayoutHistory(payoutRows, { search, status: statusFilter, startDate, endDate, sortOrder });
+  const pageSize = 10;
+  const pageCount = Math.max(1, Math.ceil(matchingPayouts.length / pageSize));
+  const visiblePayouts = paginatePayoutHistory(matchingPayouts, page, pageSize);
+  const clearHistoryFilters = () => {
+    setSearch(""); setStatusFilter("all"); setStartDate(""); setEndDate(""); setSortOrder("newest"); setPage(0);
+  };
   if (data?.eligible === false)
     return (
       <p className="text-sm text-muted-foreground">
@@ -101,25 +126,26 @@ export default function PayoutSettings() {
       </p>
     );
   return (
-    <section className="space-y-5 rounded-2xl border bg-card p-5 sm:p-6">
-      <div className="flex items-start gap-3">
-        <div className="rounded-xl bg-primary/10 p-3 text-primary">
-          <Wallet className="size-5" />
-        </div>
-        <div>
-          <h3 className="font-semibold">Where you get paid</h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Add your bank or e-wallet account for approved project payments.
-          </p>
-        </div>
-      </div>
+    <section className="space-y-7">
+      <header>
+        <h2 className="text-2xl font-semibold tracking-tight">Payouts</h2>
+        <p className="mt-1 text-sm text-muted-foreground">Review your project earnings, transfer history, and payout account.</p>
+      </header>
       {data?.eligible && (
-        <div className="space-y-4 rounded-xl border bg-muted/20 p-4 sm:p-5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h4 className="font-semibold">Your earnings</h4>
+              <h3 className="text-lg font-semibold">Earnings overview</h3>
               <p className="mt-1 text-sm text-muted-foreground">Approved project earnings and their payout progress.</p>
             </div>
+            {earnings?.payouts?.length ? <Button variant="outline" size="sm" onClick={() => {
+              const rows = earnings.payouts ?? [];
+              const columns = ["Transaction ID", "Payout ID", "Project ID", "Transfer reference", "Gross earnings PHP", "Freelancer VAT base PHP", "Freelancer VAT PHP", "Withholding basis PHP", "Withholding rate", "Withholding PHP", "Net transfer amount PHP", "Withholding date", "Withholding rule", "Exemption status", "Withholding declaration ID", "Withholding document ID", "VAT document ID", "Freelancer VAT rule", "Status", "Created", "Paid status confirmed"];
+              const csvCell = (value: unknown) => `"${String(value ?? "").replaceAll("\"", "\"\"")}"`;
+              const csv = [columns, ...rows.map((row) => [row.transactionId, row.id, row.projectId, row.transferReference, row.grossAmount, row.freelancerVatTaxableAmount, row.freelancerVatAmount, row.withholdingBasis, `${(row.withholdingRate * 100).toFixed(2)}%`, row.withholdingAmount, row.amount, row.withholdingDate, row.withholdingRule, row.withholdingExemptionStatus, row.withholdingDeclarationId, row.withholdingDocumentId, row.freelancerVatDocumentId, row.freelancerVatRule, row.status, row.createdAt, row.paidAt])].map((line) => line.map(csvCell).join(",")).join("\r\n");
+              const url = URL.createObjectURL(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
+              const link = document.createElement("a"); link.href = url; link.download = "worksync-earnings-report.csv"; link.click(); URL.revokeObjectURL(url);
+            }}>Download earnings CSV</Button> : null}
           </div>
           {earningsError ? (
             <p role="alert" className="text-sm text-destructive">{earningsError}</p>
@@ -127,30 +153,15 @@ export default function PayoutSettings() {
             <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Earnings will appear here when payout tracking is enabled for this workspace.</p>
           ) : earnings?.summary ? (
             <>
-              <div className="flex justify-end">
-                <Button variant="outline" size="sm" onClick={() => {
-                  const rows = earnings.payouts ?? [];
-                  const columns = ["Transaction ID", "Payout ID", "Project ID", "Transfer reference", "Gross earnings PHP", "Freelancer VAT base PHP", "Freelancer VAT PHP", "Withholding basis PHP", "Withholding rate", "Withholding PHP", "Net transfer amount PHP", "Withholding date", "Withholding rule", "Exemption status", "Withholding declaration ID", "Withholding document ID", "VAT document ID", "Freelancer VAT rule", "Status", "Created", "Paid status confirmed"];
-                  const csvCell = (value: unknown) => `"${String(value ?? "").replaceAll("\"", "\"\"")}"`;
-                  const csv = [columns, ...rows.map((row) => [row.transactionId, row.id, row.projectId, row.transferReference, row.grossAmount, row.freelancerVatTaxableAmount, row.freelancerVatAmount, row.withholdingBasis, `${(row.withholdingRate * 100).toFixed(2)}%`, row.withholdingAmount, row.amount, row.withholdingDate, row.withholdingRule, row.withholdingExemptionStatus, row.withholdingDeclarationId, row.withholdingDocumentId, row.freelancerVatDocumentId, row.freelancerVatRule, row.status, row.createdAt, row.paidAt])].map((line) => line.map(csvCell).join(",")).join("\r\n");
-                  const url = URL.createObjectURL(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
-                  const link = document.createElement("a");
-                  link.href = url;
-                  link.download = "worksync-earnings-report.csv";
-                  link.click();
-                  URL.revokeObjectURL(url);
-                }} disabled={!earnings.payouts?.length}>Download earnings CSV</Button>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 {([
                   ["Gross earnings", earnings.summary.earned, Wallet],
                   ["Ready for payout", earnings.summary.ready, Wallet],
                   ["Processing", earnings.summary.processing, Clock3],
                   ["Paid out", earnings.summary.paid, CircleCheck],
-                  ["Withholding recorded", earnings.summary.withholding ?? 0, BadgeAlert],
                 ] as [string, number, LucideIcon][]).map(([label, amount, Icon]) => (
-                  <div key={label} className="rounded-lg border bg-card p-4">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground"><Icon className="size-4" />{label}</div>
+                  <div key={label} className="rounded-xl border bg-card p-4">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground"><Icon className="size-4 shrink-0" />{label}</div>
                     <p className="mt-2 text-xl font-semibold tabular-nums">{php(amount)}</p>
                   </div>
                 ))}
@@ -168,46 +179,88 @@ export default function PayoutSettings() {
                 </p>
               )}
               <p className="text-xs text-muted-foreground">{earnings.settlementEnabled ? "Ready payouts are sent automatically after project approval and payment checks. Keep your payout account up to date; you do not need to submit a separate withdrawal request." : "Payout tracking is currently in setup mode. Transfers will not be sent until the platform has completed its PayMongo and Supabase checks."}</p>
-              {earnings.payouts && earnings.payouts.length > 0 && (
-                <div className="space-y-2 border-t pt-4">
-                  <h5 className="text-sm font-medium">Recent payout activity</h5>
-                  <div className="grid gap-3 lg:grid-cols-2">
-                    {earnings.payouts.slice(0, 5).map((payout) => (
-                      <article key={payout.id} className="min-w-0 space-y-3 rounded-lg border bg-card p-3 sm:p-4">
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div>
-                            <p className="text-sm font-medium">{payout.status === "paid" && payout.paidAt ? `Paid ${payoutDate(payout.paidAt)}` : `Created ${payoutDate(payout.createdAt)}`}</p>
-                            <p className="mt-1 text-xs capitalize text-muted-foreground">{payout.status.replaceAll("_", " ")}</p>
-                          </div>
-                          <Button variant="outline" size="sm" onClick={() => void openSavedTaxReceipt(payout.transactionId).catch((cause) => setError(cause instanceof Error ? cause.message : "Receipt unavailable."))}>View receipt</Button>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3 rounded-md bg-muted/30 p-3">
-                          <div>
-                            <p className="text-xs text-muted-foreground">Gross earnings</p>
-                            <p className="mt-1 font-medium tabular-nums">{php(payout.grossAmount)}</p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-muted-foreground">Net transfer</p>
-                            <p className="mt-1 font-medium tabular-nums">{php(payout.amount)}</p>
-                          </div>
-                        </div>
-                        {payout.transferReference && <p className="break-all text-xs text-muted-foreground">Transfer reference: {payout.transferReference}</p>}
-                        {(payout.freelancerVatAmount > 0 || payout.withholdingAmount > 0) && (
-                          <div className="space-y-1 border-t pt-2 text-xs text-muted-foreground">
-                            {payout.freelancerVatAmount > 0 && <p>VAT recorded: {php(payout.freelancerVatAmount)} at {(payout.freelancerVatRate * 100).toFixed(2)}% of {php(payout.freelancerVatTaxableAmount)}.</p>}
-                            {payout.withholdingAmount > 0 && <p>Withholding: {php(payout.withholdingAmount)} at {(payout.withholdingRate * 100).toFixed(2)}% of {php(payout.withholdingBasis)}.</p>}
-                          </div>
-                        )}
-                      </article>
-                    ))}
-                  </div>
-                </div>
-              )}
             </>
           ) : (
             <p role="status" className="text-sm text-muted-foreground">Loading earnings...</p>
           )}
         </div>
+      )}
+      {data?.eligible && earnings?.available !== false && earnings?.summary && (
+        <section aria-labelledby="payout-history-heading" className="space-y-4">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h3 id="payout-history-heading" className="text-lg font-semibold">Payout transaction history</h3>
+              <p className="mt-1 text-sm text-muted-foreground">Search and review recorded transfers and their receipts.</p>
+            </div>
+            <p className="text-sm text-muted-foreground" aria-live="polite">{matchingPayouts.length} {matchingPayouts.length === 1 ? "transaction" : "transactions"}</p>
+          </div>
+          <div className="grid gap-3 rounded-xl border bg-card p-4 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="relative sm:col-span-2 xl:col-span-1">
+              <Label htmlFor="payout-search">Search reference</Label>
+              <Search className="pointer-events-none absolute left-3 top-9 size-4 text-muted-foreground" aria-hidden="true" />
+              <Input id="payout-search" className="mt-1 pl-9" value={search} placeholder="Payout or transfer ID" onChange={(event) => { setSearch(event.target.value); setPage(0); }} />
+            </div>
+            <div>
+              <Label htmlFor="payout-status">Status</Label>
+              <StyledSelect id="payout-status" className="mt-1 h-10 w-full rounded-lg border bg-background px-3 text-sm" value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(0); }}>
+                <option value="all">All statuses</option>
+                {availableStatusFilters.map((status) => <option key={status} value={status}>{payoutStatusLabel(status)}</option>)}
+              </StyledSelect>
+            </div>
+            <div>
+              <Label htmlFor="payout-from">Created from</Label>
+              <Input id="payout-from" className="mt-1" type="date" value={startDate} max={endDate || undefined} onChange={(event) => { setStartDate(event.target.value); setPage(0); }} />
+            </div>
+            <div>
+              <Label htmlFor="payout-to">Created to</Label>
+              <Input id="payout-to" className="mt-1" type="date" value={endDate} min={startDate || undefined} onChange={(event) => { setEndDate(event.target.value); setPage(0); }} />
+            </div>
+            <div>
+              <Label htmlFor="payout-sort">Sort</Label>
+              <StyledSelect id="payout-sort" className="mt-1 h-10 w-full rounded-lg border bg-background px-3 text-sm" value={sortOrder} onChange={(event) => { setSortOrder(event.target.value as "newest" | "oldest"); setPage(0); }}>
+                <option value="newest">Newest first</option><option value="oldest">Oldest first</option>
+              </StyledSelect>
+            </div>
+            <div className="flex items-end sm:col-span-2 xl:col-span-5">
+              <Button type="button" variant="ghost" size="sm" onClick={clearHistoryFilters} disabled={!search && statusFilter === "all" && !startDate && !endDate && sortOrder === "newest"}>Clear filters</Button>
+              {startDate && endDate && startDate > endDate && <p role="alert" className="ml-3 pb-2 text-xs text-destructive">Start date must be on or before end date.</p>}
+            </div>
+          </div>
+          {matchingPayouts.length === 0 ? (
+            <div className="rounded-xl border border-dashed px-4 py-10 text-center">
+              <p className="font-medium">No transactions match these filters</p>
+              <p className="mt-1 text-sm text-muted-foreground">Try another reference, status, or date range.</p>
+            </div>
+          ) : (
+            <>
+              <div className="hidden overflow-hidden rounded-xl border md:block">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-muted/50 text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3 font-medium">Date created</th><th className="px-4 py-3 font-medium">Gross amount</th><th className="px-4 py-3 font-medium">Net transfer</th><th className="px-4 py-3 font-medium">Status</th><th className="px-4 py-3 text-right font-medium">Receipt</th></tr></thead>
+                  <tbody className="divide-y">
+                    {visiblePayouts.map((payout) => <tr key={payout.id} className="bg-card">
+                      <td className="px-4 py-3"><p>{payoutDate(payout.createdAt)}</p><p className="mt-1 max-w-44 truncate text-xs text-muted-foreground" title={payout.transferReference ?? payout.id}>{payout.transferReference ? `Ref ${payout.transferReference}` : `Payout ${payout.id}`}</p></td>
+                      <td className="px-4 py-3 font-medium tabular-nums">{php(payout.grossAmount)}</td>
+                      <td className="px-4 py-3 font-medium tabular-nums">{php(payout.amount)}{payout.withholdingAmount > 0 && <p className="mt-1 text-xs font-normal text-muted-foreground">Withholding: {php(payout.withholdingAmount)}</p>}</td>
+                      <td className="px-4 py-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${statusStyle(payout.status)}`}>{payoutStatusLabel(payout.status)}</span></td>
+                      <td className="px-4 py-3 text-right"><Button variant="outline" size="sm" onClick={() => void openSavedTaxReceipt(payout.transactionId).catch((cause) => setError(cause instanceof Error ? cause.message : "Receipt unavailable."))}>View receipt</Button></td>
+                    </tr>)}
+                  </tbody>
+                </table>
+              </div>
+              <div className="space-y-3 md:hidden">
+                {visiblePayouts.map((payout) => <article key={payout.id} className="space-y-3 rounded-xl border bg-card p-4">
+                  <div className="flex items-start justify-between gap-3"><div><p className="font-medium">{payoutDate(payout.createdAt)}</p><p className="mt-1 max-w-52 truncate text-xs text-muted-foreground" title={payout.transferReference ?? payout.id}>{payout.transferReference ? `Ref ${payout.transferReference}` : `Payout ${payout.id}`}</p></div><span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium ${statusStyle(payout.status)}`}>{payoutStatusLabel(payout.status)}</span></div>
+                  <div className="grid grid-cols-2 gap-3 border-t pt-3"><div><p className="text-xs text-muted-foreground">Gross amount</p><p className="mt-1 font-medium tabular-nums">{php(payout.grossAmount)}</p></div><div><p className="text-xs text-muted-foreground">Net transfer</p><p className="mt-1 font-medium tabular-nums">{php(payout.amount)}</p>{payout.withholdingAmount > 0 && <p className="mt-1 text-xs text-muted-foreground">Withholding: {php(payout.withholdingAmount)}</p>}</div></div>
+                  <Button variant="outline" size="sm" onClick={() => void openSavedTaxReceipt(payout.transactionId).catch((cause) => setError(cause instanceof Error ? cause.message : "Receipt unavailable."))}>View receipt</Button>
+                </article>)}
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+                <p className="text-muted-foreground">Showing {page * pageSize + 1}–{Math.min((page + 1) * pageSize, matchingPayouts.length)} of {matchingPayouts.length}</p>
+                <div className="flex items-center gap-2"><Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((value) => Math.max(0, value - 1))}><ChevronLeft className="mr-1 size-4" />Previous</Button><span className="tabular-nums text-muted-foreground">Page {page + 1} of {pageCount}</span><Button variant="outline" size="sm" disabled={page + 1 >= pageCount} onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))}>Next<ChevronRight className="ml-1 size-4" /></Button></div>
+              </div>
+            </>
+          )}
+        </section>
       )}
       {error && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/20 bg-destructive/5 p-3">
@@ -227,20 +280,27 @@ export default function PayoutSettings() {
           {notice}
         </p>
       )}
-      {data?.account && !editing ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4">
-          <div>
-            <p className="font-medium">{data.account.bank_label}</p>
-            <p className="text-sm text-muted-foreground">
-              Account ending in {data.account.account_last4}
-            </p>
-          </div>
-          <Button variant="outline" onClick={() => setEditing(true)}>
-            Change account
-          </Button>
+      <section aria-labelledby="payout-account-heading" className="space-y-3">
+        <div>
+          <h3 id="payout-account-heading" className="text-lg font-semibold">Payout account</h3>
+          <p className="mt-1 text-sm text-muted-foreground">Choose where eligible project earnings are transferred.</p>
         </div>
-      ) : (
-        data && (
+        <div className="rounded-xl border bg-card p-4 sm:p-5">
+          {data?.account && !editing ? (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="font-medium">{data.account.bank_label}</p>
+                <p className="text-sm text-muted-foreground">
+                  Bank or e-wallet; account ending in {data.account.account_last4}
+                  {data.account.provider && `; ${data.account.provider === "pesonet" ? "PESONet" : "InstaPay"}`}
+                </p>
+              </div>
+              <Button variant="outline" onClick={() => setEditing(true)}>
+                Change account
+              </Button>
+            </div>
+          ) : (
+            data && (
           <form
             className="space-y-5"
             onSubmit={async (e) => {
@@ -373,8 +433,10 @@ export default function PayoutSettings() {
               </Button>
             </div>
           </form>
-        )
-      )}
+            )
+          )}
+        </div>
+      </section>
       <p className="flex items-start gap-2 border-t pt-4 text-xs text-muted-foreground">
         <ShieldCheck className="size-4 shrink-0" />
         Account numbers are encrypted and only the final four digits are

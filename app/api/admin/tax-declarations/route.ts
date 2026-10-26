@@ -36,7 +36,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const { db, user } = await requireAdmin(request);
-    const body = await request.json().catch(() => null) as { action?: unknown; declarationId?: unknown; decision?: unknown; notes?: unknown; freelancerId?: unknown; vatApplicable?: unknown; marketplaceWithholdingApplicable?: unknown; reason?: unknown } | null;
+    const body = await request.json().catch(() => null) as { action?: unknown; declarationId?: unknown; decision?: unknown; notes?: unknown; taxYearConfirmed?: unknown; freelancerId?: unknown; vatApplicable?: unknown; marketplaceWithholdingApplicable?: unknown; reason?: unknown } | null;
     if (body?.action === "configure") {
       if (typeof body.freelancerId !== "string" || typeof body.vatApplicable !== "boolean" || typeof body.marketplaceWithholdingApplicable !== "boolean" || typeof body.reason !== "string" || !body.reason.trim() || body.reason.length > 2000) throw new PaymentError("Tax configuration changes require a reason up to 2,000 characters.", 400);
       if (body.marketplaceWithholdingApplicable) {
@@ -57,10 +57,18 @@ export async function POST(request: Request) {
     }
     if (typeof body?.declarationId !== "string" || !["accepted", "rejected", "revoked"].includes(String(body.decision)) || typeof body.notes !== "string" || !body.notes.trim() || body.notes.length > 2000)
       throw new PaymentError("Choose an outcome and enter review notes up to 2,000 characters.", 400);
+    if (body.decision === "accepted" && body.taxYearConfirmed !== true)
+      throw new PaymentError("Confirm that the BIR document declares the selected tax year before accepting it.", 400);
     const currentStatuses = body.decision === "revoked" ? ["accepted"] : ["pending"];
-    const result = await db.from("freelancer_tax_declarations").update({ status: body.decision, reviewed_by: user.id, reviewed_at: new Date().toISOString(), review_notes: body.notes.trim() }).eq("declaration_id", body.declarationId).in("status", currentStatuses).select("declaration_id,user_id,tax_year,status,reviewed_at").maybeSingle();
+    let reviewNotes = body.notes.trim();
+    if (body.decision === "accepted") {
+      const pending = await db.from("freelancer_tax_declarations").select("tax_year").eq("declaration_id", body.declarationId).eq("status", "pending").maybeSingle();
+      if (pending.error || !pending.data) throw new PaymentError("Pending tax declaration not found.", 409);
+      reviewNotes += `\n\nTax-year review: reviewer confirmed the BIR document declares tax year ${pending.data.tax_year}.`;
+    }
+    const result = await db.from("freelancer_tax_declarations").update({ status: body.decision, reviewed_by: user.id, reviewed_at: new Date().toISOString(), review_notes: reviewNotes }).eq("declaration_id", body.declarationId).in("status", currentStatuses).select("declaration_id,user_id,tax_year,status,reviewed_at").maybeSingle();
     if (result.error || !result.data) throw new PaymentError(body.decision === "revoked" ? "Accepted declaration not found or revocation is unavailable until the prepared tax-review migration is applied." : "Pending tax declaration not found.", 409);
-    await db.from("admin_audit_log").insert({ admin_id: user.id, action: `tax_declaration_${body.decision}`, target_id: body.declarationId, details: { tax_year: result.data.tax_year, notes: body.notes.trim() } });
+    await db.from("admin_audit_log").insert({ admin_id: user.id, action: `tax_declaration_${body.decision}`, target_id: body.declarationId, details: { tax_year: result.data.tax_year, notes: reviewNotes } });
     return json({ declaration: result.data });
   } catch (error) { return paymentResponse(error); }
 }

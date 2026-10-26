@@ -8,6 +8,7 @@ type Row = { declaration_id: string; user_id: string; tax_year: number; reported
 export default function TaxDeclarationReview() {
   const [rows, setRows] = useState<Row[]>([]);
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [taxYearConfirmed, setTaxYearConfirmed] = useState<Record<string, boolean>>({});
   const [config, setConfig] = useState<Record<string, { vat: boolean; withholding: boolean }>>({});
   const [configNotes, setConfigNotes] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState("");
@@ -35,7 +36,7 @@ export default function TaxDeclarationReview() {
   }
   async function review(row: Row, decision: "accepted" | "rejected" | "revoked") {
     setBusy(row.declaration_id); setError("");
-    try { await send({ declarationId: row.declaration_id, decision, notes: notes[row.declaration_id] ?? "" }); await load(); }
+    try { await send({ declarationId: row.declaration_id, decision, notes: notes[row.declaration_id] ?? "", taxYearConfirmed: decision === "accepted" && taxYearConfirmed[row.declaration_id] === true }); await load(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to save review."); }
     finally { setBusy(""); }
   }
@@ -56,7 +57,8 @@ export default function TaxDeclarationReview() {
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={marketplaceWithholdingEnabled && (config[row.user_id]?.withholding ?? false)} disabled={!marketplaceWithholdingEnabled} onChange={(event) => setConfig((value) => ({ ...value, [row.user_id]: { ...value[row.user_id], withholding: event.target.checked } }))} />Marketplace withholding (disabled pending WorkSync legal confirmation)</label>
       <Textarea value={configNotes[row.user_id] ?? ""} onChange={(event) => setConfigNotes(value => ({ ...value, [row.user_id]: event.target.value }))} maxLength={2000} placeholder="Reason for tax configuration change (required)" />
       <Button variant="outline" size="sm" disabled={busy === row.user_id || !configNotes[row.user_id]?.trim()} onClick={() => void saveConfig(row.user_id)}>Save tax treatment</Button>
-      {(row.status === "pending" || row.status === "accepted") && <><Textarea value={notes[row.declaration_id] ?? ""} onChange={(event) => setNotes((value) => ({ ...value, [row.declaration_id]: event.target.value }))} maxLength={2000} placeholder={row.status === "accepted" ? "Reason to revoke this accepted declaration" : "Review notes"} /><div className="flex gap-2">{row.status === "pending" ? <><Button disabled={!!busy} onClick={() => void review(row, "accepted")}>Accept declaration</Button><Button variant="outline" disabled={!!busy} onClick={() => void review(row, "rejected")}>Reject declaration</Button></> : <Button variant="outline" disabled={!!busy || !revocationAvailable} onClick={() => void review(row, "revoked")}>Revoke accepted declaration</Button>}</div>{row.status === "accepted" && !revocationAvailable && <p className="text-xs text-muted-foreground">Revocation history is unavailable until the prepared tax-review migration is applied.</p>}</>}
+      {row.status === "pending" && <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={taxYearConfirmed[row.declaration_id] === true} onChange={(event) => setTaxYearConfirmed((value) => ({ ...value, [row.declaration_id]: event.target.checked }))} /><span>I reviewed the BIR document and confirmed that it declares tax year {row.tax_year}. The document&apos;s signing or preparation date does not determine the tax year.</span></label>}
+      {(row.status === "pending" || row.status === "accepted") && <><Textarea value={notes[row.declaration_id] ?? ""} onChange={(event) => setNotes((value) => ({ ...value, [row.declaration_id]: event.target.value }))} maxLength={2000} placeholder={row.status === "accepted" ? "Reason to revoke this accepted declaration" : "Review notes"} /><div className="flex gap-2">{row.status === "pending" ? <><Button disabled={!!busy || !taxYearConfirmed[row.declaration_id] || !notes[row.declaration_id]?.trim()} onClick={() => void review(row, "accepted")}>Accept declaration</Button><Button variant="outline" disabled={!!busy || !notes[row.declaration_id]?.trim()} onClick={() => void review(row, "rejected")}>Reject declaration</Button></> : <Button variant="outline" disabled={!!busy || !revocationAvailable || !notes[row.declaration_id]?.trim()} onClick={() => void review(row, "revoked")}>Revoke accepted declaration</Button>}</div>{row.status === "accepted" && !revocationAvailable && <p className="text-xs text-muted-foreground">Revocation history is unavailable until the prepared tax-review migration is applied.</p>}</>}
       {row.review_notes && <p className="text-sm text-muted-foreground">Review notes: {row.review_notes}</p>}
       {row.review_events.length > 0 && <div className="text-xs text-muted-foreground">Review history: {row.review_events.map((event) => `${event.previous_status} → ${event.new_status} by ${event.reviewer_id} on ${new Date(event.created_at).toLocaleString()} — ${event.reason}`).join("; ")}</div>}
     </article>)}

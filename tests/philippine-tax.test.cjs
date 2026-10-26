@@ -11,6 +11,8 @@ function load(path, globals = {}) {
   return exports;
 }
 const tax = load("lib/payments/philippineTax.ts");
+const taxDeclaration = load("lib/tax/taxDeclaration.ts");
+const payoutHistory = load("lib/payments/payoutHistory.ts");
 const same = (actual, expected) => assert.equal(JSON.stringify(actual), JSON.stringify(expected));
 
 test("VAT-inclusive price is split without changing the amount paid", () => same(tax.calculateVat(112, "inclusive", true), { taxableAmount: 100, vatAmount: 12, total: 112, pricing: "inclusive", applies: true }));
@@ -45,6 +47,72 @@ test("no withholding is calculated unless configured as applicable", () => {
 test("net payout subtracts withholding only and rejects over-deduction", () => {
   assert.equal(tax.calculateFreelancerPayout(10_000, 50), 9_950);
   assert.throws(() => tax.calculateFreelancerPayout(10_000, 10_001));
+});
+
+test("withholding declaration years are defaulted from a supported dropdown range and validated strictly", () => {
+  same(taxDeclaration.supportedTaxYears(2026), [2027, 2026, 2025, 2024]);
+  assert.equal(taxDeclaration.isSupportedTaxYear("2026", 2026), true);
+  assert.equal(taxDeclaration.isSupportedTaxYear(2027, 2026), true);
+  assert.equal(taxDeclaration.isSupportedTaxYear("2023", 2026), false);
+  assert.equal(taxDeclaration.isSupportedTaxYear("2028", 2026), false);
+  assert.equal(taxDeclaration.isSupportedTaxYear("20x6", 2026), false);
+  assert.equal(taxDeclaration.isSupportedTaxYear("0", 2026), false);
+});
+
+test("withholding declarations block duplicate pending or accepted years and permit corrected resubmissions", () => {
+  const forYear = (status) => [{ tax_year: 2026, status }];
+  assert.equal(taxDeclaration.hasBlockingDeclaration(forYear("pending"), 2026), true);
+  assert.equal(taxDeclaration.hasBlockingDeclaration(forYear("accepted"), 2026), true);
+  assert.equal(taxDeclaration.hasBlockingDeclaration(forYear("rejected"), 2026), false);
+  assert.equal(taxDeclaration.hasBlockingDeclaration(forYear("revoked"), 2026), false);
+  assert.equal(taxDeclaration.hasBlockingDeclaration(forYear("accepted"), 2025), false);
+});
+
+test("declaration UI, submission API, and admin acceptance confirm the selected tax year", () => {
+  const declarationUi = fs.readFileSync("components/account/FreelancerTaxDeclaration.tsx", "utf8");
+  const declarationApi = fs.readFileSync("app/api/tax-declarations/route.ts", "utf8");
+  const adminUi = fs.readFileSync("components/admin/TaxDeclarationReview.tsx", "utf8");
+  const adminApi = fs.readFileSync("app/api/admin/tax-declarations/route.ts", "utf8");
+  assert.match(declarationUi, /useState\(String\(currentTaxYear\(\)\)\)/);
+  assert.match(declarationUi, /StyledSelect id="tax-declaration-year"/);
+  assert.match(declarationUi, /The tax year is the period covered/);
+  assert.match(declarationApi, /\.in\("status", \["pending", "accepted"\]\)/);
+  assert.match(adminUi, /confirmed that it declares tax year/);
+  assert.match(adminApi, /body\.taxYearConfirmed !== true/);
+  assert.match(adminApi, /reviewer confirmed the BIR document declares tax year/);
+});
+test("payout history filters by IDs, status, and inclusive Manila calendar dates, then sorts", () => {
+  const rows = [
+    { id: "p1", transactionId: "payment-a", transferReference: "ref-a", status: "paid", createdAt: "2026-02-01T17:00:00.000Z" },
+    { id: "p2", transactionId: "payment-b", transferReference: null, status: "processing", createdAt: "2026-02-01T10:00:00.000Z" },
+    { id: "p3", transactionId: "payment-c", transferReference: "ref-c", status: "ready", createdAt: "2026-01-31T16:00:00.000Z" },
+    { id: "p4", transactionId: "payment-d", transferReference: null, status: "needs_review", createdAt: "2026-02-02T02:00:00.000Z" },
+  ];
+  const filters = (overrides = {}) => ({ search: "", status: "all", startDate: "", endDate: "", sortOrder: "newest", ...overrides });
+  assert.deepEqual(payoutHistory.filterPayoutHistory(rows, filters()).map((row) => row.id), ["p4", "p1", "p2", "p3"]);
+  assert.deepEqual(payoutHistory.filterPayoutHistory(rows, filters({ sortOrder: "oldest" })).map((row) => row.id), ["p3", "p2", "p1", "p4"]);
+  assert.deepEqual(payoutHistory.filterPayoutHistory(rows, filters({ startDate: "2026-02-02", endDate: "2026-02-02" })).map((row) => row.id), ["p4", "p1"]);
+  assert.deepEqual(payoutHistory.filterPayoutHistory(rows, filters({ status: "processing" })).map((row) => row.id), ["p2"]);
+  assert.deepEqual(payoutHistory.filterPayoutHistory(rows, filters({ status: "paid" })).map((row) => row.id), ["p1"]);
+  assert.deepEqual(payoutHistory.filterPayoutHistory(rows, filters({ status: "failed" })).map((row) => row.id), []);
+  assert.deepEqual(payoutHistory.filterPayoutHistory(rows, filters({ search: "REF-C" })).map((row) => row.id), ["p3"]);
+  assert.deepEqual(payoutHistory.filterPayoutHistory(rows, filters({ search: "payment-b" })).map((row) => row.id), ["p2"]);
+});
+test("payout history pagination returns bounded pages and supports empty results", () => {
+  const rows = Array.from({ length: 23 }, (_, index) => index);
+  assert.deepEqual(payoutHistory.paginatePayoutHistory(rows, 0, 10), rows.slice(0, 10));
+  assert.deepEqual(payoutHistory.paginatePayoutHistory(rows, 2, 10), rows.slice(20, 23));
+  assert.deepEqual(payoutHistory.paginatePayoutHistory([], 0, 10), []);
+});
+test("payout history keeps desktop table and mobile cards while CSV exports the authorized full dataset", () => {
+  const page = fs.readFileSync("components/account/PayoutSettings.tsx", "utf8");
+  const api = fs.readFileSync("app/api/payouts/route.ts", "utf8");
+  assert.match(page, /hidden overflow-hidden rounded-xl border md:block/);
+  assert.match(page, /space-y-3 md:hidden/);
+  assert.match(page, /Download earnings CSV/);
+  assert.match(page, /const rows = earnings\.payouts \?\? \[\]/);
+  assert.match(api, /\.eq\("recipient_id", user\.id\)/);
+  assert.match(api, /\.range\(from, from \+ 499\)/);
 });
 test("receipt PDF renders saved parties, transaction tax lines and registration context", async () => {
   const receipt = load("lib/payments/receiptPdf.ts");
@@ -322,8 +390,8 @@ test("payout statements expose saved transfer references and status context", ()
   assert.match(page, /Transfer reference/);
   assert.match(page, /Net transfer/);
   assert.match(page, /Paid status confirmed/);
-  assert.match(page, /payout\.status\.replaceAll/);
-  assert.match(page, /VAT recorded/);
+  assert.match(page, /payoutStatusLabel\(payout\.status\)/);
+  assert.match(page, /payout\.withholdingAmount > 0/);
 });
 
 test("tax document and declaration approval revocation stays admin-reviewed and auditable", () => {

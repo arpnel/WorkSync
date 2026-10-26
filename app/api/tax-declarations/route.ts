@@ -1,6 +1,7 @@
 import { PaymentError } from "@/lib/payments/paymongo";
 import { inspectTaxDocument } from "@/lib/tax/taxDocumentUpload";
 import { paymentResponse, paymentUser } from "@/services/payments/paymentServer";
+import { isSupportedTaxYear } from "@/lib/tax/taxDeclaration";
 
 export const runtime = "nodejs";
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
@@ -29,11 +30,13 @@ export async function POST(request: Request) {
     if (profile.error) throw new PaymentError("Unable to check freelancer account.");
     if (!profile.data) throw new PaymentError("Only freelancers can submit tax documents.", 403);
     const body = await request.json().catch(() => null) as { taxYear?: unknown; documentPath?: unknown; thresholdStatus?: unknown } | null;
-    const year = Number(body?.taxYear);
+    const year = body?.taxYear;
     const path = body?.documentPath;
-    const validPath = typeof path === "string" && path.startsWith(`${user.id}/tax/${year}/`) && /^[a-f\d-]{36}\.(pdf|png|jpe?g)$/i.test(path.slice(path.lastIndexOf("/") + 1));
-    if (!Number.isInteger(year) || year < 2024 || year > new Date().getUTCFullYear() + 1 || !["not_exceeding", "exceeded"].includes(String(body?.thresholdStatus)) || !validPath)
+    if (!isSupportedTaxYear(year) || !["not_exceeding", "exceeded"].includes(String(body?.thresholdStatus)))
       throw new PaymentError("Choose a valid tax year and upload a PDF, JPG, or PNG sworn declaration.", 400);
+    const taxYear = Number(year);
+    const validPath = typeof path === "string" && path.startsWith(`${user.id}/tax/${taxYear}/`) && /^[a-f\d-]{36}\.(pdf|png|jpe?g)$/i.test(path.slice(path.lastIndexOf("/") + 1));
+    if (!validPath) throw new PaymentError("Upload a document for the selected tax year.", 400);
     const ticket = await db.from("tax_document_upload_tickets").select("document_path").eq("document_path", path).eq("user_id", user.id).gt("expires_at", new Date().toISOString()).maybeSingle();
     if (ticket.error || !ticket.data) throw new PaymentError("This upload session expired. Start the document upload again.", 403);
     const { data: document, error: fileError } = await db.storage.from("verification-documents").download(path);
@@ -43,7 +46,21 @@ export async function POST(request: Request) {
       await Promise.all([db.storage.from("verification-documents").remove([path]), db.from("tax_document_upload_tickets").delete().eq("document_path", path).eq("user_id", user.id)]);
       throw new PaymentError(cause instanceof Error ? cause.message : "Invalid document file.", 400);
     }
-    const { data, error } = await db.from("freelancer_tax_declarations").insert({ user_id: user.id, tax_year: year, reported_threshold_status: body?.thresholdStatus, document_path: path, status: "pending" }).select("declaration_id,tax_year,reported_threshold_status,status,submitted_at").single();
+    const existing = await db.from("freelancer_tax_declarations")
+      .select("declaration_id")
+      .eq("user_id", user.id)
+      .eq("tax_year", taxYear)
+      .in("status", ["pending", "accepted"])
+      .limit(1);
+    if (existing.error) throw new PaymentError("Unable to check existing declarations.");
+    if (existing.data?.length) {
+      await Promise.all([
+        db.storage.from("verification-documents").remove([path]),
+        db.from("tax_document_upload_tickets").delete().eq("document_path", path).eq("user_id", user.id),
+      ]);
+      throw new PaymentError(`A declaration is already pending or accepted for ${taxYear}.`, 409);
+    }
+    const { data, error } = await db.from("freelancer_tax_declarations").insert({ user_id: user.id, tax_year: taxYear, reported_threshold_status: body?.thresholdStatus, document_path: path, status: "pending" }).select("declaration_id,tax_year,reported_threshold_status,status,submitted_at").single();
     if (error) {
       await Promise.all([db.storage.from("verification-documents").remove([path]), db.from("tax_document_upload_tickets").delete().eq("document_path", path).eq("user_id", user.id)]);
       throw new PaymentError(error.code === "23505" ? "A declaration is already pending or accepted for that tax year." : "Tax declaration could not be submitted.", 409);

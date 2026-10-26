@@ -1,4 +1,4 @@
-import { destinationSchema, encryptDestination } from "@/lib/payments/payouts";
+import { destinationSchema, decryptDestination, encryptDestination } from "@/lib/payments/payouts";
 import { PaymentError, paymentMode } from "@/lib/payments/paymongo";
 import {
   paymentUser,
@@ -69,11 +69,19 @@ export async function GET(request: Request) {
     if (!role.data) return json({ eligible: false });
     const { data, error } = await db
       .from("freelancer_payout_accounts")
-      .select("bank_label,account_last4,updated_at")
+      .select("bank_label,account_last4,updated_at,encrypted_destination")
       .eq("user_id", user.id)
       .eq("mode", paymentMode())
       .maybeSingle();
     if (error) throw new PaymentError("Payout setup is not available yet.");
+    let provider: "instapay" | "pesonet" | null = null;
+    if (data?.encrypted_destination) {
+      try {
+        provider = decryptDestination(data.encrypted_destination).provider;
+      } catch {
+        // Keep the masked account visible if an older encrypted record cannot be decoded.
+      }
+    }
     const mode = paymentMode();
     const reconciled = data
       ? await reconcileWaitingPayouts(db, user.id, mode)
@@ -81,7 +89,7 @@ export async function GET(request: Request) {
     return json({
       eligible: true,
       mode,
-      account: data,
+      account: data ? { bank_label: data.bank_label, account_last4: data.account_last4, provider } : null,
       reconciliation: reconciled ? "complete" : "pending",
     });
   } catch (error) {

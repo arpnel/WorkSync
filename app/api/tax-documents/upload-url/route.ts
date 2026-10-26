@@ -1,6 +1,7 @@
 import { PaymentError } from "@/lib/payments/paymongo";
 import { paymentResponse, paymentUser } from "@/services/payments/paymentServer";
 import { TAX_DOCUMENT_MAX_BYTES } from "@/lib/tax/taxDocumentUpload";
+import { isSupportedTaxYear } from "@/lib/tax/taxDeclaration";
 
 export const runtime = "nodejs";
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
@@ -25,8 +26,15 @@ export async function POST(request: Request) {
     if (freelancer.error || client.error) throw new PaymentError("Unable to check account roles.");
     if (body.partyType === "freelancer" ? !freelancer.data : !client.data) throw new PaymentError("That account role is not available.", 403);
     if (uploadKind === "withholding_declaration") {
-      const year = Number(body.taxYear);
-      if (body.partyType !== "freelancer" || !Number.isInteger(year) || year < 2024 || year > new Date().getUTCFullYear() + 1) throw new PaymentError("Choose a valid freelancer tax year.", 400);
+      if (body.partyType !== "freelancer" || !isSupportedTaxYear(body.taxYear)) throw new PaymentError("Choose a valid freelancer tax year.", 400);
+      const existing = await db.from("freelancer_tax_declarations")
+        .select("declaration_id")
+        .eq("user_id", user.id)
+        .eq("tax_year", Number(body.taxYear))
+        .in("status", ["pending", "accepted"])
+        .limit(1);
+      if (existing.error) throw new PaymentError("Unable to check existing declarations.");
+      if (existing.data?.length) throw new PaymentError(`A declaration is already pending or accepted for ${Number(body.taxYear)}.`, 409);
     }
 
     const normalizedExtension = ext === "jpeg" ? "jpg" : ext;

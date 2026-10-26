@@ -5,6 +5,7 @@ import {
   milestoneStatus,
 } from "@/types/project/status";
 import { supabase } from "@/lib/supabaseClient";
+import { getActiveAccountContext } from "@/services/marketplace/AccountServices";
 import { LARGE_FILE_MAX_BYTES, SUPABASE_MAX_FILE_BYTES, usesR2Storage } from "@/lib/storage/hybridStorage";
 import { deleteUnusedLargeFile, getLargeFileUrl, uploadLargeFile } from "@/services/storage/hybridStorageClient";
 import type { RealtimeChannel } from "@supabase/supabase-js";
@@ -88,7 +89,8 @@ const WORKSPACE_SELECT =
 export async function getProjectWorkspace(
   orderId: string,
 ): Promise<ProjectWorkspace> {
-  const userId = await currentUserId();
+  const account = await getActiveAccountContext();
+  const userId = account.userId;
   const { data, error } = await supabase
     .from("service_orders")
     .select(WORKSPACE_SELECT)
@@ -121,8 +123,12 @@ export async function getProjectWorkspace(
   const freelancer = record(row.freelancer_profiles);
   const clientUserId = text(client?.user_id);
   const freelancerUserId = text(freelancer?.user_id);
-  if (userId !== clientUserId && userId !== freelancerUserId)
-    throw new Error("Only project participants can open this workspace.");
+  const activeRoleOwnsOrder = account.profileId != null &&
+    (account.role === "client"
+      ? row.client_id === account.profileId
+      : row.freelancer_id === account.profileId);
+  if (!activeRoleOwnsOrder)
+    throw new Error("This project is not part of your active account role.");
   const categoryId = requestCategoryId || text(service?.category_id);
   const categoryResult = categoryId
     ? await supabase

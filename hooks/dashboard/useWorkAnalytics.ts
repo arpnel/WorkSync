@@ -48,8 +48,17 @@ export function useWorkAnalytics() {
           );
       }
     })();
+    const onRoleChanged = () => {
+      setData(null);
+      setPayments({});
+      setPaymentLoading(true);
+      setError("");
+      setAttempt((value) => value + 1);
+    };
+    window.addEventListener("account-role-changed", onRoleChanged);
     return () => {
       alive = false;
+      window.removeEventListener("account-role-changed", onRoleChanged);
     };
   }, [attempt]);
   const retry = () => {

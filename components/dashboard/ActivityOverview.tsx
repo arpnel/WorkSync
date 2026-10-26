@@ -158,18 +158,31 @@ export default function ActivityOverview({
   }, []);
   useEffect(() => {
     let alive = true;
-    void getDashboardActivity()
-      .then((next) => {
-        if (alive) setData(next);
-      })
-      .catch((cause) => {
-        if (alive)
-          setError(
-            cause instanceof Error ? cause.message : "Unable to load activity.",
-          );
-      });
+    let version = 0;
+    const refresh = () => {
+      const request = ++version;
+      void getDashboardActivity()
+        .then((next) => {
+          if (alive && request === version) setData(next);
+        })
+        .catch((cause) => {
+          if (alive && request === version)
+            setError(
+              cause instanceof Error ? cause.message : "Unable to load activity.",
+            );
+        });
+    };
+    refresh();
+    const onRoleChanged = () => {
+      version++;
+      setData(null);
+      setError("");
+      refresh();
+    };
+    window.addEventListener("account-role-changed", onRoleChanged);
     return () => {
       alive = false;
+      window.removeEventListener("account-role-changed", onRoleChanged);
     };
   }, []);
   if (error)

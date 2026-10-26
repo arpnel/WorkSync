@@ -408,9 +408,15 @@ export function useProjects() {
     };
     const timer = window.setInterval(refresh, 10000);
     window.addEventListener("focus", refresh);
+    const onRoleChanged = () => {
+      setProjects([]);
+      void loadProjects(false, true);
+    };
+    window.addEventListener("account-role-changed", onRoleChanged);
     return () => {
       window.clearInterval(timer);
       window.removeEventListener("focus", refresh);
+      window.removeEventListener("account-role-changed", onRoleChanged);
     };
   }, [loadProjects]);
 

@@ -64,10 +64,21 @@ export function useProjectSchedule() {
       }
     });
     window.addEventListener("focus", refresh);
+    const onRoleChanged = () => {
+      version++;
+      clearProjectReadCache();
+      setDeadlines([]);
+      setLoading(true);
+      window.setTimeout(() => {
+        if (alive) void refresh();
+      }, 0);
+    };
+    window.addEventListener("account-role-changed", onRoleChanged);
     return () => {
       alive = false;
       window.clearInterval(interval);
       window.removeEventListener("focus", refresh);
+      window.removeEventListener("account-role-changed", onRoleChanged);
       subscription.unsubscribe();
       void supabase.removeChannel(channel);
     };

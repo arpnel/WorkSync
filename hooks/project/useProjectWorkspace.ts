@@ -103,10 +103,16 @@ export function useProjectWorkspace(orderId: string) {
     };
     const timer = window.setInterval(refresh, 15000);
     window.addEventListener("focus", refresh);
+    const onRoleChanged = () => {
+      setWorkspace(null);
+      void load(true, true);
+    };
+    window.addEventListener("account-role-changed", onRoleChanged);
     return () => {
       activeOrder.current = "";
       window.clearInterval(timer);
       window.removeEventListener("focus", refresh);
+      window.removeEventListener("account-role-changed", onRoleChanged);
     };
   }, [load, orderId]);
 

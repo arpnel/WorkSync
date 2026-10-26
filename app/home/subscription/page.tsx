@@ -164,6 +164,12 @@ export default function SubscriptionPage() {
     };
   }, [load]);
 
+  useEffect(() => {
+    const onRoleChanged = () => void load();
+    window.addEventListener("account-role-changed", onRoleChanged);
+    return () => window.removeEventListener("account-role-changed", onRoleChanged);
+  }, [load]);
+
   async function startTrial() {
     if (acting) return;
     setActing(true);

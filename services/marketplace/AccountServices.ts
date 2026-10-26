@@ -11,6 +11,10 @@ export interface AccountRoleStatus {
   hasFreelancerProfile: boolean;
 }
 
+export type ActiveAccountContext =
+  | { userId: string; role: "client"; profileId: string | null }
+  | { userId: string; role: "freelancer"; profileId: string | null };
+
 /* ==========================================================
    GET CURRENT USER ID
 ========================================================== */
@@ -111,6 +115,36 @@ export async function getCurrentUserRole(): Promise<UserRole> {
   const status = await getAccountRoleStatus();
 
   return status.currentRole;
+}
+
+/** Returns only the profile belonging to the currently selected account role. */
+export async function getActiveAccountContext(): Promise<ActiveAccountContext> {
+  const userId = await getCurrentUserId();
+  const { data: user, error: userError } = await supabase
+    .from("Users")
+    .select("role")
+    .eq("user_id", userId)
+    .single();
+  if (userError) throw userError;
+  if (user.role === "client") {
+    const { data, error } = await supabase
+      .from("client_profiles")
+      .select("client_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error) throw error;
+    return { userId, role: "client", profileId: data?.client_id ?? null };
+  }
+  if (user.role === "freelancer") {
+    const { data, error } = await supabase
+      .from("freelancer_profiles")
+      .select("freelancer_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error) throw error;
+    return { userId, role: "freelancer", profileId: data?.freelancer_id ?? null };
+  }
+  throw new Error("Invalid account role.");
 }
 
 /* ==========================================================

@@ -51,9 +51,15 @@ export function useProjectRequests() {
     // Read saved results only; polling never requests a Gemini evaluation.
     const timer = window.setInterval(refresh, 10000);
     document.addEventListener("visibilitychange", refresh);
+    const onRoleChanged = () => {
+      setRequests(empty);
+      void load(false, true);
+    };
+    window.addEventListener("account-role-changed", onRoleChanged);
     return () => {
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("account-role-changed", onRoleChanged);
     };
   }, [load]);
   const reject = async (request: ProjectRequest) => {

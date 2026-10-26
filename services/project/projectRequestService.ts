@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { invalidatePageReads } from "@/lib/pageReadCache";
 import { screeningLabel } from "@/lib/ai/screening";
 import { assertFreelancerAvailable } from "@/services/marketplace/freelancerAvailability";
+import { getActiveAccountContext } from "@/services/marketplace/AccountServices";
 
 export interface ScreeningResult {
   score: number | null;
@@ -61,34 +62,14 @@ export interface ProjectRequestData {
 type Row = Record<string, any>;
 
 export async function getProjectRequests(): Promise<ProjectRequestData> {
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-  if (authError) throw authError;
-  if (!user) throw new Error("User not authenticated.");
-
-  const [clientResult, freelancerResult] = await Promise.all([
-    supabase
-      .from("client_profiles")
-      .select("client_id")
-      .eq("user_id", user.id)
-      .maybeSingle(),
-    supabase
-      .from("freelancer_profiles")
-      .select("freelancer_id")
-      .eq("user_id", user.id)
-      .maybeSingle(),
-  ]);
-  if (clientResult.error) throw clientResult.error;
-  if (freelancerResult.error) throw freelancerResult.error;
+  const account = await getActiveAccountContext();
 
   let receivedRows: Row[] = [];
-  if (clientResult.data) {
+  if (account.role === "client" && account.profileId) {
     const { data: jobs, error: jobsError } = await supabase
       .from("jobs")
       .select("job_id")
-      .eq("client_id", clientResult.data.client_id);
+      .eq("client_id", account.profileId);
     if (jobsError) throw jobsError;
     const jobIds = (jobs ?? []).map((job) => job.job_id);
     if (jobIds.length) {
@@ -106,13 +87,13 @@ export async function getProjectRequests(): Promise<ProjectRequestData> {
   }
 
   let sentRows: Row[] = [];
-  if (freelancerResult.data) {
+  if (account.role === "freelancer" && account.profileId) {
     const { data, error } = await supabase
       .from("job_applications")
       .select(
         "application_id, job_id, freelancer_id, proposal, proposed_price, estimated_days, status, screening_id, created_at",
       )
-      .eq("freelancer_id", freelancerResult.data.freelancer_id)
+      .eq("freelancer_id", account.profileId)
       .order("created_at", { ascending: false });
     if (error) throw error;
     sentRows = data ?? [];
@@ -250,7 +231,7 @@ export async function getProjectRequests(): Promise<ProjectRequestData> {
       clientUserId: client?.user_id ?? "",
       clientName: identityName(clientProfile, "Client profile unavailable"),
       clientAvatar: clientProfile?.avatar_url ?? null,
-      currentParty: freelancer?.user_id === user.id ? "freelancer" : "client",
+      currentParty: account.role,
       freelancerId: row.freelancer_id,
       freelancerUserId: freelancer?.user_id ?? "",
       freelancerName: identityName(profile, "Freelancer profile unavailable"),

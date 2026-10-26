@@ -2,6 +2,7 @@ import { getPublicIdentities } from "@/services/profile/publicIdentityService";
 import { platformAction } from "@/services/platform/platformService";
 import { supabase } from "@/lib/supabaseClient";
 import { assertFreelancerAvailable } from "@/services/marketplace/freelancerAvailability";
+import { getActiveAccountContext } from "@/services/marketplace/AccountServices";
 
 export interface ProjectRecord {
   current_user_id: string;
@@ -27,13 +28,9 @@ export interface ProjectRecord {
 ========================================================== */
 
 export async function getProjects(): Promise<ProjectRecord[]> {
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-  if (authError) throw new Error(`Authentication failed: ${authError.message}`);
-  if (!user) throw new Error("User not authenticated.");
-  const { data, error } = await supabase
+  const account = await getActiveAccountContext();
+  if (!account.profileId) return [];
+  let ordersQuery = supabase
     .from("service_orders")
     .select(
       `
@@ -133,6 +130,10 @@ export async function getProjects(): Promise<ProjectRecord[]> {
     .order("created_at", {
       ascending: false,
     });
+  ordersQuery = account.role === "client"
+    ? ordersQuery.eq("client_id", account.profileId)
+    : ordersQuery.eq("freelancer_id", account.profileId);
+  const { data, error } = await ordersQuery;
 
   if (error) {
     console.error("Failed to fetch projects:", error);
@@ -163,10 +164,10 @@ export async function getProjects(): Promise<ProjectRecord[]> {
   const profiles = new Map(
     identities.profiles.map((row) => [row.user_id, row]),
   );
-  const owned = data.filter(
-    (order) =>
-      clients.get(order.client_id)?.user_id === user.id ||
-      freelancers.get(order.freelancer_id)?.user_id === user.id,
+  const owned = data.filter((order) =>
+    account.role === "client"
+      ? order.client_id === account.profileId
+      : order.freelancer_id === account.profileId,
   );
   return owned.map((order) => {
     /*
@@ -197,7 +198,7 @@ export async function getProjects(): Promise<ProjectRecord[]> {
     }
 
     return {
-      current_user_id: user.id,
+      current_user_id: account.userId,
       order_id: order.order_id,
       application_id: order.application_id,
       service_id: order.service_id,

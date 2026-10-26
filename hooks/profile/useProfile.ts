@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import type {
   Profile,
@@ -19,7 +19,7 @@ export function useProfile() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadProfile = async () => {
+  const loadProfile = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -39,11 +39,17 @@ export function useProfile() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    loadProfile();
-  }, []);
+    const initialLoad = window.setTimeout(() => void loadProfile(), 0);
+    const onRoleChanged = () => void loadProfile();
+    window.addEventListener("account-role-changed", onRoleChanged);
+    return () => {
+      window.clearTimeout(initialLoad);
+      window.removeEventListener("account-role-changed", onRoleChanged);
+    };
+  }, [loadProfile]);
 
   const saveProfile = async (updates: UpdateProfilePayload) => {
     if (!profile) return false;

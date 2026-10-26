@@ -1,15 +1,16 @@
 ﻿import { supabase } from "@/lib/supabaseClient";
 import { invalidatePageReads } from "@/lib/pageReadCache";
+import { getActiveAccountContext } from "@/services/marketplace/AccountServices";
 
 export type ArchivedListing = { id: string; kind: "job" | "service"; title: string; description: string; createdAt: string; archivedAt: string | null; previousStatus: string; canRestore: boolean };
 export async function getArchivedListings(): Promise<ArchivedListing[]> {
-  const { data: auth, error: authError } = await supabase.auth.getUser();
-  if (authError) throw authError;
-  if (!auth.user) throw new Error("Sign in to view archived listings.");
+  const account = await getActiveAccountContext();
+  if (!account.profileId) return [];
   const { data, error } = await supabase
     .from("listing_submissions")
     .select("listing_id,listing_type,title,description,created_at,archived_at,status")
-    .eq("owner_id", auth.user.id)
+    .eq("owner_id", account.userId)
+    .eq("listing_type", account.role === "client" ? "job" : "service")
     .not("archived_at", "is", null)
     .is("owner_removed_at", null)
     .order("archived_at", { ascending: false });

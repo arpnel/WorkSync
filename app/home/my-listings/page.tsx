@@ -2,7 +2,7 @@
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import { WorkspacePageHeader } from "@/components/shared/WorkspacePageHeader";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Archive, Loader2, RotateCcw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getArchivedListings, restoreArchivedListing, removeArchivedListing, type ArchivedListing } from "@/services/marketplace/archiveService";
@@ -44,21 +44,25 @@ export default function Page() {
   const [archiving, setArchiving] = useState(false);
   const [pendingRemoval, setPendingRemoval] = useState<ArchivedListing | null>(null);
   const [removing, setRemoving] = useState(false);
+  const loadVersion = useRef(0);
 
   /* ==========================================================
      LOAD MY LISTINGS
   ========================================================== */
 
   const loadListings = useCallback(async () => {
+    const request = ++loadVersion.current;
     setLoading(true);
 
     try {
       const [data, archivedData] = await Promise.all([getMyMarketplaceListings(), getArchivedListings()]);
+      if (request !== loadVersion.current) return;
 
       setLoadError("");
       setListings(Array.isArray(data) ? data.filter(Boolean) : []);
       setArchived(archivedData);
     } catch (error) {
+      if (request !== loadVersion.current) return;
       setLoadError(
         error instanceof Error
           ? error.message
@@ -68,7 +72,7 @@ export default function Page() {
       setListings([]);
       setArchived([]);
     } finally {
-      setLoading(false);
+      if (request === loadVersion.current) setLoading(false);
     }
   }, []);
 
@@ -78,6 +82,13 @@ export default function Page() {
 
   useEffect(() => {
     void loadListings();
+    const onRoleChanged = () => {
+      setListings([]);
+      setArchived([]);
+      void loadListings();
+    };
+    window.addEventListener("account-role-changed", onRoleChanged);
+    return () => window.removeEventListener("account-role-changed", onRoleChanged);
   }, [loadListings]);
 
   /* ==========================================================

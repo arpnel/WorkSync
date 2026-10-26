@@ -3,12 +3,15 @@ export interface ProjectPayment {
   status: "unpaid" | "pending" | "processing" | "paid";
   mode: "test" | "live";
   vatBreakdown?: {
-    status: "applicable" | "not_recorded" | "unavailable";
+    status: "applicable" | "not_applicable" | "review_required" | "not_recorded" | "unavailable";
     taxableAmount: number | null;
     amount: number | null;
     rate: number | null;
+    total: number | null;
   };
   amount?: number;
+  checkoutAllowed?: boolean;
+  checkoutMessage?: string;
   paidAt?: string | null;
   paymentId?: string;
   paymentMethod?: string | null;
@@ -41,7 +44,7 @@ export interface ProjectPayment {
     amount: number;
     refunded_at: string | null;
   }[];
-  payout?: { status: string; paid_at?: string | null; amount?: number; gross_amount?: number; freelancer_vat_taxable_amount?: number; freelancer_vat_amount?: number; freelancer_vat_rate?: number; freelancer_vat_rule?: string; withholding_basis?: number; withholding_rate?: number; withholding_amount?: number; withholding_date?: string | null; withholding_rule?: string; withholding_exemption_status?: string; withholding_declaration_id?: string | null; withholding_document_id?: string | null; freelancer_vat_document_id?: string | null } | null;
+  payout?: { status: string; paid_at?: string | null; amount?: number } | null;
 }
 async function requestPayment(projectId: string, checkout: boolean) {
   const {

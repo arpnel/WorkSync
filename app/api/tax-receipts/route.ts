@@ -11,7 +11,7 @@ export async function GET(request: Request) {
     const { db, user } = await paymentUser(request);
     const paymentId = new URL(request.url).searchParams.get("paymentId");
     if (!paymentId || !/^[a-f\d-]{36}$/i.test(paymentId)) throw new PaymentError("A valid payment ID is required.", 400);
-    const { data: payment, error: paymentError } = await db.from("payments").select("payment_id,project_id,payer_id,amount,status,payment_method,paid_at,transaction_reference,provider_payment_id,platform_service_fee,platform_vat_taxable_base,platform_vat_rate,platform_vat_amount,platform_tax_treatment,platform_tax_snapshot").eq("payment_id", paymentId).maybeSingle();
+    const { data: payment, error: paymentError } = await db.from("payments").select("payment_id,project_id,payer_id,amount,status,payment_method,paid_at,transaction_reference,provider_payment_id,freelancer_service_vat_taxable_base,freelancer_service_vat_rate,freelancer_service_vat_amount,freelancer_service_vat_classification,freelancer_service_vat_document_id,freelancer_service_vat_rule,platform_service_fee,platform_vat_taxable_base,platform_vat_rate,platform_vat_amount,platform_tax_treatment,platform_tax_snapshot").eq("payment_id", paymentId).maybeSingle();
     if (paymentError || !payment) throw new PaymentError("Payment unavailable.", 404);
     const { data: project, error: projectError } = await db.from("projects").select("project_id,title,client_id,freelancer_id").eq("project_id", payment.project_id).maybeSingle();
     if (projectError || !project) throw new PaymentError("Project unavailable.", 404);
@@ -48,6 +48,11 @@ export async function GET(request: Request) {
     const taxLines = rows.map(row => ({ payoutId: row.payout_id, taxableBase: Number(row.withholding_basis ?? 0), withholdingRate: Number(row.withholding_rate ?? 0), withholding: Number(row.withholding_amount ?? 0), withholdingRule: row.withholding_rule ?? "not recorded", exemptionStatus: row.withholding_exemption_status ?? "not recorded", freelancerVatBase: Number(row.freelancer_vat_taxable_amount ?? 0), freelancerVatRate: Number(row.freelancer_vat_rate ?? 0), freelancerVat: Number(row.freelancer_vat_amount ?? 0), freelancerVatRule: row.freelancer_vat_rule ?? "not recorded", withholdingDocumentId: row.withholding_document_id, withholdingDeclarationId: row.withholding_declaration_id, freelancerVatDocumentId: row.freelancer_vat_document_id, payoutStatus: row.status, paidAt: row.paid_at, transferReference: row.provider_transfer_id }));
     const snapshot = {
       transactionDate: payment.paid_at, projectDescription: project.title, clientPayment: Number(payment.amount), currency: "PHP", paymentMethod: payment.payment_method ?? "PayMongo", paymentReference: payment.provider_payment_id, checkoutReference: payment.transaction_reference, refunds: refundRows,
+      clientServiceVatBase: payment.freelancer_service_vat_taxable_base == null ? null : Number(payment.freelancer_service_vat_taxable_base),
+      clientServiceVatRate: payment.freelancer_service_vat_rate == null ? null : Number(payment.freelancer_service_vat_rate),
+      clientServiceVat: payment.freelancer_service_vat_amount == null ? null : Number(payment.freelancer_service_vat_amount),
+      clientServiceVatClassification: payment.freelancer_service_vat_classification ?? null,
+      clientServiceVatRule: payment.freelancer_service_vat_rule ?? null,
       client: { name: nameFor(clientProfile.data, "Client"), registeredName: clientTax.data?.registered_name ?? null },
       freelancer: { name: nameFor(freelancerProfile.data, "Freelancer"), registeredName: freelancerTax.data?.registered_name ?? null },
       workSync: { registeredName: process.env.WORKSYNC_REGISTERED_NAME ?? null, taxRegistrationDetails: process.env.WORKSYNC_TAX_REGISTRATION_DETAILS ?? null },

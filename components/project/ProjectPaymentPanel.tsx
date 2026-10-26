@@ -67,6 +67,7 @@ export function PaymentPanel({
   const [confirmAutoAccept, setConfirmAutoAccept] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const inFlight = useRef(false);
+  const paymentStatus = payment?.status;
   const refresh = useCallback(async () => {
     if (inFlight.current) return;
     inFlight.current = true;
@@ -95,13 +96,13 @@ export function PaymentPanel({
     return () => window.removeEventListener("focus", onFocus);
   }, [refresh]);
   useEffect(() => {
-    if (!payment || !["pending", "processing"].includes(payment.status))
+    if (!paymentStatus || !["pending", "processing"].includes(paymentStatus))
       return;
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") void refresh();
     }, 30000);
     return () => window.clearInterval(timer);
-  }, [payment?.status, refresh]);
+  }, [paymentStatus, refresh]);
   async function pay() {
     if (busy) return;
     setBusy(true);
@@ -137,7 +138,7 @@ export function PaymentPanel({
       setBusy(false);
     }
   }
-  const total = budget ?? payment?.amount;
+  const total = payment?.amount ?? budget;
   const paidAmount =
     payment?.status === "paid" ? payment.amount : payment ? 0 : undefined;
   const balance =
@@ -276,34 +277,47 @@ export function PaymentPanel({
           <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
             <dt className="text-muted-foreground">
               {payment?.vatBreakdown?.status === "applicable"
-                ? "Agreed total (VAT included)"
-                : "Agreed total"}
+                ? "Client total (base + VAT)"
+                : payment?.vatBreakdown?.status === "not_recorded"
+                  ? "Saved payment amount"
+                  : "Agreed base price"}
             </dt>
             <dd className="font-medium tabular-nums">{money(total)}</dd>
           </div>
-          {payment?.vatBreakdown?.status === "applicable" && (
+          {(payment?.vatBreakdown?.status === "applicable" || payment?.vatBreakdown?.status === "not_applicable") && (
             <>
               <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
-                <dt className="text-muted-foreground">Amount before VAT</dt>
+                <dt className="text-muted-foreground">Base price before VAT</dt>
                 <dd className="tabular-nums">{money(payment.vatBreakdown.taxableAmount ?? undefined)}</dd>
               </div>
+              {payment.vatBreakdown.status === "applicable" && (
               <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
                 <dt className="text-muted-foreground">
-                  VAT included ({((payment.vatBreakdown.rate ?? 0) * 100).toFixed(0)}%)
+                  Freelancer service VAT ({((payment.vatBreakdown.rate ?? 0) * 100).toFixed(0)}%)
                 </dt>
                 <dd className="tabular-nums">{money(payment.vatBreakdown.amount ?? undefined)}</dd>
               </div>
+              )}
+              {payment.vatBreakdown.status === "not_applicable" && (
+                <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-xs">
+                  <dt className="text-muted-foreground">Freelancer service VAT</dt>
+                  <dd className="text-muted-foreground">Not applicable (reviewed non-VAT status)</dd>
+                </div>
+              )}
             </>
           )}
           {payment?.vatBreakdown?.status === "not_recorded" && (
             <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-xs">
               <dt className="text-muted-foreground">VAT breakdown</dt>
-              <dd className="text-muted-foreground">Not configured</dd>
+              <dd className="text-muted-foreground">Not recorded</dd>
             </div>
+          )}
+          {payment?.vatBreakdown?.status === "review_required" && (
+            <p className="text-xs text-amber-600">Freelancer VAT status needs administrator review before checkout.</p>
           )}
           {payment?.vatBreakdown?.status === "unavailable" && (
             <p className="text-xs text-muted-foreground">
-              VAT breakdown is unavailable. The agreed total remains unchanged.
+              {payment.checkoutMessage ?? "VAT breakdown is unavailable. Contact support before checkout."}
             </p>
           )}
           <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
@@ -336,7 +350,7 @@ export function PaymentPanel({
               </Button>
             </>
           )}
-          {client &&
+            {client &&
             payable &&
             payment &&
             payment.status !== "paid" &&
@@ -344,7 +358,7 @@ export function PaymentPanel({
               <Button
                 className="flex-1"
                 onClick={() => void pay()}
-                disabled={busy || refreshing || !!error}
+                disabled={busy || refreshing || !!error || payment.checkoutAllowed === false}
               >
                 {busy
                   ? "Opening checkout\u2026"

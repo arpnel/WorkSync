@@ -18,6 +18,7 @@ function load(path, modules = {}, globals = {}) {
       exports,
       require: (name) => {
         if (name === "server-only") return {};
+        if (name === "@/lib/payments/philippineTax") return load("lib/payments/philippineTax.ts");
         if (modules[name]) return modules[name];
         if (name === "@/services/email/paymentEmails") return { notifyPaymentConfirmed: async () => {} };
         if (name === "@/services/subscriptions/subscriptionServer") return { processSubscriptionPaymentSession: async () => false };
@@ -64,18 +65,21 @@ function checkoutHarness({
   onHold = false,
   existing = null,
   conflict = false,
+  vatClassification = "non_vat",
 } = {}) {
   const calls = [];
   const db = {
     rpc: async () => ({ data: ready, error: null }),
     from(table) {
       let operation = "select",
-        values;
+        values,
+        filters = {};
       const query = {
         select() {
           return query;
         },
-        eq() {
+        eq(key, value) {
+          filters[key] = value;
           return query;
         },
         in() {
@@ -85,6 +89,12 @@ function checkoutHarness({
           return query;
         },
         limit() {
+          return query;
+        },
+        order() {
+          return query;
+        },
+        or() {
           return query;
         },
         insert(value) {
@@ -123,10 +133,15 @@ function checkoutHarness({
             client_id: "cp",
             freelancer_id: "fp",
             title: "Project",
+            budget: 150,
             status: "active",
           };
         if (table === "client_profiles") data = { user_id: "client" };
         if (table === "freelancer_profiles") data = { user_id: "freelancer" };
+        if (table === "freelancer_tax_profiles")
+          data = { freelancer_vat_applicable: vatClassification === "vat_registered", vat_classification: vatClassification };
+        if (table === "tax_documents")
+          data = { document_id: filters.document_type === "vat_registration" ? "vat-doc" : "cor-doc" };
         if (table === "contracts")
           data = {
             final_price: 150,
@@ -209,6 +224,24 @@ test("checkout reserves storage first and charges only the server agreement amou
   assert.equal(h.calls[0].values.amount, 150);
   assert.equal(h.calls[1].attributes.line_items[0].amount, 15000);
   assert.equal(h.calls[2].values.transaction_reference, "cs_example");
+});
+test("verified VAT registration adds 12 percent to the base and snapshots the tax evidence", async () => {
+  const h = checkoutHarness({ vatClassification: "vat_registered" });
+  await h.server.createProjectCheckout(h.db, "project", "client", "http://localhost:3000");
+  assert.equal(h.calls[0].values.amount, 168);
+  assert.equal(h.calls[0].values.freelancer_service_vat_taxable_base, 150);
+  assert.equal(h.calls[0].values.freelancer_service_vat_rate, 0.12);
+  assert.equal(h.calls[0].values.freelancer_service_vat_amount, 18);
+  assert.equal(h.calls[0].values.freelancer_service_vat_document_id, "vat-doc");
+  assert.equal(h.calls[1].attributes.line_items[0].amount, 16800);
+});
+test("unverified VAT status blocks a new checkout before reserving payment", async () => {
+  for (const vatClassification of ["unverified", "pending_review", "rejected", "expired"]) {
+    const h = checkoutHarness({ vatClassification });
+    await assert.rejects(h.server.createProjectCheckout(h.db, "project", "client", "http://localhost:3000"), /VAT status needs administrator review/);
+    assert.equal(h.calls.some((call) => call.operation === "insert"), false);
+    assert.equal(h.calls.some((call) => call.provider), false);
+  }
 });
 test("concurrent reservation conflict and ambiguous pending reservation never create a second checkout", async () => {
   for (const options of [

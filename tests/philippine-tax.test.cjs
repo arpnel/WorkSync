@@ -18,6 +18,13 @@ test("VAT-exclusive price adds VAT only when explicitly applicable", () => {
   same(tax.calculateVat(100, "exclusive", true), { taxableAmount: 100, vatAmount: 12, total: 112, pricing: "exclusive", applies: true });
   same(tax.calculateVat(100, "exclusive", false), { taxableAmount: 100, vatAmount: 0, total: 100, pricing: "exclusive", applies: false });
 });
+test("VAT and withholding calculations round at cent precision without binary-float drift", () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(tax.calculateVat(0.05, "exclusive", true))), { taxableAmount: 0.05, vatAmount: 0.01, total: 0.06, pricing: "exclusive", applies: true });
+  assert.equal(tax.calculateMarketplaceWithholding({ grossRemittance: 1, applicable: true, exemption: "none", priorAnnualGrossRemittances: 0 }).amount, 0.01);
+  assert.equal(tax.calculateFreelancerPayout(100.01, 0.01), 100);
+  assert.throws(() => tax.calculateVat(Number.NaN, "exclusive", true), /Amount/);
+  assert.throws(() => tax.calculateFreelancerPayout(1, 1.01), /Invalid payout/);
+});
 test("marketplace withholding uses 0.5% of applicable gross remittance", () => {
   const result = tax.calculateMarketplaceWithholding({ grossRemittance: 10_000, applicable: true, exemption: "none", priorAnnualGrossRemittances: 0 });
   assert.equal(result.basis, 10_000); assert.equal(result.rate, 0.005); assert.equal(result.amount, 50);
@@ -115,6 +122,24 @@ test("client receipt PDF never renders freelancer withholding or earnings, while
   assert.match(freelancerPdf, /Gross earnings/);
   assert.match(freelancerPdf, /Marketplace withholding/);
   assert.match(freelancerPdf, /Net payout/);
+});
+test("new client receipt snapshot shows base price plus separately added freelancer VAT", async () => {
+  const receipt = load("lib/payments/receiptPdf.ts");
+  const visibility = load("lib/payments/receiptVisibility.ts");
+  const saved = { receipt_number: "WS-TR-VAT-BASE-1", issued_at: "2026-10-26T10:00:00Z", snapshot: {
+    receiptAudience: "client", clientPayment: 112, clientServiceVatBase: 100,
+    clientServiceVatRate: 0.12, clientServiceVat: 12,
+    clientServiceVatRule: "Verified VAT registration", taxLines: [],
+  } };
+  const details = receipt.receiptDetailsFromSnapshot(visibility.receiptForAudience(saved, "client"));
+  const pdf = await receipt.createReceiptPdf(details).text();
+  assert.match(pdf, /Client payment/);
+  assert.match(pdf, /PHP 112\.00/);
+  assert.match(pdf, /Service base price/);
+  assert.match(pdf, /PHP 100\.00/);
+  assert.match(pdf, /Freelancer service VAT/);
+  assert.match(pdf, /PHP 12\.00/);
+  assert.doesNotMatch(pdf, /VAT included in service price/);
 });
 test("receipt PDF uses pending states for absent earnings and tax snapshots", async () => {
   const receipt = load("lib/payments/receiptPdf.ts");
@@ -229,7 +254,7 @@ test("receipt correction retrieval avoids filtering by JSON snapshot and receipt
   assert.doesNotMatch(api, /eq\("snapshot", correctionSnapshot\)/);
   assert.doesNotMatch(project, /Download PDF|receipt\(true\)/);
   assert.doesNotMatch(admin, /Download PDF|openSavedTaxReceipt\(row\.id, true\)/);
-  assert.match(payouts, /View transaction receipt/);
+  assert.match(payouts, /View receipt/);
   assert.doesNotMatch(payouts, /Download transaction receipt|openSavedTaxReceipt\(payout\.transactionId, true\)/);
 });
 test("saved receipt corrections render an explicit before-and-after summary", async () => {
@@ -294,11 +319,11 @@ test("payout statements expose saved transfer references and status context", ()
   const page = fs.readFileSync("components/account/PayoutSettings.tsx", "utf8");
   assert.match(api, /provider_transfer_id/);
   assert.match(api, /transferReference: row\.provider_transfer_id/);
-  assert.match(page, /PayMongo transfer reference/);
-  assert.match(page, /Net transfer amount/);
-  assert.match(page, /PayMongo status confirmed/);
-  assert.match(page, /Status: \{payout\.status/);
-  assert.match(page, /Freelancer VAT recorded/);
+  assert.match(page, /Transfer reference/);
+  assert.match(page, /Net transfer/);
+  assert.match(page, /Paid status confirmed/);
+  assert.match(page, /payout\.status\.replaceAll/);
+  assert.match(page, /VAT recorded/);
 });
 
 test("tax document and declaration approval revocation stays admin-reviewed and auditable", () => {
@@ -314,4 +339,26 @@ test("tax document and declaration approval revocation stays admin-reviewed and 
   assert.match(migration, /PREPARED, NOT APPLIED/);
   assert.match(migration, /freelancer_tax_declaration_events/);
   assert.match(migration, /worksync_audit_tax_declaration_review/);
+});
+
+test("new base-price VAT migration snapshots verified treatment and preserves payment, payout, and refund guards", () => {
+  const migration = fs.readFileSync("supabase/migrations/20261026210000_base_price_vat_transaction_snapshots.sql", "utf8");
+  const payment = fs.readFileSync("services/payments/paymentServer.ts", "utf8");
+  const settlement = fs.readFileSync("supabase/migrations/202609300004_milestone_settlement.sql", "utf8");
+  const receipt = fs.readFileSync("app/api/tax-receipts/route.ts", "utf8");
+  assert.match(migration, /PREPARED, NOT APPLIED/);
+  assert.match(migration, /add column if not exists freelancer_service_vat_taxable_base/);
+  assert.match(migration, /old\.status='paid' or old\.transaction_reference is not null/);
+  assert.match(migration, /worksync_project_milestone_vat/);
+  assert.match(migration, /final milestone receives any cent-rounding remainder/);
+  assert.match(migration, /worksync_payment_matches_project/);
+  assert.match(migration, /worksync_claim_payout/);
+  assert.match(migration, /refund_amount\+coalesce\([\s\S]*?pay\.amount/);
+  assert.match(migration, /withholding not configured as applicable pending legal determination/);
+  assert.match(settlement, /on conflict\(project_id,milestone_id,mode\) where milestone_id is not null do nothing/);
+  assert.match(payment, /freelancer_service_vat_taxable_base/);
+  assert.match(payment, /vat\.status === "review_required"/);
+  assert.match(payment, /calculateVat\(baseAmount, "exclusive", applies\)/);
+  assert.match(receipt, /clientServiceVatBase/);
+  assert.match(receipt, /freelancer_service_vat_document_id/);
 });

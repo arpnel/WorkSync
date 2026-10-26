@@ -32,6 +32,10 @@ export type ReceiptDetails = {
   documentType: string;
   project: string;
   amount: number;
+  clientServiceVatBase?: number | null;
+  clientServiceVatRate?: number | null;
+  clientServiceVat?: number | null;
+  clientServiceVatRule?: string | null;
   paidAt: string | null;
   paymentMethod: string;
   paymentReference?: string | null;
@@ -91,6 +95,10 @@ export function receiptDetailsFromSnapshot(receipt: { receipt_number: string; is
     documentType: String(snapshot.documentTypeLabel ?? "WorkSync system-generated transaction receipt"),
     project: String(snapshot.projectDescription ?? "Project or service"),
     amount: numeric("clientPayment"), paidAt: typeof snapshot.transactionDate === "string" ? snapshot.transactionDate : null,
+    clientServiceVatBase: optionalNumeric("clientServiceVatBase"),
+    clientServiceVatRate: optionalNumeric("clientServiceVatRate"),
+    clientServiceVat: optionalNumeric("clientServiceVat"),
+    clientServiceVatRule: typeof snapshot.clientServiceVatRule === "string" ? snapshot.clientServiceVatRule : null,
     paymentMethod: String(snapshot.paymentMethod ?? "Not recorded"),
     paymentReference: typeof snapshot.paymentReference === "string" ? snapshot.paymentReference : null,
     checkoutReference: typeof snapshot.checkoutReference === "string" ? snapshot.checkoutReference : null,
@@ -158,7 +166,7 @@ export function createReceiptPdf(details: ReceiptDetails) {
   const taxRowHeight = !details.taxLines.length || details.taxLines.length > 4 ? 39 : Math.max(52, Math.ceil(taxNotes.join(" | ").length / 68) * 13 + 25);
   const platformVatHeight = details.platformVat != null ? 39 : (details.platformTaxNote ? 48 : 0);
   const breakdownHeight = details.audience === "client"
-    ? 36 + taxRowHeight
+    ? 36 + (details.clientServiceVatBase != null ? 39 : 0) + (details.clientServiceVat != null ? 39 : taxRowHeight)
     : details.audience === "freelancer"
       ? 39 + (details.freelancerVat > 0 ? 39 : 0) + 39 + 39
       : 36 + 39 + taxRowHeight + platformVatHeight;
@@ -172,7 +180,15 @@ export function createReceiptPdf(details: ReceiptDetails) {
   };
   if (details.audience === "client") {
     breakdownRow("Client payment", "", php(details.amount), 36);
-    if (!details.taxLines.length) breakdownRow("VAT breakdown", "No verified VAT amount is recorded for this payment", "Not recorded", 39);
+    if (details.clientServiceVatBase != null) {
+      breakdownRow("Service base price", "Agreed price before freelancer service VAT", php(details.clientServiceVatBase), 39);
+      breakdownRow(
+        "Freelancer service VAT",
+        details.clientServiceVatRate ? (details.clientServiceVatRate * 100).toFixed(2) + "% added to the base price" + (details.clientServiceVatRule ? "; " + details.clientServiceVatRule : "") : "No VAT under the saved reviewed classification",
+        details.clientServiceVat == null ? "Not recorded" : php(details.clientServiceVat),
+        39,
+      );
+    } else if (!details.taxLines.length) breakdownRow("VAT breakdown", "No verified VAT amount is recorded for this payment", "Not recorded", 39);
     else breakdownRow("VAT included in service price", taxNotes.join(" | "), details.freelancerVat > 0 ? php(details.freelancerVat) : "Not recorded", taxRowHeight);
   } else if (details.audience === "freelancer") {
     breakdownRow("Gross earnings", "Saved payout amount before deductions", details.serviceGrossEarnings == null ? "Not recorded" : php(details.serviceGrossEarnings), 39);

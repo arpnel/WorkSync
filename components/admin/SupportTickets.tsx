@@ -157,12 +157,12 @@ export default function SupportTickets() {
               </SelectContent>
             </Select>
           </label>
-          <div className="flex flex-col gap-2 sm:flex-row xl:justify-end">
-            <Button variant="outline" className="h-10 rounded-lg" onClick={() => void load()} disabled={loading}>
+          <div className="flex w-full flex-col gap-2 sm:col-span-2 sm:flex-row sm:justify-end xl:col-span-full">
+            <Button variant="outline" className="h-10 w-full rounded-lg sm:w-auto" onClick={() => void load()} disabled={loading}>
               <RefreshCw className={loading ? "size-4 animate-spin" : "size-4"} />
               Refresh
             </Button>
-            <Button variant="ghost" className="h-10 rounded-lg" onClick={() => { setSearch(""); setFilter("all"); }}>
+            <Button variant="ghost" className="h-10 w-full rounded-lg sm:w-auto" onClick={() => { setSearch(""); setFilter("all"); }}>
               Reset filters
             </Button>
           </div>

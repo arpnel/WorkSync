@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 const count = z.number().finite().int().nonnegative();
+const ADMIN_PAGE_SIZE = 10;
 const recordRows = z.array(
   z.object({
     id: z.string(),
@@ -87,6 +88,7 @@ const recordsSchema = z
     limit: count.positive(),
     offset: count,
     stats: z.record(count).optional(),
+    total: count.optional(),
   })
   .refine((value) => value.records.length <= value.limit);
 // Deployed SETOF project_disputes is serialized as an array, limited to 100.
@@ -105,6 +107,23 @@ const disputesSchema = z
     }),
   )
   .max(100);
+const disputePageSchema = z.object({
+  rows: z.array(
+    z.object({
+      dispute_id: z.string(),
+      project_id: z.string(),
+      status: z.string(),
+      category: z.string(),
+      description: z.string().nullable(),
+      created_at: z.string().nullable(),
+      opened_by: z.string().nullable(),
+      admin_notes: z.string().nullish(),
+      evidence_name: z.string().nullish(),
+    }),
+  ),
+  total: count,
+  offset: count.optional(),
+});
 const analyticsSchema = z.object({
   counts: z.record(count),
   completion_rate: z.number().finite().nullable(),
@@ -233,29 +252,38 @@ function parseResponse<S extends z.ZodTypeAny>(
 }
 export function parseAdminRecords(value: unknown, rpc: string, offset = 0) {
   if (rpc === "worksync_list_disputes") {
-    const result = parseResponse(disputesSchema, value, rpc);
+    const page = Array.isArray(value)
+      ? null
+      : parseResponse(disputePageSchema, value, rpc);
+    const result = page ? page.rows : parseResponse(disputesSchema, value, rpc);
+    const rows = result.map((row) => ({
+      id: row.dispute_id,
+      title: `${row.category} — Project ${row.project_id}`,
+      status: row.status,
+      created_at: row.created_at ?? "",
+      owner_id: row.opened_by ?? undefined,
+      detail: [row.description, row.admin_notes, row.evidence_name]
+        .filter(Boolean)
+        .join("\n"),
+    }));
     return {
-      rows: result.map((row) => ({
-        id: row.dispute_id,
-        title: `${row.category} — Project ${row.project_id}`,
-        status: row.status,
-        created_at: row.created_at ?? "",
-        owner_id: row.opened_by ?? undefined,
-        detail: [row.description, row.admin_notes, row.evidence_name]
-          .filter(Boolean)
-          .join("\n"),
-      })),
-      limit: 100,
+      rows: rows.slice(0, ADMIN_PAGE_SIZE),
+      limit: ADMIN_PAGE_SIZE,
       offset,
-      hasNext: result.length === 100,
+      hasNext: page
+        ? (page.offset ?? offset) + rows.length < page.total
+        : result.length > ADMIN_PAGE_SIZE,
     };
   }
   const result = parseResponse(recordsSchema, value, rpc);
   return {
-    rows: result.records,
-    limit: result.limit,
+    rows: result.records.slice(0, ADMIN_PAGE_SIZE),
+    limit: ADMIN_PAGE_SIZE,
     offset: result.offset,
-    hasNext: result.records.length === result.limit,
+    hasNext: result.total != null
+      ? result.offset + result.records.length < result.total
+      : result.records.length > ADMIN_PAGE_SIZE ||
+        (result.limit <= ADMIN_PAGE_SIZE && result.records.length === result.limit),
     stats: result.stats,
   };
 }

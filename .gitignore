@@ -39,3 +39,7 @@ next-env.d.ts
 /docs/*
 !/docs/SYSTEM_SCOPE.md
 /.pnpm-store/
+
+# Keep local test suite and Supabase project files out of the GitHub repository
+/tests/
+/supabase/

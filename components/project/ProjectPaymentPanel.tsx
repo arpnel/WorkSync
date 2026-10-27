@@ -274,20 +274,20 @@ export function PaymentPanel({
           </div>
         )}
         <dl className="space-y-3 text-sm" aria-label="Payment breakdown">
-          <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
-            <dt className="text-muted-foreground">
-              {payment?.vatBreakdown?.status === "applicable"
-                ? "Client total (base + VAT)"
-                : payment?.vatBreakdown?.status === "not_recorded"
+          {payment?.vatBreakdown?.status !== "applicable" && (
+            <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
+              <dt className="text-muted-foreground">
+                {payment?.vatBreakdown?.status === "not_recorded"
                   ? "Saved payment amount"
                   : "Agreed base price"}
-            </dt>
-            <dd className="font-medium tabular-nums">{money(total)}</dd>
-          </div>
+              </dt>
+              <dd className="font-medium tabular-nums">{money(total)}</dd>
+            </div>
+          )}
           {(payment?.vatBreakdown?.status === "applicable" || payment?.vatBreakdown?.status === "not_applicable") && (
             <>
               <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
-                <dt className="text-muted-foreground">Base price before VAT</dt>
+                <dt className="text-muted-foreground">Subtotal</dt>
                 <dd className="tabular-nums">{money(payment.vatBreakdown.taxableAmount ?? undefined)}</dd>
               </div>
               {payment.vatBreakdown.status === "applicable" && (
@@ -305,6 +305,12 @@ export function PaymentPanel({
                 </div>
               )}
             </>
+          )}
+          {payment?.vatBreakdown?.status === "applicable" && (
+            <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
+              <dt className="text-muted-foreground">Client total (base + VAT)</dt>
+              <dd className="font-medium tabular-nums">{money(total)}</dd>
+            </div>
           )}
           {payment?.vatBreakdown?.status === "not_recorded" && (
             <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-xs">

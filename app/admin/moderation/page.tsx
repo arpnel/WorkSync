@@ -37,7 +37,7 @@ type Submission = {
   owner_removed_at: string | null;
   created_at: string;
 };
-const PAGE_SIZE = 25;
+const PAGE_SIZE = 10;
 const STATUSES = ["pending_review", "manual_review", "approved", "rejected"];
 const RISKS = ["low", "medium", "high", "critical"];
 
@@ -282,12 +282,12 @@ export default function ModerationPage() {
               <option value="oldest">Oldest first</option>
             </StyledSelect>
           </label>
-          <div className="flex flex-col gap-2 sm:flex-row xl:col-span-2 xl:justify-end">
-            <Button variant="outline" className="h-10 rounded-lg" onClick={() => void load()} disabled={loading}>
+          <div className="flex w-full flex-col gap-2 sm:col-span-2 sm:flex-row sm:justify-end xl:col-span-full">
+            <Button variant="outline" className="h-10 w-full rounded-lg sm:w-auto" onClick={() => void load()} disabled={loading}>
               <RefreshCw className={loading ? "size-4 animate-spin" : "size-4"} />
               Refresh queue
             </Button>
-            <Button variant="ghost" className="h-10 rounded-lg" onClick={() => { setSearch(""); setType("all"); setRisk("all"); setStatus("all"); setFromDate(""); setToDate(""); setSort("newest"); setOffset(0); }}>
+            <Button variant="ghost" className="h-10 w-full rounded-lg sm:w-auto" onClick={() => { setSearch(""); setType("all"); setRisk("all"); setStatus("all"); setFromDate(""); setToDate(""); setSort("newest"); setOffset(0); }}>
               Reset filters
             </Button>
           </div>

@@ -197,10 +197,10 @@ test("deployed report and audit envelopes normalize without losing inspection fi
   assert.equal(result.rows[1].id, "audit");
   assert.match(result.rows[1].detail, /approved/);
   assert.equal(result.offset, 100);
-  assert.equal(result.limit, 50);
+  assert.equal(result.limit, 10);
   assert.equal(result.hasNext, false);
 });
-test("pagination uses returned limits without requiring or fabricating totals", () => {
+test("admin pagination exposes at most ten rows and advances in ten-row pages", () => {
   const row = {
     id: "id",
     title: "Title",
@@ -212,6 +212,10 @@ test("pagination uses returned limits without requiring or fabricating totals", 
     api.parseAdminRecords(value, "worksync_admin_records");
   assert.equal(parse({ records: [row], limit: 1, offset: 12 }).hasNext, true);
   assert.equal(parse({ records: [], limit: 50, offset: 50 }).hasNext, false);
+  const fullPage = parse({ records: Array(25).fill(row), limit: 25, offset: 0 });
+  assert.equal(fullPage.rows.length, 10);
+  assert.equal(fullPage.limit, 10);
+  assert.equal(fullPage.hasNext, true);
   for (const value of [
     { records: [], limit: 0, offset: 0 },
     { records: [], limit: 50, offset: -1 },
@@ -224,7 +228,7 @@ test("pagination uses returned limits without requiring or fabricating totals", 
   assert.equal(disputes.offset, 25);
 });
 
-test("deployed SETOF disputes preserves action IDs and uses 100-row pagination", () => {
+test("deployed SETOF disputes preserves action IDs and uses ten-row pagination", () => {
   const row = {
     dispute_id: "dispute",
     project_id: "project",
@@ -243,15 +247,19 @@ test("deployed SETOF disputes preserves action IDs and uses 100-row pagination",
   assert.equal(result.rows[0].owner_id, "user");
   assert.match(result.rows[0].title, /project/);
   assert.match(result.rows[0].detail, /evidence.pdf/);
-  assert.equal(result.limit, 100);
+  assert.equal(result.limit, 10);
   assert.equal(result.offset, 100);
   assert.equal(result.hasNext, false);
   assert.equal(parse(Array(100).fill(row)).hasNext, true);
+  const sqlPage = parse({ rows: Array(10).fill(row), total: 20, limit: 10, offset: 0 });
+  assert.equal(sqlPage.rows.length, 10);
+  assert.equal(sqlPage.limit, 10);
+  assert.equal(sqlPage.hasNext, true);
+  assert.equal(parse({ rows: [], total: 10, limit: 10, offset: 10 }).hasNext, false);
   for (const rows of [
     null,
     {},
     [{}],
-    { rows: [], total: 0 },
     Array(101).fill(row),
   ])
     assert.throws(() => parse(rows), /incompatible response/);

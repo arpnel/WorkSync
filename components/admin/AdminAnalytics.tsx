@@ -132,26 +132,28 @@ export default function AdminAnalytics() {
               ))}
             </StyledSelect>
           </label>
-          <Button
-            className="h-10 rounded-lg"
-            variant="outline"
-            onClick={() => void load()}
-            disabled={loading}
-          >
-            <RefreshCw className={loading ? "size-4 animate-spin" : "size-4"} />
-            Refresh
-          </Button>
-          <Button
-            className="h-10 rounded-lg"
-            variant="ghost"
-            onClick={() => {
-              setFrom(`${new Date().getFullYear()}-01-01`);
-              setTo(new Date().toISOString().slice(0, 10));
-              setStatus("all");
-            }}
-          >
-            Reset filters
-          </Button>
+          <div className="flex w-full flex-col gap-2 sm:col-span-2 sm:flex-row sm:justify-end xl:col-span-full">
+            <Button
+              className="h-10 w-full rounded-lg sm:w-auto"
+              variant="outline"
+              onClick={() => void load()}
+              disabled={loading}
+            >
+              <RefreshCw className={loading ? "size-4 animate-spin" : "size-4"} />
+              Refresh
+            </Button>
+            <Button
+              className="h-10 w-full rounded-lg sm:w-auto"
+              variant="ghost"
+              onClick={() => {
+                setFrom(`${new Date().getFullYear()}-01-01`);
+                setTo(new Date().toISOString().slice(0, 10));
+                setStatus("all");
+              }}
+            >
+              Reset filters
+            </Button>
+          </div>
         </div>
       </AdminFilterPanel>
       <p className="text-sm text-muted-foreground">

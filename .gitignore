@@ -41,3 +41,5 @@ next-env.d.ts
 # Keep local test suite and Supabase project files out of the GitHub repository
 /tests/
 /supabase/
+
+/docs/

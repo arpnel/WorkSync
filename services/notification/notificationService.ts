@@ -76,6 +76,8 @@ async function fetchNotifications(): Promise<NotificationRecord[]> {
       const type = String(item.type ?? "").toLowerCase();
       const group = type.includes("message")
         ? "messages"
+        : type.includes("community")
+          ? "community"
         : type.includes("review")
           ? "reviews"
           : /project|contract|milestone|application|service_request/.test(type)

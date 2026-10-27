@@ -16,6 +16,7 @@ import {
   MoreHorizontal,
   Home,
   ShoppingCart,
+  MessagesSquare,
   Briefcase,
   Users,
   Clipboard,
@@ -34,6 +35,7 @@ import { useEffect, useState } from "react";
 const NAV_ITEMS = [
   { label: "Dashboard", icon: Home, href: "/home/dashboard" },
   { label: "Marketplace", icon: ShoppingCart, href: "/home/marketplace" },
+  { label: "Community", icon: MessagesSquare, href: "/home/community" },
   { label: "Projects", icon: Briefcase, href: "/home/projects" },
   { label: "My Listings", icon: Clipboard, href: "/home/my-listings" },
   { label: "Schedule", icon: Calendar, href: "/home/schedule" },

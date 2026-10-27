@@ -141,6 +141,14 @@ export function NotificationDetailDialog({
     async function load(): Promise<Detail> {
       const id = item.relatedId;
       if (!id) return {};
+      if (type.includes("community")) {
+        return {
+          title: item.title,
+          body: item.description,
+          href: `/home/community/${encodeURIComponent(id)}`,
+          action: "Open discussion",
+        };
+      }
       if (type === "skill_assessment") {
         const opening = (await listMyAssessments()).find(
           (row) => row.id === id,

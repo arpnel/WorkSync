@@ -16,6 +16,7 @@ import {
   ChevronRight,
   FileCheck2,
   MessageCircle,
+  MessagesSquare,
   Settings2,
 } from "lucide-react";
 import {
@@ -34,6 +35,7 @@ import { useNotifications } from "@/hooks/notification/useNotifications";
 
 const kindIcons = {
   message: MessageCircle,
+  community: MessagesSquare,
   project: BriefcaseBusiness,
   agreement: FileCheck2,
   listing: BriefcaseBusiness,

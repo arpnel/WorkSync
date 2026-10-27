@@ -1,5 +1,6 @@
 export type NotificationKind =
   | "message"
+  | "community"
   | "project"
   | "agreement"
   | "listing"
@@ -7,6 +8,7 @@ export type NotificationKind =
 
 export function getNotificationKind(type: string | null): NotificationKind {
   if (type?.includes("message")) return "message";
+  if (type?.includes("community")) return "community";
   if (type?.includes("contract") || type?.includes("agreement"))
     return "agreement";
   if (
@@ -24,6 +26,8 @@ export function getNotificationHref(
   type: string | null,
   relatedId: string | null,
 ) {
+  if (type?.includes("community"))
+    return relatedId ? `/home/community/${encodeURIComponent(relatedId)}` : "/home/community";
   if (type === "subscription_expiry") return "/home/subscription";
   if (type === "skill_assessment")
     return relatedId

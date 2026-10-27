@@ -17,6 +17,7 @@ const groups = {
   messages: "Message updates",
   projects: "Projects, requests and applications",
   reviews: "Reviews",
+  community: "Community activity",
 };
 
 const messageGroups = {

@@ -110,6 +110,18 @@ async function projectForUser(db: DB, projectId: string, userId: string) {
   };
 }
 
+async function agreedProjectBasePrice(
+  db: DB,
+  project: { order_id: string | null; application_id: string | null; budget: number },
+) {
+  const query = db.from("contracts").select("final_price");
+  const result = project.order_id
+    ? await query.eq("order_id", project.order_id).order("created_at", { ascending: false }).limit(1).maybeSingle()
+    : await query.eq("application_id", project.application_id).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (result.error) throw new PaymentError("The agreed project amount could not be loaded.");
+  return Number(result.data?.final_price ?? project.budget);
+}
+
 type ProjectVatBreakdown = {
   status: "applicable" | "not_applicable" | "review_required" | "not_recorded" | "unavailable";
   taxableAmount: number | null;
@@ -118,6 +130,7 @@ type ProjectVatBreakdown = {
   total: number | null;
   classification?: string | null;
   documentId?: string | null;
+  reviewNotice?: string | null;
 };
 
 async function getProjectVatBreakdown(
@@ -130,11 +143,8 @@ async function getProjectVatBreakdown(
     .eq("user_id", freelancerUserId)
     .maybeSingle();
   if (profile.error) return { status: "unavailable", taxableAmount: null, amount: null, rate: null, total: null };
-  const classification = profile.data?.vat_classification;
-  if (classification !== "vat_registered" && classification !== "non_vat")
-    return { status: "review_required", taxableAmount: null, amount: null, rate: null, total: null, classification: classification ?? "unverified" };
-  if ((classification === "vat_registered") !== (profile.data?.freelancer_vat_applicable === true))
-    return { status: "review_required", taxableAmount: null, amount: null, rate: null, total: null, classification };
+  const classification = profile.data?.vat_classification ?? null;
+  const vatApplicable = profile.data?.freelancer_vat_applicable;
 
   const today = new Date().toISOString().slice(0, 10);
   const cor = await db.from("tax_documents")
@@ -142,16 +152,35 @@ async function getProjectVatBreakdown(
     .eq("user_id", freelancerUserId)
     .eq("party_type", "freelancer")
     .eq("document_type", "bir_cor")
+    .eq("is_canonical_bir_cor", true)
     .eq("status", "verified")
     .or(`expires_at.is.null,expires_at.gte.${today}`)
     .order("reviewed_at", { ascending: false })
     .limit(1)
     .maybeSingle();
   if (cor.error) return { status: "unavailable", taxableAmount: null, amount: null, rate: null, total: null };
-  if (!cor.data) return { status: "review_required", taxableAmount: null, amount: null, rate: null, total: null, classification };
-  let documentId = cor.data.document_id as string;
-  const applies = classification === "vat_registered";
-  if (applies) {
+  if (!cor.data) return {
+    status: "review_required", taxableAmount: null, amount: null, rate: null, total: null,
+    classification: classification ?? "unverified",
+    reviewNotice: "The freelancer's required Form 2303 seller verification must be approved before checkout.",
+  };
+  const corDocumentId = cor.data.document_id as string;
+  const consistentVatRegistered = classification === "vat_registered" && vatApplicable === true;
+  const consistentNonVat = classification === "non_vat" && vatApplicable === false;
+  if (consistentNonVat) {
+    const parts = calculateVat(baseAmount, "exclusive", false);
+    return {
+      status: "not_applicable",
+      taxableAmount: parts.taxableAmount,
+      amount: parts.vatAmount,
+      rate: 0,
+      total: parts.total,
+      classification,
+      documentId: corDocumentId,
+    };
+  }
+
+  if (consistentVatRegistered) {
     const proof = await db.from("tax_documents")
       .select("document_id")
       .eq("user_id", freelancerUserId)
@@ -163,19 +192,45 @@ async function getProjectVatBreakdown(
       .limit(1)
       .maybeSingle();
     if (proof.error) return { status: "unavailable", taxableAmount: null, amount: null, rate: null, total: null };
-    if (!proof.data) return { status: "review_required", taxableAmount: null, amount: null, rate: null, total: null, classification };
-    documentId = proof.data.document_id as string;
+    if (proof.data) {
+      const parts = calculateVat(baseAmount, "exclusive", true);
+      return {
+        status: "applicable",
+        taxableAmount: parts.taxableAmount,
+        amount: parts.vatAmount,
+        rate: 0.12,
+        total: parts.total,
+        classification,
+        documentId: proof.data.document_id as string,
+      };
+    }
   }
-  const parts = calculateVat(baseAmount, "exclusive", applies);
+  // A verified Form 2303 satisfies the existing seller tax-document gate.
+  // Unless a reviewed non-VAT classification qualifies for the zero-rate path,
+  // default to the established 12% treatment. Record the fallback as a
+  // correction signal so administrators can review missing or inconsistent
+  // VAT profile data without blocking the client's payment.
+  const parts = calculateVat(baseAmount, "exclusive", true);
   return {
-    status: applies ? "applicable" : "not_applicable",
+    status: "applicable",
     taxableAmount: parts.taxableAmount,
     amount: parts.vatAmount,
-    rate: applies ? 0.12 : 0,
+    rate: 0.12,
     total: parts.total,
-    classification,
-    documentId,
+    classification: "default_vat",
+    documentId: corDocumentId,
+    reviewNotice: "Default 12% VAT is being applied. The freelancer's saved VAT treatment may need administrator review.",
   };
+}
+
+async function requireEligibleFreelancerSeller(db: DB, freelancerUserId: string) {
+  const result = await db.rpc("worksync_freelancer_seller_eligible", {
+    p_user: freelancerUserId,
+  });
+  if (result.error)
+    throw new PaymentError("Freelancer seller approval could not be verified. Contact support before checkout.", 503);
+  if (result.data !== true)
+    throw new PaymentError("The freelancer has not completed required seller verification, so checkout is unavailable.", 409);
 }
 async function findPayment(db: DB, id: string) {
   const { data, error } = await db
@@ -265,6 +320,9 @@ export async function getProjectPayment(
   const { project, freelancerUserId } = await projectForUser(db, projectId, userId);
   await storageReady(db);
   const row = await findPayment(db, paymentId(projectId));
+  const basePrice = row
+    ? Number(project.budget)
+    : await agreedProjectBasePrice(db, project);
   const snapshotVat = row
     ? row.freelancer_service_vat_taxable_base == null
       ? { status: "not_recorded" as const, taxableAmount: null, amount: null, rate: null, total: null }
@@ -275,7 +333,7 @@ export async function getProjectPayment(
           rate: Number(row.freelancer_service_vat_rate ?? 0),
           total: Number(row.amount),
         }
-    : await getProjectVatBreakdown(db, freelancerUserId, Number(project.budget));
+    : await getProjectVatBreakdown(db, freelancerUserId, basePrice);
   // A client only needs the transaction breakdown, never document identifiers.
   const vatBreakdown = {
     status: snapshotVat.status,
@@ -283,19 +341,33 @@ export async function getProjectPayment(
     amount: snapshotVat.amount,
     rate: snapshotVat.rate,
     total: snapshotVat.total,
+    reviewNotice: "reviewNotice" in snapshotVat ? snapshotVat.reviewNotice :
+      row?.freelancer_service_vat_classification === "default_vat"
+        ? "Default 12% VAT is being applied. The freelancer's saved VAT treatment may need administrator review."
+        : null,
   };
-  if (!row) return {
+  if (!row) {
+    const sellerEligibility = await db.rpc("worksync_freelancer_seller_eligible", {
+      p_user: freelancerUserId,
+    });
+    if (sellerEligibility.error)
+      throw new PaymentError("Freelancer seller approval could not be verified. Contact support before checkout.", 503);
+    return {
     status: "unpaid",
     mode: paymentMode(),
     vatBreakdown,
-    amount: vatBreakdown.total ?? Number(project.budget),
-    checkoutAllowed: vatBreakdown.status === "applicable" || vatBreakdown.status === "not_applicable",
-    checkoutMessage: vatBreakdown.status === "review_required"
-      ? "The freelancer’s VAT status needs administrator review before checkout can continue."
+    amount: vatBreakdown.total ?? basePrice,
+    checkoutAllowed: sellerEligibility.data === true &&
+      (vatBreakdown.status === "applicable" || vatBreakdown.status === "not_applicable"),
+    checkoutMessage: sellerEligibility.data !== true
+      ? "The freelancer has not completed required seller verification, so checkout is unavailable."
+      : vatBreakdown.status === "review_required"
+        ? snapshotVat.reviewNotice ?? "The freelancer's required Form 2303 seller verification must be approved before checkout."
       : vatBreakdown.status === "unavailable"
-        ? "The freelancer’s VAT status could not be verified. Contact support before checkout."
+        ? "The freelancer's VAT treatment could not be verified. Contact support before checkout."
         : undefined,
-  };
+    };
+  }
   let paid = row.status === "paid";
   let paidAt: string | null = null;
   if (row.transaction_reference) {
@@ -374,6 +446,7 @@ export async function createProjectCheckout(
   const { project, isClient, freelancerUserId } = await projectForUser(db, projectId, userId);
   if (!isClient)
     throw new PaymentError("Only the project client can pay.", 403);
+  await requireEligibleFreelancerSeller(db, freelancerUserId);
   await storageReady(db);
   if (!["active", "revision", "completed"].includes(project.status))
     throw new PaymentError(
@@ -465,9 +538,9 @@ export async function createProjectCheckout(
     );
   const vat = await getProjectVatBreakdown(db, freelancerUserId, contract.final_price);
   if (vat.status === "review_required")
-    throw new PaymentError("The freelancer’s VAT status needs administrator review before checkout can continue.", 409);
+    throw new PaymentError(vat.reviewNotice ?? "The freelancer's required Form 2303 seller verification must be approved before checkout.", 409);
   if (vat.status !== "applicable" && vat.status !== "not_applicable")
-    throw new PaymentError("The freelancer’s VAT status could not be verified. Contact support before checkout.", 409);
+    throw new PaymentError("The freelancer's VAT treatment could not be verified. Contact support before checkout.", 409);
   const amount = centavos(vat.total ?? contract.final_price);
   // The primary key is a durable, cross-process reservation for one full-project payment per mode.
   const { error: insertError } = await db.from("payments").insert({
@@ -486,8 +559,10 @@ export async function createProjectCheckout(
     freelancer_service_vat_amount: vat.amount,
     freelancer_service_vat_classification: vat.classification,
     freelancer_service_vat_document_id: vat.documentId,
-    freelancer_service_vat_rule: vat.status === "applicable"
-      ? "12% freelancer service VAT added to base price; current verified VAT registration"
+    freelancer_service_vat_rule: vat.classification === "default_vat"
+      ? "Default 12% freelancer service VAT added to base price; verified Form 2303, VAT classification needs administrator review"
+      : vat.status === "applicable"
+      ? "12% freelancer service VAT added to base price; current verified VAT registration and Form 2303"
       : "No freelancer service VAT; administrator-reviewed non-VAT classification and current verified COR",
   });
   if (insertError)
@@ -499,7 +574,9 @@ export async function createProjectCheckout(
     );
   const returnUrl = `${origin}/home/payments/return?payment=${encodeURIComponent(projectId)}`;
   // Never retry an ambiguous POST: it may have created a payable provider session.
-  const session = await paymongo("/v2/checkout_sessions", {
+  let session: CheckoutSession;
+  try {
+    session = await paymongo("/v2/checkout_sessions", {
     line_items: [
       {
         name: project.title.slice(0, 200),
@@ -518,9 +595,26 @@ export async function createProjectCheckout(
     cancel_url: `${returnUrl}&cancelled=1`,
     reference_number: id,
     metadata: { project_id: projectId, payer_id: userId },
-    send_email_receipt: true,
-  });
-  const url = checkoutUrl(session);
+      send_email_receipt: true,
+    });
+  } catch (error) {
+    // A definitive provider rejection created no session, so release the
+    // reservation. Keep it when the request outcome is ambiguous to prevent a
+    // retry from creating a second payable session.
+    if (error instanceof PaymentError && !error.ambiguous) {
+      const { error: releaseError } = await db
+        .from("payments")
+        .delete()
+        .eq("payment_id", id)
+        .eq("status", "pending")
+        .is("transaction_reference", null);
+      if (releaseError)
+        console.error("Could not release rejected checkout reservation", {
+          kind: "checkout_reservation_cleanup_failed",
+        });
+    }
+    throw error;
+  }
   const { error: saveError } = await db
     .from("payments")
     .update({ transaction_reference: session.id })
@@ -530,7 +624,7 @@ export async function createProjectCheckout(
     throw new PaymentError(
       "Checkout was created but could not be saved. Contact support before retrying.",
     );
-  return { checkoutUrl: url };
+  return { checkoutUrl: checkoutUrl(session) };
 }
 export async function processPaymentWebhook(sessionId: string) {
   const db = paymentDatabase();

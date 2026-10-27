@@ -313,13 +313,23 @@ export function PaymentPanel({
             </div>
           )}
           {payment?.vatBreakdown?.status === "review_required" && (
-            <p className="text-xs text-amber-600">Freelancer VAT status needs administrator review before checkout.</p>
+            <p className="text-xs text-amber-600">
+              {payment.checkoutMessage ?? "The freelancer's required Form 2303 seller verification must be approved before checkout."}
+            </p>
           )}
           {payment?.vatBreakdown?.status === "unavailable" && (
             <p className="text-xs text-muted-foreground">
               {payment.checkoutMessage ?? "VAT breakdown is unavailable. Contact support before checkout."}
             </p>
           )}
+          {payment?.checkoutAllowed !== false && payment?.vatBreakdown?.reviewNotice && (
+            <p className="text-xs text-amber-600">{payment.vatBreakdown.reviewNotice}</p>
+          )}
+          {payment?.checkoutAllowed === false && payment.checkoutMessage &&
+            payment.vatBreakdown?.status !== "review_required" &&
+            payment.vatBreakdown?.status !== "unavailable" && (
+              <p className="text-xs text-amber-600">{payment.checkoutMessage}</p>
+            )}
           <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
             <dt className="text-muted-foreground">Amount paid</dt>
             <dd className="font-medium tabular-nums">{money(paidAmount)}</dd>

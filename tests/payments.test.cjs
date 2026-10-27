@@ -66,10 +66,22 @@ function checkoutHarness({
   existing = null,
   conflict = false,
   vatClassification = "non_vat",
+  vatApplicable = vatClassification === "vat_registered",
+  profileExists = true,
+  corStatus = "verified",
+  corCanonical = true,
+  vatRegistrationStatus = "verified",
+  sellerEligible = true,
+  providerFailure = null,
+  finalPrice = 150,
 } = {}) {
   const calls = [];
+  const reads = [];
   const db = {
-    rpc: async () => ({ data: ready, error: null }),
+    rpc: async (name) => ({
+      data: name === "worksync_freelancer_seller_eligible" ? sellerEligible : ready,
+      error: null,
+    }),
     from(table) {
       let operation = "select",
         values,
@@ -107,6 +119,10 @@ function checkoutHarness({
           values = value;
           return query;
         },
+        delete() {
+          operation = "delete";
+          return query;
+        },
         single() {
           return result(true);
         },
@@ -118,13 +134,14 @@ function checkoutHarness({
         },
       };
       async function result(single) {
-        if (operation !== "select") {
+          if (operation !== "select") {
           calls.push({ table, operation, values });
           return {
             error:
               conflict && operation === "insert" ? { code: "23505" } : null,
           };
         }
+        reads.push({ table, filters: { ...filters } });
         let data;
         if (table === "projects")
           data = {
@@ -139,12 +156,18 @@ function checkoutHarness({
         if (table === "client_profiles") data = { user_id: "client" };
         if (table === "freelancer_profiles") data = { user_id: "freelancer" };
         if (table === "freelancer_tax_profiles")
-          data = { freelancer_vat_applicable: vatClassification === "vat_registered", vat_classification: vatClassification };
-        if (table === "tax_documents")
-          data = { document_id: filters.document_type === "vat_registration" ? "vat-doc" : "cor-doc" };
+          data = profileExists ? { freelancer_vat_applicable: vatApplicable, vat_classification: vatClassification } : null;
+        if (table === "tax_documents") {
+          const documentType = filters.document_type;
+          const status = documentType === "vat_registration" ? vatRegistrationStatus : corStatus;
+          const canonical = documentType === "vat_registration" || corCanonical;
+          data = status === "verified" && canonical
+            ? { document_id: documentType === "vat_registration" ? "vat-doc" : "cor-doc" }
+            : null;
+        }
         if (table === "contracts")
           data = {
-            final_price: 150,
+            final_price: finalPrice,
             client_signed_at: signed ? "date" : null,
             freelancer_signed_at: "date",
             status: "active",
@@ -162,8 +185,9 @@ function checkoutHarness({
     "@supabase/supabase-js": {},
     "@/lib/payments/paymongo": {
       ...provider,
-      paymongo: async (path, attributes) => {
+        paymongo: async (path, attributes) => {
         calls.push({ provider: path, attributes });
+          if (providerFailure) throw providerFailure;
         return {
           id: "cs_example",
           attributes: { checkout_url: "https://checkout.paymongo.com/example" },
@@ -171,7 +195,7 @@ function checkoutHarness({
       },
     },
   });
-  return { server, db, calls };
+  return { server, db, calls, reads };
 }
 test("unrelated users and freelancers cannot start a client checkout", async () => {
   for (const user of ["attacker", "freelancer"]) {
@@ -235,13 +259,106 @@ test("verified VAT registration adds 12 percent to the base and snapshots the ta
   assert.equal(h.calls[0].values.freelancer_service_vat_document_id, "vat-doc");
   assert.equal(h.calls[1].attributes.line_items[0].amount, 16800);
 });
-test("unverified VAT status blocks a new checkout before reserving payment", async () => {
-  for (const vatClassification of ["unverified", "pending_review", "rejected", "expired"]) {
-    const h = checkoutHarness({ vatClassification });
-    await assert.rejects(h.server.createProjectCheckout(h.db, "project", "client", "http://localhost:3000"), /VAT status needs administrator review/);
-    assert.equal(h.calls.some((call) => call.operation === "insert"), false);
-    assert.equal(h.calls.some((call) => call.provider), false);
+test("verified Form 2303 allows default 12 percent VAT when optional VAT and withholding documents are absent", async () => {
+  const h = checkoutHarness({
+    vatClassification: "vat_registered",
+    vatRegistrationStatus: null,
+  });
+  await h.server.createProjectCheckout(h.db, "project", "client", "http://localhost:3000");
+  assert.equal(h.calls[0].values.amount, 168);
+  assert.equal(h.calls[0].values.freelancer_service_vat_rate, 0.12);
+  assert.equal(h.calls[0].values.freelancer_service_vat_classification, "default_vat");
+  assert.equal(h.calls[0].values.freelancer_service_vat_document_id, "cor-doc");
+  assert.match(h.calls[0].values.freelancer_service_vat_rule, /Default 12%/);
+  assert.equal(h.reads.some((read) => /withholding|declaration/i.test(`${read.table} ${read.filters.document_type ?? ""}`)), false);
+});
+test("payment preview uses the signed service-order price and allows default VAT checkout", async () => {
+  const h = checkoutHarness({
+    finalPrice: 321,
+    vatClassification: "vat_registered",
+    vatRegistrationStatus: null,
+  });
+  const payment = await h.server.getProjectPayment(h.db, "project", "client");
+  assert.equal(payment.amount, 359.52);
+  assert.equal(payment.checkoutAllowed, true);
+  assert.equal(payment.vatBreakdown.taxableAmount, 321);
+  assert.equal(payment.vatBreakdown.amount, 38.52);
+  assert.match(payment.vatBreakdown.reviewNotice, /Default 12% VAT is being applied/);
+});
+test("pending or rejected optional VAT evidence falls back to default VAT instead of blocking", async () => {
+  for (const vatRegistrationStatus of ["pending", "rejected"]) {
+    const h = checkoutHarness({ vatClassification: "vat_registered", vatRegistrationStatus });
+    await h.server.createProjectCheckout(h.db, "project", "client", "http://localhost:3000");
+    assert.equal(h.calls[0].values.freelancer_service_vat_rate, 0.12);
+    assert.equal(h.calls[0].values.freelancer_service_vat_classification, "default_vat");
+    assert.equal(h.calls.filter((call) => call.provider).length, 1);
   }
+});
+test("reviewed non-VAT classification with verified Form 2303 remains an eligible alternative", async () => {
+  const h = checkoutHarness({ vatClassification: "non_vat", vatApplicable: false, vatRegistrationStatus: null });
+  await h.server.createProjectCheckout(h.db, "project", "client", "http://localhost:3000");
+  assert.equal(h.calls[0].values.amount, 150);
+  assert.equal(h.calls[0].values.freelancer_service_vat_rate, 0);
+  assert.equal(h.calls[0].values.freelancer_service_vat_classification, "non_vat");
+  assert.equal(h.calls[0].values.freelancer_service_vat_document_id, "cor-doc");
+});
+test("missing or inconsistent VAT classification uses default VAT and records a review marker", async () => {
+  for (const options of [
+    { vatClassification: null, vatApplicable: false },
+    { vatClassification: "vat_registered", vatApplicable: false },
+    { vatClassification: "non_vat", vatApplicable: true },
+  ]) {
+    const h = checkoutHarness(options);
+    await h.server.createProjectCheckout(h.db, "project", "client", "http://localhost:3000");
+    assert.equal(h.calls[0].values.amount, 168);
+    assert.equal(h.calls[0].values.freelancer_service_vat_classification, "default_vat");
+    assert.match(h.calls[0].values.freelancer_service_vat_rule, /administrator review/);
+  }
+  const h = checkoutHarness({ profileExists: false });
+  await h.server.createProjectCheckout(h.db, "project", "client", "http://localhost:3000");
+  assert.equal(h.calls[0].values.freelancer_service_vat_classification, "default_vat");
+});
+test("unverified Form 2303 and unapproved sellers remain blocked before reserving payment", async () => {
+  const unverifiedCor = checkoutHarness({ corStatus: "pending" });
+  await assert.rejects(
+    unverifiedCor.server.createProjectCheckout(unverifiedCor.db, "project", "client", "http://localhost:3000"),
+    /required Form 2303 seller verification must be approved/,
+  );
+  assert.equal(unverifiedCor.calls.some((call) => call.operation === "insert"), false);
+  assert.equal(unverifiedCor.calls.some((call) => call.provider), false);
+
+  const unapprovedSeller = checkoutHarness({ sellerEligible: false });
+  await assert.rejects(
+    unapprovedSeller.server.createProjectCheckout(unapprovedSeller.db, "project", "client", "http://localhost:3000"),
+    /has not completed required seller verification/,
+  );
+  assert.equal(unapprovedSeller.calls.some((call) => call.operation === "insert"), false);
+  assert.equal(unapprovedSeller.calls.some((call) => call.provider), false);
+});
+test("seller approval RPC failures fail closed before reserving payment", async () => {
+  const h = checkoutHarness({ sellerEligible: false });
+  h.db.rpc = async (name) => name === "worksync_freelancer_seller_eligible"
+    ? { data: null, error: new Error("RPC unavailable") }
+    : { data: true, error: null };
+  await assert.rejects(
+    h.server.createProjectCheckout(h.db, "project", "client", "http://localhost:3000"),
+    /seller approval could not be verified/,
+  );
+  assert.equal(h.calls.some((call) => call.operation === "insert"), false);
+});
+test("definitive PayMongo rejection releases its reservation, while ambiguous requests retain it", async () => {
+  const rejected = checkoutHarness({
+    providerFailure: new provider.PaymentError("Provider rejected request", 503, false),
+  });
+  await assert.rejects(rejected.server.createProjectCheckout(rejected.db, "project", "client", "http://localhost:3000"));
+  assert.equal(rejected.calls.filter((call) => call.operation === "insert").length, 1);
+  assert.equal(rejected.calls.filter((call) => call.operation === "delete").length, 1);
+
+  const ambiguous = checkoutHarness({
+    providerFailure: new provider.PaymentError("Provider outcome unknown", 503, true),
+  });
+  await assert.rejects(ambiguous.server.createProjectCheckout(ambiguous.db, "project", "client", "http://localhost:3000"));
+  assert.equal(ambiguous.calls.filter((call) => call.operation === "delete").length, 0);
 });
 test("concurrent reservation conflict and ambiguous pending reservation never create a second checkout", async () => {
   for (const options of [

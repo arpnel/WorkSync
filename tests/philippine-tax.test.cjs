@@ -475,7 +475,19 @@ test("new base-price VAT migration snapshots verified treatment and preserves pa
   assert.match(settlement, /on conflict\(project_id,milestone_id,mode\) where milestone_id is not null do nothing/);
   assert.match(payment, /freelancer_service_vat_taxable_base/);
   assert.match(payment, /vat\.status === "review_required"/);
-  assert.match(payment, /calculateVat\(baseAmount, "exclusive", applies\)/);
+  assert.match(payment, /calculateVat\(baseAmount, "exclusive", true\)/);
+  assert.match(payment, /classification === "non_vat"/);
+  assert.match(payment, /worksync_freelancer_seller_eligible/);
   assert.match(receipt, /clientServiceVatBase/);
   assert.match(receipt, /freelancer_service_vat_document_id/);
+});
+
+test("prepared default VAT migration keeps Form 2303 and reviewed alternative treatment guards", () => {
+  const migration = fs.readFileSync("supabase/migrations/202610270008_default_vat_checkout_for_verified_sellers.sql", "utf8");
+  assert.match(migration, /PREPARED, NOT APPLIED/);
+  assert.match(migration, /'vat_registered','non_vat','default_vat'/);
+  assert.match(migration, /Default VAT requires a currently verified Form 2303/);
+  assert.match(migration, /A current reviewed non-VAT classification and Form 2303 are required/);
+  assert.match(migration, /worksync_freelancer_canonical_bir_cor/);
+  assert.match(migration, /VAT registration and Form 2303 must be currently verified/);
 });

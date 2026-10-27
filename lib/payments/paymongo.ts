@@ -5,6 +5,7 @@ export class PaymentError extends Error {
   constructor(
     message: string,
     public status = 503,
+    public ambiguous = false,
   ) {
     super(message);
   }
@@ -77,10 +78,12 @@ export async function paymongo(
   } catch {
     throw new PaymentError(
       "PayMongo could not confirm the request. Check payment status before retrying.",
+      503,
+      true,
     );
   }
   const body = await response.json().catch(() => null);
-  if (!response.ok || !body?.data?.id) {
+  if (!response.ok) {
     // Never expose provider payloads, credentials, or customer billing data.
     throw new PaymentError(
       response.status === 401
@@ -88,6 +91,12 @@ export async function paymongo(
         : "PayMongo could not complete this request. Check the merchant configuration and payment status.",
     );
   }
+  if (typeof body?.data?.id !== "string" || !body.data.id)
+    throw new PaymentError(
+      "PayMongo returned an incomplete response. Check payment status before retrying.",
+      503,
+      true,
+    );
   return body.data;
 }
 export function checkoutUrl(session: CheckoutSession) {

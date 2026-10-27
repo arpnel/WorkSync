@@ -8,6 +8,7 @@ export interface ProjectPayment {
     amount: number | null;
     rate: number | null;
     total: number | null;
+    reviewNotice?: string | null;
   };
   amount?: number;
   checkoutAllowed?: boolean;

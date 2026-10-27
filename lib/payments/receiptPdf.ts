@@ -166,30 +166,34 @@ export function createReceiptPdf(details: ReceiptDetails) {
   const taxRowHeight = !details.taxLines.length || details.taxLines.length > 4 ? 39 : Math.max(52, Math.ceil(taxNotes.join(" | ").length / 68) * 13 + 25);
   const platformVatHeight = details.platformVat != null ? 39 : (details.platformTaxNote ? 48 : 0);
   const breakdownHeight = details.audience === "client"
-    ? 36 + (details.clientServiceVatBase != null ? 39 : 0) + (details.clientServiceVat != null ? 39 : taxRowHeight)
+    ? details.clientServiceVatBase != null
+      ? 39 * 3
+      : 36 + (details.clientServiceVat != null ? 39 : taxRowHeight)
     : details.audience === "freelancer"
       ? 39 + (details.freelancerVat > 0 ? 39 : 0) + 39 + 39
       : 36 + 39 + taxRowHeight + platformVatHeight;
   box(54, y - breakdownHeight - 5, 504, breakdownHeight + 12, "1 1 1", "0.87 0.89 0.91");
+  const breakdownLeft = details.audience === "client" ? 54 : 70;
   const breakdownRow = (label: string, note: string, value: string, height = 39) => {
-    put(label, 70, y, 10, true, "0.13 0.16 0.20");
-    if (note) putLeftLines(note, 70, y - 13, 8, false, "0.39 0.43 0.48", 68);
+    put(label, breakdownLeft, y, 10, true, "0.13 0.16 0.20");
+    if (note) putLeftLines(note, breakdownLeft, y - 13, 8, false, "0.39 0.43 0.48", 68);
     if (value) putRight(value, y - 2, 9, false, "0.29 0.34 0.40");
     y -= height;
     line(y + 1, "0.90 0.92 0.94");
   };
   if (details.audience === "client") {
-    breakdownRow("Client payment", "", php(details.amount), 36);
     if (details.clientServiceVatBase != null) {
-      breakdownRow("Service base price", "Agreed price before freelancer service VAT", php(details.clientServiceVatBase), 39);
-      breakdownRow(
-        "Freelancer service VAT",
-        details.clientServiceVatRate ? (details.clientServiceVatRate * 100).toFixed(2) + "% added to the base price" + (details.clientServiceVatRule ? "; " + details.clientServiceVatRule : "") : "No VAT under the saved reviewed classification",
-        details.clientServiceVat == null ? "Not recorded" : php(details.clientServiceVat),
-        39,
-      );
-    } else if (!details.taxLines.length) breakdownRow("VAT breakdown", "No verified VAT amount is recorded for this payment", "Not recorded", 39);
-    else breakdownRow("VAT included in service price", taxNotes.join(" | "), details.freelancerVat > 0 ? php(details.freelancerVat) : "Not recorded", taxRowHeight);
+      const vatLabel = details.clientServiceVatRate == null
+        ? "VAT"
+        : `VAT (${(details.clientServiceVatRate * 100).toFixed(0)}%)`;
+      breakdownRow("Subtotal", "", php(details.clientServiceVatBase), 39);
+      breakdownRow(vatLabel, "", details.clientServiceVat == null ? "Not recorded" : php(details.clientServiceVat), 39);
+      breakdownRow("Total", "", php(details.amount), 39);
+    } else {
+      breakdownRow("Client payment", "", php(details.amount), 36);
+      if (!details.taxLines.length) breakdownRow("VAT breakdown", "No verified VAT amount is recorded for this payment", "Not recorded", 39);
+      else breakdownRow("VAT included in service price", taxNotes.join(" | "), details.freelancerVat > 0 ? php(details.freelancerVat) : "Not recorded", taxRowHeight);
+    }
   } else if (details.audience === "freelancer") {
     breakdownRow("Gross earnings", "Saved payout amount before deductions", details.serviceGrossEarnings == null ? "Not recorded" : php(details.serviceGrossEarnings), 39);
     if (details.freelancerVat > 0) breakdownRow("Freelancer VAT", "Included in the saved agreed amount", php(details.freelancerVat), 39);

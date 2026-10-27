@@ -248,12 +248,14 @@ test("new client receipt snapshot shows base price plus separately added freelan
   } };
   const details = receipt.receiptDetailsFromSnapshot(visibility.receiptForAudience(saved, "client"));
   const pdf = await receipt.createReceiptPdf(details).text();
-  assert.match(pdf, /Client payment/);
+  assert.match(pdf, /Subtotal/);
   assert.match(pdf, /PHP 112\.00/);
-  assert.match(pdf, /Service base price/);
+  assert.match(pdf, /Total/);
   assert.match(pdf, /PHP 100\.00/);
-  assert.match(pdf, /Freelancer service VAT/);
+  assert.match(pdf, /VAT \\\(12%\\\)/);
   assert.match(pdf, /PHP 12\.00/);
+  assert.doesNotMatch(pdf, /Freelancer service VAT|Verified VAT registration|added to the base price/);
+  assert.match(pdf, /54 \d+ Td \(Subtotal\)/);
   assert.doesNotMatch(pdf, /VAT included in service price/);
 });
 test("receipt PDF uses pending states for absent earnings and tax snapshots", async () => {

@@ -1,6 +1,6 @@
 "use client";
 import { StyledSelect } from "@/components/ui/styled-select";
-import { openSavedTaxReceipt } from "@/lib/payments/receiptClient";
+import { openFreelancerPayoutStatement } from "@/lib/payments/receiptClient";
 import { filterPayoutHistory, paginatePayoutHistory, payoutStatusGroup, payoutStatusLabel } from "@/lib/payments/payoutHistory";
 import { buildPayoutCsv, payoutCsvFilename, type PayoutCsvFormat } from "@/lib/payments/payoutCsv";
 
@@ -219,7 +219,7 @@ export default function PayoutSettings() {
                       <td className="px-4 py-3 font-medium tabular-nums">{php(payout.grossAmount)}</td>
                       <td className="px-4 py-3 font-medium tabular-nums">{php(payout.amount)}{payout.withholdingAmount > 0 && <p className="mt-1 text-xs font-normal text-muted-foreground">Withholding: {php(payout.withholdingAmount)}</p>}</td>
                       <td className="px-4 py-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${statusStyle(payout.status)}`}>{payoutStatusLabel(payout.status)}</span></td>
-                      <td className="px-4 py-3 text-right"><Button variant="outline" size="sm" onClick={() => void openSavedTaxReceipt(payout.transactionId).catch((cause) => setError(cause instanceof Error ? cause.message : "Receipt unavailable."))}>View receipt</Button></td>
+                      <td className="px-4 py-3 text-right"><Button variant="outline" size="sm" onClick={() => void openFreelancerPayoutStatement(payout.transactionId).catch((cause) => setError(cause instanceof Error ? cause.message : "Payout statement unavailable."))}>View receipt</Button></td>
                     </tr>)}
                   </tbody>
                 </table>
@@ -228,7 +228,7 @@ export default function PayoutSettings() {
                 {visiblePayouts.map((payout) => <article key={payout.id} className="space-y-3 rounded-xl border bg-card p-4">
                   <div className="flex items-start justify-between gap-3"><div><p className="font-medium">{payoutDate(payout.createdAt)}</p><p className="mt-1 max-w-52 truncate text-xs text-muted-foreground" title={payout.transferReference ?? payout.id}>{payout.transferReference ? `Ref ${payout.transferReference}` : `Payout ${payout.id}`}</p></div><span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium ${statusStyle(payout.status)}`}>{payoutStatusLabel(payout.status)}</span></div>
                   <div className="grid grid-cols-2 gap-3 border-t pt-3"><div><p className="text-xs text-muted-foreground">Gross amount</p><p className="mt-1 font-medium tabular-nums">{php(payout.grossAmount)}</p></div><div><p className="text-xs text-muted-foreground">Net transfer</p><p className="mt-1 font-medium tabular-nums">{php(payout.amount)}</p>{payout.withholdingAmount > 0 && <p className="mt-1 text-xs text-muted-foreground">Withholding: {php(payout.withholdingAmount)}</p>}</div></div>
-                  <Button variant="outline" size="sm" onClick={() => void openSavedTaxReceipt(payout.transactionId).catch((cause) => setError(cause instanceof Error ? cause.message : "Receipt unavailable."))}>View receipt</Button>
+                  <Button variant="outline" size="sm" onClick={() => void openFreelancerPayoutStatement(payout.transactionId).catch((cause) => setError(cause instanceof Error ? cause.message : "Payout statement unavailable."))}>View receipt</Button>
                 </article>)}
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3 text-sm">

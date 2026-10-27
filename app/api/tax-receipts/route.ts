@@ -27,7 +27,15 @@ export async function GET(request: Request) {
     if (client.error || freelancer.error || admin.error || !client.data || !freelancer.data) throw new PaymentError("Payment participants unavailable.");
     if (payment.payer_id !== client.data.user_id) throw new PaymentError("Payment payer does not match the project client.", 409);
     if (user.id !== client.data.user_id && user.id !== freelancer.data.user_id && !admin.data) throw new PaymentError("Only transaction participants may access this receipt.", 403);
-    const audience: ReceiptAudience = admin.data ? "admin" : user.id === client.data.user_id ? "client" : "freelancer";
+    const requestedView = new URL(request.url).searchParams.get("view");
+    let audience: ReceiptAudience;
+    if (requestedView === "payout") {
+      if (user.id !== freelancer.data.user_id) throw new PaymentError("Only the freelancer can access this payout statement.", 403);
+      audience = "freelancer";
+    } else {
+      // Project receipts are the same client-payment receipt for both participants.
+      audience = admin.data ? "admin" : "client";
+    }
     const { data: saved, error: savedError } = await db.from("tax_transaction_receipts").select(paidReceiptFields).eq("payment_id", paymentId).maybeSingle();
     if (savedError) throw new PaymentError("Saved receipts are unavailable. The receipt migration may not be applied yet.");
     if (payment.status !== "paid") {

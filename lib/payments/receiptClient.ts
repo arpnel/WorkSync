@@ -2,10 +2,10 @@
 import { supabase } from "@/lib/supabaseClient";
 import { openReceiptPdf, receiptDetailsFromSnapshot } from "@/lib/payments/receiptPdf";
 
-export async function openSavedTaxReceipt(paymentId: string, download = false) {
+async function openReceiptView(paymentId: string, view: "transaction" | "payout", download: boolean) {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) throw new Error("Sign in to access this receipt.");
-  const response = await fetch(`/api/tax-receipts?paymentId=${encodeURIComponent(paymentId)}`, { headers: { Authorization: `Bearer ${session.access_token}` }, cache: "no-store" });
+  const response = await fetch(`/api/tax-receipts?paymentId=${encodeURIComponent(paymentId)}&view=${view}`, { headers: { Authorization: `Bearer ${session.access_token}` }, cache: "no-store" });
   const body = await response.json();
   if (!response.ok || !body.receipt) throw new Error(body.error || "Receipt unavailable.");
 
@@ -37,4 +37,12 @@ export async function openSavedTaxReceipt(paymentId: string, download = false) {
     // Logo loading is optional; receipt data remains available if conversion fails.
   }
   openReceiptPdf(details, download);
+}
+
+export function openSavedTaxReceipt(paymentId: string, download = false) {
+  return openReceiptView(paymentId, "transaction", download);
+}
+
+export function openFreelancerPayoutStatement(paymentId: string, download = false) {
+  return openReceiptView(paymentId, "payout", download);
 }

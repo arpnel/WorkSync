@@ -1,10 +1,23 @@
 -- PREPARED, NOT APPLIED.
--- Legacy freelancer setup stores resumes at <user id>/<filename>.
--- foldername(name)[2] is NULL for that path; SQL NULL propagation in the
--- seller-only restrictive guard otherwise rejects the legitimate upload.
--- Keep seller-verification paths ticket-gated and let the existing owner
--- upload policy authorize the other verification-document paths.
+-- Freelancer setup stores resumes, portfolio samples, and certifications at
+-- <user id>/<kind>/<filename>; older uploads may be at <user id>/<filename>.
+-- Keep setup uploads owner-scoped, and keep seller-verification paths gated
+-- by their server-issued upload tickets.
 begin;
+
+-- Make setup authorization explicit instead of depending on the legacy
+-- verification_files_insert policy being present in every deployed database.
+drop policy if exists freelancer_setup_documents_upload on storage.objects;
+create policy freelancer_setup_documents_upload
+on storage.objects
+for insert to authenticated
+with check (
+  bucket_id = 'verification-documents'
+  and (storage.foldername(name))[1] = auth.uid()::text
+  and coalesce((storage.foldername(name))[2], '') in (
+    '', 'resume', 'portfolio', 'certifications'
+  )
+);
 
 drop policy if exists freelancer_seller_upload_guard on storage.objects;
 create policy freelancer_seller_upload_guard

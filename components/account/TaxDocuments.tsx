@@ -63,8 +63,9 @@ function rowBelongsToCategory(row: DocumentRow, category: Category) {
   return row.document_type === "business_tax_support" || (row.document_type === "tax_exemption" && (!treatment || treatment.includes("withholding")));
 }
 
-export default function TaxDocuments() {
+export default function TaxDocuments({ setupMode = false }: { setupMode?: boolean } = {}) {
   const [freelancerAvailable, setFreelancerAvailable] = useState<boolean | null>(null);
+  const [setupRequired, setSetupRequired] = useState(false);
   const [rows, setRows] = useState<DocumentRow[]>([]);
   const [canonicalBirCor, setCanonicalBirCor] = useState<CanonicalBirCorState>({ document: null, needsReview: false });
   const [category, setCategory] = useState<Category | null>(null);
@@ -81,7 +82,8 @@ export default function TaxDocuments() {
   const request = useCallback(async (method: "GET" | "POST", body?: unknown) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) throw new Error("Sign in to manage tax documents.");
-    const response = await fetch("/api/tax-documents", {
+    const endpoint = setupMode ? "/api/tax-documents?setup=1" : "/api/tax-documents";
+    const response = await fetch(endpoint, {
       method,
       headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
       ...(body ? { body: JSON.stringify(body) } : {}),
@@ -90,12 +92,13 @@ export default function TaxDocuments() {
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "Tax documents unavailable.");
     return result;
-  }, []);
+  }, [setupMode]);
 
   const load = useCallback(async () => {
     const result = await request("GET");
     const availableParties = (result.partyTypes ?? []) as Party[];
     setFreelancerAvailable(availableParties.includes("freelancer"));
+    setSetupRequired(Boolean(result.setupRequired));
     setRows(result.documents ?? []);
     setCanonicalBirCor(result.canonicalBirCor ?? { document: null, needsReview: false });
   }, [request]);
@@ -214,7 +217,7 @@ export default function TaxDocuments() {
     }
   }
 
-  if (freelancerAvailable === false) return null;
+  if (freelancerAvailable === false && !setupRequired) return null;
 
   return (
     <Card>
@@ -224,7 +227,8 @@ export default function TaxDocuments() {
       </CardHeader>
       <CardContent className="space-y-5">
         {loading && <div className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" /> Loading tax documents…</div>}
-        {!loading && <>
+        {!loading && setupRequired && <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Save your freelancer profile below to enable secure document submissions here. You can submit Form 2303 and applicable tax documents without leaving account setup.</p>}
+        {!loading && !setupRequired && <>
           <div className="flex gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/10 p-4 text-sm">
             <ShieldCheck className="mt-0.5 size-5 shrink-0 text-emerald-500" />
             <div>

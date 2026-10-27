@@ -9,8 +9,11 @@ import { SubmitSection } from "./sections/SubmitSection";
 
 import { useFreelancerSetup } from "./hooks/useFreelancerSetup";
 import VerificationSettings from "@/components/account/VerificationSettings";
+import TaxDocuments from "@/components/account/TaxDocuments";
+import { FreelancerSellerVerification } from "@/components/account/FreelancerSellerVerification";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { useState } from "react";
 
 export function FreelancerSetupForm() {
   const {
@@ -23,6 +26,7 @@ export function FreelancerSetupForm() {
     isLoadingCategories,
     isLoadingSkills,
     isSubmitting,
+    hasFreelancerProfile,
     isLoadingProfile,
     loadError,
     retryLoad,
@@ -35,6 +39,7 @@ export function FreelancerSetupForm() {
     handleRemoveFile,
     handleSubmit,
   } = useFreelancerSetup();
+  const [documentationVersion, setDocumentationVersion] = useState(0);
 
   if (isLoadingProfile)
     return (
@@ -106,20 +111,28 @@ export function FreelancerSetupForm() {
         onRemoveFile={handleRemoveFile}
       />
 
-      <section className="space-y-2 rounded-xl border p-4">
-        <h2 className="font-semibold">Seller and tax documentation</h2>
-        <p className="text-sm text-muted-foreground">Manage Form 2303, additional seller requirements, and applicable tax documents together in Settings.</p>
-        <Button asChild variant="outline" size="sm"><Link href="/home/settings#seller-verification">Open Documentation</Link></Button>
+      <section className="space-y-5" aria-labelledby="setup-documentation-title">
+        <div>
+          <h2 id="setup-documentation-title" className="text-lg font-semibold">Seller and tax documentation</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Submit Form 2303, any additional seller requirements, and applicable tax records here. You can review them later in Settings.</p>
+        </div>
+        <TaxDocuments key={`tax-documents-${documentationVersion}`} setupMode />
+        <FreelancerSellerVerification key={`seller-documents-${documentationVersion}`} compact />
       </section>
       {/* Submit */}
       <VerificationSettings />
 
       <SubmitSection
         isSubmitting={isSubmitting}
-        label="Save Freelancer Profile"
+        label={hasFreelancerProfile ? "Save Freelancer Profile" : "Save Profile to Submit Documents"}
         loadingLabel="Saving..."
-        onSubmit={() => handleSubmit()}
+        onSubmit={() => handleSubmit(async () => {
+          setDocumentationVersion((version) => version + 1);
+        }, true)}
       />
+      {hasFreelancerProfile && <div className="flex justify-end">
+        <Button asChild variant="outline"><Link href="/home/dashboard">Continue to Dashboard</Link></Button>
+      </div>}
     </fieldset>
   );
 }

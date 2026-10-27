@@ -19,7 +19,11 @@ export async function GET(request: Request) {
   try {
     const { db, user } = await paymentUser(request);
     const types = await partyTypes(db, user.id);
-    if (!types.length) throw new PaymentError("Tax documents are available to client and freelancer accounts.", 403);
+    if (!types.length) {
+      if (new URL(request.url).searchParams.get("setup") === "1")
+        return json({ partyTypes: [], documents: [], canonicalBirCor: { document: null, needsReview: false }, setupRequired: true });
+      throw new PaymentError("Tax documents are available to client and freelancer accounts.", 403);
+    }
     const profileResult = types.includes("freelancer")
       ? await db.from("freelancer_tax_profiles").select("vat_classification").eq("user_id", user.id).maybeSingle()
       : { data: null, error: null };

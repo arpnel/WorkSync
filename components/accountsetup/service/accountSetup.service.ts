@@ -21,7 +21,10 @@ async function currentUser() {
 }
 export async function loadAccountSetup(
   role: "client" | "freelancer",
-): Promise<Partial<FreelancerSetupValues>> {
+): Promise<{
+  values: Partial<FreelancerSetupValues>;
+  hasFreelancerProfile: boolean;
+}> {
   const user = await currentUser();
   const { data: profile, error } = await supabase
     .from("profiles")
@@ -41,7 +44,8 @@ export async function loadAccountSetup(
     shortBio: profile?.bio ?? "",
     existingAvatarUrl: profile?.avatar_url ?? "",
   };
-  if (role === "client") return shared;
+  if (role === "client")
+    return { values: shared, hasFreelancerProfile: false };
   const { data: freelancer, error: roleError } = await supabase
     .from("freelancer_profiles")
     .select(
@@ -50,7 +54,8 @@ export async function loadAccountSetup(
     .eq("user_id", user.id)
     .maybeSingle();
   check(roleError, "Load your freelancer profile");
-  if (!freelancer) return shared;
+  if (!freelancer)
+    return { values: shared, hasFreelancerProfile: false };
   const [categories, skills] = await Promise.all([
     supabase
       .from("freelancer_categories")
@@ -64,20 +69,23 @@ export async function loadAccountSetup(
   check(categories.error, "Load industries");
   check(skills.error, "Load skills");
   return {
-    ...shared,
-    headline: freelancer.headline ?? "",
-    hourlyRate:
-      freelancer.hourly_rate == null ? "" : String(freelancer.hourly_rate),
-    industries: categories.data?.map((row) => row.category_id) ?? [],
-    skills: skills.data?.map((row) => row.skill_id) ?? [],
-    yearsOfExperience: freelancer.years_of_experience ?? 0,
-    employmentPreference: freelancer.employment_preference ?? "",
-    portfolioWebsite: freelancer.portfolio_website ?? "",
-    linkedIn: freelancer.linkedin_url ?? "",
-    github: freelancer.github_url ?? "",
-    existingResumeUrl: freelancer.resume_url ?? "",
-    existingPortfolioSamples: freelancer.portfolio_sample_urls ?? [],
-    existingCertifications: freelancer.certification_urls ?? [],
+    hasFreelancerProfile: true,
+    values: {
+      ...shared,
+      headline: freelancer.headline ?? "",
+      hourlyRate:
+        freelancer.hourly_rate == null ? "" : String(freelancer.hourly_rate),
+      industries: categories.data?.map((row) => row.category_id) ?? [],
+      skills: skills.data?.map((row) => row.skill_id) ?? [],
+      yearsOfExperience: freelancer.years_of_experience ?? 0,
+      employmentPreference: freelancer.employment_preference ?? "",
+      portfolioWebsite: freelancer.portfolio_website ?? "",
+      linkedIn: freelancer.linkedin_url ?? "",
+      github: freelancer.github_url ?? "",
+      existingResumeUrl: freelancer.resume_url ?? "",
+      existingPortfolioSamples: freelancer.portfolio_sample_urls ?? [],
+      existingCertifications: freelancer.certification_urls ?? [],
+    },
   };
 }
 // Retrying the same selected file does not create another upload. No ID images

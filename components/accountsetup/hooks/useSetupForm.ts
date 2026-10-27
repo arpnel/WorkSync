@@ -44,6 +44,7 @@ export function useSetupForm(role: "client" | "freelancer") {
   >({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+  const [hasFreelancerProfile, setHasFreelancerProfile] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [reload, setReload] = useState(0);
   const submitting = useRef(false);
@@ -52,8 +53,9 @@ export function useSetupForm(role: "client" | "freelancer") {
     void loadAccountSetup(role)
       .then((saved) => {
         if (!alive) return;
-        setValues({ ...initial, ...saved });
-        setPhotoPreview(saved.existingAvatarUrl ?? "");
+        setValues({ ...initial, ...saved.values });
+        setHasFreelancerProfile(saved.hasFreelancerProfile);
+        setPhotoPreview(saved.values.existingAvatarUrl ?? "");
         setLoadError("");
       })
       .catch((error) => {
@@ -159,7 +161,10 @@ export function useSetupForm(role: "client" | "freelancer") {
     }
     handleChange(field, [...values[field], ...additions]);
   }
-  async function handleSubmit(afterProfileSaved?: () => Promise<void>) {
+  async function handleSubmit(
+    afterProfileSaved?: () => Promise<void>,
+    stayOnPage = false,
+  ) {
     if (submitting.current || isLoadingProfile || loadError) return;
     const result =
       role === "client"
@@ -177,16 +182,21 @@ export function useSetupForm(role: "client" | "freelancer") {
       if (role === "client") await submitClientSetup(values);
       else await submitFreelancerSetup(values);
       profileSaved = true;
+      if (role === "freelancer") setHasFreelancerProfile(true);
       await afterProfileSaved?.();
       toast.success(
-        "Profile setup saved. Identity verification has its own status.",
+        stayOnPage
+          ? "Profile saved. You can submit your seller and tax documents below."
+          : "Profile setup saved. Identity verification has its own status.",
       );
-      router.push("/home/dashboard");
-      router.refresh();
+      if (!stayOnPage) {
+        router.push("/home/dashboard");
+        router.refresh();
+      }
     } catch (error) {
       toast.error(
         profileSaved
-          ? `${error instanceof Error ? error.message : "Document submission failed."} Your profile is saved; retry the upload or submit it later in Settings.`
+          ? `${error instanceof Error ? error.message : "Document submission failed."} Your profile is saved; retry this step here.`
           : error instanceof Error
             ? error.message
             : "Profile setup could not be saved. Please retry.",
@@ -202,6 +212,7 @@ export function useSetupForm(role: "client" | "freelancer") {
     errors,
     isSubmitting,
     isLoadingProfile,
+    hasFreelancerProfile,
     loadError,
     retryLoad,
     handleChange,

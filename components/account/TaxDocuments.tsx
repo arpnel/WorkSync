@@ -231,10 +231,6 @@ export default function TaxDocuments({ setupMode = false }: { setupMode?: boolea
 
   return (
     <div className="space-y-4">
-      <header>
-        <h2 className="text-lg font-semibold">Documentation</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Manage seller registration and tax documents.</p>
-      </header>
       {loading && <div className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" /> Loading tax documents…</div>}
       {!loading && setupRequired && <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Save your freelancer profile below to enable secure document submissions here. You can submit Form 2303 and applicable tax documents without leaving account setup.</p>}
       {!loading && !setupRequired && <>

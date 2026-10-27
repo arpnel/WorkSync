@@ -36,12 +36,6 @@ export const ADMIN_NAV_GROUPS = [
         description: "Monitor verified payment activity when connected.",
       },
       {
-        href: "/admin/financial/tax",
-        label: "Tax & declarations",
-        icon: ClipboardCheck,
-        description: "Review freelancer tax declarations and settings.",
-      },
-      {
         href: "/admin/jobs",
         label: "Job Monitoring",
         icon: Briefcase,
@@ -84,10 +78,10 @@ export const ADMIN_NAV_GROUPS = [
         description: "Review submitted identity and address documents.",
       },
       {
-        href: "/admin/seller-verification",
-        label: "Seller verification",
-        icon: ShieldCheck,
-        description: "Review freelancer documents required to offer services.",
+        href: "/admin/financial/tax",
+        label: "Seller & tax review",
+        icon: ClipboardCheck,
+        description: "Review tax declarations, seller documents, and additional requirements.",
       },
       {
         href: "/admin/disputes",

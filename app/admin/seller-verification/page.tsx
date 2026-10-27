@@ -1,5 +1,5 @@
-import { FreelancerSellerVerificationReview } from "@/components/admin/FreelancerSellerVerificationReview";
+import { redirect } from "next/navigation";
 
 export default function Page() {
-  return <FreelancerSellerVerificationReview />;
+  redirect("/admin/financial/tax#additional-seller-requirements");
 }

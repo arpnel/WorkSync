@@ -251,7 +251,7 @@ function parseResponse<S extends z.ZodTypeAny>(
   return result.data;
 }
 export function parseAdminRecords(value: unknown, rpc: string, offset = 0) {
-  if (rpc === "worksync_list_disputes") {
+  if (rpc === "worksync_list_disputes" || rpc === "worksync_admin_disputes_page") {
     const page = Array.isArray(value)
       ? null
       : parseResponse(disputePageSchema, value, rpc);

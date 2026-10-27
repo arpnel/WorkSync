@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
 import { LogoIcon } from "@/components/shared/logo";
-import { ADMIN_NAV_ITEMS } from "./admin-navigation";
+import { getActiveAdminNavItem } from "./admin-navigation";
 export default function AdminHeader() {
   const pathname = usePathname();
   return (
@@ -21,11 +21,7 @@ export default function AdminHeader() {
       </Link>
       <span className="mx-2 hidden h-5 border-l sm:block" aria-hidden="true" />
       <span className="hidden min-w-0 truncate text-sm text-muted-foreground sm:block">
-        {ADMIN_NAV_ITEMS.find(
-          (item) =>
-            item.href === pathname ||
-            (item.href !== "/admin" && pathname.startsWith(item.href + "/")),
-        )?.label ?? "Workspace"}
+        {getActiveAdminNavItem(pathname)?.label ?? "Workspace"}
       </span>
       <Badge variant="secondary" className="ml-auto rounded-full px-3 py-1">
         Admin workspace

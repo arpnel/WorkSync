@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function Page() {
-  redirect("/admin/financial/tax#additional-seller-requirements");
+  redirect("/admin/financial/tax");
 }

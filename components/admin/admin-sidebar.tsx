@@ -12,14 +12,14 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
-import { ADMIN_NAV_GROUPS } from "./admin-navigation";
+import { ADMIN_NAV_GROUPS, getActiveAdminNavItem } from "./admin-navigation";
 
 export default function AdminSidebar() {
   const pathname = usePathname();
   const { setOpenMobile, isMobile, state } = useSidebar();
   const collapsed = !isMobile && state === "collapsed";
-  const isActive = (href: string) =>
-    pathname === href || (href !== "/admin" && pathname.startsWith(href + "/"));
+  const activeNavItem = getActiveAdminNavItem(pathname);
+  const isActive = (href: string) => activeNavItem?.href === href;
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(
       ADMIN_NAV_GROUPS.map((group) => [
@@ -31,16 +31,12 @@ export default function AdminSidebar() {
 
   useEffect(() => {
     const activeGroup = ADMIN_NAV_GROUPS.find((group) =>
-      group.items.some(
-        (item) =>
-          pathname === item.href ||
-          (item.href !== "/admin" && pathname.startsWith(item.href + "/")),
-      ),
+      group.items.some((item) => item.href === activeNavItem?.href),
     );
     if (activeGroup) {
       setOpenGroups((current) => ({ ...current, [activeGroup.label]: true }));
     }
-  }, [pathname]);
+  }, [pathname, activeNavItem?.href]);
 
   return (
     <Sidebar collapsible="icon" className="top-16 h-[calc(100dvh-4rem)]">

@@ -81,7 +81,7 @@ export const ADMIN_NAV_GROUPS = [
         href: "/admin/financial/tax",
         label: "Seller & tax review",
         icon: ClipboardCheck,
-        description: "Review tax declarations, seller documents, and additional requirements.",
+        description: "Review freelancer tax declarations and seller documents.",
       },
       {
         href: "/admin/disputes",
@@ -147,3 +147,9 @@ export const ADMIN_NAV_ITEMS = ADMIN_NAV_GROUPS.reduce<AdminNavItem[]>(
   },
   [],
 );
+
+export function getActiveAdminNavItem(pathname: string) {
+  return ADMIN_NAV_ITEMS
+    .filter(item => item.href === pathname || (item.href !== "/admin" && pathname.startsWith(item.href + "/")))
+    .sort((left, right) => right.href.length - left.href.length)[0];
+}

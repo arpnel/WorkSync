@@ -56,7 +56,7 @@ export async function getAdminRecords(
   offset: number,
 ): Promise<AdminResult> {
   const rpc =
-    module === "disputes" ? "worksync_list_disputes" : "worksync_admin_records";
+    module === "disputes" ? "worksync_admin_disputes_page" : "worksync_admin_records";
   return parseAdminRecords(
     await adminRead(rpc, {
       ...(module === "disputes"

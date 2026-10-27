@@ -156,24 +156,30 @@ export function createReceiptPdf(details: ReceiptDetails) {
     put(details.paidAt ? new Date(details.paidAt).toLocaleString("en-PH", { timeZone: "Asia/Manila", month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true }) : "Payment date not recorded", 72, 647, 8, false, "0.39 0.43 0.48");
     y = 610;
   }
-  const detail = (label: string, value: string) => {
+  const detail = (label: string, value: string, divider = true) => {
     const count = putRight(value, y, 9, true, "0.13 0.16 0.20");
     put(label, 54, y, 9, false, "0.34 0.39 0.44");
     y -= Math.max(21, count * 13);
-    line(y + 7); y -= 6;
+    if (divider) { line(y + 7); y -= 6; }
   };
   if (!isClient) {
     section("Transaction details");
-    detail("Receipt number", details.receiptNumber);
-    detail("Project / Service", details.project);
-    detail("Payment method", details.paymentMethod);
-    if (details.paymentReference) detail("PayMongo payment reference", details.paymentReference);
-    if (details.checkoutReference) detail("PayMongo checkout reference", details.checkoutReference);
-    detail("Client", details.clientName + (details.clientRegisteredName ? " (" + details.clientRegisteredName + ")" : ""));
-    detail("Freelancer", details.freelancerName + (details.freelancerRegisteredName ? " (" + details.freelancerRegisteredName + ")" : ""));
+    if (isFreelancer) {
+      put("Receipt number", 54, y, 8, false, "0.39 0.43 0.48");
+      y -= 13;
+      const receiptLines = putLeftLines(details.receiptNumber, 54, y, 9, true, "0.13 0.16 0.20", 86);
+      y -= receiptLines * 13 + 8;
+    } else detail("Receipt number", details.receiptNumber);
+    detail("Project / Service", details.project, !isFreelancer);
+    detail("Payment method", details.paymentMethod, !isFreelancer);
+    if (!isFreelancer && details.paymentReference) detail("PayMongo payment reference", details.paymentReference);
+    if (!isFreelancer && details.checkoutReference) detail("PayMongo checkout reference", details.checkoutReference);
+    detail("Client", details.clientName + (details.clientRegisteredName ? " (" + details.clientRegisteredName + ")" : ""), !isFreelancer);
+    detail("Freelancer", details.freelancerName + (details.freelancerRegisteredName ? " (" + details.freelancerRegisteredName + ")" : ""), !isFreelancer);
     y -= 8;
+    if (isFreelancer) { line(y); y -= 22; }
   }
-  if (!isClient) section("Payment breakdown");
+  if (!isClient && !isFreelancer) section("Payment breakdown");
   const taxNotes = details.taxLines.map((taxLine, index) => {
     const notes = [];
     if (taxLine.freelancerVat > 0) notes.push((details.audience === "client" ? "VAT included in service price: " : "Freelancer VAT: ") + php(taxLine.freelancerVat) + " (" + (taxLine.freelancerVatRate * 100).toFixed(2) + "% of " + php(taxLine.freelancerVatBase) + (details.audience === "client" ? "" : "; " + taxLine.freelancerVatRule) + ")");
@@ -188,14 +194,14 @@ export function createReceiptPdf(details: ReceiptDetails) {
   const breakdownHeight = details.audience === "freelancer"
       ? 39 + (details.freelancerVat > 0 ? 39 : 0) + 39 + 39
       : 36 + 39 + taxRowHeight + platformVatHeight;
-  if (!isClient) box(54, y - breakdownHeight - 5, 504, breakdownHeight + 12, "1 1 1", "0.87 0.89 0.91");
-  const breakdownLeft = isClient ? 54 : 70;
-  const breakdownRow = (label: string, note: string, value: string, height = 39) => {
+  if (!isClient && !isFreelancer) box(54, y - breakdownHeight - 5, 504, breakdownHeight + 12, "1 1 1", "0.87 0.89 0.91");
+  const breakdownLeft = isClient || isFreelancer ? 54 : 70;
+  const breakdownRow = (label: string, note: string, value: string, height = 39, divider = true) => {
     put(label, breakdownLeft, y, 10, true, "0.13 0.16 0.20");
     if (note) putLeftLines(note, breakdownLeft, y - 13, 8, false, "0.39 0.43 0.48", 68);
     if (value) putRight(value, y - 2, 9, false, "0.29 0.34 0.40");
     y -= height;
-    line(y + 1, "0.90 0.92 0.94");
+    if (divider) line(y + 1, "0.90 0.92 0.94");
   };
   if (isClient) {
     const savedPayoutVatBase = details.taxLines.reduce((total, row) => total + row.freelancerVatBase, 0);
@@ -243,15 +249,28 @@ export function createReceiptPdf(details: ReceiptDetails) {
     line(y);
     y -= 14;
   } else if (details.audience === "freelancer") {
-    breakdownRow("Gross earnings", "Saved payout amount before deductions", details.serviceGrossEarnings == null ? "Not recorded" : php(details.serviceGrossEarnings), 39);
-    if (details.freelancerVat > 0) breakdownRow("Freelancer VAT", "Included in the saved agreed amount", php(details.freelancerVat), 39);
-    breakdownRow("Marketplace withholding", details.withholding > 0 ? "Deducted from freelancer payout" : "No withholding amount is recorded for this payout", php(details.withholding), 39);
+    section("Payout breakdown");
+    breakdownRow("Gross Earnings", "Earnings before withholding tax.", details.serviceGrossEarnings == null ? "Not recorded" : php(details.serviceGrossEarnings), 48, false);
+    breakdownRow("Withholding Tax", "Tax withheld from freelancer earnings.", details.taxLines.length ? php(details.withholding) : "Not recorded", 48, false);
     const payoutStatuses = [...new Set(details.taxLines.map(line => line.payoutStatus).filter((status): status is string => Boolean(status)))];
-    const payoutReferences = [...new Set(details.taxLines.map(line => line.transferReference).filter((reference): reference is string => Boolean(reference)))];
-    const payoutStatusNote = payoutStatuses.length
-      ? `Saved net amount; transfer status: ${payoutStatuses.join(", ")}${payoutReferences.length ? `; PayMongo transfer reference: ${payoutReferences.join(", ")}` : ""}`
-      : "Saved net amount; payout transfer status not recorded";
-    breakdownRow("Net payout amount", payoutStatusNote, details.freelancerNetPayout == null ? "Not recorded" : php(details.freelancerNetPayout), 39);
+    const netPayoutNote = "Final payout amount." + (payoutStatuses.length ? " Transfer status: " + payoutStatuses.join(", ") + "." : "");
+    breakdownRow("Net Payout Amount", netPayoutNote, details.freelancerNetPayout == null ? "Not recorded" : php(details.freelancerNetPayout), 48, false);
+    y -= 3;
+    line(y);
+    y -= 22;
+    section("Payment references");
+    const payoutReference = (label: string, value?: string | null) => {
+      if (!value) return;
+      put(label, 54, y, 8, false, "0.39 0.43 0.48");
+      y -= 13;
+      const lines = putLeftLines(value, 54, y, 9, false, "0.13 0.16 0.20", 86);
+      y -= lines * 13 + 9;
+    };
+    payoutReference("PayMongo payment reference", details.paymentReference);
+    payoutReference("PayMongo checkout reference", details.checkoutReference);
+    y -= 3;
+    line(y);
+    y -= 18;
   } else {
     breakdownRow("Client payment", "", php(details.amount), 36);
     breakdownRow("WorkSync service fee", details.platformServiceFee == null ? "Fee details not recorded" : "", details.platformServiceFee == null ? "Not available" : php(details.platformServiceFee), 39);
@@ -298,7 +317,7 @@ export function createReceiptPdf(details: ReceiptDetails) {
     wrappedCorrection.forEach((value, index) => put(value, 66, y - 14 - index * 13, 8, false, "0.30 0.26 0.39"));
     y -= correctionHeight + 16;
   } else if (!isClient) {
-    put("Receipt issued " + (details.receiptIssuedAt ? new Date(details.receiptIssuedAt).toLocaleString("en-PH", { timeZone: "Asia/Manila", month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true }) : "Not recorded"), 54, y, 8, false, "0.39 0.43 0.48");
+    put((isFreelancer ? "Statement issued " : "Receipt issued ") + (details.receiptIssuedAt ? new Date(details.receiptIssuedAt).toLocaleString("en-PH", { timeZone: "Asia/Manila", month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true }) : "Not recorded"), 54, y, 8, false, "0.39 0.43 0.48");
     y -= 18;
   }
   if (y < 105) nextPage();
@@ -310,8 +329,13 @@ export function createReceiptPdf(details: ReceiptDetails) {
     put(footerNote, (612 - pdfTextWidth(footerNote, 8)) / 2, 64, 8, false, "0.39 0.43 0.48");
     put(issuedAt, (612 - pdfTextWidth(issuedAt, 8)) / 2, 50, 8, false, "0.39 0.43 0.48");
   } else {
-    put("This is a WorkSync system-generated transaction receipt,", 78, 64, 8, false, "0.39 0.43 0.48");
-    put("not an official BIR invoice or receipt.", 78, 52, 8, false, "0.39 0.43 0.48");
+    if (isFreelancer) {
+      put("This is a WorkSync system-generated payout statement,", 78, 64, 8, false, "0.39 0.43 0.48");
+      put("not an official BIR invoice or receipt.", 78, 52, 8, false, "0.39 0.43 0.48");
+    } else {
+      put("This is a WorkSync system-generated transaction receipt,", 78, 64, 8, false, "0.39 0.43 0.48");
+      put("not an official BIR invoice or receipt.", 78, 52, 8, false, "0.39 0.43 0.48");
+    }
   }
   const encoder = new TextEncoder(); const objects: string[] = [];
   const pageIds = pages.map((_, index) => 3 + index); const regularId = 3 + pages.length; const boldId = regularId + 1; const imageId = details.logoJpeg ? boldId + 1 : null; const contentStartId = imageId ?? boldId; const contentIds = pages.map((_, index) => contentStartId + 1 + index);

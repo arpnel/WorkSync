@@ -236,9 +236,9 @@ test("client receipt PDF never renders freelancer withholding or earnings, while
   assert.doesNotMatch(clientPdf, /Marketplace withholding|Gross earnings|Net payout|PHP 5\.00/);
   const freelancerDetails = receipt.receiptDetailsFromSnapshot(visibility.receiptForAudience(full, "freelancer"));
   const freelancerPdf = await receipt.createReceiptPdf(freelancerDetails).text();
-  assert.match(freelancerPdf, /Gross earnings/);
-  assert.match(freelancerPdf, /Marketplace withholding/);
-  assert.match(freelancerPdf, /Net payout/);
+  assert.match(freelancerPdf, /Gross Earnings/);
+  assert.match(freelancerPdf, /Withholding Tax/);
+  assert.match(freelancerPdf, /Net Payout Amount/);
 });
 test("new client receipt snapshot shows base price plus separately added freelancer VAT", async () => {
   const receipt = load("lib/payments/receiptPdf.ts");
@@ -429,7 +429,7 @@ test("receipt history freezes identity fields and tracks refunds from saved refu
   assert.match(api, /Authoritative refund status changed/);
 });
 
-test("freelancer receipt labels saved payout state and reference instead of implying settlement", async () => {
+test("freelancer payout statement renders its breakdown, status, and payment references", async () => {
   const receipt = load("lib/payments/receiptPdf.ts");
   const details = receipt.receiptDetailsFromSnapshot({ receipt_number: "WS-TR-PAYOUT-1", issued_at: "2026-10-25T10:00:00Z", snapshot: {
     clientPayment: 1000,
@@ -437,10 +437,26 @@ test("freelancer receipt labels saved payout state and reference instead of impl
     taxLines: [{ payoutId: "payout-1", taxableBase: 0, withholdingRate: 0, withholding: 0, withholdingRule: "none", exemptionStatus: "not applicable", freelancerVatBase: 1000, freelancerVatRate: 0, freelancerVat: 0, freelancerVatRule: "not configured", payoutStatus: "ready", transferReference: null }],
     serviceGrossEarnings: 1000,
     freelancerNetPayout: 1000,
+    withholding: 0,
+    paymentReference: "paymongo-payment-reference-long-enough-to-wrap-cleanly",
+    checkoutReference: "paymongo-checkout-reference-long-enough-to-wrap-cleanly",
   } });
   const pdf = await receipt.createReceiptPdf({ ...details, audience: "freelancer" }).text();
-  assert.match(pdf, /Net payout amount/);
-  assert.match(pdf, /transfer status: ready/);
+  assert.match(pdf, /FREELANCER PAYOUT STATEMENT/);
+  assert.match(pdf, /NET PAYOUT TO FREELANCER/);
+  assert.match(pdf, /PAYOUT BREAKDOWN/);
+  assert.match(pdf, /Gross Earnings/);
+  assert.match(pdf, /Withholding Tax/);
+  assert.match(pdf, /Net Payout Amount/);
+  assert.match(pdf, /Transfer status: ready/);
+  assert.match(pdf, /PAYMENT REFERENCES/);
+  assert.match(pdf, /PayMongo payment reference/);
+  assert.match(pdf, /paymongo-payment-reference-long-enough-to-wrap-cleanly/);
+  assert.match(pdf, /PayMongo checkout reference/);
+  assert.match(pdf, /paymongo-checkout-reference-long-enough-to-wrap-cleanly/);
+  assert.match(pdf, /not an official BIR invoice or receipt/);
+  assert.ok(pdf.indexOf("Receipt number") < pdf.indexOf("Project / Service"));
+  assert.ok(pdf.indexOf("PAYMENT REFERENCES") > pdf.indexOf("PAYOUT BREAKDOWN"));
   assert.doesNotMatch(pdf, /Transferred PHP 1,000\.00/);
 });
 

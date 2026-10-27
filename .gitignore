@@ -35,9 +35,7 @@ pnpm-debug.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Local documentation and development artifacts
-/docs/*
-!/docs/SYSTEM_SCOPE.md
+# Local development artifacts
 /.pnpm-store/
 
 # Keep local test suite and Supabase project files out of the GitHub repository

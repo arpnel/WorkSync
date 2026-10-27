@@ -293,7 +293,7 @@ export function PaymentPanel({
               {payment.vatBreakdown.status === "applicable" && (
               <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
                 <dt className="text-muted-foreground">
-                  Freelancer service VAT ({((payment.vatBreakdown.rate ?? 0) * 100).toFixed(0)}%)
+                  VAT ({((payment.vatBreakdown.rate ?? 0) * 100).toFixed(0)}%)
                 </dt>
                 <dd className="tabular-nums">{money(payment.vatBreakdown.amount ?? undefined)}</dd>
               </div>
@@ -321,9 +321,6 @@ export function PaymentPanel({
             <p className="text-xs text-muted-foreground">
               {payment.checkoutMessage ?? "VAT breakdown is unavailable. Contact support before checkout."}
             </p>
-          )}
-          {payment?.checkoutAllowed !== false && payment?.vatBreakdown?.reviewNotice && (
-            <p className="text-xs text-amber-600">{payment.vatBreakdown.reviewNotice}</p>
           )}
           {payment?.checkoutAllowed === false && payment.checkoutMessage &&
             payment.vatBreakdown?.status !== "review_required" &&

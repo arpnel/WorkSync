@@ -31,6 +31,7 @@ export type ReceiptDetails = {
   correctionDifferences?: Record<string, { previous: unknown; current: unknown }>;
   documentType: string;
   project: string;
+  transactionType?: "project" | "service";
   amount: number;
   clientServiceVatBase?: number | null;
   clientServiceVatRate?: number | null;
@@ -94,6 +95,7 @@ export function receiptDetailsFromSnapshot(receipt: { receipt_number: string; is
     correctionDifferences: snapshot.differences && typeof snapshot.differences === "object" ? snapshot.differences as Record<string, { previous: unknown; current: unknown }> : undefined,
     documentType: String(snapshot.documentTypeLabel ?? "WorkSync system-generated transaction receipt"),
     project: String(snapshot.projectDescription ?? "Project or service"),
+    transactionType: snapshot.transactionType === "service" ? "service" : "project",
     amount: numeric("clientPayment"), paidAt: typeof snapshot.transactionDate === "string" ? snapshot.transactionDate : null,
     clientServiceVatBase: optionalNumeric("clientServiceVatBase"),
     clientServiceVatRate: optionalNumeric("clientServiceVatRate"),
@@ -128,32 +130,50 @@ export function createReceiptPdf(details: ReceiptDetails) {
   };
   const line = (baseline: number, color = "0.86 0.89 0.91") => page.push(color + " RG 54 " + baseline + " m 558 " + baseline + " l S");
   const box = (x: number, bottom: number, width: number, height: number, fill: string, stroke: string) => page.push("q " + fill + " rg " + x + " " + bottom + " " + width + " " + height + " re f " + stroke + " RG " + x + " " + bottom + " " + width + " " + height + " re S Q");
-  const section = (label: string) => { put(label.toUpperCase(), 54, y, 10, true, "0.18 0.24 0.31"); y -= 20; };
+  const section = (label: string) => { put(isClient ? label : label.toUpperCase(), 54, y, 10, true, "0.18 0.24 0.31"); y -= 20; };
 
+  const isFreelancer = details.audience === "freelancer";
+  const isClient = details.audience === "client";
+  const headlineAmount = isFreelancer ? details.freelancerNetPayout : details.amount;
   put("WorkSync", details.logoJpeg ? 104 : 54, 750, 14, true, "0.10 0.20 0.34");
   if (details.logoJpeg) page.push("q 44 0 0 40 54 725 cm /Im1 Do Q");
-  const isFreelancer = details.audience === "freelancer";
   putRight(isFreelancer ? "FREELANCER PAYOUT STATEMENT" : "PAYMENT RECEIPT", 750, isFreelancer ? 13 : 16, true, "0.08 0.11 0.16");
-  box(54, 636, 504, 76, "0.97 0.99 0.98", "0.87 0.91 0.89");
-  const headlineAmount = isFreelancer ? details.freelancerNetPayout : details.amount;
-  put(isFreelancer ? "NET PAYOUT TO FREELANCER" : "TOTAL PAID BY CLIENT", 72, 690, 9, true, "0.39 0.43 0.48");
-  put(headlineAmount == null ? "Not recorded" : php(headlineAmount), 72, 665, 20, true, "0.08 0.11 0.16");
-  put(details.paidAt ? new Date(details.paidAt).toLocaleString("en-PH", { timeZone: "Asia/Manila", month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true }) : "Payment date not recorded", 72, 647, 8, false, "0.39 0.43 0.48");
-  y = 610; section("Transaction details");
+  if (isClient) {
+    putRight("Paid", 729, 9, true, "0.12 0.48 0.28");
+    putRight(details.paidAt ? new Date(details.paidAt).toLocaleDateString("en-PH", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric" }) : "Date not recorded", 715, 8, false, "0.39 0.43 0.48");
+    put("Receipt No.", 350, 729, 8, false, "0.39 0.43 0.48");
+    const receiptLines = wrap(details.receiptNumber, 32);
+    receiptLines.forEach((value, index) => put(value, 350, 715 - index * 12, 8, true, "0.13 0.16 0.20"));
+    const totalLabelY = Math.min(672, 703 - (receiptLines.length - 1) * 12 - 20);
+    put("Total paid", 54, totalLabelY, 9, false, "0.39 0.43 0.48");
+    put(headlineAmount == null ? "Not recorded" : php(headlineAmount), 54, totalLabelY - 24, 18, true, "0.08 0.11 0.16");
+    y = totalLabelY - 57;
+  }
+  if (!isClient) {
+    box(54, 636, 504, 76, "0.97 0.99 0.98", "0.87 0.91 0.89");
+    put(isFreelancer ? "NET PAYOUT TO FREELANCER" : "TOTAL PAID BY CLIENT", 72, 690, 9, true, "0.39 0.43 0.48");
+    put(headlineAmount == null ? "Not recorded" : php(headlineAmount), 72, 665, 20, true, "0.08 0.11 0.16");
+    put(details.paidAt ? new Date(details.paidAt).toLocaleString("en-PH", { timeZone: "Asia/Manila", month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true }) : "Payment date not recorded", 72, 647, 8, false, "0.39 0.43 0.48");
+    y = 610;
+  }
   const detail = (label: string, value: string) => {
     const count = putRight(value, y, 9, true, "0.13 0.16 0.20");
     put(label, 54, y, 9, false, "0.34 0.39 0.44");
     y -= Math.max(21, count * 13);
     line(y + 7); y -= 6;
   };
-  detail("Receipt number", details.receiptNumber);
-  detail("Project / Service", details.project);
-  detail("Payment method", details.paymentMethod);
-  if (details.paymentReference) detail("PayMongo payment reference", details.paymentReference);
-  if (details.checkoutReference) detail("PayMongo checkout reference", details.checkoutReference);
-  detail("Client", details.clientName + (details.clientRegisteredName ? " (" + details.clientRegisteredName + ")" : ""));
-  detail("Freelancer", details.freelancerName + (details.freelancerRegisteredName ? " (" + details.freelancerRegisteredName + ")" : ""));
-  y -= 8; section("Payment breakdown");
+  if (!isClient) {
+    section("Transaction details");
+    detail("Receipt number", details.receiptNumber);
+    detail("Project / Service", details.project);
+    detail("Payment method", details.paymentMethod);
+    if (details.paymentReference) detail("PayMongo payment reference", details.paymentReference);
+    if (details.checkoutReference) detail("PayMongo checkout reference", details.checkoutReference);
+    detail("Client", details.clientName + (details.clientRegisteredName ? " (" + details.clientRegisteredName + ")" : ""));
+    detail("Freelancer", details.freelancerName + (details.freelancerRegisteredName ? " (" + details.freelancerRegisteredName + ")" : ""));
+    y -= 8;
+  }
+  if (!isClient) section("Payment breakdown");
   const taxNotes = details.taxLines.map((taxLine, index) => {
     const notes = [];
     if (taxLine.freelancerVat > 0) notes.push((details.audience === "client" ? "VAT included in service price: " : "Freelancer VAT: ") + php(taxLine.freelancerVat) + " (" + (taxLine.freelancerVatRate * 100).toFixed(2) + "% of " + php(taxLine.freelancerVatBase) + (details.audience === "client" ? "" : "; " + taxLine.freelancerVatRule) + ")");
@@ -165,15 +185,11 @@ export function createReceiptPdf(details: ReceiptDetails) {
   });
   const taxRowHeight = !details.taxLines.length || details.taxLines.length > 4 ? 39 : Math.max(52, Math.ceil(taxNotes.join(" | ").length / 68) * 13 + 25);
   const platformVatHeight = details.platformVat != null ? 39 : (details.platformTaxNote ? 48 : 0);
-  const breakdownHeight = details.audience === "client"
-    ? details.clientServiceVatBase != null
-      ? 39 * 3
-      : 36 + (details.clientServiceVat != null ? 39 : taxRowHeight)
-    : details.audience === "freelancer"
+  const breakdownHeight = details.audience === "freelancer"
       ? 39 + (details.freelancerVat > 0 ? 39 : 0) + 39 + 39
       : 36 + 39 + taxRowHeight + platformVatHeight;
-  box(54, y - breakdownHeight - 5, 504, breakdownHeight + 12, "1 1 1", "0.87 0.89 0.91");
-  const breakdownLeft = details.audience === "client" ? 54 : 70;
+  if (!isClient) box(54, y - breakdownHeight - 5, 504, breakdownHeight + 12, "1 1 1", "0.87 0.89 0.91");
+  const breakdownLeft = isClient ? 54 : 70;
   const breakdownRow = (label: string, note: string, value: string, height = 39) => {
     put(label, breakdownLeft, y, 10, true, "0.13 0.16 0.20");
     if (note) putLeftLines(note, breakdownLeft, y - 13, 8, false, "0.39 0.43 0.48", 68);
@@ -181,19 +197,51 @@ export function createReceiptPdf(details: ReceiptDetails) {
     y -= height;
     line(y + 1, "0.90 0.92 0.94");
   };
-  if (details.audience === "client") {
-    if (details.clientServiceVatBase != null) {
-      const vatLabel = details.clientServiceVatRate == null
+  if (isClient) {
+    const savedPayoutVatBase = details.taxLines.reduce((total, row) => total + row.freelancerVatBase, 0);
+    const savedPayoutVat = details.taxLines.reduce((total, row) => total + row.freelancerVat, 0);
+    const feeBase = details.clientServiceVatBase ?? (details.taxLines.length ? savedPayoutVatBase : null);
+    const vatAmount = details.clientServiceVat ?? (details.taxLines.length ? savedPayoutVat : null);
+    const vatRate = details.clientServiceVatRate ?? details.taxLines[0]?.freelancerVatRate ?? (feeBase && vatAmount != null ? vatAmount / feeBase : null);
+    if (feeBase != null) {
+      const vatLabel = vatRate == null
         ? "VAT"
-        : `VAT (${(details.clientServiceVatRate * 100).toFixed(0)}%)`;
-      breakdownRow("Subtotal", "", php(details.clientServiceVatBase), 39);
-      breakdownRow(vatLabel, "", details.clientServiceVat == null ? "Not recorded" : php(details.clientServiceVat), 39);
-      breakdownRow("Total", "", php(details.amount), 39);
+        : `VAT (${(vatRate * 100).toFixed(0)}%)`;
+      breakdownRow(details.transactionType === "service" ? "Service Fee" : "Project Fee", "", php(feeBase), 25);
+      if (vatAmount != null) breakdownRow(vatLabel, "", php(vatAmount), 25);
     } else {
-      breakdownRow("Client payment", "", php(details.amount), 36);
-      if (!details.taxLines.length) breakdownRow("VAT breakdown", "No verified VAT amount is recorded for this payment", "Not recorded", 39);
-      else breakdownRow("VAT included in service price", taxNotes.join(" | "), details.freelancerVat > 0 ? php(details.freelancerVat) : "Not recorded", taxRowHeight);
+      breakdownRow(details.transactionType === "service" ? "Service Fee" : "Project Fee", "", php(details.amount), 25);
     }
+    y -= 8;
+    line(y);
+    y -= 22;
+    section("Transaction Details");
+    const clientDetail = (label: string, value: string) => {
+      put(label, 54, y, 8, false, "0.39 0.43 0.48");
+      putRight(value, y, 9, false, "0.13 0.16 0.20");
+      y -= 22;
+    };
+    clientDetail("Project / Service", details.project);
+    clientDetail("Client", details.clientName);
+    clientDetail("Freelancer", details.freelancerName);
+    clientDetail("Payment method", details.paymentMethod);
+    clientDetail("Payment date", details.paidAt ? new Date(details.paidAt).toLocaleString("en-PH", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true }) : "Not recorded");
+    y -= 4;
+    line(y);
+    y -= 22;
+    section("Transaction Reference");
+    const reference = (label: string, value?: string | null) => {
+      if (!value) return;
+      put(label, 54, y, 8, false, "0.39 0.43 0.48");
+      y -= 13;
+      const lines = putLeftLines(value, 54, y, 8, false, "0.13 0.16 0.20", 86);
+      y -= lines * 12 + 8;
+    };
+    reference("PayMongo Payment ID", details.paymentReference);
+    reference("Checkout Session ID", details.checkoutReference);
+    y -= 4;
+    line(y);
+    y -= 14;
   } else if (details.audience === "freelancer") {
     breakdownRow("Gross earnings", "Saved payout amount before deductions", details.serviceGrossEarnings == null ? "Not recorded" : php(details.serviceGrossEarnings), 39);
     if (details.freelancerVat > 0) breakdownRow("Freelancer VAT", "Included in the saved agreed amount", php(details.freelancerVat), 39);
@@ -249,14 +297,20 @@ export function createReceiptPdf(details: ReceiptDetails) {
     box(54, y - correctionHeight, 504, correctionHeight, "0.99 0.98 1", "0.91 0.86 0.97");
     wrappedCorrection.forEach((value, index) => put(value, 66, y - 14 - index * 13, 8, false, "0.30 0.26 0.39"));
     y -= correctionHeight + 16;
-  } else {
+  } else if (!isClient) {
     put("Receipt issued " + (details.receiptIssuedAt ? new Date(details.receiptIssuedAt).toLocaleString("en-PH", { timeZone: "Asia/Manila", month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true }) : "Not recorded"), 54, y, 8, false, "0.39 0.43 0.48");
     y -= 18;
   }
   if (y < 105) nextPage();
-  page.push("0.84 0.88 0.91 RG [2 3] 0 d 54 82 m 558 82 l S [] 0 d");
-  put("This is a WorkSync system-generated transaction receipt,", 78, 64, 8, false, "0.39 0.43 0.48");
-  put("not an official BIR invoice or receipt.", 78, 52, 8, false, "0.39 0.43 0.48");
+  if (isClient) line(82);
+  else page.push("0.84 0.88 0.91 RG [2 3] 0 d 54 82 m 558 82 l S [] 0 d");
+  if (isClient) {
+    put("System-generated payment receipt. Not a BIR invoice.", 135, 64, 8, false, "0.39 0.43 0.48");
+    put("Issued " + (details.receiptIssuedAt ? new Date(details.receiptIssuedAt).toLocaleString("en-PH", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true }) : "Not recorded"), 205, 50, 8, false, "0.39 0.43 0.48");
+  } else {
+    put("This is a WorkSync system-generated transaction receipt,", 78, 64, 8, false, "0.39 0.43 0.48");
+    put("not an official BIR invoice or receipt.", 78, 52, 8, false, "0.39 0.43 0.48");
+  }
   const encoder = new TextEncoder(); const objects: string[] = [];
   const pageIds = pages.map((_, index) => 3 + index); const regularId = 3 + pages.length; const boldId = regularId + 1; const imageId = details.logoJpeg ? boldId + 1 : null; const contentStartId = imageId ?? boldId; const contentIds = pages.map((_, index) => contentStartId + 1 + index);
   objects.push("<< /Type /Catalog /Pages 2 0 R >>"); objects.push("<< /Type /Pages /Kids [" + pageIds.map(id => id + " 0 R").join(" ") + "] /Count " + pages.length + " >>");

@@ -230,7 +230,9 @@ test("client receipt PDF never renders freelancer withholding or earnings, while
   const full = { receipt_number: "WS-TR-ROLE-1", issued_at: "2026-10-24T00:00:00Z", snapshot: { clientPayment: 1000, serviceGrossEarnings: 1000, freelancerNetPayout: 995, withholding: 5, freelancerVatBase: 888.89, freelancerVat: 111.11, taxLines: [{ taxableBase: 1000, withholdingRate: 0.005, withholding: 5, withholdingRule: "test rule", exemptionStatus: "none", freelancerVatBase: 888.89, freelancerVatRate: 0.12, freelancerVat: 111.11, freelancerVatRule: "VAT included" }] } };
   const clientDetails = receipt.receiptDetailsFromSnapshot(visibility.receiptForAudience(full, "client"));
   const clientPdf = await receipt.createReceiptPdf(clientDetails).text();
-  assert.match(clientPdf, /VAT included in service price/);
+  assert.match(clientPdf, /VAT \\\(12%\\\)/);
+  assert.match(clientPdf, /PHP 888\.89/);
+  assert.match(clientPdf, /PHP 111\.11/);
   assert.doesNotMatch(clientPdf, /Marketplace withholding|Gross earnings|Net payout|PHP 5\.00/);
   const freelancerDetails = receipt.receiptDetailsFromSnapshot(visibility.receiptForAudience(full, "freelancer"));
   const freelancerPdf = await receipt.createReceiptPdf(freelancerDetails).text();
@@ -244,18 +246,28 @@ test("new client receipt snapshot shows base price plus separately added freelan
   const saved = { receipt_number: "WS-TR-VAT-BASE-1", issued_at: "2026-10-26T10:00:00Z", snapshot: {
     receiptAudience: "client", clientPayment: 112, clientServiceVatBase: 100,
     clientServiceVatRate: 0.12, clientServiceVat: 12,
-    clientServiceVatRule: "Verified VAT registration", taxLines: [],
+    clientServiceVatRule: "Verified VAT registration", transactionType: "service",
+    projectDescription: "Service name", transactionDate: "2026-10-26T10:00:00Z", paymentMethod: "QR Ph",
+    paymentReference: "paymongo-payment-id-that-is-long-and-must-wrap", checkoutReference: "checkout-session-id-that-is-long-and-must-wrap",
+    client: { name: "Client Name" }, freelancer: { name: "Freelancer Name" }, taxLines: [],
   } };
   const details = receipt.receiptDetailsFromSnapshot(visibility.receiptForAudience(saved, "client"));
   const pdf = await receipt.createReceiptPdf(details).text();
-  assert.match(pdf, /Subtotal/);
+  assert.match(pdf, /Service Fee/);
   assert.match(pdf, /PHP 112\.00/);
-  assert.match(pdf, /Total/);
+  assert.match(pdf, /Total paid/);
+  assert.doesNotMatch(pdf, /Project Fee|Subtotal|Payment breakdown/);
   assert.match(pdf, /PHP 100\.00/);
   assert.match(pdf, /VAT \\\(12%\\\)/);
   assert.match(pdf, /PHP 12\.00/);
+  assert.match(pdf, /Transaction Reference/);
+  assert.match(pdf, /PayMongo Payment ID/);
+  assert.match(pdf, /Checkout Session ID/);
+  assert.match(pdf, /System-generated payment receipt\. Not a BIR invoice\./);
+  assert.equal((pdf.match(/PHP 112\.00/g) ?? []).length, 1, "total amount appears once");
   assert.doesNotMatch(pdf, /Freelancer service VAT|Verified VAT registration|added to the base price/);
-  assert.match(pdf, /54 \d+ Td \(Subtotal\)/);
+  assert.match(pdf, /54 \d+ Td \(Service Fee\)/);
+  assert.match(pdf, /WS-TR-VAT-BASE-1/);
   assert.doesNotMatch(pdf, /VAT included in service price/);
 });
 test("receipt PDF uses pending states for absent earnings and tax snapshots", async () => {
@@ -412,7 +424,7 @@ test("receipt history freezes identity fields and tracks refunds from saved refu
   assert.match(api, /from\("project_refunds"\)\.select\("refund_id,amount,status,provider_refund_id,refunded_at"\)/);
   assert.match(api, /transactionDate: payment\.paid_at/);
   assert.doesNotMatch(api, /transactionDate: payment\.paid_at \?\? new Date\(\)/);
-  assert.match(api, /\["transactionDate", "projectDescription", "client", "freelancer", "workSync"\]/);
+  assert.match(api, /\["transactionDate", "projectDescription", "transactionType", "client", "freelancer", "workSync"\]/);
   assert.match(api, /Authoritative refund status changed/);
 });
 

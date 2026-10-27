@@ -26,12 +26,14 @@ async function authorizedRequest(
 export function updatePasswordOnServer(
   password: string,
   currentPassword?: string,
+  nonce?: string,
 ): Promise<void> {
   return authorizedRequest(
     {
-      action: currentPassword ? "change" : "reset",
+      action: currentPassword ? "change" : nonce ? "set_password" : "reset",
       password,
       ...(currentPassword ? { currentPassword } : {}),
+      ...(nonce ? { nonce } : {}),
     },
     "Unable to change your password.",
   );
@@ -39,10 +41,21 @@ export function updatePasswordOnServer(
 
 export function changeEmailOnServer(
   email: string,
-  currentPassword: string,
+  currentPassword?: string,
+  nonce?: string,
 ): Promise<void> {
   return authorizedRequest(
-    { action: "change_email", email, currentPassword },
+    {
+      action: currentPassword ? "change_email" : "change_email_verified",
+      email,
+      ...(currentPassword ? { currentPassword } : {}),
+      ...(nonce ? { nonce } : {}),
+    },
     "Unable to request an email change.",
   );
+}
+
+export async function requestSecurityReauthentication(): Promise<void> {
+  const { error } = await supabase.auth.reauthenticate();
+  if (error) throw error;
 }

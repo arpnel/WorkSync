@@ -1,6 +1,5 @@
 import { PaymentError } from "@/lib/payments/paymongo";
 import { paymentResponse, paymentUser } from "@/services/payments/paymentServer";
-import { createSignedUrlMap } from "@/services/storage/signedUrlBatch";
 
 export const runtime = "nodejs";
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
@@ -26,17 +25,10 @@ export async function GET(request: Request) {
     if (eventsResult.error) throw new PaymentError("Tax review history is unavailable.");
     const events = new Map<string, unknown[]>();
     for (const event of eventsResult.data ?? []) events.set(event.document_id, [...(events.get(event.document_id) ?? []), event]);
-    const signedUrls = await createSignedUrlMap(
-      db,
-      "verification-documents",
-      (data ?? []).map((row) => row.document_path),
-      600,
-      { download: true },
-    );
     const documents = (data ?? []).map(row => {
       const expired = row.status === "verified" && row.expires_at && row.expires_at < new Date().toISOString().slice(0, 10);
       const config = configs.get(row.user_id);
-      return { ...row, review_events: events.get(row.document_id) ?? [], marketplace_withholding_applicable: marketplaceWithholdingEnabled && (config?.marketplace_withholding_applicable ?? false), freelancer_vat_applicable: config?.freelancer_vat_applicable ?? false, vat_classification: config?.vat_classification ?? "unverified", status: expired ? "expired" : row.status, document_url: signedUrls.get(row.document_path) ?? null };
+      return { ...row, review_events: events.get(row.document_id) ?? [], marketplace_withholding_applicable: marketplaceWithholdingEnabled && (config?.marketplace_withholding_applicable ?? false), freelancer_vat_applicable: config?.freelancer_vat_applicable ?? false, vat_classification: config?.vat_classification ?? "unverified", status: expired ? "expired" : row.status };
     });
     return json({ documents, marketplaceWithholdingEnabled });
   } catch (error) { return paymentResponse(error); }

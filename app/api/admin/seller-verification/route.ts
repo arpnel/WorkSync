@@ -1,7 +1,6 @@
 import { PaymentError } from "@/lib/payments/paymongo";
 import { paymentResponse, paymentUser } from "@/services/payments/paymentServer";
 import { notifySellerDocumentReviewed } from "@/services/email/sellerVerificationEmails";
-import { createSignedUrlMap } from "@/services/storage/signedUrlBatch";
 
 export const runtime = "nodejs";
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
@@ -35,18 +34,7 @@ export async function GET(request: Request) {
       db.from("freelancer_seller_verification_events").select("event_id,requirement_id,actor_id,actor_kind,action,previous_status,new_status,reason,created_at").in("requirement_id", ids).order("created_at", { ascending: false }),
     ]) : [{ data: [], error: null }, { data: [], error: null }];
     if (submissions.error || events.error) throw new PaymentError("Seller verification history is unavailable.");
-    const signedUrls = await createSignedUrlMap(
-      db,
-      "verification-documents",
-      (submissions.data ?? []).map((row) => row.document_path),
-      600,
-      { download: true },
-    );
-    const signedRows = (submissions.data ?? []).map((row) => ({
-      ...row,
-      document_url: signedUrls.get(row.document_path) ?? null,
-    }));
-    return json({ requirements: result.data ?? [], submissions: signedRows, events: events.data ?? [], documentationMigrationReady, legacyBirPendingCount });
+    return json({ requirements: result.data ?? [], submissions: submissions.data ?? [], events: events.data ?? [], documentationMigrationReady, legacyBirPendingCount });
   } catch (error) { return paymentResponse(error); }
 }
 

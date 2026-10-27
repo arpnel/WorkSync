@@ -1,11 +1,14 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import AdminDocumentLink from "@/components/admin/AdminDocumentLink";
+import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
-type Row = { declaration_id: string; user_id: string; tax_year: number; reported_threshold_status: string; document_path: string; document_url: string | null; status: string; submitted_at: string; reviewed_by: string | null; reviewed_at: string | null; review_notes: string; review_events: { event_id: string; reviewer_id: string; previous_status: string; new_status: string; reason: string; created_at: string }[]; freelancer_vat_applicable: boolean; marketplace_withholding_applicable: boolean };
+type Row = { declaration_id: string; user_id: string; tax_year: number; reported_threshold_status: string; document_path: string; status: string; submitted_at: string; reviewed_by: string | null; reviewed_at: string | null; review_notes: string; review_events: { event_id: string; reviewer_id: string; previous_status: string; new_status: string; reason: string; created_at: string }[]; freelancer_vat_applicable: boolean; marketplace_withholding_applicable: boolean };
 export default function TaxDeclarationReview() {
+  const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<Row[]>([]);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [taxYearConfirmed, setTaxYearConfirmed] = useState<Record<string, boolean>>({});
@@ -16,15 +19,20 @@ export default function TaxDeclarationReview() {
   const [marketplaceWithholdingEnabled, setMarketplaceWithholdingEnabled] = useState(false);
   const [revocationAvailable, setRevocationAvailable] = useState(false);
   const load = useCallback(async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) throw new Error("Sign in as an administrator.");
-    const response = await fetch("/api/admin/tax-declarations", { headers: { Authorization: `Bearer ${session.access_token}` }, cache: "no-store" });
-    const body = await response.json();
-    if (!response.ok) throw new Error(body.error || "Unable to load tax declarations.");
-    setRows(body.declarations ?? []);
-    setMarketplaceWithholdingEnabled(body.marketplaceWithholdingEnabled === true);
-    setRevocationAvailable(body.revocationAvailable === true);
-    setConfig(Object.fromEntries((body.declarations ?? []).map((row: Row) => [row.user_id, { vat: row.freelancer_vat_applicable, withholding: row.marketplace_withholding_applicable }])));
+    setLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Sign in as an administrator.");
+      const response = await fetch("/api/admin/tax-declarations", { headers: { Authorization: `Bearer ${session.access_token}` }, cache: "no-store" });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Unable to load tax declarations.");
+      setRows(body.declarations ?? []);
+      setMarketplaceWithholdingEnabled(body.marketplaceWithholdingEnabled === true);
+      setRevocationAvailable(body.revocationAvailable === true);
+      setConfig(Object.fromEntries((body.declarations ?? []).map((row: Row) => [row.user_id, { vat: row.freelancer_vat_applicable, withholding: row.marketplace_withholding_applicable }])));
+    } finally {
+      setLoading(false);
+    }
   }, []);
   useEffect(() => { void load().catch((cause) => setError(cause instanceof Error ? cause.message : "Unable to load declarations.")); }, [load]);
   async function send(body: unknown) {
@@ -49,10 +57,11 @@ export default function TaxDeclarationReview() {
   return <section className="space-y-5">
     <div><h1 className="text-2xl font-semibold">Freelancer tax documents</h1><p className="mt-1 text-sm text-muted-foreground">The existing BIR-received declaration review is preserved. Enable marketplace withholding only after WorkSync confirms it is legally required. VAT treatment requires a current verified VAT registration document.</p></div>
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-    {rows.length === 0 && <p className="rounded-xl border p-5 text-sm text-muted-foreground">No tax declarations have been submitted. Withholding follows the saved legal applicability setting; missing declarations do not create an exemption when withholding applies.</p>}
-    {rows.map((row) => <article key={row.declaration_id} className="space-y-3 rounded-xl border p-4">
+    {loading && <ContentSkeleton label="Loading freelancer tax declarations" variant="list" count={3} />}
+    {!loading && rows.length === 0 && <p className="rounded-xl border p-5 text-sm text-muted-foreground">No tax declarations have been submitted. Withholding follows the saved legal applicability setting; missing declarations do not create an exemption when withholding applies.</p>}
+    {!loading && rows.map((row) => <article key={row.declaration_id} className="space-y-3 rounded-xl border p-4">
       <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-medium">{row.tax_year} sworn declaration · {row.reported_threshold_status.replaceAll("_", " ")}</h2><p className="text-xs text-muted-foreground">Freelancer {row.user_id} · submitted {new Date(row.submitted_at).toLocaleString()}</p></div><span className="rounded-full border px-2 py-1 text-xs capitalize">{row.status}</span></div>
-      {row.document_url && <a className="text-sm text-primary underline" href={row.document_url} target="_blank" rel="noreferrer">Open private document</a>}
+      {row.document_path && <AdminDocumentLink source="tax_declaration" recordId={row.declaration_id} />}
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={config[row.user_id]?.vat ?? false} onChange={(event) => setConfig((value) => ({ ...value, [row.user_id]: { ...value[row.user_id], vat: event.target.checked } }))} />Apply VAT only when this service is legally taxable and a current verified VAT registration is on file</label>
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={marketplaceWithholdingEnabled && (config[row.user_id]?.withholding ?? false)} disabled={!marketplaceWithholdingEnabled} onChange={(event) => setConfig((value) => ({ ...value, [row.user_id]: { ...value[row.user_id], withholding: event.target.checked } }))} />Marketplace withholding (disabled pending WorkSync legal confirmation)</label>
       <Textarea value={configNotes[row.user_id] ?? ""} onChange={(event) => setConfigNotes(value => ({ ...value, [row.user_id]: event.target.value }))} maxLength={2000} placeholder="Reason for tax configuration change (required)" />

@@ -1,6 +1,8 @@
 ﻿"use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import AdminDocumentLink from "@/components/admin/AdminDocumentLink";
+import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -29,7 +31,7 @@ type TaxDocument = {
   submitted_at: string;
   reviewed_at: string | null;
   review_reason: string;
-  document_url: string | null;
+  document_path: string;
   freelancer_vat_applicable: boolean;
   vat_classification: string;
   marketplace_withholding_applicable: boolean;
@@ -61,6 +63,7 @@ const statusClass = (status: string) => status === "verified"
     : "border-border bg-muted text-muted-foreground";
 
 export default function TaxDocumentsReview() {
+  const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<TaxDocument[]>([]);
   const [busy, setBusy] = useState("");
   const [config, setConfig] = useState<Record<string, TaxConfig>>({});
@@ -74,24 +77,29 @@ export default function TaxDocumentsReview() {
   const [documentReason, setDocumentReason] = useState("");
 
   const load = useCallback(async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) throw new Error("Sign in as an administrator.");
-    const response = await fetch("/api/admin/tax-documents", {
-      headers: { Authorization: `Bearer ${session.access_token}` },
-      cache: "no-store",
-    });
-    const body = await response.json();
-    if (!response.ok) throw new Error(body.error || "Unable to load tax documents.");
-    const documents = (body.documents ?? []) as TaxDocument[];
-    setRows(documents);
-    setMarketplaceWithholdingEnabled(body.marketplaceWithholdingEnabled === true);
-    setConfig(Object.fromEntries(documents
-      .filter(row => row.party_type === "freelancer")
-      .map(row => [row.user_id, {
-        vat: row.freelancer_vat_applicable,
-        withholding: row.marketplace_withholding_applicable,
-        classification: row.vat_classification ?? "unverified",
-      }])));
+    setLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Sign in as an administrator.");
+      const response = await fetch("/api/admin/tax-documents", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        cache: "no-store",
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Unable to load tax documents.");
+      const documents = (body.documents ?? []) as TaxDocument[];
+      setRows(documents);
+      setMarketplaceWithholdingEnabled(body.marketplaceWithholdingEnabled === true);
+      setConfig(Object.fromEntries(documents
+        .filter(row => row.party_type === "freelancer")
+        .map(row => [row.user_id, {
+          vat: row.freelancer_vat_applicable,
+          withholding: row.marketplace_withholding_applicable,
+          classification: row.vat_classification ?? "unverified",
+        }])));
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -219,7 +227,7 @@ export default function TaxDocumentsReview() {
         <h2 className="text-xl font-semibold">Business tax documents</h2>
         <p className="mt-1 max-w-3xl text-sm text-muted-foreground">Document approval and tax classification are separate. Review uploaded documents below; manage tax treatment separately for each freelancer.</p>
       </div>
-      <Button variant="outline" size="sm" disabled={!!busy} onClick={() => {
+      <Button variant="outline" size="sm" disabled={!!busy || loading} onClick={() => {
         setError("");
         setSuccess("");
         void load().catch(cause => setError(cause instanceof Error ? cause.message : "Refresh failed."));
@@ -229,7 +237,9 @@ export default function TaxDocumentsReview() {
     {error && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p>}
     {success && <p role="status" className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm text-emerald-700 dark:text-emerald-300">{success}</p>}
 
-    {freelancerAccounts.length > 0 && <section className="space-y-3">
+    {loading && <ContentSkeleton label="Loading business tax documents" variant="table" count={5} />}
+
+    {!loading && freelancerAccounts.length > 0 && <section className="space-y-3">
       <div><h3 className="font-semibold">Freelancer tax settings</h3><p className="text-sm text-muted-foreground">Manage saved treatment by freelancer account.</p></div>
       {!marketplaceWithholdingEnabled && <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">Marketplace withholding is disabled until WorkSync confirms its legal applicability.</p>}
       <div className="overflow-x-auto rounded-lg border">
@@ -257,7 +267,7 @@ export default function TaxDocumentsReview() {
       </div>
     </section>}
 
-    {pendingRows.length > 0 && <section className="space-y-3">
+    {!loading && pendingRows.length > 0 && <section className="space-y-3">
       <div className="flex items-center gap-2"><h3 className="font-semibold">Needs review</h3><span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">{pendingRows.length}</span></div>
       <div className="overflow-x-auto rounded-lg border">
         <table className="w-full min-w-[700px] text-left text-sm">
@@ -272,7 +282,7 @@ export default function TaxDocumentsReview() {
       </div>
     </section>}
 
-    <section className="space-y-3">
+    {!loading && <section className="space-y-3">
       <div><h3 className="font-semibold">Reviewed documents</h3><p className="text-sm text-muted-foreground">Document status and tax classification remain separate.</p></div>
       {reviewedRows.length === 0
         ? <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">{pendingRows.length > 0 ? "No reviewed documents yet." : "No business tax documents have been submitted."}</p>
@@ -288,7 +298,7 @@ export default function TaxDocumentsReview() {
             </tr>)}</tbody>
           </table>
         </div>}
-    </section>
+    </section>}
 
     <Dialog open={!!managedAccount} onOpenChange={open => {
       if (open) return;
@@ -336,7 +346,7 @@ export default function TaxDocumentsReview() {
         </DialogHeader>
         <div className="space-y-4 p-5">
           <dl className="grid gap-3 text-sm sm:grid-cols-2"><div><dt className="text-muted-foreground">Account</dt><dd className="break-all">{selectedDocument.user_id}</dd></div><div><dt className="text-muted-foreground">Submitted</dt><dd>{dateTime(selectedDocument.submitted_at)}</dd></div>{selectedDocument.registered_name && <div><dt className="text-muted-foreground">Registered name</dt><dd>{selectedDocument.registered_name}</dd></div>}{selectedDocument.issued_at && <div><dt className="text-muted-foreground">Issued</dt><dd>{selectedDocument.issued_at}</dd></div>}{selectedDocument.expires_at && <div><dt className="text-muted-foreground">Valid through</dt><dd>{selectedDocument.expires_at}</dd></div>}{selectedDocument.tax_year && <div><dt className="text-muted-foreground">Tax year</dt><dd>{selectedDocument.tax_year}</dd></div>}{selectedDocument.claimed_tax_treatment && <div><dt className="text-muted-foreground">Requested treatment</dt><dd>{selectedDocument.claimed_tax_treatment}</dd></div>}{selectedDocument.legal_basis && <div className="sm:col-span-2"><dt className="text-muted-foreground">Stated basis</dt><dd>{selectedDocument.legal_basis}</dd></div>}</dl>
-          {selectedDocument.document_url && <a className="inline-flex text-sm text-primary underline" href={selectedDocument.document_url} target="_blank" rel="noreferrer">Open private document</a>}
+          {selectedDocument.document_path && <AdminDocumentLink source="tax_document" recordId={selectedDocument.document_id} />}
           {selectedDocument.review_reason && <p className="border-t pt-3 text-sm text-muted-foreground">Review reason: {selectedDocument.review_reason}</p>}
           {reviewHistory(selectedDocument)}
           {(selectedDocument.status === "pending" || selectedDocument.status === "verified") && <label className="grid gap-2 text-sm font-medium">{selectedDocument.status === "pending" ? "Review reason (required)" : "Reason for status change (required)"}

@@ -162,17 +162,26 @@ export async function openProjectAttachment(
   purpose: "submission" | "dispute" = "submission",
   recordId?: string,
 ) {
-  if (path.startsWith("r2:")) {
-    if (!recordId) throw new Error("This file is missing its WorkSync record reference.");
-    const url = await getLargeFileUrl(purpose, recordId);
-    window.open(url, "_blank", "noopener,noreferrer");
-    return;
+  const viewer = window.open("about:blank", "_blank");
+  if (!viewer) throw new Error("Allow pop-ups to open this project attachment.");
+  viewer.opener = null;
+  try {
+    let url: string;
+    if (path.startsWith("r2:")) {
+      if (!recordId) throw new Error("This file is missing its WorkSync record reference.");
+      url = await getLargeFileUrl(purpose, recordId);
+    } else {
+      const { data, error } = await supabase.storage
+        .from("project-attachments")
+        .createSignedUrl(path, 60);
+      if (error) throw databaseError(error);
+      url = data.signedUrl;
+    }
+    viewer.location.replace(url);
+  } catch (error) {
+    viewer.close();
+    throw error;
   }
-  const { data, error } = await supabase.storage
-    .from("project-attachments")
-    .createSignedUrl(path, 60);
-  if (error) throw databaseError(error);
-  window.open(data.signedUrl, "_blank", "noopener,noreferrer");
 }
 export type SettlementReviewOutcome = {
   status:

@@ -6,14 +6,54 @@ export const runtime = "nodejs";
 
 const schema = z
   .object({
-    action: z.enum(["signup", "change", "reset", "change_email"]),
+    action: z.enum([
+      "signup",
+      "change",
+      "reset",
+      "set_password",
+      "change_email",
+      "change_email_verified",
+    ]),
     password: z.string().min(1).max(256).optional(),
     currentPassword: z.string().min(1).max(256).optional(),
+    nonce: z.string().trim().min(6).max(12).optional(),
     email: z.string().email().optional(),
     firstName: z.string().trim().min(1).max(50).optional(),
     lastName: z.string().trim().min(1).max(50).optional(),
   })
   .strict();
+
+async function updateAuthenticatedUser(
+  url: string,
+  key: string,
+  token: string,
+  attributes: Record<string, string>,
+) {
+  const response = await fetch(`${url.replace(/\/$/, "")}/auth/v1/user`, {
+    method: "PUT",
+    headers: {
+      apikey: key,
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(attributes),
+  });
+  const result = (await response.json().catch(() => null)) as {
+    msg?: string;
+    message?: string;
+    error_description?: string;
+  } | null;
+  return response.ok
+    ? null
+    : {
+        message:
+          result?.msg ??
+          result?.message ??
+          result?.error_description ??
+          "Unable to update your account security settings.",
+        status: response.status,
+      };
+}
 
 export async function POST(request: Request) {
   const input = schema.safeParse(await request.json().catch(() => null));
@@ -21,7 +61,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid account security request." }, { status: 400 });
 
   const data = input.data;
-  if (data.action !== "change_email") {
+  if (data.action !== "change_email" && data.action !== "change_email_verified") {
     if (!data.password || !passwordMeetsRequirements(data.password))
       return Response.json(
         {
@@ -82,7 +122,66 @@ export async function POST(request: Request) {
       { status: 401 },
     );
 
+  const providers = new Set([
+    ...(auth.user.identities ?? []).map((identity) => identity.provider),
+    ...(Array.isArray(auth.user.app_metadata?.providers)
+      ? (auth.user.app_metadata.providers as string[])
+      : []),
+  ]);
+  const hasPasswordCredential = providers.has("email");
+
+  if (data.action === "set_password") {
+    if (hasPasswordCredential)
+      return Response.json(
+        { error: "This account already has an email sign-in credential. Use Change Password and verify your current password." },
+        { status: 409 },
+      );
+    if (!data.password || !data.nonce)
+      return Response.json(
+        { error: "Set a new password and enter the verification code sent to your current email." },
+        { status: 400 },
+      );
+    const updateError = await updateAuthenticatedUser(url, key, token, {
+      password: data.password,
+      nonce: data.nonce,
+    });
+    if (updateError)
+      return Response.json({ error: updateError.message }, { status: updateError.status });
+    return Response.json({ ok: true });
+  }
+
+  if (data.action === "change_email_verified") {
+    if (hasPasswordCredential)
+      return Response.json(
+        { error: "This account has an email sign-in credential. Enter your current password to change email." },
+        { status: 409 },
+      );
+    if (!data.email || !data.nonce)
+      return Response.json(
+        { error: "Enter the new email address and the verification code sent to your current email." },
+        { status: 400 },
+      );
+    const nextEmail = data.email.trim().toLowerCase();
+    if (nextEmail === auth.user.email?.toLowerCase())
+      return Response.json(
+        { error: "Enter an email address different from your current one." },
+        { status: 400 },
+      );
+    const updateError = await updateAuthenticatedUser(url, key, token, {
+      email: nextEmail,
+      nonce: data.nonce,
+    });
+    if (updateError)
+      return Response.json({ error: updateError.message }, { status: updateError.status });
+    return Response.json({ ok: true });
+  }
+
   if (data.action === "change_email") {
+    if (!hasPasswordCredential)
+      return Response.json(
+        { error: "This account has no email password. Request a verification code instead." },
+        { status: 409 },
+      );
     if (!data.email || !data.currentPassword)
       return Response.json(
         { error: "Enter your new email and current password." },
@@ -144,6 +243,12 @@ export async function POST(request: Request) {
       { status: 400 },
     );
 
+  if (data.action === "change" && !hasPasswordCredential)
+    return Response.json(
+      { error: "This account has no email password. Use Set Password instead." },
+      { status: 409 },
+    );
+
   if (data.action === "reset") {
     const { data: claims, error: claimsError } = await scoped.auth.getClaims(token);
     const methods = claims?.claims?.amr;
@@ -164,14 +269,15 @@ export async function POST(request: Request) {
       );
   }
 
-  const update =
+  const updateError = await updateAuthenticatedUser(
+    url,
+    key,
+    token,
     data.action === "change"
-      ? await scoped.auth.updateUser({
-          password: data.password!,
-          current_password: data.currentPassword!,
-        })
-      : await scoped.auth.updateUser({ password: data.password! });
-  if (update.error)
-    return Response.json({ error: update.error.message }, { status: 400 });
+      ? { password: data.password!, current_password: data.currentPassword! }
+      : { password: data.password! },
+  );
+  if (updateError)
+    return Response.json({ error: updateError.message }, { status: updateError.status });
   return Response.json({ ok: true });
 }

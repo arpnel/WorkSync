@@ -11,10 +11,10 @@ import { RefreshCw, Search } from "lucide-react";
 import { openSavedTaxReceipt } from "@/lib/payments/receiptClient";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
 import Link from "next/link";
 import DisputeContext from "./DisputeContext";
 import { Button } from "@/components/ui/button";
+import AdminDocumentLink from "@/components/admin/AdminDocumentLink";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -460,20 +460,15 @@ export default function AdminRecords({
             </Link>
           )}
           {selected?.document_paths?.map((path) => (
-            <Button
+            <AdminDocumentLink
               key={path}
-              variant="outline"
-              onClick={async () => {
-                const { data, error } = await supabase.storage
-                  .from("verification")
-                  .createSignedUrl(path, 60);
-                if (error) setError(error.message);
-                else
-                  window.open(data.signedUrl, "_blank", "noopener,noreferrer");
-              }}
+              source="verification_request"
+              recordId={selected.id}
+              path={path}
+              className="inline-flex h-9 items-center justify-center rounded-md border px-3 text-sm hover:bg-muted"
             >
               Open {path.split("/").pop()}
-            </Button>
+            </AdminDocumentLink>
           ))}
           {actions.length > 0 && (
             <form

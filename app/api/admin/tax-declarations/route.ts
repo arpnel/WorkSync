@@ -1,6 +1,5 @@
 import { PaymentError } from "@/lib/payments/paymongo";
 import { paymentResponse, paymentUser } from "@/services/payments/paymentServer";
-import { createSignedUrlMap } from "@/services/storage/signedUrlBatch";
 export const runtime = "nodejs";
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 async function requireAdmin(request: Request) {
@@ -26,15 +25,9 @@ export async function GET(request: Request) {
     const platformConfig = await db.from("platform_tax_configuration").select("marketplace_withholding_enabled").eq("configuration_id", true).maybeSingle();
     if (platformConfig.error || !platformConfig.data) throw new PaymentError("Platform tax configuration is unavailable.");
     const marketplaceWithholdingEnabled = platformConfig.data?.marketplace_withholding_enabled === true;
-    const signedUrls = await createSignedUrlMap(
-      db,
-      "verification-documents",
-      (data ?? []).map((row) => row.document_path),
-      600,
-    );
     const declarations = (data ?? []).map(row => {
       const config = profiles.get(row.user_id);
-      return { ...row, review_events: events.get(row.declaration_id) ?? [], marketplace_withholding_applicable: marketplaceWithholdingEnabled && (config?.marketplace_withholding_applicable ?? false), freelancer_vat_applicable: config?.freelancer_vat_applicable ?? false, document_url: signedUrls.get(row.document_path) ?? null };
+      return { ...row, review_events: events.get(row.declaration_id) ?? [], marketplace_withholding_applicable: marketplaceWithholdingEnabled && (config?.marketplace_withholding_applicable ?? false), freelancer_vat_applicable: config?.freelancer_vat_applicable ?? false };
     });
     return json({ declarations, marketplaceWithholdingEnabled, revocationAvailable: !eventsResult.error });
   } catch (error) { return paymentResponse(error); }

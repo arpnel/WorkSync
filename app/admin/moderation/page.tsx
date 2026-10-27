@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { RefreshCw, Search } from "lucide-react";
 import AdminMetricCard from "@/components/admin/AdminMetricCard";
+import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import {
   Dialog,
   DialogContent,
@@ -302,7 +303,7 @@ export default function ModerationPage() {
         </p>
       )}
       <section className="space-y-3" aria-label="Listing submissions">
-        {loading && <div role="status" className="rounded-xl border bg-card px-4 py-8 text-center text-sm text-muted-foreground">Loading listing submissions…</div>}
+        {loading && <ContentSkeleton label="Loading listing submissions" variant="list" count={5} />}
         {!loading && rows.map((row) => (
           <Card key={row.submission_id} className="rounded-xl shadow-sm">
             <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">

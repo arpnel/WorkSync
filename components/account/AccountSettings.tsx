@@ -8,6 +8,7 @@ import { PasswordRequirements } from "@/components/auth/PasswordRequirements";
 import { passwordMeetsRequirements } from "@/lib/validation/auth.validation";
 import {
   changeEmailOnServer,
+  requestSecurityReauthentication,
   updatePasswordOnServer,
 } from "@/services/auth/passwordService";
 import { useTheme } from "next-themes";
@@ -25,11 +26,16 @@ import {
 export default function AccountSettings() {
   const { theme, setTheme } = useTheme();
   const [email, setEmail] = useState("");
+  const [hasPasswordCredential, setHasPasswordCredential] = useState(false);
   const [newEmail, setNewEmail] = useState("");
   const [emailCurrentPassword, setEmailCurrentPassword] = useState("");
+  const [emailNonce, setEmailNonce] = useState("");
+  const [emailCodeSent, setEmailCodeSent] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [passwordNonce, setPasswordNonce] = useState("");
+  const [passwordCodeSent, setPasswordCodeSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
   const [feedback, setFeedback] = useState("");
@@ -39,15 +45,22 @@ export default function AccountSettings() {
     let alive = true;
     void (async () => {
       try {
-        const { data, error: sessionError } = await supabase.auth.getSession();
+        const { data, error: sessionError } = await supabase.auth.getUser();
         if (!alive) return;
-        if (sessionError || !data.session?.user) {
+        if (sessionError || !data.user) {
           setError(
             sessionError?.message ?? "Please sign in to manage your account.",
           );
           return;
         }
-        setEmail(data.session.user.email ?? "");
+        setEmail(data.user.email ?? "");
+        const providers = new Set([
+          ...(data.user.identities ?? []).map((identity) => identity.provider),
+          ...(Array.isArray(data.user.app_metadata?.providers)
+            ? (data.user.app_metadata.providers as string[])
+            : []),
+        ]);
+        setHasPasswordCredential(providers.has("email"));
         setReady(true);
       } catch (loadError) {
         if (!alive) return;
@@ -84,10 +97,19 @@ export default function AccountSettings() {
   function changeEmail(event: FormEvent) {
     event.preventDefault();
     void run(async () => {
-      await changeEmailOnServer(newEmail.trim(), emailCurrentPassword);
+      if (hasPasswordCredential) {
+        if (!emailCurrentPassword) throw new Error("Enter your current password.");
+        await changeEmailOnServer(newEmail.trim(), emailCurrentPassword);
+      } else {
+        if (!emailCodeSent) throw new Error("Send a verification code to your current email first.");
+        if (!emailNonce.trim()) throw new Error("Enter the verification code sent to your current email.");
+        await changeEmailOnServer(newEmail.trim(), undefined, emailNonce.trim());
+      }
       setNewEmail("");
       setEmailCurrentPassword("");
-      return "Email change requested. Follow the confirmation instructions sent by WorkSync to finish the change.";
+      setEmailNonce("");
+      setEmailCodeSent(false);
+      return "Email change requested. Follow the confirmation instructions from Supabase Auth before the new address takes effect.";
     });
   }
 
@@ -98,13 +120,45 @@ export default function AccountSettings() {
         throw new Error(
           "Password must have at least 8 characters, uppercase and lowercase letters, a number, and a special character.",
         );
-      if (!currentPassword) throw new Error("Enter your current password.");
       if (password !== confirm) throw new Error("Passwords do not match.");
-      await updatePasswordOnServer(password, currentPassword);
+      if (hasPasswordCredential) {
+        if (!currentPassword) throw new Error("Enter your current password.");
+        await updatePasswordOnServer(password, currentPassword);
+      } else {
+        if (!passwordCodeSent) throw new Error("Send a verification code to your current email first.");
+        if (!passwordNonce.trim()) throw new Error("Enter the verification code sent to your current email.");
+        await updatePasswordOnServer(password, undefined, passwordNonce.trim());
+        setHasPasswordCredential(true);
+        setEmailNonce("");
+        setEmailCodeSent(false);
+      }
       setCurrentPassword("");
       setPassword("");
       setConfirm("");
-      return "Password updated.";
+      setPasswordNonce("");
+      setPasswordCodeSent(false);
+      return hasPasswordCredential ? "Password updated." : "Password set. You can now sign in with your email and password.";
+    });
+  }
+
+  function sendEmailVerificationCode() {
+    void run(async () => {
+      await requestSecurityReauthentication();
+      setEmailNonce("");
+      setEmailCodeSent(true);
+      return "A verification code was sent by Supabase Auth to your verified contact method.";
+    });
+  }
+
+  function sendPasswordVerificationCode() {
+    void run(async () => {
+      if (!passwordMeetsRequirements(password))
+        throw new Error("Enter a password that meets all listed requirements first.");
+      if (password !== confirm) throw new Error("Passwords do not match.");
+      await requestSecurityReauthentication();
+      setPasswordNonce("");
+      setPasswordCodeSent(true);
+      return "A verification code was sent by Supabase Auth to your verified contact method.";
     });
   }
 
@@ -163,8 +217,9 @@ export default function AccountSettings() {
                 Current email: {email || "Not available"}
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Enter your current password. WorkSync will send confirmation
-                instructions before the new address takes effect.
+                {hasPasswordCredential
+                  ? "Confirm with your current password. Supabase Auth will send the required email confirmations before the new address takes effect."
+                  : "Verify this request with a code sent to your current sign-in email. Supabase Auth will then send the required email confirmations before the new address takes effect."}
               </p>
             </div>
             <form onSubmit={changeEmail} className="space-y-3">
@@ -178,7 +233,7 @@ export default function AccountSettings() {
                   onChange={(event) => setNewEmail(event.target.value)}
                 />
               </label>
-              <label className="block text-sm">
+              {hasPasswordCredential ? <label className="block text-sm">
                 Current password
                 <Input
                   type="password"
@@ -189,31 +244,41 @@ export default function AccountSettings() {
                     setEmailCurrentPassword(event.target.value)
                   }
                 />
-              </label>
+              </label> : <>
+                {emailCodeSent && <label className="block text-sm">Verification code
+                  <Input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={12} required value={emailNonce} onChange={(event) => setEmailNonce(event.target.value)} />
+                </label>}
+                <Button type="button" variant="outline" disabled={busy} onClick={sendEmailVerificationCode}>
+                  {emailCodeSent ? "Resend verification code" : "Send verification code"}
+                </Button>
+              </>}
               <Button
+                type="submit"
                 disabled={
                   !ready ||
                   busy ||
                   !newEmail.trim() ||
                   newEmail.trim().toLowerCase() === email.toLowerCase() ||
-                  !emailCurrentPassword
+                  (hasPasswordCredential ? !emailCurrentPassword : !emailCodeSent || !emailNonce.trim())
                 }
                 variant="outline"
               >
-                Request email change
+                {hasPasswordCredential ? "Request email change" : "Verify and request email change"}
               </Button>
             </form>
           </section>
 
           <section className="max-w-lg space-y-3 border-t pt-5">
             <div>
-              <h3 className="text-sm font-semibold">Change password</h3>
+              <h3 className="text-sm font-semibold">{hasPasswordCredential ? "Change password" : "Set password"}</h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                Use your current password to set a new one.
+                {hasPasswordCredential
+                  ? "Use your current password to set a new one."
+                  : "Verify with a code sent to your current sign-in email, then create an email password for this account."}
               </p>
             </div>
             <form onSubmit={changePassword} className="space-y-3">
-              <label className="block text-sm">
+              {hasPasswordCredential && <label className="block text-sm">
                 Current password
                 <Input
                   type="password"
@@ -222,7 +287,7 @@ export default function AccountSettings() {
                   value={currentPassword}
                   onChange={(event) => setCurrentPassword(event.target.value)}
                 />
-              </label>
+              </label>}
               <label className="block text-sm">
                 New password
                 <Input
@@ -245,8 +310,14 @@ export default function AccountSettings() {
                   onChange={(event) => setConfirm(event.target.value)}
                 />
               </label>
-              <Button disabled={!ready || busy} variant="outline">
-                Change password
+              {!hasPasswordCredential && passwordCodeSent && <label className="block text-sm">Verification code
+                <Input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={12} required value={passwordNonce} onChange={(event) => setPasswordNonce(event.target.value)} />
+              </label>}
+              {!hasPasswordCredential && <Button type="button" variant="outline" disabled={busy} onClick={sendPasswordVerificationCode}>
+                {passwordCodeSent ? "Resend verification code" : "Send verification code"}
+              </Button>}
+              <Button disabled={!ready || busy || (!hasPasswordCredential && (!passwordCodeSent || !passwordNonce.trim()))} variant="outline">
+                {hasPasswordCredential ? "Change password" : "Set password"}
               </Button>
             </form>
           </section>

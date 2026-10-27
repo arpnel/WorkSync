@@ -91,8 +91,8 @@ export function CommunityPostCard({ post, currentUserId, onChanged, full = false
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label="Post options"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {ownPost ? <><DropdownMenuItem onClick={() => setEditOpen(true)}><Pencil className="mr-2 size-4" />Edit post</DropdownMenuItem><DropdownMenuItem className="text-destructive" onClick={() => setDeleteOpen(true)}><Trash2 className="mr-2 size-4" />Delete post</DropdownMenuItem></> : <DropdownMenuItem onClick={() => setReportOpen(true)}><Flag className="mr-2 size-4" />Report post</DropdownMenuItem>}
+            <DropdownMenuContent align="end" className="min-w-40">
+              {ownPost ? <><DropdownMenuItem className="whitespace-nowrap" onClick={() => setEditOpen(true)}><Pencil className="mr-2 size-4 shrink-0" />Edit post</DropdownMenuItem><DropdownMenuItem className="whitespace-nowrap text-destructive" onClick={() => setDeleteOpen(true)}><Trash2 className="mr-2 size-4 shrink-0" />Delete post</DropdownMenuItem></> : <DropdownMenuItem className="whitespace-nowrap" onClick={() => setReportOpen(true)}><Flag className="mr-2 size-4 shrink-0" />Report post</DropdownMenuItem>}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

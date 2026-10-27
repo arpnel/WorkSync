@@ -263,7 +263,8 @@ test("new client receipt snapshot shows base price plus separately added freelan
   assert.match(pdf, /Transaction Reference/);
   assert.match(pdf, /PayMongo Payment ID/);
   assert.match(pdf, /Checkout Session ID/);
-  assert.match(pdf, /System-generated payment receipt\. Not a BIR invoice\./);
+  assert.match(pdf, /System-generated receipt\./);
+  assert.doesNotMatch(pdf, /Not a BIR invoice/);
   assert.equal((pdf.match(/PHP 112\.00/g) ?? []).length, 1, "total amount appears once");
   assert.doesNotMatch(pdf, /Freelancer service VAT|Verified VAT registration|added to the base price/);
   assert.match(pdf, /54 \d+ Td \(Service Fee\)/);

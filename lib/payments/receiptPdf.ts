@@ -141,9 +141,9 @@ export function createReceiptPdf(details: ReceiptDetails) {
   if (isClient) {
     putRight("Paid", 729, 9, true, "0.12 0.48 0.28");
     putRight(details.paidAt ? new Date(details.paidAt).toLocaleDateString("en-PH", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric" }) : "Date not recorded", 715, 8, false, "0.39 0.43 0.48");
-    put("Receipt No.", 350, 729, 8, false, "0.39 0.43 0.48");
+    put("Receipt No.", 54, 729, 8, false, "0.39 0.43 0.48");
     const receiptLines = wrap(details.receiptNumber, 32);
-    receiptLines.forEach((value, index) => put(value, 350, 715 - index * 12, 8, true, "0.13 0.16 0.20"));
+    receiptLines.forEach((value, index) => put(value, 54, 715 - index * 12, 8, true, "0.13 0.16 0.20"));
     const totalLabelY = Math.min(672, 703 - (receiptLines.length - 1) * 12 - 20);
     put("Total paid", 54, totalLabelY, 9, false, "0.39 0.43 0.48");
     put(headlineAmount == null ? "Not recorded" : php(headlineAmount), 54, totalLabelY - 24, 18, true, "0.08 0.11 0.16");
@@ -305,8 +305,10 @@ export function createReceiptPdf(details: ReceiptDetails) {
   if (isClient) line(82);
   else page.push("0.84 0.88 0.91 RG [2 3] 0 d 54 82 m 558 82 l S [] 0 d");
   if (isClient) {
-    put("System-generated payment receipt. Not a BIR invoice.", 135, 64, 8, false, "0.39 0.43 0.48");
-    put("Issued " + (details.receiptIssuedAt ? new Date(details.receiptIssuedAt).toLocaleString("en-PH", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true }) : "Not recorded"), 205, 50, 8, false, "0.39 0.43 0.48");
+    const footerNote = "System-generated receipt.";
+    const issuedAt = "Issued " + (details.receiptIssuedAt ? new Date(details.receiptIssuedAt).toLocaleString("en-PH", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true }) : "Not recorded");
+    put(footerNote, (612 - pdfTextWidth(footerNote, 8)) / 2, 64, 8, false, "0.39 0.43 0.48");
+    put(issuedAt, (612 - pdfTextWidth(issuedAt, 8)) / 2, 50, 8, false, "0.39 0.43 0.48");
   } else {
     put("This is a WorkSync system-generated transaction receipt,", 78, 64, 8, false, "0.39 0.43 0.48");
     put("not an official BIR invoice or receipt.", 78, 52, 8, false, "0.39 0.43 0.48");

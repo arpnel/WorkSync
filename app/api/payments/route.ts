@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { getWorkSyncOrigin } from "@/lib/appUrl";
 import { PaymentError, paymentMode } from "@/lib/payments/paymongo";
 import {
   paymentUser,
@@ -27,11 +28,9 @@ export async function POST(request: Request) {
     const { db, user } = await paymentUser(request);
     const parsed = input.safeParse(await request.json().catch(() => null));
     if (!parsed.success) throw new PaymentError("Invalid project.", 400);
-    const configured = process.env.APP_URL;
-    const url = new URL(configured || request.url);
+    const url = new URL(getWorkSyncOrigin(request.url));
     const local = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
     if (
-      (!configured && !local) ||
       (paymentMode() === "live" && (url.protocol !== "https:" || local))
     )
       throw new PaymentError(

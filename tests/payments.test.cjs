@@ -246,7 +246,10 @@ test("checkout reserves storage first and charges only the server agreement amou
   assert.equal(result.checkoutUrl, "https://checkout.paymongo.com/example");
   assert.equal(h.calls[0].operation, "insert");
   assert.equal(h.calls[0].values.amount, 150);
+  assert.equal(h.calls[0].values.order_id, "order");
   assert.equal(h.calls[1].attributes.line_items[0].amount, 15000);
+  assert.equal(h.calls[1].attributes.success_url, "http://localhost:3000/home/payments/return?payment=project");
+  assert.equal(h.calls[1].attributes.cancel_url, "http://localhost:3000/home/payments/return?payment=project&cancelled=1");
   assert.equal(h.calls[2].values.transaction_reference, "cs_example");
 });
 test("verified VAT registration adds 12 percent to the base and snapshots the tax evidence", async () => {
@@ -523,6 +526,7 @@ test("a signed provider session can recover an unsaved reference; DB failure req
 test("API rejects browser amounts and unauthenticated requests before checkout", async () => {
   let creates = 0;
   const route = load("app/api/payments/route.ts", {
+    "@/lib/appUrl": { getWorkSyncOrigin: (url) => new URL(url).origin },
     "@/lib/payments/paymongo": provider,
     "@/services/payments/paymentServer": {
       paymentUser: async (request) => {

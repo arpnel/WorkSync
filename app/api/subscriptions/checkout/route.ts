@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { getWorkSyncOrigin } from "@/lib/appUrl";
 import { PaymentError, paymentMode } from "@/lib/payments/paymongo";
 import {
   paymentUser,
@@ -14,11 +15,9 @@ const json = (value: unknown) =>
   Response.json(value, { headers: { "Cache-Control": "no-store" } });
 
 function checkoutOrigin(request: Request) {
-  const configured = process.env.APP_URL;
-  const url = new URL(configured || request.url);
+  const url = new URL(getWorkSyncOrigin(request.url));
   const local = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
   if (
-    (!configured && !local) ||
     (paymentMode() === "live" && (url.protocol !== "https:" || local))
   )
     throw new PaymentError(

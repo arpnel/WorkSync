@@ -1,5 +1,6 @@
 import { readPageCache } from "@/lib/pageReadCache";
 import { supabase } from "@/lib/supabaseClient";
+import { getActiveAccountContext } from "@/services/marketplace/AccountServices";
 import { LARGE_FILE_MAX_BYTES, SUPABASE_MAX_FILE_BYTES, usesR2Storage } from "@/lib/storage/hybridStorage";
 import { deleteUnusedLargeFile, getLargeFileUrl, uploadLargeFile } from "@/services/storage/hybridStorageClient";
 import type {
@@ -95,7 +96,10 @@ export async function getMessageConversations(): Promise<{
   currentUserId: string;
   conversations: MessageConversation[];
 }> {
-  const currentUserId = await getCurrentUserId();
+  const account = await getActiveAccountContext();
+  const currentUserId = account.userId;
+  const activeProfileId = account.profileId;
+  if (!activeProfileId) return { currentUserId, conversations: [] };
 
   const { data: summaryRows, error: summaryError } = await supabase.rpc(
     "worksync_get_message_conversation_summaries",
@@ -134,15 +138,6 @@ export async function getMessageConversations(): Promise<{
     throw participantsResult.error;
   }
 
-  const otherUserIds = [
-    ...new Set([
-      ...(participantsResult.data ?? []).map(
-        (participant) => participant.user_id,
-      ),
-      currentUserId,
-    ]),
-  ];
-
   const projectIds = [
     ...new Set(
       (conversationsResult.data ?? [])
@@ -164,20 +159,27 @@ export async function getMessageConversations(): Promise<{
         .filter((id): id is string => Boolean(id)),
     ),
   ];
+  const activeJobApplications =
+    account.role === "freelancer" && jobIds.length
+      ? supabase
+          .from("job_applications")
+          .select("job_id")
+          .eq("freelancer_id", activeProfileId)
+          .in("job_id", jobIds)
+      : Promise.resolve({ data: [], error: null });
 
   const [
-    participantProfiles,
     projectsResult,
     projectsByOrderResult,
     jobsResult,
     serviceOrdersResult,
     contractsResult,
+    activeJobApplicationsResult,
   ] = await Promise.all([
-    getParticipants(otherUserIds),
     projectIds.length
       ? supabase
           .from("projects")
-          .select("project_id, title")
+          .select("project_id, title, client_id, freelancer_id")
           .in("project_id", projectIds)
       : Promise.resolve({ data: [], error: null }),
     orderIds.length
@@ -187,12 +189,15 @@ export async function getMessageConversations(): Promise<{
           .in("order_id", orderIds)
       : Promise.resolve({ data: [], error: null }),
     jobIds.length
-      ? supabase.from("jobs").select("job_id, title").in("job_id", jobIds)
+      ? supabase
+          .from("jobs")
+          .select("job_id, title, client_id")
+          .in("job_id", jobIds)
       : Promise.resolve({ data: [], error: null }),
     orderIds.length
       ? supabase
           .from("service_orders")
-          .select("order_id, service_id")
+          .select("order_id, service_id, client_id, freelancer_id")
           .in("order_id", orderIds)
       : Promise.resolve({ data: [], error: null }),
     orderIds.length
@@ -201,10 +206,15 @@ export async function getMessageConversations(): Promise<{
           .select("order_id, terms")
           .in("order_id", orderIds)
       : Promise.resolve({ data: [], error: null }),
+    activeJobApplications,
   ]);
 
   if (serviceOrdersResult.error) throw serviceOrdersResult.error;
   if (contractsResult.error) throw contractsResult.error;
+  if (projectsByOrderResult.error) throw projectsByOrderResult.error;
+  if (jobsResult.error) throw jobsResult.error;
+  if (activeJobApplicationsResult.error)
+    throw activeJobApplicationsResult.error;
   const serviceIds = [
     ...new Set(
       (serviceOrdersResult.data ?? [])
@@ -222,6 +232,53 @@ export async function getMessageConversations(): Promise<{
   if (projectsResult.error) {
     throw projectsResult.error;
   }
+
+  const projectsById = new Map(
+    (projectsResult.data ?? []).map((project) => [project.project_id, project]),
+  );
+  const ordersById = new Map(
+    (serviceOrdersResult.data ?? []).map((order) => [order.order_id, order]),
+  );
+  const jobsById = new Map(
+    (jobsResult.data ?? []).map((job) => [job.job_id, job]),
+  );
+  const activeJobIds = new Set(
+    (activeJobApplicationsResult.data ?? []).map((application) => application.job_id),
+  );
+  const belongsToActiveProfile = (owner: {
+    client_id?: string | null;
+    freelancer_id?: string | null;
+  } | undefined) =>
+    account.role === "client"
+      ? owner?.client_id === activeProfileId
+      : owner?.freelancer_id === activeProfileId;
+  const conversationRows = (conversationsResult.data ?? []).filter(
+    (conversation) =>
+      (conversation.project_id &&
+        belongsToActiveProfile(projectsById.get(conversation.project_id))) ||
+      (conversation.order_id &&
+        belongsToActiveProfile(ordersById.get(conversation.order_id))) ||
+      (conversation.job_id &&
+        (account.role === "client"
+          ? jobsById.get(conversation.job_id)?.client_id === activeProfileId
+          : activeJobIds.has(conversation.job_id))),
+  );
+  if (conversationRows.length === 0)
+    return { currentUserId, conversations: [] };
+
+  const visibleConversationIds = new Set(
+    conversationRows.map((conversation) => conversation.conversation_id),
+  );
+  const visibleParticipantRows = (participantsResult.data ?? []).filter(
+    (participant) => visibleConversationIds.has(participant.conversation_id),
+  );
+  const participantUserIds = [
+    ...new Set([
+      ...visibleParticipantRows.map((participant) => participant.user_id),
+      currentUserId,
+    ]),
+  ];
+  const participantProfiles = await getParticipants(participantUserIds);
 
   const projectTitles = new Map(
     (projectsResult.data ?? []).map((project) => [
@@ -281,20 +338,31 @@ export async function getMessageConversations(): Promise<{
       ? cleaned
       : null;
   };
-  const participantByConversation = new Map(
-    (participantsResult.data ?? [])
+  const participantByConversation = new Map<
+    string,
+    MessageParticipant | undefined
+  >(
+    visibleParticipantRows
       .filter((participant) => participant.user_id !== currentUserId)
-      .map((participant) => [
-        participant.conversation_id,
-        participantProfiles.get(participant.user_id),
-      ]),
+      .map((participant) => {
+        const person = participantProfiles.get(participant.user_id);
+        return [
+          participant.conversation_id,
+          person
+            ? {
+                ...person,
+                role: account.role === "client" ? "freelancer" : "client",
+              }
+            : undefined,
+        ] as const;
+      }),
   );
 
   const participantsByConversation = new Map<
     string,
     typeof participantsResult.data
   >();
-  for (const participant of participantsResult.data ?? []) {
+  for (const participant of visibleParticipantRows) {
     const rows =
       participantsByConversation.get(participant.conversation_id) ?? [];
     rows.push(participant);
@@ -304,13 +372,6 @@ export async function getMessageConversations(): Promise<{
     summaries.map((summary) => [summary.conversation_id, summary]),
   );
 
-  const conversationRows = [
-    ...new Map(
-      (conversationsResult.data ?? [])
-        .filter((row) => conversationIds.includes(row.conversation_id))
-        .map((row) => [row.conversation_id, row]),
-    ).values(),
-  ];
   const conversations = conversationRows.map(
     (conversation): MessageConversation => {
       const summary = summaryByConversation.get(conversation.conversation_id);
@@ -357,20 +418,13 @@ export async function getMessageConversations(): Promise<{
               : "Project conversation"),
         participantIntro: (() => {
           const people = participantRows
+            .filter((row) => row.user_id !== currentUserId)
             .map((row) => participantProfiles.get(row.user_id))
             .filter((person): person is MessageParticipant => Boolean(person));
-          const client = people.find((person) => person.role === "client");
-          const freelancer = people.find(
-            (person) => person.role === "freelancer",
-          );
-          const names =
-            client && freelancer
-              ? [client.name, freelancer.name]
-              : people.map((person) => person.name);
-          return names.length > 1
-            ? `${names[0]} and ${names[1]} are now in this chat.`
-            : names[0]
-              ? `${names[0]} is now in this chat.`
+          return people.length > 1
+            ? `You and ${people.length} participants are now in this chat.`
+            : people[0]
+              ? `You and ${people[0].name} are now in this chat.`
               : "You are now in this chat.";
         })(),
         participant,

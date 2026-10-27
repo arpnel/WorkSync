@@ -229,6 +229,34 @@ export function useMessaging() {
   }, [loadConversations]);
 
   useEffect(() => {
+    const handleRoleChange = () => {
+      conversationRequest.current += 1;
+      messageRequest.current += 1;
+      selectConversation(null);
+      setCurrentUserId(null);
+      setConversations([]);
+      setMessageState({ conversationId: null, messages: [] });
+      setLoadingConversations(true);
+      setLoadingMessages(false);
+      setIsOtherParticipantTyping(false);
+      setError(null);
+      setPreferences({
+        preferences: [],
+        blockedUserIds: [],
+        blockedByUserIds: [],
+      });
+      setPreferencesReady(false);
+      missingPreferencesSetup.current = false;
+      void loadPreferences(true);
+      void loadConversations();
+    };
+
+    window.addEventListener("account-role-changed", handleRoleChange);
+    return () =>
+      window.removeEventListener("account-role-changed", handleRoleChange);
+  }, [loadConversations, loadPreferences, selectConversation]);
+
+  useEffect(() => {
     if (!selectedConversationId) {
       setMessageState({ conversationId: null, messages: [] });
       setLoadingMessages(false);

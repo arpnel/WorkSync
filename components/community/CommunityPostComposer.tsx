@@ -68,43 +68,45 @@ export function CommunityPostComposer({ open, onOpenChange, onCreated }: {
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!busy) { onOpenChange(next); if (!next) reset(); } }}>
-      <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] max-w-2xl overflow-y-auto sm:w-full">
-        <DialogHeader>
-          <DialogTitle>Create a community post</DialogTitle>
-          <DialogDescription>Ask a question or share something useful with WorkSync members.</DialogDescription>
+      <DialogContent className="flex max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] max-w-xl flex-col gap-0 overflow-hidden p-0 sm:max-h-[calc(100dvh-3rem)] sm:w-full sm:max-w-xl">
+        <DialogHeader className="shrink-0 border-b px-5 py-4 pr-12 sm:px-6">
+          <DialogTitle className="text-lg">Create a community post</DialogTitle>
+          <DialogDescription className="max-w-prose">Ask a question or share something useful with WorkSync members.</DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6">
           <label className="block space-y-1.5 text-sm font-medium" htmlFor="community-category">
             Post type
-            <select id="community-category" className="h-10 w-full rounded-md border bg-background px-3" value={category} onChange={(event) => setCategory(event.target.value as CommunityCategory)}>
+            <select id="community-category" className="h-11 w-full rounded-md border bg-background px-3 font-normal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" value={category} onChange={(event) => setCategory(event.target.value as CommunityCategory)}>
               <option value="question">Question</option><option value="discussion">Discussion</option><option value="tips">Tips &amp; Advice</option><option value="general">General</option>
             </select>
           </label>
           <label className="block space-y-1.5 text-sm font-medium" htmlFor="community-title">
             Title
-            <input id="community-title" maxLength={160} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="What would you like to ask or share?" className="h-10 w-full rounded-md border bg-background px-3 font-normal" />
-            <span className="block text-right text-xs font-normal text-muted-foreground">{title.length}/160</span>
+            <input id="community-title" maxLength={160} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="What would you like to ask or share?" className="h-11 w-full rounded-md border bg-background px-3 font-normal" />
+            <span className="block text-right text-xs font-normal tabular-nums text-muted-foreground">{title.length}/160</span>
           </label>
           <label className="block space-y-1.5 text-sm font-medium" htmlFor="community-body">
             Post
-            <Textarea id="community-body" maxLength={8000} rows={6} value={body} onChange={(event) => setBody(event.target.value)} placeholder="Add context and details…" />
-            <span className="block text-right text-xs font-normal text-muted-foreground">{body.length}/8,000</span>
+            <Textarea id="community-body" maxLength={8000} rows={6} value={body} onChange={(event) => setBody(event.target.value)} placeholder="Add context and details..." className="min-h-36 resize-y" />
+            <span className="block text-right text-xs font-normal tabular-nums text-muted-foreground">{body.length}/8,000</span>
           </label>
           <label className="block space-y-1.5 text-sm font-medium" htmlFor="community-tags">
             Topics <span className="font-normal text-muted-foreground">(comma separated, up to 5)</span>
-            <input id="community-tags" value={tagText} onChange={(event) => setTagText(event.target.value)} placeholder="design, freelancing" className="h-10 w-full rounded-md border bg-background px-3 font-normal" />
+            <input id="community-tags" value={tagText} onChange={(event) => setTagText(event.target.value)} placeholder="design, freelancing" className="h-11 w-full rounded-md border bg-background px-3 font-normal" />
           </label>
-          <div>
+          <div className="rounded-lg border border-dashed p-3">
             <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
-            <Button type="button" variant="outline" onClick={() => inputRef.current?.click()} disabled={busy || images.length >= MAX_IMAGES}>
-              <ImagePlus className="mr-2 size-4" /> Add images ({images.length}/{MAX_IMAGES})
-            </Button>
-            {!!images.length && <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">{images.map(({ preview }, index) => <div key={preview} className="relative aspect-square overflow-hidden rounded-lg border"><Image src={preview} alt={`Selected attachment ${index + 1}`} fill unoptimized className="object-cover" /><button type="button" aria-label={`Remove image ${index + 1}`} className="absolute right-1 top-1 rounded-full bg-background p-1" onClick={() => { const [removed] = images.filter((_, itemIndex) => itemIndex === index); if (removed) { URL.revokeObjectURL(removed.preview); previewUrls.current = previewUrls.current.filter((url) => url !== removed.preview); } setImages((current) => current.filter((_, itemIndex) => itemIndex !== index)); }}><X className="size-4" /></button></div>)}</div>}
-            <p className="mt-1 text-xs text-muted-foreground">JPEG, PNG, or WebP; maximum 5 MB each.</p>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => inputRef.current?.click()} disabled={busy || images.length >= MAX_IMAGES}>
+                <ImagePlus className="mr-2 size-4" /> Add images ({images.length}/{MAX_IMAGES})
+              </Button>
+              <p className="text-xs leading-relaxed text-muted-foreground">JPEG, PNG, or WebP. Up to 5 MB each.</p>
+            </div>
+            {!!images.length && <div className="mt-3 flex flex-wrap justify-end gap-3">{images.map(({ preview }, index) => <div key={preview} className="relative size-20 shrink-0 overflow-hidden rounded-lg border sm:size-24"><Image src={preview} alt={`Selected attachment ${index + 1}`} fill unoptimized className="object-cover" /><button type="button" aria-label={`Remove image ${index + 1}`} className="absolute right-1 top-1 rounded-full bg-background p-1" onClick={() => { const [removed] = images.filter((_, itemIndex) => itemIndex === index); if (removed) { URL.revokeObjectURL(removed.preview); previewUrls.current = previewUrls.current.filter((url) => url !== removed.preview); } setImages((current) => current.filter((_, itemIndex) => itemIndex !== index)); }}><X className="size-4" /></button></div>)}</div>}
           </div>
           {error && <p role="alert" className="break-words text-sm text-destructive">{error}</p>}
         </div>
-        <DialogFooter>
+        <DialogFooter className="mx-0 mb-0 shrink-0 rounded-b-xl px-5 py-3 sm:px-6">
           <Button type="button" variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button type="button" disabled={busy || title.trim().length < 5 || body.trim().length < 10} onClick={() => void submit()}>{busy ? "Publishing…" : "Publish post"}</Button>
         </DialogFooter>

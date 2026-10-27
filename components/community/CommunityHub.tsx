@@ -76,10 +76,10 @@ export function CommunityHub() {
     </header>
 
     <Card><CardContent className="space-y-4 p-4">
-      <div className="flex flex-col gap-3 sm:flex-row">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <label className="relative min-w-0 flex-1" htmlFor="community-search"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><input id="community-search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Search posts, topics, or tags" className="h-10 w-full rounded-md border bg-background pl-9 pr-3 text-sm" /></label>
-        <label className="sr-only" htmlFor="community-sort">Sort posts</label><select id="community-sort" value={sort} onChange={(event) => setSort(event.target.value as CommunitySort)} className="h-10 rounded-md border bg-background px-3 text-sm"><option value="latest">Latest</option><option value="liked">Most liked</option><option value="discussed">Most discussed</option></select>
-        <Button variant={savedOnly ? "secondary" : "outline"} onClick={() => setSavedOnly((value) => !value)} aria-pressed={savedOnly}><Bookmark className="mr-2 size-4" />{savedOnly ? "Saved posts" : "Saved"}</Button>
+        <label className="sr-only" htmlFor="community-sort">Sort posts</label><select id="community-sort" value={sort} onChange={(event) => setSort(event.target.value as CommunitySort)} className="h-10 w-full shrink-0 rounded-md border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-40"><option value="latest">Latest</option><option value="liked">Most liked</option><option value="discussed">Most discussed</option></select>
+        <Button className="shrink-0" variant={savedOnly ? "secondary" : "outline"} onClick={() => setSavedOnly((value) => !value)} aria-pressed={savedOnly}><Bookmark className="mr-2 size-4" />{savedOnly ? "Showing saved posts" : "Show saved posts"}</Button>
       </div>
       <div className="flex gap-2 overflow-x-auto pb-1" role="group" aria-label="Filter by post type">{categories.map((item) => <Button key={item.id} size="sm" variant={category === item.id ? "default" : "outline"} className="shrink-0" aria-pressed={category === item.id} onClick={() => setCategory(item.id)}>{item.label}</Button>)}</div>
     </CardContent></Card>

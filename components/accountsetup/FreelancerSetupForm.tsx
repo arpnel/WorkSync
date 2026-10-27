@@ -10,7 +10,6 @@ import { SubmitSection } from "./sections/SubmitSection";
 import { useFreelancerSetup } from "./hooks/useFreelancerSetup";
 import VerificationSettings from "@/components/account/VerificationSettings";
 import TaxDocuments from "@/components/account/TaxDocuments";
-import { FreelancerSellerVerification } from "@/components/account/FreelancerSellerVerification";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useState } from "react";
@@ -117,7 +116,6 @@ export function FreelancerSetupForm() {
           <p className="mt-1 text-sm text-muted-foreground">Submit Form 2303, any additional seller requirements, and applicable tax records here. You can review them later in Settings.</p>
         </div>
         <TaxDocuments key={`tax-documents-${documentationVersion}`} setupMode />
-        <FreelancerSellerVerification key={`seller-documents-${documentationVersion}`} compact />
       </section>
       {/* Submit */}
       <VerificationSettings />

@@ -88,5 +88,5 @@ export const FreelancerSellerVerification = forwardRef<FreelancerSellerVerificat
     </div>
     {data?.events.length ? <div className="space-y-2"><h4 className="text-sm font-semibold">Review history</h4><ul className="space-y-2 text-sm text-muted-foreground">{data.events.map(event => <li key={event.event_id}>{statusLabel(event.new_status)} · {new Date(event.created_at).toLocaleString()}{event.reason ? ` — ${event.reason}` : ""}</li>)}</ul></div> : null}
   </div>;
-  return <section className="space-y-3 rounded-xl border bg-card p-4" aria-busy={busy}><div><h3 className="font-semibold">Other Seller Requirements</h3>{!compact && <p className="text-sm text-muted-foreground">Review any additional account-specific requirements for offering freelancer services.</p>}</div>{content}</section>;
+  return <section className={compact ? "space-y-3" : "space-y-3 rounded-xl border bg-card p-4"} aria-busy={busy}>{!compact && <div><h3 className="font-semibold">Other Seller Requirements</h3><p className="text-sm text-muted-foreground">Review any additional account-specific requirements for offering freelancer services.</p></div>}{content}</section>;
 });

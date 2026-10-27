@@ -1,14 +1,14 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BadgeCheck, Building2, ChevronRight, FileCheck2, FileText, Landmark, LoaderCircle, ReceiptText, ShieldCheck, UploadCloud } from "lucide-react";
+import { BadgeCheck, Building2, Check, ChevronRight, FileCheck2, FileText, Landmark, LoaderCircle, ReceiptText, ShieldCheck, UploadCloud } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { StyledSelect } from "@/components/ui/styled-select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import FreelancerTaxDeclaration from "@/components/account/FreelancerTaxDeclaration";
+import { FreelancerSellerVerification } from "@/components/account/FreelancerSellerVerification";
 
 type Party = "freelancer" | "client";
 type Category = "vat" | "withholding";
@@ -34,6 +34,14 @@ const categoryPurposes: Record<Category, UploadPurpose[]> = {
   withholding: ["withholding_exemption", "withholding_support"],
 };
 const activeStatuses = new Set(["pending", "verified"]);
+
+function DocumentationStep({ number, title, note }: { number: number; title: string; note?: string }) {
+  return <div className="flex min-h-7 items-center gap-3">
+    <span className="grid size-6 shrink-0 place-items-center rounded-full bg-emerald-500 text-xs font-semibold text-white">{number}</span>
+    <h3 className="font-semibold">{title}</h3>
+    {note && <span className="text-xs font-medium text-emerald-500">{note}</span>}
+  </div>;
+}
 
 function renewalNotice(expiresAt: string | null, status: string) {
   if (status === "expired") return "Expired; submit a renewed version.";
@@ -113,6 +121,8 @@ export default function TaxDocuments({ setupMode = false }: { setupMode?: boolea
   const selected = categoryOptions.find((option) => option.value === purpose && availablePurposes.some((available) => available.value === option.value)) ?? availablePurposes[0] ?? categoryOptions[0];
   const categoryRows = category ? rows.filter((row) => rowBelongsToCategory(row, category)) : [];
   const activePurpose = selected && rows.some((row) => row.party_type === "freelancer" && row.document_type === selected.documentType && (row.claimed_tax_treatment ?? "").toLowerCase() === selected.treatment.toLowerCase() && activeStatuses.has(row.status));
+  const birStatus = canonicalBirCor.needsReview ? "Admin review needed" : canonicalBirCor.document ? statusLabel(canonicalBirCor.document.status) : "Not submitted";
+  const birApproved = canonicalBirCor.document?.status === "verified" && !canonicalBirCor.needsReview;
 
   function openCategory(next: Category) {
     const nextOptions = purposes.filter((option) => categoryPurposes[next].includes(option.value));
@@ -220,60 +230,65 @@ export default function TaxDocuments({ setupMode = false }: { setupMode?: boolea
   if (freelancerAvailable === false && !setupRequired) return null;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Documentation</CardTitle>
-        <CardDescription>Submit required seller registration and any applicable tax records. Reviews remain separate from tax treatment decisions.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-5">
-        {loading && <div className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" /> Loading tax documents…</div>}
-        {!loading && setupRequired && <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Save your freelancer profile below to enable secure document submissions here. You can submit Form 2303 and applicable tax documents without leaving account setup.</p>}
-        {!loading && !setupRequired && <>
-          <div className="flex gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/10 p-4 text-sm">
-            <ShieldCheck className="mt-0.5 size-5 shrink-0 text-emerald-500" />
-            <div>
-              <p className="font-medium text-foreground">Your documents are safe with us</p>
-              <p className="mt-1 text-muted-foreground">All documents are stored securely and reviewed only by authorized administrators.</p>
-            </div>
+    <div className="space-y-4">
+      <header>
+        <h2 className="text-lg font-semibold">Documentation</h2>
+        <p className="mt-1 text-sm text-muted-foreground">Manage seller registration and tax documents.</p>
+      </header>
+      {loading && <div className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" /> Loading tax documents…</div>}
+      {!loading && setupRequired && <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Save your freelancer profile below to enable secure document submissions here. You can submit Form 2303 and applicable tax documents without leaving account setup.</p>}
+      {!loading && !setupRequired && <>
+        <div className={`grid gap-4 rounded-lg border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2.2fr)] ${birApproved ? "border-emerald-500/30 bg-emerald-500/5" : "bg-muted/20"}`}>
+          <div className="flex items-center gap-3 sm:border-r sm:pr-4">
+            <span className={`grid size-9 shrink-0 place-items-center rounded-full ${birApproved ? "bg-emerald-500 text-white" : "bg-muted text-muted-foreground"}`}>{birApproved ? <Check className="size-5" /> : <ShieldCheck className="size-5" />}</span>
+            <div><p className={`text-sm font-semibold ${birApproved ? "text-emerald-500" : "text-foreground"}`}>Seller registration {birApproved ? "approved" : birStatus.toLowerCase()}</p><p className="mt-0.5 text-xs text-muted-foreground">{birApproved ? "Your seller registration is approved." : canonicalBirCor.document?.status === "pending" ? "Your Form 2303 is being reviewed." : "Submit Form 2303 for seller review."}</p></div>
           </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 sm:pl-1"><div><p className="text-sm font-semibold">Form 2303 <span className={`ml-1 rounded-full border px-2 py-0.5 text-xs font-medium ${statusClass(canonicalBirCor.document?.status ?? "not_submitted")}`}>{birStatus}</span></p><p className="mt-1 text-xs text-muted-foreground">{canonicalBirCor.document?.status === "verified" ? "Your Form 2303 has been reviewed and approved." : canonicalBirCor.document?.status === "pending" ? "Your document is awaiting administrator review." : canonicalBirCor.document?.review_reason || "A verified Form 2303 is required for seller approval."}</p></div>{canonicalBirCor.document?.submitted_at && <span className="text-xs text-muted-foreground">Submitted {new Date(canonicalBirCor.document.submitted_at).toLocaleDateString()}</span>}</div>
+        </div>
 
-          {freelancerAvailable && <section aria-labelledby="seller-registration-title" className="space-y-4 rounded-lg border p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div><h3 id="seller-registration-title" className="font-semibold">Seller Registration <span className="text-xs font-normal text-primary">Required</span></h3><p className="mt-1 text-sm text-muted-foreground">Submit BIR Form 2303 (Certificate of Registration). A current, verified record is required for seller approval; this does not replace identity or other mandatory checks.</p></div>
-              {canonicalBirCor.document && <span className={`h-fit rounded-full border px-2.5 py-1 text-xs font-medium ${statusClass(canonicalBirCor.document.status)}`}>{canonicalBirCor.needsReview ? "Admin review needed" : statusLabel(canonicalBirCor.document.status)}</span>}
-            </div>
+        {freelancerAvailable && <section aria-label="Seller registration documents" className="space-y-3">
+          <DocumentationStep number={1} title="Seller registration" note="(Required)" />
+          <div className="space-y-4 rounded-lg border bg-card p-4">
             {canonicalBirCor.needsReview && <p role="status" className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">Multiple latest Form 2303 records have conflicting or tied review histories. Seller approval and tax checks are paused until an administrator selects the canonical record.</p>}
-            {canonicalBirCor.document && <article className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/30 p-3 text-sm">
-              <div><p className="font-medium">{labels.bir_cor}{canonicalBirCor.document.registered_name ? ` · ${canonicalBirCor.document.registered_name}` : ""}</p><p className="text-xs text-muted-foreground">Submitted {new Date(canonicalBirCor.document.submitted_at).toLocaleDateString()}{canonicalBirCor.document.review_reason ? ` · ${canonicalBirCor.document.review_reason}` : ""}</p></div>
+            {canonicalBirCor.document && <article className="flex flex-wrap items-center justify-between gap-3 border-b pb-3 text-sm">
+              <div className="flex items-start gap-3"><span className={`mt-0.5 grid size-7 shrink-0 place-items-center rounded-full border ${canonicalBirCor.document.status === "verified" ? "border-emerald-500 text-emerald-500" : "border-border text-muted-foreground"}`}>{canonicalBirCor.document.status === "verified" ? <Check className="size-4" /> : <FileText className="size-4" />}</span><div><p className={`text-xs font-semibold ${canonicalBirCor.document.status === "verified" ? "text-emerald-500" : "text-foreground"}`}>{statusLabel(canonicalBirCor.document.status)}</p><p className="mt-1 font-medium">{labels.bir_cor}{canonicalBirCor.document.registered_name ? ` · ${canonicalBirCor.document.registered_name}` : ""}</p><p className="mt-0.5 text-xs text-muted-foreground">Submitted {new Date(canonicalBirCor.document.submitted_at).toLocaleDateString()}{canonicalBirCor.document.review_reason ? ` · ${canonicalBirCor.document.review_reason}` : ""}</p></div></div>
               <Button type="button" size="sm" variant="outline" onClick={() => void viewDocument(canonicalBirCor.document!.document_id)}><FileText className="mr-2 size-4" />View document</Button>
             </article>}
             {canonicalBirCor.document?.status === "rejected" && <p className="text-sm text-destructive">Review the administrator’s feedback, then submit a corrected Form 2303.</p>}
-            {canonicalBirCor.document?.status !== "pending" && <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-2"><Label htmlFor="canonical-bir-registered-name">Registered name shown on Form 2303</Label><Input id="canonical-bir-registered-name" value={registeredName} maxLength={200} onChange={event => setRegisteredName(event.target.value)} disabled={busy} /></div>
-              <div className="space-y-2"><Label htmlFor="canonical-bir-file">Form 2303 document</Label><input ref={birFileInput} id="canonical-bir-file" className="block w-full rounded-md border bg-background px-3 py-2 text-sm" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={busy} onChange={event => { const next = event.target.files?.[0] ?? null; if (next && next.size > 5 * 1024 * 1024) { setFile(null); setError("Choose a file up to 5 MB."); event.target.value = ""; return; } setFile(next); setError(""); }} /><p className="text-xs text-muted-foreground">Private file · PDF, JPG, or PNG up to 5 MB.</p></div>
+            {canonicalBirCor.document?.status !== "pending" && <div className="grid items-end gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+              <div className="space-y-2"><Label htmlFor="canonical-bir-registered-name">Registered name on Form 2303</Label><Input id="canonical-bir-registered-name" placeholder="Enter registered name" value={registeredName} maxLength={200} onChange={event => setRegisteredName(event.target.value)} disabled={busy} /></div>
+              <div className="space-y-2"><Label htmlFor="canonical-bir-file">Form 2303 document</Label><input ref={birFileInput} id="canonical-bir-file" className="sr-only" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={busy} onChange={event => { const next = event.target.files?.[0] ?? null; if (next && next.size > 5 * 1024 * 1024) { setFile(null); setError("Choose a file up to 5 MB."); event.target.value = ""; return; } setFile(next); setError(""); }} /><button type="button" onClick={() => birFileInput.current?.click()} disabled={busy} className="flex min-h-12 w-full items-center gap-3 rounded-md border border-dashed px-3 text-left hover:bg-muted/40 disabled:opacity-50"><UploadCloud className="size-4 shrink-0 text-muted-foreground" /><span className="min-w-0"><span className="block truncate text-sm">{file?.name ?? "Choose file"}</span><span className="block text-xs text-muted-foreground">PDF, JPG, or PNG up to 5 MB</span></span></button></div>
+              <Button type="button" className="bg-emerald-700 text-white hover:bg-emerald-600" onClick={() => void submitBirCor()} disabled={!file || !registeredName.trim() || busy || canonicalBirCor.needsReview}>{busy && <LoaderCircle className="mr-2 size-4 animate-spin" />}{busy ? "Submitting…" : canonicalBirCor.document?.status === "rejected" ? "Submit correction" : "Submit for review"}</Button>
             </div>}
             {error && <p role="alert" className="text-sm text-destructive">{error}</p>}{notice && <p role="status" className="text-sm text-emerald-600">{notice}</p>}
-            {canonicalBirCor.document?.status !== "pending" && <Button type="button" onClick={() => void submitBirCor()} disabled={!file || !registeredName.trim() || busy || canonicalBirCor.needsReview}>{busy && <LoaderCircle className="mr-2 size-4 animate-spin" />}{busy ? "Submitting…" : canonicalBirCor.document?.status === "rejected" ? "Submit corrected Form 2303" : "Submit Form 2303 for review"}</Button>}
-          </section>}
+          </div>
+        </section>}
 
-          <section aria-labelledby="tax-document-categories" className="space-y-3">
-            <div>
-              <h3 id="tax-document-categories" className="text-sm font-semibold">Choose a document category</h3>
-              <p className="mt-1 text-sm text-muted-foreground">Select a category to review requirements and submit supporting documents.</p>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <button type="button" onClick={() => openCategory("vat")} className="group flex min-h-28 items-center gap-4 rounded-lg border bg-card p-4 text-left transition-colors hover:border-primary/60 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                <span className="grid size-11 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><ReceiptText className="size-5" /></span>
-                <span className="min-w-0 flex-1"><span className="block font-medium">VAT Registration and Tax Status <span className="text-xs font-normal text-muted-foreground">Conditional</span></span><span className="mt-1 block text-sm text-muted-foreground">Upload VAT registration or applicable special-treatment records when relevant</span></span>
-                <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-              </button>
-              <button type="button" onClick={() => openCategory("withholding")} className="group flex min-h-28 items-center gap-4 rounded-lg border bg-card p-4 text-left transition-colors hover:border-primary/60 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                <span className="grid size-11 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Landmark className="size-5" /></span>
-                <span className="min-w-0 flex-1"><span className="block font-medium">Withholding Tax Records <span className="text-xs font-normal text-muted-foreground">Conditional</span></span><span className="mt-1 block text-sm text-muted-foreground">Applicable exemption certificates and supporting records</span></span>
-                <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-              </button>
-            </div>
-          </section>
+        <section aria-label="Tax document categories" className="space-y-3">
+          <DocumentationStep number={2} title="Tax documents" note="(Only if applicable)" />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <button type="button" onClick={() => openCategory("vat")} className="group flex min-h-20 items-center gap-3 rounded-lg border bg-card p-3 text-left transition-colors hover:border-emerald-500/50 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <span className="grid size-9 shrink-0 place-items-center rounded-full bg-emerald-500/10 text-emerald-500"><ReceiptText className="size-4" /></span>
+              <span className="min-w-0 flex-1"><span className="block text-sm font-medium">VAT registration and tax status <span className="ml-1 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">Conditional</span></span><span className="mt-1 block text-xs text-muted-foreground">Upload VAT registration or applicable special-treatment records when relevant.</span></span>
+              <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+            </button>
+            <button type="button" onClick={() => openCategory("withholding")} className="group flex min-h-20 items-center gap-3 rounded-lg border bg-card p-3 text-left transition-colors hover:border-emerald-500/50 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <span className="grid size-9 shrink-0 place-items-center rounded-full bg-emerald-500/10 text-emerald-500"><Landmark className="size-4" /></span>
+              <span className="min-w-0 flex-1"><span className="block text-sm font-medium">Withholding tax records <span className="ml-1 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">Conditional</span></span><span className="mt-1 block text-xs text-muted-foreground">Applicable exemption certificates and supporting records.</span></span>
+              <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+            </button>
+          </div>
+        </section>
+
+        {freelancerAvailable && <section className="space-y-3">
+          <DocumentationStep number={3} title="Withholding tax declaration" />
+          <div className="rounded-lg border bg-card p-4"><FreelancerTaxDeclaration embedded /></div>
+        </section>}
+
+        {freelancerAvailable && <section className="space-y-3">
+          <DocumentationStep number={4} title="Other requirements" />
+          <FreelancerSellerVerification compact />
+        </section>}
 
           <Dialog open={category !== null} onOpenChange={(open) => {
             if (!open) { setCategory(null); setFile(null); setRegisteredName(""); setError(""); setNotice(""); if (fileInput.current) fileInput.current.value = ""; }
@@ -356,11 +371,9 @@ export default function TaxDocuments({ setupMode = false }: { setupMode?: boolea
             </section>
           </DialogContent>}
           </Dialog>
-          {freelancerAvailable && <FreelancerTaxDeclaration />}
-        </>}
+      </>}
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         {notice && <p role="status" className="text-sm text-primary">{notice}</p>}
-      </CardContent>
-    </Card>
+    </div>
   );
 }

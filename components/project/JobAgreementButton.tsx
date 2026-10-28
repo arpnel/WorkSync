@@ -1,6 +1,7 @@
 ﻿"use client";
 import { type ReactNode, useState } from "react";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
 import { platformAction } from "@/services/platform/platformService";
 import { traceProjectFlow } from "@/services/project/projectFlowDiagnostics";
 export function JobAgreementButton({
@@ -17,7 +18,7 @@ export function JobAgreementButton({
     <div className="space-y-2">
       <button
         type="button"
-        className="block w-full text-left"
+        className="navigation-card block w-full rounded-2xl text-left focus-visible:outline-2 focus-visible:outline-primary"
         disabled={busy}
         onClick={async () => {
           if (busy) return;
@@ -40,7 +41,30 @@ export function JobAgreementButton({
             });
             if (typeof rpcResult !== "string")
               throw new Error("Agreement RPC did not return a service order ID.");
-            const serviceOrderId = rpcResult;
+            // Newer RPC versions return an order ID; older deployed versions
+            // returned a contract ID. Resolve either to the order ID expected
+            // by the workspace route, using the signed-in user's RLS access.
+            const { data: order, error: orderError } = await supabase
+              .from("service_orders")
+              .select("order_id")
+              .eq("order_id", rpcResult)
+              .maybeSingle();
+            if (orderError)
+              throw new Error("Unable to verify access to the agreement.");
+
+            let serviceOrderId = order?.order_id;
+            if (!serviceOrderId) {
+              const { data: contract, error: contractError } = await supabase
+                .from("contracts")
+                .select("order_id")
+                .eq("contract_id", rpcResult)
+                .maybeSingle();
+              if (contractError)
+                throw new Error("Unable to verify access to the agreement.");
+              if (typeof contract?.order_id !== "string")
+                throw new Error("The agreement project could not be found.");
+              serviceOrderId = contract.order_id;
+            }
             traceProjectFlow("navigating to project workspace", {
               routeIdType: "service_order_id",
               routeId: serviceOrderId,

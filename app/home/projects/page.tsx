@@ -14,7 +14,6 @@ import { useProjectRequests } from "@/hooks/project/useProjectRequests";
 import { RequestList } from "@/components/project/RequestList";
 import { traceProjectFlow } from "@/services/project/projectFlowDiagnostics";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   BriefcaseBusiness,
@@ -249,9 +248,6 @@ function ProjectsPage() {
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="font-semibold">{request.jobTitle}</h3>
-                      <Badge className="bg-amber-50 text-amber-700">
-                        In Discussion
-                      </Badge>
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">
                       With{" "}

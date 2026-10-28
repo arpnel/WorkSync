@@ -30,6 +30,7 @@ test("the RPC result stays an order ID through navigation and workspace loading"
     "app/home/projects/standard/[orderId]/page.tsx",
     "utf8",
   );
+  const projectsPage = fs.readFileSync("app/home/projects/page.tsx", "utf8");
   const workspace = fs.readFileSync(
     "services/project/projectWorkspaceService.ts",
     "utf8",
@@ -41,6 +42,10 @@ test("the RPC result stays an order ID through navigation and workspace loading"
   assert.match(route, /params: Promise<\{ orderId: string \}>/);
   assert.match(route, /const \{ orderId: serviceOrderId \} = await params/);
   assert.match(route, /StandardProjectWorkspace serviceOrderId=\{serviceOrderId\}/);
+  assert.match(
+    projectsPage,
+    /serviceRequests=\{displayProjects\.filter\([\s\S]*?project\.status === "Request"/,
+  );
   assert.match(workspace, /\.eq\("order_id", serviceOrderId\)/);
 });
 

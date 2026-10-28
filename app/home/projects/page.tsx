@@ -208,7 +208,7 @@ function ProjectsPage() {
         <RequestList
           received={requestState.requests.received}
           sent={requestState.requests.sent}
-          serviceRequests={projects.filter(
+          serviceRequests={displayProjects.filter(
             (project) => project.status === "Request",
           )}
           loading={requestState.loading}

@@ -134,14 +134,14 @@ const WORKSPACE_SELECT =
   "order_id, service_id, freelancer_id, client_id, status, created_at, services(title, description, price, service_type, delivery_time_days, revisions_count, category_id), client_profiles(user_id), freelancer_profiles(user_id), projects(project_id, title, description, budget, status, start_date, due_date, milestones(milestone_id, title, description, amount, due_date, status, display_order)), contracts(contract_id, final_price, delivery_time_days, revisions_count, terms, status, client_signed_at, freelancer_signed_at)";
 
 export async function getProjectWorkspace(
-  orderId: string,
+  serviceOrderId: string,
 ): Promise<ProjectWorkspace> {
   const account = await getActiveAccountContext();
   const userId = account.userId;
   const { data, error } = await supabase
     .from("service_orders")
     .select(WORKSPACE_SELECT)
-    .eq("order_id", orderId)
+    .eq("order_id", serviceOrderId)
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) throw new Error("Project not found or you do not have access.");
@@ -197,7 +197,7 @@ export async function getProjectWorkspace(
       supabase
         .from("conversations")
         .select("conversation_id")
-        .eq("order_id", orderId)
+        .eq("order_id", serviceOrderId)
         .maybeSingle(),
     ]);
   if (categoryResult.error) {
@@ -290,7 +290,7 @@ export async function getProjectWorkspace(
     (!project || ["", "pending"].includes(text(project.status)));
   if (draftMilestones) {
     const draft = await supabase.rpc("worksync_draft_milestones", {
-      p_order: orderId,
+      p_order: serviceOrderId,
       p_action: "list",
     });
     if (draft.error)

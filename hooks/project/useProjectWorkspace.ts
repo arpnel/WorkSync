@@ -40,7 +40,7 @@ function mergeMessages(
   );
 }
 
-export function useProjectWorkspace(orderId: string) {
+export function useProjectWorkspace(serviceOrderId: string) {
   const messageSettings = useMessageAccountSettings();
   const [workspace, setWorkspace] = useState<ProjectWorkspace | null>(null);
   const [loading, setLoading] = useState(true);
@@ -57,27 +57,30 @@ export function useProjectWorkspace(orderId: string) {
   useEffect(() => {
     workspaceRef.current = workspace;
   }, [workspace]);
-  const activeOrder = useRef(orderId);
+  const activeOrder = useRef(serviceOrderId);
   const loadVersion = useRef(0);
   const sendTypingRef = useRef<(isTyping: boolean) => void>(() => undefined);
 
   const load = useCallback(
     async (showLoading = true, force = true) => {
-      if (!orderId || activeOrder.current !== orderId) return;
+      if (!serviceOrderId || activeOrder.current !== serviceOrderId) return;
       const request = ++loadVersion.current;
 
       try {
         if (showLoading) setLoading(true);
         setError(null);
         const freshWorkspace = await readProjectCache(
-          `workspace:${orderId}`,
-          () => getProjectWorkspace(orderId),
+          `workspace:${serviceOrderId}`,
+          () => getProjectWorkspace(serviceOrderId),
           force,
         );
-        if (activeOrder.current !== orderId || request !== loadVersion.current)
+        if (
+          activeOrder.current !== serviceOrderId ||
+          request !== loadVersion.current
+        )
           return;
         setWorkspace((current) =>
-          showLoading || !current || current.orderId !== orderId
+          showLoading || !current || current.orderId !== serviceOrderId
             ? freshWorkspace
             : {
                 ...freshWorkspace,
@@ -90,18 +93,24 @@ export function useProjectWorkspace(orderId: string) {
               },
         );
       } catch (cause) {
-        if (activeOrder.current !== orderId || request !== loadVersion.current)
+        if (
+          activeOrder.current !== serviceOrderId ||
+          request !== loadVersion.current
+        )
           return;
         setError(
           cause instanceof Error ? cause.message : "Failed to load project.",
         );
         if (showLoading) setWorkspace(null);
       } finally {
-        if (activeOrder.current === orderId && request === loadVersion.current)
+        if (
+          activeOrder.current === serviceOrderId &&
+          request === loadVersion.current
+        )
           setLoading(false);
       }
     },
-    [orderId],
+    [serviceOrderId],
   );
 
   const refreshProjectMessages = useCallback(async () => {
@@ -166,7 +175,7 @@ export function useProjectWorkspace(orderId: string) {
   }, [loadingOlderMessages]);
 
   useEffect(() => {
-    activeOrder.current = orderId;
+    activeOrder.current = serviceOrderId;
     void load(true, false);
     const refresh = () => {
       if (document.visibilityState === "visible") void load(false, false);
@@ -184,7 +193,7 @@ export function useProjectWorkspace(orderId: string) {
       window.removeEventListener("focus", refresh);
       window.removeEventListener("account-role-changed", onRoleChanged);
     };
-  }, [load, orderId]);
+  }, [load, serviceOrderId]);
 
   useEffect(() => {
     return workspace?.conversationId
@@ -207,7 +216,7 @@ export function useProjectWorkspace(orderId: string) {
           event: "UPDATE",
           schema: "public",
           table: "service_orders",
-          filter: `order_id=eq.${orderId}`,
+          filter: `order_id=eq.${serviceOrderId}`,
         },
         () => void load(false),
       )
@@ -236,7 +245,7 @@ export function useProjectWorkspace(orderId: string) {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [load, orderId, workspace?.contractId]);
+  }, [load, serviceOrderId, workspace?.contractId]);
 
   useEffect(() => {
     if (
@@ -325,7 +334,7 @@ export function useProjectWorkspace(orderId: string) {
     };
 
     setWorkspace((current) =>
-      current?.orderId === orderId
+      current?.orderId === serviceOrderId
         ? {
             ...current,
             messages: mergeMessages(current.messages, [optimisticMessage]),
@@ -338,7 +347,7 @@ export function useProjectWorkspace(orderId: string) {
       setError(null);
       sendTypingRef.current(false);
       const uploaded = await sendProjectMessage(
-        orderId,
+        serviceOrderId,
         content,
         messageId,
         attachment,
@@ -346,7 +355,7 @@ export function useProjectWorkspace(orderId: string) {
         signal,
       );
       setWorkspace((current) =>
-        current?.orderId === orderId
+      current?.orderId === serviceOrderId
           ? {
               ...current,
               conversationId: uploaded.conversationId ?? current.conversationId,
@@ -366,7 +375,7 @@ export function useProjectWorkspace(orderId: string) {
       return true;
     } catch (cause) {
       setWorkspace((current) =>
-        current?.orderId === orderId
+      current?.orderId === serviceOrderId
           ? {
               ...current,
               messages: current.messages.filter(
@@ -387,7 +396,7 @@ export function useProjectWorkspace(orderId: string) {
   const respondToAgreementItem = async (itemKey: string, approved: boolean) => {
     try {
       setUpdatingApprovalKey(itemKey);
-      await respondToProjectAgreementItem(orderId, itemKey, approved);
+      await respondToProjectAgreementItem(serviceOrderId, itemKey, approved);
       clearProjectReadCache();
       await load(false);
       return true;
@@ -405,7 +414,7 @@ export function useProjectWorkspace(orderId: string) {
     try {
       setUpdatingAgreement(true);
       setError(null);
-      await respondToProjectAgreement(orderId, accepted);
+      await respondToProjectAgreement(serviceOrderId, accepted);
       clearProjectReadCache();
       await load(false);
       return true;
@@ -425,7 +434,7 @@ export function useProjectWorkspace(orderId: string) {
   ) => {
     try {
       setUpdatingApprovalKey(itemKey);
-      await updateProjectAgreementItem(orderId, itemKey, value);
+      await updateProjectAgreementItem(serviceOrderId, itemKey, value);
       clearProjectReadCache();
       await load(false);
       return true;
@@ -443,7 +452,7 @@ export function useProjectWorkspace(orderId: string) {
     try {
       setUpdatingAgreement(true);
       setError(null);
-      await updateProjectAgreementTerms(orderId, budget, deliveryDays);
+      await updateProjectAgreementTerms(serviceOrderId, budget, deliveryDays);
       clearProjectReadCache();
       await load(false);
       return true;
@@ -458,8 +467,8 @@ export function useProjectWorkspace(orderId: string) {
   };
 
   return {
-    workspace: workspace?.orderId === orderId ? workspace : null,
-    loading: loading || (!!workspace && workspace.orderId !== orderId),
+    workspace: workspace?.orderId === serviceOrderId ? workspace : null,
+    loading: loading || (!!workspace && workspace.orderId !== serviceOrderId),
     sending,
     loadingOlderMessages,
     updatingAgreement,

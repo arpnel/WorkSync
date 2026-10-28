@@ -23,10 +23,13 @@ export function JobAgreementButton({
           setBusy(true);
           setError("");
           try {
-            const orderId = await platformAction("worksync_job_agreement", {
+            const rpcResult = await platformAction("worksync_job_agreement", {
               p_application: applicationId,
             });
-            router.push(`/home/projects/standard/${orderId}#contract`);
+            if (typeof rpcResult !== "string")
+              throw new Error("Agreement RPC did not return a service order ID.");
+            const serviceOrderId = rpcResult;
+            router.push(`/home/projects/standard/${serviceOrderId}#contract`);
           } catch (cause) {
             setError(
               cause instanceof Error

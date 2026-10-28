@@ -5,6 +5,6 @@ export default async function StandardProjectPage({
 }: {
   params: Promise<{ orderId: string }>;
 }) {
-  const { orderId } = await params;
-  return <StandardProjectWorkspace orderId={orderId} />;
+  const { orderId: serviceOrderId } = await params;
+  return <StandardProjectWorkspace serviceOrderId={serviceOrderId} />;
 }

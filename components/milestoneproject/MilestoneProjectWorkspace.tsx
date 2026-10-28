@@ -17,7 +17,11 @@ import { useProjectWorkspace } from "@/hooks/project/useProjectWorkspace";
 import { MilestoneWorkspaceList } from "./MilestoneWorkspaceList";
 import { CancelledProjectWorkspace } from "@/components/project/CancelledProjectWorkspace";
 
-export function MilestoneProjectWorkspace({ orderId }: { orderId: string }) {
+export function MilestoneProjectWorkspace({
+  serviceOrderId,
+}: {
+  serviceOrderId: string;
+}) {
   const router = useRouter();
   const {
     workspace,
@@ -29,7 +33,7 @@ export function MilestoneProjectWorkspace({ orderId }: { orderId: string }) {
     respondToAgreement,
     respondToAgreementItem,
     saveAgreementItem,
-  } = useProjectWorkspace(orderId);
+  } = useProjectWorkspace(serviceOrderId);
 
   if (loading)
     return <ContentSkeleton label="Loading project" variant="workspace" />;

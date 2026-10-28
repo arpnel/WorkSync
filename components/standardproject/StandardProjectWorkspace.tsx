@@ -16,7 +16,11 @@ import { ProjectWorkspaceHeader } from "@/components/project/ProjectWorkspaceHea
 import { CancelledProjectWorkspace } from "@/components/project/CancelledProjectWorkspace";
 import { useProjectWorkspace } from "@/hooks/project/useProjectWorkspace";
 
-export function StandardProjectWorkspace({ orderId }: { orderId: string }) {
+export function StandardProjectWorkspace({
+  serviceOrderId,
+}: {
+  serviceOrderId: string;
+}) {
   const router = useRouter();
   const {
     workspace,
@@ -34,7 +38,7 @@ export function StandardProjectWorkspace({ orderId }: { orderId: string }) {
     respondToAgreement,
     respondToAgreementItem,
     saveAgreementItem,
-  } = useProjectWorkspace(orderId);
+  } = useProjectWorkspace(serviceOrderId);
 
   if (loading) {
     return <ContentSkeleton label="Loading project" variant="workspace" />;

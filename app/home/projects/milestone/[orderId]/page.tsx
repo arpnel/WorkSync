@@ -5,6 +5,6 @@ export default async function MilestoneProjectPage({
 }: {
   params: Promise<{ orderId: string }>;
 }) {
-  const { orderId } = await params;
-  return <MilestoneProjectWorkspace orderId={orderId} />;
+  const { orderId: serviceOrderId } = await params;
+  return <MilestoneProjectWorkspace serviceOrderId={serviceOrderId} />;
 }

@@ -40,6 +40,11 @@ next-env.d.ts
 
 # Keep local test suite and Supabase project files out of the GitHub repository
 /tests/
-/supabase/
+!/supabase/
+/supabase/*
+!/supabase/migrations/
+/supabase/migrations/*
+!/supabase/migrations/202610280001_project_plans.sql
+!/supabase/migrations/202610280002_project_plan_done_stage_order.sql
 
 /docs/

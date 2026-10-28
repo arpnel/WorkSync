@@ -35,6 +35,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { ProjectPlanProposalAttachment } from "@/components/project/ProjectPlanProposalAttachment";
+import type { ProjectPlanSnapshot } from "@/services/project/projectPlans";
 export default function MarketplaceJobDetails({
   guest = false,
 }: {
@@ -63,6 +65,9 @@ export default function MarketplaceJobDetails({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [proposal, setProposal] = useState("");
+  const [proposedPlan, setProposedPlan] = useState<ProjectPlanSnapshot | null>(
+    null,
+  );
   const [price, setPrice] = useState("");
   const [days, setDays] = useState("");
   const [busy, setBusy] = useState(false);
@@ -75,6 +80,7 @@ export default function MarketplaceJobDetails({
     useState<PublicJobHiringStats | null>(null);
   useEffect(() => {
     let alive = true;
+    setProposedPlan(null);
     void Promise.all([
       getMarketplaceJob(jobId, guest),
       guest ? Promise.resolve(null) : getOwnJobApplication(jobId),
@@ -450,6 +456,7 @@ export default function MarketplaceJobDetails({
                     proposal,
                     Number(price),
                     Number(days),
+                    proposedPlan,
                   );
                   if (!application) {
                     setHiringStats((current) =>
@@ -499,6 +506,12 @@ export default function MarketplaceJobDetails({
                   onChange={(e) => setProposal(e.target.value)}
                 />
               </label>
+              {freelancerId && (
+                <ProjectPlanProposalAttachment
+                  value={proposedPlan}
+                  onChange={setProposedPlan}
+                />
+              )}
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="text-sm">
                   Proposed price (PHP)

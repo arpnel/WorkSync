@@ -232,20 +232,23 @@ export function getProjectStatus(record: ProjectRecord): Project["status"] {
     string,
     unknown
   > | null;
-  const status = String(project?.status ?? record.status).toLowerCase();
+  const projectStatus = String(project?.status ?? "").toLowerCase();
+  const orderStatus = String(record.status).toLowerCase();
   if (
-    ["cancelled", "canceled", "rejected"].includes(status) ||
-    ["cancelled", "canceled", "rejected"].includes(record.status)
+    ["cancelled", "canceled", "rejected"].includes(projectStatus) ||
+    ["cancelled", "canceled", "rejected"].includes(orderStatus)
   )
     return "Cancelled";
-  if (project?.status === "completed") return "Completed";
-  if (["active", "in_progress", "revision"].includes(status)) return "Active";
+  if (projectStatus === "completed" || orderStatus === "completed")
+    return "Completed";
   if (
-    ["accepted", "negotiating", "in_discussion", "converted"].includes(
-      record.status,
-    )
+    ["accepted", "negotiating", "in_discussion"].includes(orderStatus)
   )
     return "In Discussion";
+  if (["active", "in_progress", "revision"].includes(projectStatus))
+    return "Active";
+  if (["active", "in_progress", "revision", "converted"].includes(orderStatus))
+    return "Active";
   return "Request";
 }
 

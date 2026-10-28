@@ -50,6 +50,16 @@ function ProjectsPage() {
       ),
     },
   };
+  const acceptedApplicationIds = new Set(
+    requestState.requests.discussions.map((request) => request.applicationId),
+  );
+  const displayProjects = projects.map((project) =>
+    project.applicationId &&
+    acceptedApplicationIds.has(project.applicationId) &&
+    project.status === "Request"
+      ? { ...project, status: "In Discussion" }
+      : project,
+  );
   const {
     activeFilter,
     setActiveFilter,
@@ -64,10 +74,10 @@ function ProjectsPage() {
     budgetAscending,
     setBudgetAscending,
     filteredProjects,
-  } = useProjectFilters(projects);
+  } = useProjectFilters(displayProjects);
 
   const linkedApplications = new Set(
-    projects.map((project) => project.applicationId).filter(Boolean),
+    displayProjects.map((project) => project.applicationId).filter(Boolean),
   );
   const discussions = requestState.requests.discussions.filter(
     (request) =>

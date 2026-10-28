@@ -6,7 +6,8 @@ import type { ProjectPayment } from "@/services/payments/paymentService";
 import type { ProjectWorkspace } from "@/types/project/projectWorkspace";
 import { ProjectWorkspaceHeader } from "./ProjectWorkspaceHeader";
 import { ProjectMeetingsDialog } from "./ProjectMeetingsDialog";
-import { ProjectDeliveryPanel } from "./ProjectDeliveryPanel";
+import { ProjectTaskBoard } from "./ProjectTaskBoard";
+import { ProjectProgressSummary } from "./ProjectProgressSummary";
 import { ProjectPaymentPanel } from "./ProjectPaymentPanel";
 import { ProjectResolutionPanel } from "./ProjectResolutionPanel";
 import { ProjectCancellationNotice } from "./ProjectCancellationNotice";
@@ -131,14 +132,12 @@ export function ActiveProjectWorkspace({
               </div>
             </section>
           )}
-          <ProjectDeliveryPanel
+          <ProjectProgressSummary project={project} />
+          <ProjectTaskBoard
             key={project.projectId}
             project={project}
             onRefresh={onRefresh}
             paid={paid}
-            autoReleaseEnabled={payment?.autoReleaseEnabled ?? false}
-            finalMilestoneId={payment?.finalMilestoneId}
-            autoAccept={payment?.autoAccept ?? false}
             actions={<>
               {project.projectId && <ProjectMeetingsDialog projectId={project.projectId} active={!completed} />}
               <Dialog open={resolutionOpen} onOpenChange={setResolutionOpen}>

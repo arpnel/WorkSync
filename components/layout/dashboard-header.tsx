@@ -42,6 +42,28 @@ import { usePremiumStatus } from "@/hooks/usePremiumStatus";
 
 const subscribeToClient = () => () => {};
 
+function summarizeLoadError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return { message: String(error) };
+  }
+
+  const value = error as Record<string, unknown>;
+  return {
+    name: typeof value.name === "string" ? value.name : undefined,
+    message:
+      typeof value.message === "string"
+        ? value.message.slice(0, 300)
+        : "No error message was provided.",
+    code: typeof value.code === "string" ? value.code : undefined,
+    status:
+      typeof value.status === "number"
+        ? value.status
+        : typeof value.statusCode === "number"
+          ? value.statusCode
+          : undefined,
+  };
+}
+
 export function DashboardHeader() {
   const isClient = useSyncExternalStore(
     subscribeToClient,
@@ -74,17 +96,35 @@ export function DashboardHeader() {
 
     async function loadHeaderData() {
       try {
-        const [currentProfile, status] = await Promise.all([
+        const [profileResult, roleResult] = await Promise.allSettled([
           getCurrentProfile(),
           getAccountRoleStatus(),
         ]);
 
-        if (active) {
-          setProfile(currentProfile);
-          setCurrentRole(status.currentRole);
+        if (!active) return;
+
+        if (profileResult.status === "fulfilled") {
+          setProfile(profileResult.value);
+        } else {
+          console.error(
+            "Failed to load dashboard profile:",
+            summarizeLoadError(profileResult.reason),
+          );
+        }
+
+        if (roleResult.status === "fulfilled") {
+          setCurrentRole(roleResult.value.currentRole);
+        } else {
+          console.error(
+            "Failed to load dashboard account role:",
+            summarizeLoadError(roleResult.reason),
+          );
         }
       } catch (error) {
-        console.error("Failed to load dashboard header:", error);
+        console.error(
+          "Failed to load dashboard header:",
+          summarizeLoadError(error),
+        );
       } finally {
         if (active) {
           setRoleLoading(false);

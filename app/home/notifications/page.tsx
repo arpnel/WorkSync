@@ -16,7 +16,6 @@ import {
   Clock3,
   FileCheck2,
   MessageCircle,
-  MessagesSquare,
   Settings2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -30,7 +29,6 @@ import { useNotifications } from "@/hooks/notification/useNotifications";
 
 const kindIcons = {
   message: MessageCircle,
-  community: MessagesSquare,
   project: BriefcaseBusiness,
   agreement: FileCheck2,
   listing: BriefcaseBusiness,
@@ -38,7 +36,6 @@ const kindIcons = {
 } satisfies Record<NotificationKind, typeof BellRing>;
 const kindLabels: Record<NotificationKind, string> = {
   message: "Message",
-  community: "Community",
   project: "Project",
   agreement: "Agreement",
   listing: "Request",

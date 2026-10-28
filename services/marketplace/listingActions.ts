@@ -9,6 +9,8 @@ import {
   platformAction,
   requireUser,
 } from "@/services/platform/platformService";
+import { projectPlanSnapshotSchema } from "@/services/project/projectPlanSnapshot";
+import type { ProjectPlanSnapshot } from "@/services/project/projectPlans";
 export type ListingKind = "service" | "job";
 export const listingKey = (kind: ListingKind, id: string) => `${kind}:${id}`;
 export function getSavedListings(): Promise<Set<string>> {
@@ -79,6 +81,7 @@ export async function applyForJob(
   proposal: string,
   price: number,
   days: number,
+  proposedPlan: ProjectPlanSnapshot | null = null,
 ) {
   if (!proposal.trim() || proposal.length > 10000)
     throw new Error("Enter a proposal of up to 10,000 characters.");
@@ -91,6 +94,11 @@ export async function applyForJob(
     throw new Error(
       "Enter a positive price and whole number of delivery days.",
     );
+  if (
+    proposedPlan &&
+    !projectPlanSnapshotSchema.safeParse(proposedPlan).success
+  )
+    throw new Error("Review the attached project plan before submitting.");
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -105,7 +113,13 @@ export async function applyForJob(
       Authorization: `Bearer ${session.access_token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ jobId, proposal: proposal.trim(), price, days }),
+    body: JSON.stringify({
+      jobId,
+      proposal: proposal.trim(),
+      price,
+      days,
+      proposedPlan,
+    }),
   });
   const result = await response.json().catch(() => null);
   if (!response.ok || !result?.applicationId)

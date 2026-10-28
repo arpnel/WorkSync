@@ -25,6 +25,7 @@ import {
 import {
   BriefcaseBusiness,
   Clock3,
+  Eye,
   ExternalLink,
   Sparkles,
   LoaderCircle,
@@ -39,6 +40,7 @@ import {
   requestApplicantScreening,
 } from "@/services/project/applicantScreeningService";
 import { clearProjectReadCache } from "@/lib/projectReadCache";
+import { ProjectPlanSnapshotPreview } from "./ProjectPlanSnapshotPreview";
 
 interface Props {
   received: ProjectRequest[];
@@ -80,6 +82,9 @@ export function RequestList({
   const [selectedRequest, setSelected] = React.useState<ProjectRequest | null>(
     null,
   );
+  const [planPreview, setPlanPreview] = React.useState<
+    ProjectRequest["proposedPlan"]
+  >(null);
   const [view, setView] = React.useState<"received" | "sent">("received");
   const [sortByScore, setSortByScore] = React.useState(false);
   const [responseErrors, setResponseErrors] = React.useState<
@@ -104,14 +109,18 @@ export function RequestList({
       ) ?? selectedRequest)
     : null;
   const selected = currentRequest;
-  const assessmentState = screeningState(selected?.screening, selected?.createdAt ?? "");
+  const assessmentState = screeningState(
+    selected?.screening,
+    selected?.createdAt ?? "",
+  );
   const selectedApplicationId = selected?.applicationId ?? null;
   const selectedCurrentParty = selected?.currentParty ?? null;
   const selectedHasScreening =
     selected?.screening?.score !== null &&
     selected?.screening?.score !== undefined;
   const selectedIsReceived = Boolean(
-    selected && received.some((item) => item.applicationId === selected.applicationId),
+    selected &&
+    received.some((item) => item.applicationId === selected.applicationId),
   );
   const selectedIsScreening = selected?.applicationId === screeningPendingId;
   const screeningPreparing =
@@ -210,8 +219,12 @@ export function RequestList({
       sortByScore
         ? requests.sort(
             (a, b) =>
-              (screeningState(b.screening, b.createdAt) === "ready" ? b.screening!.score! : -1) -
-              (screeningState(a.screening, a.createdAt) === "ready" ? a.screening!.score! : -1),
+              (screeningState(b.screening, b.createdAt) === "ready"
+                ? b.screening!.score!
+                : -1) -
+              (screeningState(a.screening, a.createdAt) === "ready"
+                ? a.screening!.score!
+                : -1),
           )
         : requests,
     );
@@ -491,6 +504,31 @@ export function RequestList({
                     </p>
                   </div>
                 </div>
+                {selected.proposedPlan && (
+                  <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3">
+                    <div className="min-w-0">
+                      <h3 className="truncate text-sm font-medium">
+                        {selected.proposedPlan.name}
+                      </h3>
+                      <p className="text-xs text-muted-foreground">
+                        {selected.proposedPlan.content.columns.length - 1} stages{" · "}
+                        {selected.proposedPlan.content.columns.reduce(
+                          (count, column) => count + column.tasks.length,
+                          0,
+                        )} tasks attached
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="shrink-0"
+                      onClick={() => setPlanPreview(selected.proposedPlan)}
+                    >
+                      <Eye /> View plan
+                    </Button>
+                  </section>
+                )}
                 {selected.portfolio.length > 0 && (
                   <div>
                     <h3 className="mb-2 font-semibold">Portfolio preview</h3>
@@ -543,7 +581,12 @@ export function RequestList({
                     : `${selected.screening.score}/100`}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {assessmentState === "expired" ? "Expired assessment — review current evidence" : selected.screening?.result || (screeningPreparing ? "Preparing AI match..." : "Assessment unavailable or delayed")}
+                  {assessmentState === "expired"
+                    ? "Expired assessment — review current evidence"
+                    : selected.screening?.result ||
+                      (screeningPreparing
+                        ? "Preparing AI match..."
+                        : "Assessment unavailable or delayed")}
                 </p>
               </div>
             </div>
@@ -551,15 +594,19 @@ export function RequestList({
               <h3 className="font-semibold">AI screening</h3>
               {!selected.screening && (
                 <p className="text-sm text-muted-foreground">
-                  {screeningPreparing ? "The assessment will appear here if processing completes successfully." : "No assessment is available. You can still review the application and discuss the project."}
+                  {screeningPreparing
+                    ? "The assessment will appear here if processing completes successfully."
+                    : "No assessment is available. You can still review the application and discuss the project."}
                 </p>
               )}
               {screeningLimit && selectedIsReceived && !selected.screening && (
                 <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
                   <p className="font-medium">Free AI screening limit reached</p>
                   <p className="mt-1 text-muted-foreground">
-                    {screeningLimit.used} of {screeningLimit.limit} screenings used in the last six months.
-                    {screeningLimit.resetAt && ` Your next screening becomes available ${new Date(screeningLimit.resetAt).toLocaleDateString()}.`}
+                    {screeningLimit.used} of {screeningLimit.limit} screenings
+                    used in the last six months.
+                    {screeningLimit.resetAt &&
+                      ` Your next screening becomes available ${new Date(screeningLimit.resetAt).toLocaleDateString()}.`}
                   </p>
                   <Button asChild size="sm" className="mt-3">
                     <Link href="/home/subscription">See Premium options</Link>
@@ -568,7 +615,8 @@ export function RequestList({
               )}
               {screeningErrors[selected.applicationId] && (
                 <p role="alert" className="text-sm text-destructive">
-                  Screening could not be completed: {screeningErrors[selected.applicationId]}
+                  Screening could not be completed:{" "}
+                  {screeningErrors[selected.applicationId]}
                 </p>
               )}
               <p className="text-xs text-muted-foreground">
@@ -713,20 +761,35 @@ export function RequestList({
           </DialogContent>
         )}
       </Dialog>
+      <ProjectPlanSnapshotPreview
+        plan={planPreview}
+        open={Boolean(planPreview)}
+        onOpenChange={(open) => {
+          if (!open) setPlanPreview(null);
+        }}
+      />
       <Dialog open={screeningLimitOpen} onOpenChange={setScreeningLimitOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Free AI screening limit reached</DialogTitle>
             <DialogDescription>
-              You have used {screeningLimit?.used ?? 5} of {screeningLimit?.limit ?? 5} free applicant screenings for this rolling six-month period.
-              {screeningLimit?.resetAt && ` Your next screening becomes available ${new Date(screeningLimit.resetAt).toLocaleDateString()}.`}
+              You have used {screeningLimit?.used ?? 5} of{" "}
+              {screeningLimit?.limit ?? 5} free applicant screenings for this
+              rolling six-month period.
+              {screeningLimit?.resetAt &&
+                ` Your next screening becomes available ${new Date(screeningLimit.resetAt).toLocaleDateString()}.`}
             </DialogDescription>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Premium includes unlimited AI applicant screening, up to 20 active marketplace postings across jobs and services, and 30 monthly listing submissions.
+            Premium includes unlimited AI applicant screening, up to 20 active
+            marketplace postings across jobs and services, and 30 monthly
+            listing submissions.
           </p>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setScreeningLimitOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setScreeningLimitOpen(false)}
+            >
               Continue without screening
             </Button>
             <Button asChild>

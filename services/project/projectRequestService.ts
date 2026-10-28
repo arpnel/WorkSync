@@ -7,6 +7,10 @@ import { invalidatePageReads } from "@/lib/pageReadCache";
 import { screeningLabel } from "@/lib/ai/screening";
 import { assertFreelancerAvailable } from "@/services/marketplace/freelancerAvailability";
 import { getActiveAccountContext } from "@/services/marketplace/AccountServices";
+import {
+  projectPlanSnapshotSchema,
+  type ProjectPlanSnapshotData,
+} from "@/services/project/projectPlanSnapshot";
 
 export interface ScreeningResult {
   score: number | null;
@@ -43,6 +47,7 @@ export interface ProjectRequest {
     projectUrl: string | null;
   }>;
   proposal: string | null;
+  proposedPlan: ProjectPlanSnapshotData | null;
   proposedPrice: number | null;
   estimatedDays: number | null;
   status: string;
@@ -61,6 +66,35 @@ export interface ProjectRequestData {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = Record<string, any>;
 
+const applicationFields =
+  "application_id, job_id, freelancer_id, proposal, proposed_price, estimated_days, status, screening_id, created_at";
+const applicationFieldsWithPlan = `${applicationFields}, proposed_plan`;
+type ApplicationQueryResult = {
+  data: unknown[] | null;
+  error: { code?: string; message: string } | null;
+};
+
+async function readApplications(
+  query: (fields: string) => PromiseLike<ApplicationQueryResult>,
+): Promise<Row[]> {
+  let result = await query(applicationFieldsWithPlan);
+  const missingPlanField =
+    result.error &&
+    (result.error.code === "PGRST204" ||
+      result.error.code === "42703" ||
+      result.error.message.includes("proposed_plan"));
+  if (missingPlanField) result = await query(applicationFields);
+  if (result.error) throw result.error;
+  return (result.data ?? []).map((item) => {
+    const row = item as Row;
+    const parsedPlan = projectPlanSnapshotSchema.safeParse(row.proposed_plan);
+    return {
+      ...row,
+      proposed_plan: parsedPlan.success ? parsedPlan.data : null,
+    };
+  });
+}
+
 export async function getProjectRequests(): Promise<ProjectRequestData> {
   const account = await getActiveAccountContext();
 
@@ -73,30 +107,26 @@ export async function getProjectRequests(): Promise<ProjectRequestData> {
     if (jobsError) throw jobsError;
     const jobIds = (jobs ?? []).map((job) => job.job_id);
     if (jobIds.length) {
-      const { data, error } = await supabase
-        .from("job_applications")
-        .select(
-          "application_id, job_id, freelancer_id, proposal, proposed_price, estimated_days, status, screening_id, created_at",
-        )
-        .in("job_id", jobIds)
-        .in("status", ["pending", "in_review", "accepted"])
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      receivedRows = data ?? [];
+      receivedRows = await readApplications((fields) =>
+        supabase
+          .from("job_applications")
+          .select(fields)
+          .in("job_id", jobIds)
+          .in("status", ["pending", "in_review", "accepted"])
+          .order("created_at", { ascending: false }),
+      );
     }
   }
 
   let sentRows: Row[] = [];
   if (account.role === "freelancer" && account.profileId) {
-    const { data, error } = await supabase
-      .from("job_applications")
-      .select(
-        "application_id, job_id, freelancer_id, proposal, proposed_price, estimated_days, status, screening_id, created_at",
-      )
-      .eq("freelancer_id", account.profileId)
-      .order("created_at", { ascending: false });
-    if (error) throw error;
-    sentRows = data ?? [];
+    sentRows = await readApplications((fields) =>
+      supabase
+        .from("job_applications")
+        .select(fields)
+        .eq("freelancer_id", account.profileId)
+        .order("created_at", { ascending: false }),
+    );
   }
 
   const allRows = [...receivedRows, ...sentRows];
@@ -257,6 +287,7 @@ export async function getProjectRequests(): Promise<ProjectRequestData> {
           projectUrl: item.project_url,
         })),
       proposal: row.proposal,
+      proposedPlan: row.proposed_plan,
       proposedPrice: row.proposed_price,
       estimatedDays: row.estimated_days,
       status: row.status,
@@ -277,25 +308,9 @@ export async function getProjectRequests(): Promise<ProjectRequestData> {
 
   const received = receivedRows.map(mapRow);
   const sent = sentRows.map(mapRow);
-  const linkedOrders = await supabase
-    .from("service_orders")
-    .select("application_id")
-    .in(
-      "application_id",
-      allRows.map((row) => row.application_id),
-    );
-  if (
-    linkedOrders.error &&
-    !["42703", "PGRST204"].includes(linkedOrders.error.code)
-  )
-    throw linkedOrders.error;
-  const linkedApplications = new Set(
-    (linkedOrders.data ?? []).map((row) => row.application_id),
-  );
   const discussions = [...received, ...sent].filter(
     (item, index, items) =>
       item.status === "accepted" &&
-      !linkedApplications.has(item.applicationId) &&
       items.findIndex(
         (candidate) => candidate.applicationId === item.applicationId,
       ) === index,
@@ -313,21 +328,30 @@ export async function rejectProjectRequest(applicationId: string) {
 export async function startProjectDiscussion(
   request: ProjectRequest,
 ): Promise<string> {
-  if (request.status !== "accepted") await assertFreelancerAvailable(request.freelancerId);
+  if (request.status !== "accepted")
+    await assertFreelancerAvailable(request.freelancerId);
   return respondToApplication(request.applicationId, true);
 }
 async function respondToApplication(applicationId: string, accepted: boolean) {
   const { data, error } = await supabase.auth.getSession();
   const token = data.session?.access_token;
-  if (error || !token) throw new Error("Sign in to respond to this application.");
+  if (error || !token)
+    throw new Error("Sign in to respond to this application.");
   const response = await fetch(`/api/applications/${applicationId}/respond`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify({ accepted }),
     cache: "no-store",
   });
-  const result = await response.json().catch(() => null) as { conversationId?: string | null; error?: string } | null;
-  if (!response.ok) throw new Error(result?.error ?? "Unable to respond to this application.");
+  const result = (await response.json().catch(() => null)) as {
+    conversationId?: string | null;
+    error?: string;
+  } | null;
+  if (!response.ok)
+    throw new Error(result?.error ?? "Unable to respond to this application.");
   if (accepted) invalidatePageReads();
   return result?.conversationId ?? "";
 }

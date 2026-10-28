@@ -17,7 +17,6 @@ const groups = {
   messages: "Message updates",
   projects: "Projects, requests and applications",
   reviews: "Reviews",
-  community: "Community activity",
 };
 
 const messageGroups = {
@@ -48,7 +47,8 @@ export default function NotificationSettings() {
         if (!alive) return;
         if (sessionError || !data.session?.user) {
           setError(
-            sessionError?.message ?? "Sign in required to manage notifications.",
+            sessionError?.message ??
+              "Sign in required to manage notifications.",
           );
           return;
         }

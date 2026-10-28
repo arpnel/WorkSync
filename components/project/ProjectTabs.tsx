@@ -1,6 +1,6 @@
 "use client";
 
-import { StyledSelect } from "@/components/ui/styled-select";
+import { ChevronDown } from "lucide-react";
 
 export type FilterType =
   | "All"
@@ -32,18 +32,24 @@ export function ProjectTabs({
     <div className="min-w-0">
       <label className="flex items-center justify-between gap-3 rounded-xl border bg-card px-4 py-2 md:hidden">
         <span className="text-sm text-muted-foreground">Show projects</span>
-        <StyledSelect
-          aria-label="Project status"
-          value={activeFilter}
-          onChange={(event) => onFilterChange(event.target.value as FilterType)}
-          className="min-h-11 min-w-0 max-w-[65%] bg-transparent text-base font-medium"
-        >
-          {filters.map((value) => (
-            <option key={value} value={value}>
-              {value === "Request" ? "Requests" : value}
-            </option>
-          ))}
-        </StyledSelect>
+        <div className="relative min-w-0 max-w-[65%]">
+          <select
+            aria-label="Project status"
+            value={activeFilter}
+            onChange={(event) => onFilterChange(event.target.value as FilterType)}
+            className="min-h-11 w-full appearance-none bg-transparent pr-7 text-right text-base font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {filters.map((value) => (
+              <option key={value} value={value}>
+                {value === "Request" ? "Requests" : value}
+              </option>
+            ))}
+          </select>
+          <ChevronDown
+            className="pointer-events-none absolute right-0 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+            aria-hidden="true"
+          />
+        </div>
       </label>
       <div className="hidden gap-1 border-b pb-2 md:flex md:flex-wrap md:items-center">
         {filters.map((value) => (

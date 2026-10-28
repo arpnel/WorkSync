@@ -46,7 +46,9 @@ async function fetchNotifications(): Promise<NotificationRecord[]> {
     ? metadata.hidden_message_notification_groups
     : [];
   const messageRows = (data ?? []).filter((item) =>
-    String(item.type ?? "").toLowerCase().includes("message"),
+    String(item.type ?? "")
+      .toLowerCase()
+      .includes("message"),
   );
   const conversationIds = [
     ...new Set(
@@ -76,8 +78,6 @@ async function fetchNotifications(): Promise<NotificationRecord[]> {
       const type = String(item.type ?? "").toLowerCase();
       const group = type.includes("message")
         ? "messages"
-        : type.includes("community")
-          ? "community"
         : type.includes("review")
           ? "reviews"
           : /project|contract|milestone|application|service_request/.test(type)
@@ -85,7 +85,8 @@ async function fetchNotifications(): Promise<NotificationRecord[]> {
             : null;
       if (group && hidden.includes(group)) return false;
       if (!type.includes("message")) return true;
-      const messageGroup = conversationGroups.get(item.related_id ?? "") ??
+      const messageGroup =
+        conversationGroups.get(item.related_id ?? "") ??
         (type.includes("order")
           ? "orders"
           : type.includes("direct")

@@ -16,7 +16,6 @@ import {
   MoreHorizontal,
   Home,
   ShoppingCart,
-  MessagesSquare,
   Briefcase,
   Users,
   Clipboard,
@@ -26,17 +25,25 @@ import {
   BellRing,
   UserRound,
   ClipboardCheck,
+  LayoutTemplate,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { getCurrentUserRole, type UserRole } from "@/services/marketplace/AccountServices";
+import {
+  getCurrentUserRole,
+  type UserRole,
+} from "@/services/marketplace/AccountServices";
 import { useEffect, useState } from "react";
 
 const NAV_ITEMS = [
   { label: "Dashboard", icon: Home, href: "/home/dashboard" },
   { label: "Marketplace", icon: ShoppingCart, href: "/home/marketplace" },
-  { label: "Community", icon: MessagesSquare, href: "/home/community" },
   { label: "Projects", icon: Briefcase, href: "/home/projects" },
+  {
+    label: "My Project Plans",
+    icon: LayoutTemplate,
+    href: "/home/project-plans",
+  },
   { label: "My Listings", icon: Clipboard, href: "/home/my-listings" },
   { label: "Schedule", icon: Calendar, href: "/home/schedule" },
   { label: "Assessments", icon: ClipboardCheck, href: "/home/assessments" },

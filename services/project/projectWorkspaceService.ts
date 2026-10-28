@@ -6,6 +6,7 @@ import {
 } from "@/types/project/status";
 import { supabase } from "@/lib/supabaseClient";
 import { getActiveAccountContext } from "@/services/marketplace/AccountServices";
+import { traceProjectFlow } from "@/services/project/projectFlowDiagnostics";
 import {
   LARGE_FILE_MAX_BYTES,
   SUPABASE_MAX_FILE_BYTES,
@@ -138,11 +139,22 @@ export async function getProjectWorkspace(
 ): Promise<ProjectWorkspace> {
   const account = await getActiveAccountContext();
   const userId = account.userId;
+  traceProjectFlow("querying service_orders workspace", {
+    filterColumn: "order_id",
+    filterIdType: "service_order_id",
+    filterId: serviceOrderId,
+  });
   const { data, error } = await supabase
     .from("service_orders")
     .select(WORKSPACE_SELECT)
     .eq("order_id", serviceOrderId)
     .maybeSingle();
+  traceProjectFlow("service_orders workspace query returned", {
+    filterId: serviceOrderId,
+    found: Boolean(data),
+    returnedOrderId: data?.order_id ?? null,
+    errorCode: error?.code ?? null,
+  });
   if (error) throw new Error(error.message);
   if (!data) throw new Error("Project not found or you do not have access.");
 

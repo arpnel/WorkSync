@@ -7,6 +7,7 @@ import { invalidatePageReads } from "@/lib/pageReadCache";
 import { screeningLabel } from "@/lib/ai/screening";
 import { assertFreelancerAvailable } from "@/services/marketplace/freelancerAvailability";
 import { getActiveAccountContext } from "@/services/marketplace/AccountServices";
+import { traceProjectFlow } from "@/services/project/projectFlowDiagnostics";
 import {
   projectPlanSnapshotSchema,
   type ProjectPlanSnapshotData,
@@ -352,6 +353,15 @@ async function respondToApplication(applicationId: string, accepted: boolean) {
   } | null;
   if (!response.ok)
     throw new Error(result?.error ?? "Unable to respond to this application.");
+  if (accepted) {
+    traceProjectFlow("application acceptance response received", {
+      applicationId,
+      accepted,
+      returnedIdType: "conversation_id",
+      conversationId: result?.conversationId ?? null,
+      httpStatus: response.status,
+    });
+  }
   if (accepted) invalidatePageReads();
   return result?.conversationId ?? "";
 }

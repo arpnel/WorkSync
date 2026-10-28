@@ -12,6 +12,7 @@ import { useProjectFilters } from "@/hooks/project/useProjectFilters";
 import { useProjects } from "@/hooks/project/useProjects";
 import { useProjectRequests } from "@/hooks/project/useProjectRequests";
 import { RequestList } from "@/components/project/RequestList";
+import { traceProjectFlow } from "@/services/project/projectFlowDiagnostics";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -215,7 +216,13 @@ function ProjectsPage() {
           actionId={requestState.actionId}
           onReject={requestState.reject}
           onStartDiscussion={async (request) => {
-            await requestState.startDiscussion(request);
+            const conversationId = await requestState.startDiscussion(request);
+            traceProjectFlow("accepted application moved to In Discussion", {
+              applicationId: request.applicationId,
+              jobId: request.jobId,
+              returnedIdType: "conversation_id",
+              conversationId,
+            });
             setActiveFilter("In Discussion");
           }}
           onServiceChanged={refetch}

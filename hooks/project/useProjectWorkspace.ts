@@ -22,6 +22,7 @@ import {
 } from "@/services/message/messageService";
 import { supabase } from "@/lib/supabaseClient";
 import { useMessageAccountSettings } from "@/hooks/message/useMessageAccountSettings";
+import { traceProjectFlow } from "@/services/project/projectFlowDiagnostics";
 import type {
   ProjectWorkspace,
   WorkspaceMessage,
@@ -64,6 +65,10 @@ export function useProjectWorkspace(serviceOrderId: string) {
   const load = useCallback(
     async (showLoading = true, force = true) => {
       if (!serviceOrderId || activeOrder.current !== serviceOrderId) return;
+      traceProjectFlow("workspace loader received route ID", {
+        routeIdType: "service_order_id",
+        routeId: serviceOrderId,
+      });
       const request = ++loadVersion.current;
 
       try {
@@ -98,6 +103,12 @@ export function useProjectWorkspace(serviceOrderId: string) {
           request !== loadVersion.current
         )
           return;
+        traceProjectFlow("workspace load failed", {
+          routeIdType: "service_order_id",
+          routeId: serviceOrderId,
+          error:
+            cause instanceof Error ? cause.message : "Unknown workspace error",
+        });
         setError(
           cause instanceof Error ? cause.message : "Failed to load project.",
         );

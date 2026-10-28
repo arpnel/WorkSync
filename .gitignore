@@ -43,6 +43,7 @@ next-env.d.ts
 !/tests/
 /tests/*
 !/tests/job-agreement-order-id.test.cjs
+!/tests/calls-request-reliability.test.cjs
 !/supabase/
 /supabase/*
 !/supabase/migrations/

@@ -9,10 +9,12 @@ export async function callRequest<T>(body?: {
   action: string;
   callId: string;
   conversationId?: string;
-}): Promise<T> {
+}, signal?: AbortSignal): Promise<T> {
+  signal?.throwIfAborted();
   const {
     data: { session },
   } = await supabase.auth.getSession();
+  signal?.throwIfAborted();
   if (!session) throw new Error("Sign in to use video calling.");
   const started = Date.now();
   const send = (token: string) =>
@@ -24,11 +26,15 @@ export async function callRequest<T>(body?: {
         "Content-Type": "application/json",
       },
       body: body ? JSON.stringify(body) : undefined,
-      signal: AbortSignal.timeout(45000),
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(45000)])
+        : AbortSignal.timeout(45000),
     });
   let response = await send(session.access_token);
   if (response.status === 401) {
+    signal?.throwIfAborted();
     const { data, error } = await supabase.auth.refreshSession();
+    signal?.throwIfAborted();
     if (error || !data.session || data.session.user.id !== session.user.id) {
       console.error(
         "[WorkSync API] " +
@@ -42,6 +48,7 @@ export async function callRequest<T>(body?: {
     }
     response = await send(data.session.access_token);
   }
+  signal?.throwIfAborted();
   const data = await response.json().catch(() => ({
     error: "The call server returned an unreadable response.",
     code: "NON_JSON_RESPONSE",

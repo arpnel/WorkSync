@@ -74,7 +74,7 @@ export default function CallProvider({ children }: { children: ReactNode }) {
       subscription.unsubscribe();
     };
   }, []);
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (signal?: AbortSignal) => {
     const id = identity.current;
     const version = revision.current;
     if (!id || pending.current) return;
@@ -83,7 +83,7 @@ export default function CallProvider({ children }: { children: ReactNode }) {
       const result = await callRequest<{
         userId: string;
         calls: VideoCall[];
-      }>();
+      }>(undefined, signal);
       if (
         identity.current === id &&
         result.userId === id &&
@@ -98,11 +98,18 @@ export default function CallProvider({ children }: { children: ReactNode }) {
   }, []);
   useEffect(() => {
     if (!userId) return;
-    const timeout = window.setTimeout(() => void refresh(), 0);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(
+      () => void refresh(controller.signal),
+      0,
+    );
     // Realtime is the fast path. Keep an infrequent check to recover if a
     // subscription drops an event while the tab is open.
-    const interval = window.setInterval(() => void refresh(), 60000);
-    const focus = () => void refresh();
+    const interval = window.setInterval(
+      () => void refresh(controller.signal),
+      60000,
+    );
+    const focus = () => void refresh(controller.signal);
     window.addEventListener("focus", focus);
     const channel = supabase
       .channel(`video-calls:${userId}`)
@@ -124,6 +131,7 @@ export default function CallProvider({ children }: { children: ReactNode }) {
       clearTimeout(timeout);
       clearInterval(interval);
       window.removeEventListener("focus", focus);
+      controller.abort();
       void supabase.removeChannel(channel);
     };
   }, [userId, refresh]);
@@ -196,8 +204,12 @@ export default function CallProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!selectedId || selectedState !== "active") return;
     let alive = true;
+    const controller = new AbortController();
     const actor = identity.current;
-    void callRequest<CallResponse>({ action: "join", callId: selectedId })
+    void callRequest<CallResponse>(
+      { action: "join", callId: selectedId },
+      controller.signal,
+    )
       .then((result) => {
         if (
           alive &&
@@ -214,13 +226,14 @@ export default function CallProvider({ children }: { children: ReactNode }) {
         }
       })
       .catch((error) => {
-        if (alive)
+        if (alive && !controller.signal.aborted)
           setJoinError(
             error instanceof Error ? error.message : "Unable to join the call.",
           );
       });
     return () => {
       alive = false;
+      controller.abort();
     };
   }, [selectedId, selectedState, joinAttempt]);
   const start = (conversationId: string) => {

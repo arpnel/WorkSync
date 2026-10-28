@@ -136,7 +136,10 @@ export async function getProjects(): Promise<ProjectRecord[]> {
   const { data, error } = await ordersQuery;
 
   if (error) {
-    console.error("Failed to fetch projects:", error);
+    console.error("Failed to fetch projects:", {
+      code: error.code || "UNKNOWN_DATABASE_ERROR",
+      message: error.message.slice(0, 300),
+    });
 
     throw new Error(error.message || "Failed to load projects.");
   }

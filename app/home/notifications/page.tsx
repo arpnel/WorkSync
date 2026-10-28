@@ -45,8 +45,17 @@ const kindLabels: Record<NotificationKind, string> = {
 export default function NotificationsPage() {
   const [selected, setSelected] = useState<NotificationRecord | null>(null);
   const router = useRouter();
-  const { items, loading, error, unreadCount, markRead, markAllRead } =
-    useNotifications();
+  const {
+    items,
+    loading,
+    loadingMore,
+    hasMore,
+    error,
+    unreadCount,
+    loadMore,
+    markRead,
+    markAllRead,
+  } = useNotifications();
   const openNotification = async (item: NotificationRecord) => {
     if (item.unread) void markRead(item.id).catch(() => undefined);
     const lowerTitle = item.title.toLowerCase();
@@ -93,7 +102,7 @@ export default function NotificationsPage() {
           <div className="mt-2 flex items-center gap-2">
             <Badge variant="secondary">{unreadCount} unread</Badge>
             <span className="text-xs text-muted-foreground">
-              {items.length} total
+              {items.length} shown
             </span>
           </div>
         </div>
@@ -218,6 +227,18 @@ export default function NotificationsPage() {
           </section>
         );
       })}
+      {hasMore && (
+        <div className="flex justify-center py-2">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={loadingMore}
+            onClick={() => void loadMore()}
+          >
+            {loadingMore ? "Loading…" : "Load older notifications"}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

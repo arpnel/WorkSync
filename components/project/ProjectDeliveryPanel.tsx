@@ -104,6 +104,8 @@ export function ProjectDeliveryPanel({
   const [rating, setRating] = useState("5");
   const [comment, setComment] = useState("");
   const loadVersion = useRef(0);
+  const inFlightProjects = useRef(new Set<string>());
+  const refreshAfterCurrent = useRef(new Set<string>());
   const automaticRefresh = useRef("");
   const settlementRefresh = useRef("");
   useEffect(() => {
@@ -122,9 +124,14 @@ export function ProjectDeliveryPanel({
   const load = useCallback(
     async (force = true) => {
       if (!project.projectId) return;
+      const projectId = project.projectId;
+      if (inFlightProjects.current.has(projectId)) {
+        if (force) refreshAfterCurrent.current.add(projectId);
+        return;
+      }
+      inFlightProjects.current.add(projectId);
       const request = ++loadVersion.current;
       try {
-        const projectId = project.projectId ?? "";
         const fresh = await readProjectCache(
           `delivery:${projectId}`,
           () => getDeliveryHistory(projectId),
@@ -141,6 +148,13 @@ export function ProjectDeliveryPanel({
             ? cause.message
             : "Unable to load delivery history.",
         );
+      } finally {
+        inFlightProjects.current.delete(projectId);
+        if (refreshAfterCurrent.current.delete(projectId)) {
+          window.setTimeout(() => {
+            if (project.projectId === projectId) void load(true);
+          }, 0);
+        }
       }
     },
     [project.projectId],
@@ -151,12 +165,14 @@ export function ProjectDeliveryPanel({
       if (document.visibilityState === "visible") void load(false);
     };
     window.addEventListener("focus", refresh);
-    const timer = window.setInterval(refresh, 15000);
+    const timer = window.setInterval(refresh, 60000);
+    document.addEventListener("visibilitychange", refresh);
     return () => {
       // Invalidate the latest request, including one started by polling.
       // eslint-disable-next-line react-hooks/exhaustive-deps
       ++loadVersion.current;
       window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
       window.clearInterval(timer);
     };
   }, [load]);

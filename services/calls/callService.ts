@@ -5,6 +5,11 @@ export interface CallResponse {
   roomUrl?: string;
   token?: string;
 }
+export interface CallListResponse {
+  userId: string;
+  calls: VideoCall[];
+  conversationIds: string[];
+}
 export async function callRequest<T>(body?: {
   action: string;
   callId: string;

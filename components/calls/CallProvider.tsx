@@ -16,7 +16,11 @@ import {
   callState,
   type VideoCall,
 } from "@/lib/calls/callMessage";
-import { callRequest, type CallResponse } from "@/services/calls/callService";
+import {
+  callRequest,
+  type CallListResponse,
+  type CallResponse,
+} from "@/services/calls/callService";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -38,6 +42,7 @@ export function useCalls() {
 export default function CallProvider({ children }: { children: ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null);
   const [calls, setCalls] = useState<VideoCall[]>([]);
+  const [conversationIds, setConversationIds] = useState<string[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [locallyLeft, setLocallyLeft] = useState<string | null>(null);
@@ -58,6 +63,7 @@ export default function CallProvider({ children }: { children: ReactNode }) {
       identity.current = id;
       setUserId(id);
       setCalls([]);
+      setConversationIds([]);
       setSelectedId(null);
       setCredentials(null);
     };
@@ -80,16 +86,23 @@ export default function CallProvider({ children }: { children: ReactNode }) {
     if (!id || pending.current) return;
     pending.current = true;
     try {
-      const result = await callRequest<{
-        userId: string;
-        calls: VideoCall[];
-      }>(undefined, signal);
+      const result = await callRequest<CallListResponse>(undefined, signal);
       if (
         identity.current === id &&
         result.userId === id &&
         revision.current === version
-      )
+      ) {
         setCalls(result.calls);
+        setConversationIds((current) =>
+          current.length === result.conversationIds.length &&
+          current.every(
+            (conversationId, index) =>
+              conversationId === result.conversationIds[index],
+          )
+            ? current
+            : result.conversationIds,
+        );
+      }
     } catch {
       /* Starting or answering surfaces errors; background checks stay unobtrusive. */
     } finally {
@@ -99,23 +112,54 @@ export default function CallProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!userId) return;
     const controller = new AbortController();
-    const timeout = window.setTimeout(
-      () => void refresh(controller.signal),
-      0,
-    );
-    // Realtime is the fast path. Keep an infrequent check to recover if a
-    // subscription drops an event while the tab is open.
-    const interval = window.setInterval(
-      () => void refresh(controller.signal),
-      60000,
-    );
+    const timeout = window.setTimeout(() => void refresh(controller.signal), 0);
     const focus = () => void refresh(controller.signal);
     window.addEventListener("focus", focus);
-    const channel = supabase
-      .channel(`video-calls:${userId}`)
+    window.addEventListener("visibilitychange", focus);
+    const membershipChannel = supabase
+      .channel(`video-call-memberships:${userId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "messages" },
+        {
+          event: "*",
+          schema: "public",
+          table: "conversation_participants",
+          filter: `user_id=eq.${userId}`,
+        },
+        focus,
+      )
+      .subscribe();
+    return () => {
+      clearTimeout(timeout);
+      window.removeEventListener("focus", focus);
+      window.removeEventListener("visibilitychange", focus);
+      controller.abort();
+      void supabase.removeChannel(membershipChannel);
+    };
+  }, [userId, refresh]);
+
+  useEffect(() => {
+    if (!userId || !conversationIds.length) return;
+    // Keep recovery quick enough for a ringing call, but do not poll accounts
+    // that have no conversations to watch.
+    const intervalMs = 60000;
+    const interval = window.setInterval(() => void refresh(), intervalMs);
+    return () => window.clearInterval(interval);
+  }, [userId, conversationIds.length, refresh]);
+
+  useEffect(() => {
+    if (!userId || !conversationIds.length) return;
+    let alive = true;
+    const channel = supabase.channel(`video-calls:${userId}`);
+    for (const conversationId of conversationIds) {
+      channel.on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "messages",
+          filter: `conversation_id=eq.${conversationId}`,
+        },
         (payload) => {
           const row =
             payload.eventType === "DELETE" ? payload.old : payload.new;
@@ -123,18 +167,18 @@ export default function CallProvider({ children }: { children: ReactNode }) {
             typeof row.message === "string" &&
             row.message.startsWith(CALL_PREFIX)
           )
-            focus();
+            void refresh();
         },
-      )
-      .subscribe();
+      );
+    }
+    channel.subscribe((status) => {
+      if (alive && status === "SUBSCRIBED") void refresh();
+    });
     return () => {
-      clearTimeout(timeout);
-      clearInterval(interval);
-      window.removeEventListener("focus", focus);
-      controller.abort();
+      alive = false;
       void supabase.removeChannel(channel);
     };
-  }, [userId, refresh]);
+  }, [userId, conversationIds, refresh]);
   const selected = calls.find((call) => call.id === selectedId);
   const incoming = calls.find(
     (call) => call.recipientId === userId && callState(call) === "ringing",

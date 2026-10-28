@@ -60,11 +60,18 @@ export function useProjectWorkspace(serviceOrderId: string) {
   }, [workspace]);
   const activeOrder = useRef(serviceOrderId);
   const loadVersion = useRef(0);
+  const inFlightOrders = useRef(new Set<string>());
+  const refreshAfterCurrent = useRef(new Set<string>());
   const sendTypingRef = useRef<(isTyping: boolean) => void>(() => undefined);
 
   const load = useCallback(
     async (showLoading = true, force = true) => {
       if (!serviceOrderId || activeOrder.current !== serviceOrderId) return;
+      if (inFlightOrders.current.has(serviceOrderId)) {
+        if (force) refreshAfterCurrent.current.add(serviceOrderId);
+        return;
+      }
+      inFlightOrders.current.add(serviceOrderId);
       traceProjectFlow("workspace loader received route ID", {
         routeIdType: "service_order_id",
         routeId: serviceOrderId,
@@ -119,6 +126,12 @@ export function useProjectWorkspace(serviceOrderId: string) {
           request === loadVersion.current
         )
           setLoading(false);
+        inFlightOrders.current.delete(serviceOrderId);
+        if (refreshAfterCurrent.current.delete(serviceOrderId)) {
+          window.setTimeout(() => {
+            if (activeOrder.current === serviceOrderId) void load(false, true);
+          }, 0);
+        }
       }
     },
     [serviceOrderId],
@@ -191,8 +204,9 @@ export function useProjectWorkspace(serviceOrderId: string) {
     const refresh = () => {
       if (document.visibilityState === "visible") void load(false, false);
     };
-    const timer = window.setInterval(refresh, 15000);
+    const timer = window.setInterval(refresh, 60000);
     window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
     const onRoleChanged = () => {
       setWorkspace(null);
       void load(true, true);
@@ -202,6 +216,7 @@ export function useProjectWorkspace(serviceOrderId: string) {
       activeOrder.current = "";
       window.clearInterval(timer);
       window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
       window.removeEventListener("account-role-changed", onRoleChanged);
     };
   }, [load, serviceOrderId]);
@@ -366,7 +381,7 @@ export function useProjectWorkspace(serviceOrderId: string) {
         signal,
       );
       setWorkspace((current) =>
-      current?.orderId === serviceOrderId
+        current?.orderId === serviceOrderId
           ? {
               ...current,
               conversationId: uploaded.conversationId ?? current.conversationId,
@@ -386,7 +401,7 @@ export function useProjectWorkspace(serviceOrderId: string) {
       return true;
     } catch (cause) {
       setWorkspace((current) =>
-      current?.orderId === serviceOrderId
+        current?.orderId === serviceOrderId
           ? {
               ...current,
               messages: current.messages.filter(

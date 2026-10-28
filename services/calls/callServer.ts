@@ -329,7 +329,7 @@ async function checkBlocks(ctx: Context, ids: string[]) {
   if (data?.length)
     throw new CallError("Calling is unavailable for this conversation.", 403);
 }
-export async function listCalls(ctx: Context) {
+export async function getCallList(ctx: Context) {
   dailyKey();
   const {
     data: memberships,
@@ -352,8 +352,35 @@ export async function listCalls(ctx: Context) {
         ? error.code
         : undefined,
     );
-  const ids = (memberships ?? []).map((m) => m.conversation_id);
-  if (!ids.length) return [];
+  const ids = [
+    ...new Set((memberships ?? []).map((m) => m.conversation_id)),
+  ].sort();
+  if (!ids.length) return { calls: [], conversationIds: ids };
+  const { data, error: readError } = await ctx.db
+    .from("messages")
+    .select("message_id,conversation_id,sender_id,message")
+    .in("conversation_id", ids)
+    .like("message", CALL_PREFIX + "%")
+    .gte("created_at", new Date(Date.now() - 3600000).toISOString())
+    .order("created_at", { ascending: false })
+    .limit(50)
+    .retry(false);
+  if (readError)
+    throw requestFailure(
+      ctx.signal,
+      readError,
+      "DATABASE",
+      "Unable to load calls.",
+      "CALLS_HISTORY_LOOKUP_FAILED",
+    );
+  const candidates = (data ?? []).flatMap((row) => {
+    const call = verifiedCall(row);
+    return call && [call.callerId, call.recipientId].includes(ctx.user.id)
+      ? [{ call }]
+      : [];
+  });
+  if (!candidates.length) return { calls: [], conversationIds: ids };
+
   const { data: blocks, error: blockError } = await ctx.db
     .from("user_blocks")
     .select("blocker_id,blocked_id")
@@ -372,32 +399,19 @@ export async function listCalls(ctx: Context) {
       b.blocker_id === ctx.user.id ? b.blocked_id : b.blocker_id,
     ),
   );
-  const { data, error: readError } = await ctx.db
-    .from("messages")
-    .select("message_id,conversation_id,sender_id,message")
-    .in("conversation_id", ids)
-    .like("message", CALL_PREFIX + "%")
-    .gte("created_at", new Date(Date.now() - 3600000).toISOString())
-    .order("created_at", { ascending: false })
-    .limit(50)
-    .retry(false);
-  if (readError)
-    throw requestFailure(
-      ctx.signal,
-      readError,
-      "DATABASE",
-      "Unable to load calls.",
-      "CALLS_HISTORY_LOOKUP_FAILED",
-    );
-  return (data ?? []).flatMap((row) => {
-    const call = verifiedCall(row);
-    return call &&
-      !blocked.has(call.callerId) &&
-      !blocked.has(call.recipientId) &&
-      [call.callerId, call.recipientId].includes(ctx.user.id)
-      ? [call]
-      : [];
-  });
+  return {
+    calls: candidates
+      .filter(
+        ({ call }) =>
+          !blocked.has(call.callerId) && !blocked.has(call.recipientId),
+      )
+      .map(({ call }) => call),
+    conversationIds: ids,
+  };
+}
+
+export async function listCalls(ctx: Context) {
+  return (await getCallList(ctx)).calls;
 }
 const roomName = (call: VideoCall) => `ws-${call.id}`;
 async function closeRoom(call: VideoCall) {

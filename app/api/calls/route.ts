@@ -3,7 +3,7 @@ import {
   actOnCall,
   CallError,
   callUser,
-  listCalls,
+  getCallList,
   startCall,
 } from "@/services/calls/callServer";
 export const runtime = "nodejs";
@@ -32,9 +32,9 @@ function failure(
               : "CALLS_UNCLASSIFIED_FAILURE",
           elapsedMs: Date.now() - started,
           upstreamStatus:
-            error instanceof CallError ? error.upstreamStatus ?? null : null,
+            error instanceof CallError ? (error.upstreamStatus ?? null) : null,
           databaseCode:
-            error instanceof CallError ? error.databaseCode ?? null : null,
+            error instanceof CallError ? (error.databaseCode ?? null) : null,
         }),
     );
   }
@@ -58,7 +58,7 @@ export async function GET(request: Request) {
   try {
     const ctx = await callUser(request);
     return NextResponse.json(
-      { userId: ctx.user.id, calls: await listCalls(ctx) },
+      { userId: ctx.user.id, ...(await getCallList(ctx)) },
       { headers },
     );
   } catch (error) {

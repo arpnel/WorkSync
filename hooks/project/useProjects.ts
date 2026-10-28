@@ -241,9 +241,7 @@ export function getProjectStatus(record: ProjectRecord): Project["status"] {
     return "Cancelled";
   if (projectStatus === "completed" || orderStatus === "completed")
     return "Completed";
-  if (
-    ["accepted", "negotiating", "in_discussion"].includes(orderStatus)
-  )
+  if (["accepted", "negotiating", "in_discussion"].includes(orderStatus))
     return "In Discussion";
   if (["active", "in_progress", "revision"].includes(projectStatus))
     return "Active";
@@ -370,8 +368,15 @@ export function useProjects() {
   ======================================================== */
 
   const loadVersion = React.useRef(0);
+  const inFlight = React.useRef(false);
+  const refreshAfterCurrent = React.useRef(false);
   const loadProjects = React.useCallback(
     async (quiet = false, force = true) => {
+      if (inFlight.current) {
+        if (force) refreshAfterCurrent.current = true;
+        return;
+      }
+      inFlight.current = true;
       const version = ++loadVersion.current;
       try {
         if (!quiet) setLoading(true);
@@ -394,6 +399,11 @@ export function useProjects() {
         if (!quiet) setProjects([]);
       } finally {
         if (version === loadVersion.current) setLoading(false);
+        inFlight.current = false;
+        if (refreshAfterCurrent.current) {
+          refreshAfterCurrent.current = false;
+          window.setTimeout(() => void loadProjects(true, true), 0);
+        }
       }
     },
     [],
@@ -409,8 +419,9 @@ export function useProjects() {
       if (document.visibilityState === "visible")
         void loadProjects(true, false);
     };
-    const timer = window.setInterval(refresh, 10000);
+    const timer = window.setInterval(refresh, 60000);
     window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
     const onRoleChanged = () => {
       setProjects([]);
       void loadProjects(false, true);
@@ -419,6 +430,7 @@ export function useProjects() {
     return () => {
       window.clearInterval(timer);
       window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
       window.removeEventListener("account-role-changed", onRoleChanged);
     };
   }, [loadProjects]);

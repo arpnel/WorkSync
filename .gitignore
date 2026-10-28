@@ -48,6 +48,8 @@ next-env.d.ts
 /supabase/*
 !/supabase/migrations/
 /supabase/migrations/*
+!/supabase/proposed_migrations/
+!/supabase/proposed_migrations/notifications_query_indexes.sql
 !/supabase/migrations/202610280001_project_plans.sql
 !/supabase/migrations/202610280002_project_plan_done_stage_order.sql
 !/supabase/migrations/202610280003_service_category_explorer_read_access.sql

@@ -21,7 +21,14 @@ export function useProjectRequests() {
   const [error, setError] = React.useState<string | null>(null);
   const [actionId, setActionId] = React.useState<string | null>(null);
   const loadVersion = React.useRef(0);
+  const inFlight = React.useRef(false);
+  const refreshAfterCurrent = React.useRef(false);
   const load = React.useCallback(async (quiet = false, force = true) => {
+    if (inFlight.current) {
+      if (force) refreshAfterCurrent.current = true;
+      return;
+    }
+    inFlight.current = true;
     const version = ++loadVersion.current;
     try {
       if (!quiet) setLoading(true);
@@ -41,6 +48,11 @@ export function useProjectRequests() {
       setRequests(empty);
     } finally {
       if (version === loadVersion.current) setLoading(false);
+      inFlight.current = false;
+      if (refreshAfterCurrent.current) {
+        refreshAfterCurrent.current = false;
+        window.setTimeout(() => void load(true, true), 0);
+      }
     }
   }, []);
   React.useEffect(() => {
@@ -49,7 +61,8 @@ export function useProjectRequests() {
       if (document.visibilityState === "visible") void load(true, false);
     };
     // Read saved results only; polling never requests a Gemini evaluation.
-    const timer = window.setInterval(refresh, 10000);
+    const timer = window.setInterval(refresh, 60000);
+    window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", refresh);
     const onRoleChanged = () => {
       setRequests(empty);
@@ -58,6 +71,7 @@ export function useProjectRequests() {
     window.addEventListener("account-role-changed", onRoleChanged);
     return () => {
       window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
       document.removeEventListener("visibilitychange", refresh);
       window.removeEventListener("account-role-changed", onRoleChanged);
     };

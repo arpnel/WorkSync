@@ -28,7 +28,9 @@ test("database queries disable SDK retries and carry the incoming cancellation s
 });
 
 test("a user with no conversations returns before block and message queries", () => {
-  const noConversations = server.indexOf("if (!ids.length) return [];");
+  const noConversations = server.indexOf(
+    "if (!ids.length) return { calls: [], conversationIds: ids };",
+  );
   const blocks = server.indexOf('.from("user_blocks")', noConversations);
   const messages = server.indexOf('.from("messages")', noConversations);
   assert.ok(noConversations >= 0);
@@ -57,7 +59,8 @@ test("callRequest combines owner cancellation with its existing fetch deadline",
 
 test("provider cleanup aborts background refresh and join requests without overlapping refreshes", () => {
   assert.match(provider, /if \(!id \|\| pending\.current\) return/);
-  assert.match(provider, /window\.setInterval\([\s\S]*?60000/);
+  assert.match(provider, /if \(!userId \|\| !conversationIds\.length\) return/);
+  assert.match(provider, /const intervalMs = 60000;[\s\S]*?window\.setInterval/);
   assert.match(provider, /controller\.abort\(\);[\s\S]*?removeChannel\(channel\)/);
   assert.match(provider, /callRequest<CallResponse>\([\s\S]*?controller\.signal/);
   assert.match(provider, /if \(alive && !controller\.signal\.aborted\)/);

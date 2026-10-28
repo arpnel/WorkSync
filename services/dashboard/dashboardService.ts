@@ -7,12 +7,12 @@ const record = (value: unknown): Record<string, unknown> => {
   return row && typeof row === "object" ? (row as Record<string, unknown>) : {};
 };
 export async function getDashboardActivity() {
-  const [projects, listings, notifications] = await Promise.all([
+  const [projects, listings, notificationBatch] = await Promise.all([
     getDashboardProjects(),
     getMyMarketplaceListings(),
     getNotifications(),
   ]);
-  return { projects, listings, notifications };
+  return { projects, listings, notifications: notificationBatch.items };
 }
 export async function getDashboardProjects() {
   const orders = await readProjectCache("projects", getProjects);

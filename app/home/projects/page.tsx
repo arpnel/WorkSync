@@ -242,6 +242,10 @@ function ProjectsPage() {
             <JobAgreementButton
               key={request.applicationId}
               applicationId={request.applicationId}
+              jobTitle={request.jobTitle}
+              proposedPrice={request.proposedPrice}
+              estimatedDays={request.estimatedDays}
+              proposedPlan={request.proposedPlan}
             >
               <Card>
                 <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">

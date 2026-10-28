@@ -54,5 +54,9 @@ next-env.d.ts
 !/supabase/migrations/202610280002_project_plan_done_stage_order.sql
 !/supabase/migrations/202610280003_service_category_explorer_read_access.sql
 !/supabase/migrations/202610280004_job_agreement_returns_order_id.sql
+!/supabase/migrations/202610290001_grant_anon_is_freelancer_owner_execute.sql
+!/supabase/migrations/202610290002_fix_worksync_job_agreement_conversation_id_ambiguity.sql
 
 /docs/
+
+!/supabase/migrations/20261028224549_worksync_contract_workflow_replacement.sql

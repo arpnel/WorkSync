@@ -26,6 +26,297 @@ import type {
   WorkspaceMilestone,
 } from "@/types/project/projectWorkspace";
 
+export type ContractVersionPriority = "low" | "medium" | "high";
+export type ContractVersionColumnType = "stage" | "done";
+
+export interface ContractVersionTaskInput {
+  id: string;
+  title: string;
+  description: string;
+  priority: ContractVersionPriority;
+  dueDate?: string | null;
+  milestoneId?: string | null;
+}
+
+export interface ContractVersionColumnInput {
+  id: string;
+  name: string;
+  type: ContractVersionColumnType;
+  tasks: readonly ContractVersionTaskInput[];
+}
+
+export interface ContractVersionPlanInput {
+  name: string;
+  description: string;
+  content: { columns: readonly ContractVersionColumnInput[] };
+}
+
+export interface ContractVersionMilestoneInput {
+  id: string;
+  title: string;
+  description: string;
+  amount: number;
+  dueDate: string | null;
+  displayOrder: number;
+}
+
+export interface ContractVersionPayloadInput {
+  contractId: string;
+  expectedVersion: number;
+  requestId: string;
+  /** Caller assertion: terms, every task, and every milestone are the complete agreement snapshot. */
+  completeSnapshot: true;
+  budget: number;
+  deliveryDays: number;
+  revisionsCount: number;
+  projectTitle: string;
+  description: string;
+  startDate: string;
+  deadline: string;
+  plan: ContractVersionPlanInput;
+  milestones: readonly ContractVersionMilestoneInput[];
+}
+
+export interface ContractVersionTermsPayload {
+  schemaVersion: 1;
+  budget: number;
+  deliveryDays: number;
+  revisionsCount: number;
+  projectTitle: string;
+  description: string;
+  startDate: string;
+  deadline: string;
+  plan: {
+    name: string;
+    description: string;
+    content: { columns: Array<{
+      id: string;
+      name: string;
+      type: ContractVersionColumnType;
+      tasks: Array<{
+        id: string;
+        title: string;
+        description: string;
+        priority: ContractVersionPriority;
+        dueDate?: string | null;
+        milestoneId?: string | null;
+      }>;
+    }> };
+  };
+}
+
+export interface ContractVersionPayload {
+  p_contract_id: string;
+  p_expected_version: number;
+  p_request_id: string;
+  p_terms: ContractVersionTermsPayload;
+  p_milestones: Array<{
+    id: string;
+    title: string;
+    description: string;
+    amount: number;
+    dueDate: string | null;
+    displayOrder: number;
+  }>;
+}
+
+export class ContractVersionPayloadError extends Error {
+  constructor(message: string) {
+    super(`Contract version payload: ${message}`);
+    this.name = "ContractVersionPayloadError";
+  }
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function requireText(value: unknown, field: string, min: number, max: number): string {
+  if (typeof value !== "string" || value.trim().length < min || value.length > max) {
+    throw new ContractVersionPayloadError(`${field} must contain ${min === 0 ? "at most" : "between"} ${min === 0 ? max : `${min} and ${max}`} characters.`);
+  }
+  return value;
+}
+
+function requireDate(value: unknown, field: string): string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new ContractVersionPayloadError(`${field} is required as an ISO date (YYYY-MM-DD).`);
+  }
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (year < 1 || date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+    throw new ContractVersionPayloadError(`${field} is not a valid calendar date.`);
+  }
+  return value;
+}
+
+function decimalParts(value: number): { coefficient: bigint; scale: number } {
+  const match = value.toString().match(/^(-?)(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/i);
+  if (!match) throw new ContractVersionPayloadError("Milestone amounts and budget must be finite numbers.");
+  const fraction = match[3] ?? "";
+  const exponent = Number(match[4] ?? 0);
+  let scale = fraction.length - exponent;
+  let coefficient = BigInt(`${match[1]}${match[2]}${fraction}`);
+  if (scale < 0) {
+    coefficient *= BigInt(10) ** BigInt(-scale);
+    scale = 0;
+  }
+  return { coefficient, scale };
+}
+
+function milestoneTotalMatchesBudget(milestones: readonly ContractVersionMilestoneInput[], budget: number): boolean {
+  if (milestones.length === 0) return true;
+  const parts = milestones.map((milestone) => decimalParts(milestone.amount));
+  const budgetParts = decimalParts(budget);
+  const scale = Math.max(budgetParts.scale, ...parts.map((part) => part.scale));
+  const total = parts.reduce(
+    (sum, part) => sum + part.coefficient * BigInt(10) ** BigInt(scale - part.scale),
+    BigInt(0),
+  );
+  return total === budgetParts.coefficient * BigInt(10) ** BigInt(scale - budgetParts.scale);
+}
+
+/**
+ * Maps an explicitly complete agreement into the save RPC's exact argument shape.
+ * This function performs no I/O and deliberately does not generate request IDs.
+ */
+export function mapContractVersionPayload(input: ContractVersionPayloadInput): ContractVersionPayload {
+  if (input.completeSnapshot !== true) {
+    throw new ContractVersionPayloadError("confirm that the supplied terms, task plan, and milestone list are complete.");
+  }
+  if (!UUID_PATTERN.test(input.contractId)) throw new ContractVersionPayloadError("contractId must be a UUID.");
+  if (!UUID_PATTERN.test(input.requestId)) throw new ContractVersionPayloadError("requestId must be a UUID supplied by the caller.");
+  if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1) {
+    throw new ContractVersionPayloadError("expectedVersion must be a positive integer.");
+  }
+  if (!Number.isFinite(input.budget) || input.budget <= 0) throw new ContractVersionPayloadError("budget must be a finite positive number.");
+  if (!Number.isInteger(input.deliveryDays) || input.deliveryDays < 1) throw new ContractVersionPayloadError("deliveryDays must be a positive integer.");
+  if (!Number.isInteger(input.revisionsCount) || input.revisionsCount < 0) throw new ContractVersionPayloadError("revisionsCount must be a non-negative integer.");
+
+  const projectTitle = requireText(input.projectTitle, "projectTitle", 1, 200);
+  const description = requireText(input.description, "description", 0, 10000);
+  const startDate = requireDate(input.startDate, "startDate");
+  const deadline = requireDate(input.deadline, "deadline");
+  if (deadline < startDate) throw new ContractVersionPayloadError("deadline must not precede startDate.");
+
+  if (!input.plan || typeof input.plan !== "object") throw new ContractVersionPayloadError("plan is required.");
+  const planName = requireText(input.plan.name, "plan.name", 1, 120);
+  const planDescription = requireText(input.plan.description, "plan.description", 0, 1500);
+  const rawColumns: unknown = input.plan?.content?.columns;
+  if (!Array.isArray(rawColumns) || rawColumns.length < 2 || rawColumns.length > 21) {
+    throw new ContractVersionPayloadError("plan.content.columns must contain 1–20 stages followed by Done.");
+  }
+  const columns = rawColumns as readonly ContractVersionColumnInput[];
+  if (!Array.isArray(input.milestones)) throw new ContractVersionPayloadError("milestones must be the complete milestone array (use [] only when there are none).");
+
+  const milestoneIds = new Set<string>();
+  const milestoneOrders = new Set<number>();
+  const milestones = input.milestones.map((milestone, index) => {
+    const field = `milestones[${index}]`;
+    if (!milestone || typeof milestone !== "object") throw new ContractVersionPayloadError(`${field} is required.`);
+    if (!UUID_PATTERN.test(milestone.id)) throw new ContractVersionPayloadError(`${field}.id must be a UUID.`);
+    if (milestoneIds.has(milestone.id)) throw new ContractVersionPayloadError(`${field}.id is duplicated.`);
+    milestoneIds.add(milestone.id);
+    const title = requireText(milestone.title, `${field}.title`, 1, 200);
+    const milestoneDescription = requireText(milestone.description, `${field}.description`, 0, 5000);
+    if (!Number.isFinite(milestone.amount) || milestone.amount <= 0) throw new ContractVersionPayloadError(`${field}.amount must be a finite positive number.`);
+    if (!Number.isInteger(milestone.displayOrder) || milestone.displayOrder < 1 || milestoneOrders.has(milestone.displayOrder)) {
+      throw new ContractVersionPayloadError(`${field}.displayOrder must be a unique positive integer.`);
+    }
+    milestoneOrders.add(milestone.displayOrder);
+    const dueDate = milestone.dueDate === null ? null : requireDate(milestone.dueDate, `${field}.dueDate`);
+    if (dueDate && (dueDate < startDate || dueDate > deadline)) throw new ContractVersionPayloadError(`${field}.dueDate must fall within the contract dates.`);
+    return { id: milestone.id, title, description: milestoneDescription, amount: milestone.amount, dueDate, displayOrder: milestone.displayOrder };
+  });
+
+  if (milestones.length > 0 && !milestoneTotalMatchesBudget(milestones, input.budget)) {
+    throw new ContractVersionPayloadError("milestone amounts must equal the contract budget.");
+  }
+
+  const stageIds = new Set<string>();
+  const taskIds = new Set<string>();
+  let taskCount = 0;
+  let doneCount = 0;
+  const mappedColumns = columns.map((column, columnIndex) => {
+    const field = `plan.content.columns[${columnIndex}]`;
+    if (!column || typeof column !== "object") throw new ContractVersionPayloadError(`${field} is required.`);
+    const id = requireText(column.id, `${field}.id`, 1, 80);
+    const name = requireText(column.name, `${field}.name`, 1, 80);
+    if (column.type !== "stage" && column.type !== "done") throw new ContractVersionPayloadError(`${field}.type must be stage or done.`);
+    if (stageIds.has(id)) throw new ContractVersionPayloadError(`${field}.id is duplicated.`);
+    stageIds.add(id);
+    if (!Array.isArray(column.tasks)) throw new ContractVersionPayloadError(`${field}.tasks must be an explicit array.`);
+    if (column.tasks.length > 25) throw new ContractVersionPayloadError(`${field}.tasks may contain at most 25 tasks.`);
+    if (column.type === "done") {
+      doneCount += 1;
+      if (columnIndex !== columns.length - 1 || column.tasks.length !== 0) {
+        throw new ContractVersionPayloadError("Done must be the final column and contain no tasks.");
+      }
+    }
+    const tasks = column.tasks.map((task, taskIndex) => {
+      const taskField = `${field}.tasks[${taskIndex}]`;
+      if (!task || typeof task !== "object") throw new ContractVersionPayloadError(`${taskField} is required.`);
+      if (column.type === "done") throw new ContractVersionPayloadError("Done must not contain tasks.");
+      const taskId = requireText(task.id, `${taskField}.id`, 1, 80);
+      if (taskIds.has(taskId) || stageIds.has(taskId)) throw new ContractVersionPayloadError(`${taskField}.id must be unique across stages and tasks.`);
+      taskIds.add(taskId);
+      const title = requireText(task.title, `${taskField}.title`, 1, 160);
+      const taskDescription = requireText(task.description, `${taskField}.description`, 0, 1000);
+      if (task.priority !== "low" && task.priority !== "medium" && task.priority !== "high") {
+        throw new ContractVersionPayloadError(`${taskField}.priority must be low, medium, or high.`);
+      }
+      const mappedTask: ContractVersionTermsPayload["plan"]["content"]["columns"][number]["tasks"][number] = {
+        id: taskId,
+        title,
+        description: taskDescription,
+        priority: task.priority,
+      };
+      if (task.dueDate !== undefined) {
+        const dueDate = task.dueDate === null ? null : requireDate(task.dueDate, `${taskField}.dueDate`);
+        if (dueDate && (dueDate < startDate || dueDate > deadline)) throw new ContractVersionPayloadError(`${taskField}.dueDate must fall within the contract dates.`);
+        mappedTask.dueDate = dueDate;
+      }
+      if (task.milestoneId !== undefined) {
+        if (task.milestoneId === null || task.milestoneId === "") {
+          if (milestones.length > 0) throw new ContractVersionPayloadError(`${taskField}.milestoneId is required for a milestone contract.`);
+          mappedTask.milestoneId = task.milestoneId;
+        } else {
+          if (!UUID_PATTERN.test(task.milestoneId) || !milestoneIds.has(task.milestoneId)) {
+            throw new ContractVersionPayloadError(`${taskField}.milestoneId must reference a milestone in this complete snapshot.`);
+          }
+          mappedTask.milestoneId = task.milestoneId;
+        }
+      } else if (milestones.length > 0) {
+        throw new ContractVersionPayloadError(`${taskField}.milestoneId is required for a milestone contract.`);
+      }
+      taskCount += 1;
+      return mappedTask;
+    });
+    return { id, name, type: column.type, tasks };
+  });
+  if (doneCount !== 1) throw new ContractVersionPayloadError("plan must contain exactly one final Done column.");
+  if (taskCount < 1 || taskCount > 120) throw new ContractVersionPayloadError("plan must contain between 1 and 120 tasks.");
+  for (const stageId of stageIds) {
+    if (taskIds.has(stageId)) throw new ContractVersionPayloadError("stage IDs and task IDs must be distinct.");
+  }
+
+  return {
+    p_contract_id: input.contractId,
+    p_expected_version: input.expectedVersion,
+    p_request_id: input.requestId,
+    p_terms: {
+      schemaVersion: 1,
+      budget: input.budget,
+      deliveryDays: input.deliveryDays,
+      revisionsCount: input.revisionsCount,
+      projectTitle,
+      description,
+      startDate,
+      deadline,
+      plan: { name: planName, description: planDescription, content: { columns: mappedColumns } },
+    },
+    p_milestones: milestones,
+  };
+}
+
 function record(value: unknown): Record<string, unknown> | null {
   if (!value) return null;
   const item = Array.isArray(value) ? value[0] : value;
@@ -132,7 +423,7 @@ async function attachmentUrl(
 }
 
 const WORKSPACE_SELECT =
-  "order_id, service_id, freelancer_id, client_id, status, created_at, services(title, description, price, service_type, delivery_time_days, revisions_count, category_id), client_profiles(user_id), freelancer_profiles(user_id), projects(project_id, title, description, budget, status, start_date, due_date, milestones(milestone_id, title, description, amount, due_date, status, display_order)), contracts(contract_id, final_price, delivery_time_days, revisions_count, terms, status, client_signed_at, freelancer_signed_at)";
+  "order_id, service_id, freelancer_id, client_id, status, created_at, services(title, description, price, service_type, delivery_time_days, revisions_count, category_id), client_profiles(user_id), freelancer_profiles(user_id), projects(project_id, title, description, budget, status, start_date, due_date, milestones(milestone_id, title, description, amount, due_date, status, display_order)), contracts(contract_id, current_version, final_price, delivery_time_days, revisions_count, terms, status, client_signed_at, freelancer_signed_at)";
 
 export async function getProjectWorkspace(
   serviceOrderId: string,
@@ -337,6 +628,10 @@ export async function getProjectWorkspace(
     currentUserId: userId,
     currentParty: userId === clientUserId ? "client" : "freelancer",
     contractId: contractId || null,
+    contractVersion:
+      Number.isInteger(contract?.current_version) && (contract?.current_version as number) > 0
+        ? (contract?.current_version as number)
+        : null,
     projectId: text(project?.project_id) || null,
     conversationId: conversation?.conversation_id ?? null,
     type: service?.service_type === "milestone" ? "milestone" : "standard",

@@ -4,15 +4,26 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { platformAction } from "@/services/platform/platformService";
 import { traceProjectFlow } from "@/services/project/projectFlowDiagnostics";
+import { JobAgreementWizard } from "@/components/project/JobAgreementWizard";
+import type { ProjectPlanSnapshotData } from "@/services/project/projectPlanSnapshot";
 export function JobAgreementButton({
   applicationId,
+  jobTitle,
+  proposedPrice,
+  estimatedDays,
+  proposedPlan,
   children,
 }: {
   applicationId: string;
+  jobTitle: string;
+  proposedPrice: number | null;
+  estimatedDays: number | null;
+  proposedPlan: ProjectPlanSnapshotData | null;
   children: ReactNode;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
   return (
     <div className="space-y-2">
@@ -20,7 +31,19 @@ export function JobAgreementButton({
         type="button"
         className="navigation-card block w-full rounded-2xl text-left focus-visible:outline-2 focus-visible:outline-primary"
         disabled={busy}
-        onClick={async () => {
+        onClick={() => setOpen(true)}
+      >
+        {children}
+      </button>
+      <JobAgreementWizard
+        open={open}
+        onOpenChange={setOpen}
+        applicationId={applicationId}
+        jobTitle={jobTitle}
+        proposedPrice={proposedPrice}
+        estimatedDays={estimatedDays}
+        proposedPlan={proposedPlan}
+        onOpenExistingAgreement={async () => {
           if (busy) return;
           setBusy(true);
           setError("");
@@ -70,6 +93,7 @@ export function JobAgreementButton({
               routeId: serviceOrderId,
             });
             router.push(`/home/projects/standard/${serviceOrderId}#contract`);
+            setOpen(false);
           } catch (cause) {
             setError(
               cause instanceof Error
@@ -80,10 +104,8 @@ export function JobAgreementButton({
             setBusy(false);
           }
         }}
-      >
-        {children}
-        {busy && <span role="status">Opening contract...</span>}
-      </button>
+      />
+      {busy && <span role="status" className="text-xs text-muted-foreground">Opening existing agreement...</span>}
       {error && (
         <p role="alert" className="max-w-sm text-xs text-destructive">
           {error}

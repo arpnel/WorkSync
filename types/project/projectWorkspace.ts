@@ -39,6 +39,8 @@ export interface ProjectWorkspace {
   currentUserId: string;
   currentParty: "client" | "freelancer";
   contractId: string | null;
+  /** Contract version observed in the same query as the workspace contract row. */
+  contractVersion: number | null;
   projectId: string | null;
   conversationId: string | null;
   type: WorkspaceProjectType;

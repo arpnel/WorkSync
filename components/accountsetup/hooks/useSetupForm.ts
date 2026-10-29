@@ -21,13 +21,12 @@ const initial: FreelancerSetupValues = {
   city: "",
   englishProficiency: "",
   profilePhoto: null,
+  bannerImage: null,
   shortBio: "",
   industries: [],
   headline: "",
   skills: [],
   yearsOfExperience: 0,
-  employmentPreference: "",
-  portfolioWebsite: "",
   linkedIn: "",
   github: "",
   resume: null,
@@ -38,12 +37,14 @@ export function useSetupForm(role: "client" | "freelancer") {
   const router = useRouter();
   const [values, setValues] = useState<FreelancerSetupValues>(initial);
   const [photoPreview, setPhotoPreview] = useState("");
+  const [bannerPreview, setBannerPreview] = useState("");
   const [errors, setErrors] = useState<
     Partial<Record<keyof FreelancerSetupValues, string>>
   >({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [hasFreelancerProfile, setHasFreelancerProfile] = useState(false);
+  const [hasClientProfile, setHasClientProfile] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [reload, setReload] = useState(0);
   const submitting = useRef(false);
@@ -54,7 +55,9 @@ export function useSetupForm(role: "client" | "freelancer") {
         if (!alive) return;
         setValues({ ...initial, ...saved.values });
         setHasFreelancerProfile(saved.hasFreelancerProfile);
+        setHasClientProfile(saved.hasClientProfile);
         setPhotoPreview(saved.values.existingAvatarUrl ?? "");
+        setBannerPreview(saved.values.existingBannerUrl ?? "");
         setLoadError("");
       })
       .catch((error) => {
@@ -95,6 +98,12 @@ export function useSetupForm(role: "client" | "freelancer") {
       URL.revokeObjectURL(url);
     };
   }, [values.profilePhoto]);
+  useEffect(() => {
+    if (!values.bannerImage) return;
+    const url = URL.createObjectURL(values.bannerImage);
+    setBannerPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [values.bannerImage]);
   function handlePhotoSelect(file: File) {
     if (!file) return;
     const error = validateSetupFile(file, "photo");
@@ -107,6 +116,17 @@ export function useSetupForm(role: "client" | "freelancer") {
   function handlePhotoRemove() {
     handleChange("profilePhoto", null);
     setPhotoPreview(values.existingAvatarUrl ?? "");
+  }
+  function handleBannerSelect(file: File) {
+    if (!file || !["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setErrors((previous) => ({ ...previous, bannerImage: "Choose an image file for your banner." }));
+      return;
+    }
+    if (file.size <= 0 || file.size > 5 * 1024 * 1024) {
+      setErrors((previous) => ({ ...previous, bannerImage: "Choose a non-empty image up to 5 MB." }));
+      return;
+    }
+    handleChange("bannerImage", file);
   }
   function handleFileSelect(
     field: keyof FreelancerSetupValues,
@@ -168,6 +188,7 @@ export function useSetupForm(role: "client" | "freelancer") {
       toast.error("Please correct the highlighted fields.");
       return;
     }
+    setErrors({});
     submitting.current = true;
     setIsSubmitting(true);
     let profileSaved = false;
@@ -202,15 +223,18 @@ export function useSetupForm(role: "client" | "freelancer") {
   return {
     values,
     photoPreview,
+    bannerPreview,
     errors,
     isSubmitting,
     isLoadingProfile,
     hasFreelancerProfile,
+    hasClientProfile,
     loadError,
     retryLoad,
     handleChange,
     handlePhotoSelect,
     handlePhotoRemove,
+    handleBannerSelect,
     handleFileSelect,
     handleMultiFileSelect,
     handleRemoveFile: (

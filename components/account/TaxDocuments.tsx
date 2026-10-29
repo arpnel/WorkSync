@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
-import { BadgeCheck, Building2, Check, ChevronRight, FileCheck2, FileText, Landmark, LoaderCircle, ReceiptText, ShieldCheck, UploadCloud } from "lucide-react";
+import { BadgeCheck, Building2, Check, ChevronRight, FileCheck2, FileText, Landmark, LoaderCircle, Lock, ReceiptText, Save, ShieldCheck, UploadCloud } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,7 +71,15 @@ function rowBelongsToCategory(row: DocumentRow, category: Category) {
   return row.document_type === "business_tax_support" || (row.document_type === "tax_exemption" && (!treatment || treatment.includes("withholding")));
 }
 
-export default function TaxDocuments({ setupMode = false, refreshKey = 0 }: { setupMode?: boolean; refreshKey?: number } = {}) {
+function formatTinInput(value: string) {
+  const digits = value.replace(/\D/g, "").slice(0, 12);
+  if (digits.length > 9) return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 9)}-${digits.slice(9)}`;
+  if (digits.length > 6) return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+  if (digits.length > 3) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+  return digits;
+}
+
+export default function TaxDocuments({ setupMode = false, settingsMode = false, refreshKey = 0, loadExistingData = true }: { setupMode?: boolean; settingsMode?: boolean; refreshKey?: number; loadExistingData?: boolean } = {}) {
   const [freelancerAvailable, setFreelancerAvailable] = useState<boolean | null>(null);
   const [setupRequired, setSetupRequired] = useState(false);
   const [rows, setRows] = useState<DocumentRow[]>([]);
@@ -84,6 +92,11 @@ export default function TaxDocuments({ setupMode = false, refreshKey = 0 }: { se
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [tin, setTin] = useState("");
+  const [tinSaved, setTinSaved] = useState(false);
+  const [tinBusy, setTinBusy] = useState(false);
+  const [tinError, setTinError] = useState("");
+  const [tinNotice, setTinNotice] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
   const birFileInput = useRef<HTMLInputElement>(null);
 
@@ -112,6 +125,15 @@ export default function TaxDocuments({ setupMode = false, refreshKey = 0 }: { se
   }, [request]);
 
   useEffect(() => {
+    if (!loadExistingData) {
+      setFreelancerAvailable(false);
+      setSetupRequired(true);
+      setRows([]);
+      setCanonicalBirCor({ document: null, needsReview: false });
+      setError("");
+      setLoading(false);
+      return;
+    }
     let active = true;
     setLoading(true);
     setError("");
@@ -121,7 +143,59 @@ export default function TaxDocuments({ setupMode = false, refreshKey = 0 }: { se
       if (active) setLoading(false);
     });
     return () => { active = false; };
-  }, [load, refreshKey]);
+  }, [load, loadExistingData, refreshKey]);
+
+  useEffect(() => {
+    if (!settingsMode || freelancerAvailable !== true) return;
+    let active = true;
+    void (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error();
+        const response = await fetch("/api/freelancer-tax-profile/tin", {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+          cache: "no-store",
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error();
+        if (active) setTinSaved(result.hasTin === true);
+      } catch {
+        if (active) setTinError("TIN status could not be loaded. You can still enter your TIN to save it.");
+      }
+    })();
+    return () => { active = false; };
+  }, [settingsMode, freelancerAvailable]);
+
+  async function saveTin() {
+    const normalizedTin = tin.replace(/\D/g, "");
+    if (!/^\d{9,12}$/.test(normalizedTin)) {
+      setTinError("Enter 9 to 12 digits for your TIN.");
+      setTinNotice("");
+      return;
+    }
+    setTinBusy(true);
+    setTinError("");
+    setTinNotice("");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Sign in again to save your TIN.");
+      const response = await fetch("/api/freelancer-tax-profile/tin", {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ tin: normalizedTin }),
+        cache: "no-store",
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "TIN could not be saved securely.");
+      setTinSaved(true);
+      setTin("");
+      setTinNotice("TIN saved securely.");
+    } catch (cause) {
+      setTinError(cause instanceof Error ? cause.message : "TIN could not be saved securely.");
+    } finally {
+      setTinBusy(false);
+    }
+  }
 
   const categoryOptions = useMemo(() => category ? purposes.filter((option) => categoryPurposes[category].includes(option.value)) : [], [category]);
   const availablePurposes = categoryOptions.filter((option) => !rows.some((row) => row.party_type === "freelancer" && row.document_type === option.documentType && (row.claimed_tax_treatment ?? "").toLowerCase() === option.treatment.toLowerCase() && activeStatuses.has(row.status)));
@@ -247,32 +321,102 @@ export default function TaxDocuments({ setupMode = false, refreshKey = 0 }: { se
     }
   }
 
+  const registrationFields = <div className="space-y-4 rounded-lg border bg-card p-4">
+    {canonicalBirCor.needsReview && <p role="status" className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">Multiple latest Form 2303 records have conflicting or tied review histories. Seller approval and tax checks are paused until an administrator selects the canonical record.</p>}
+    {canonicalBirCor.document && <article className="flex flex-wrap items-center justify-between gap-3 border-b pb-3 text-sm">
+      <div className="flex items-start gap-3"><span className={`mt-0.5 grid size-7 shrink-0 place-items-center rounded-full border ${canonicalBirCor.document.status === "verified" ? "border-emerald-500 text-emerald-500" : "border-border text-muted-foreground"}`}>{canonicalBirCor.document.status === "verified" ? <Check className="size-4" /> : <FileText className="size-4" />}</span><div><p className={`text-xs font-semibold ${canonicalBirCor.document.status === "verified" ? "text-emerald-500" : "text-foreground"}`}>{statusLabel(canonicalBirCor.document.status)}</p><p className="mt-1 font-medium">{labels.bir_cor}{canonicalBirCor.document.registered_name ? ` · ${canonicalBirCor.document.registered_name}` : ""}</p><p className="mt-0.5 text-xs text-muted-foreground">Submitted {new Date(canonicalBirCor.document.submitted_at).toLocaleDateString()}{canonicalBirCor.document.review_reason ? ` · ${canonicalBirCor.document.review_reason}` : ""}</p></div></div>
+      <Button type="button" size="sm" variant="outline" onClick={() => void viewDocument(canonicalBirCor.document!.document_id)}><FileText className="mr-2 size-4" />View document</Button>
+    </article>}
+    {canonicalBirCor.document?.status === "rejected" && <p className="text-sm text-destructive">Review the administrator’s feedback, then submit a corrected Form 2303.</p>}
+    {canonicalBirCor.document?.status !== "pending" && <div className={`grid gap-4 ${settingsMode ? "" : "items-end lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"}`}>
+      <div className="space-y-2"><Label htmlFor="canonical-bir-registered-name">Registered name on Form 2303 <span className="text-destructive">*</span></Label><Input id="canonical-bir-registered-name" placeholder="Enter registered name" value={registeredName} maxLength={200} onChange={event => setRegisteredName(event.target.value)} disabled={busy} /></div>
+      <div className="space-y-2"><Label htmlFor="canonical-bir-file">Form 2303 document <span className="text-destructive">*</span></Label>
+        {settingsMode ? <Input ref={birFileInput} id="canonical-bir-file" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={busy} onChange={event => { const next = event.target.files?.[0] ?? null; if (next && next.size > 5 * 1024 * 1024) { setFile(null); setError("Choose a file up to 5 MB."); event.target.value = ""; return; } setFile(next); setError(""); }} /> : <><input ref={birFileInput} id="canonical-bir-file" className="sr-only" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={busy} onChange={event => { const next = event.target.files?.[0] ?? null; if (next && next.size > 5 * 1024 * 1024) { setFile(null); setError("Choose a file up to 5 MB."); event.target.value = ""; return; } setFile(next); setError(""); }} /><button type="button" onClick={() => birFileInput.current?.click()} onDragOver={event => event.preventDefault()} onDrop={handleFileDrop} disabled={busy} className="flex min-h-[76px] w-full flex-col items-center justify-center gap-1 rounded-lg border border-dashed px-3 py-3 text-center hover:bg-muted/40 disabled:opacity-50"><span className="flex items-center gap-2 text-sm font-medium"><UploadCloud className="size-4 shrink-0 text-emerald-500" />{file?.name ?? "Drag & drop your file or click to browse"}</span><span className="text-xs text-muted-foreground">Supported: PDF, JPG, or PNG (up to 5 MB)</span></button></>}
+      </div>
+      {!settingsMode && <Button type="button" className="bg-emerald-700 text-white hover:bg-emerald-600" onClick={() => void submitBirCor()} disabled={!file || !registeredName.trim() || busy || canonicalBirCor.needsReview}>{busy && <LoaderCircle className="mr-2 size-4 animate-spin" />}{busy ? "Submitting…" : canonicalBirCor.document?.status === "rejected" ? "Submit correction" : "Submit for review"}</Button>}
+    </div>}
+    {error && <p role="alert" className="text-sm text-destructive">{error}</p>}{notice && <p role="status" className="text-sm text-emerald-600">{notice}</p>}
+  </div>;
+
   if (freelancerAvailable === false && !setupRequired) return null;
 
   return (
     <div className="space-y-4">
       {loading && <div className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" /> Loading tax documents…</div>}
-      {!loading && setupRequired && <section className="space-y-3 rounded-lg border p-4" aria-label="Select Form 2303 for submission after profile setup">
-        <h2 className="text-base font-semibold">Seller Document</h2>
-        <p className="text-sm text-muted-foreground">Submit your Form 2303 to be considered for seller approval. Save your freelancer profile below to unlock secure submission; seller status updates after review.</p>
+      {settingsMode && !loading && freelancerAvailable && <section className="space-y-6 rounded-2xl border bg-card p-5 shadow-xl sm:p-8" aria-labelledby="settings-tax-documents-heading">
+        <header className="flex flex-col justify-between gap-3 border-b pb-5 sm:flex-row sm:items-center">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 id="settings-tax-documents-heading" className="text-xl font-bold tracking-tight">Tax &amp; Payout Documents</h2>
+              <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${birApproved ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400" : "border-amber-500/20 bg-amber-500/10 text-amber-300"}`}>{birApproved ? "BIR Compliant" : "BIR document needed"}</span>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">Configure your Philippine tax details. TIN is required to unlock withdrawal capabilities.</p>
+          </div>
+        </header>
+        <div className="space-y-3 rounded-xl border bg-background/40 p-4 sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <label htmlFor="settings-tax-tin" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Taxpayer Identification Number (TIN) <span className="text-destructive">*</span></label>
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-500"><Lock className="size-3" />Mandatory for Payouts</span>
+          </div>
+          <div className="relative">
+            <FileText className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <input id="settings-tax-tin" type="text" inputMode="numeric" autoComplete="off" maxLength={15} value={tin} aria-invalid={Boolean(tinError)} onChange={event => { setTin(formatTinInput(event.target.value)); setTinError(""); setTinNotice(""); }} disabled={tinBusy} className={`flex h-11 w-full rounded-xl border bg-card py-2 pl-10 pr-3 font-mono text-sm outline-none transition-colors focus-visible:border-emerald-500 focus-visible:ring-1 focus-visible:ring-emerald-500 ${tinError ? "border-destructive" : "border-input"}`} placeholder="000-000-000-000" />
+          </div>
+          <p className="text-xs text-muted-foreground">Enter your 9 or 12 digit BIR-issued individual or business Tax Identification Number.</p>
+          {tinSaved && !tin && <p className="text-xs text-muted-foreground">A TIN is securely saved. Enter a new TIN to update it.</p>}
+          {tinError && <p role="alert" className="text-xs text-destructive">{tinError}</p>}
+          {tinNotice && <p role="status" className="text-xs text-emerald-600">{tinNotice}</p>}
+        </div>
         <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Optional Tax Documents</h3>
+            <p className="text-xs text-muted-foreground">Reduces or exempts withholding tax</p>
+          </div>
+          <details className="group overflow-hidden rounded-xl border bg-background/30">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 transition-colors hover:bg-muted/30 [&::-webkit-details-marker]:hidden">
+              <span className="flex min-w-0 items-center gap-3"><span className="grid size-9 shrink-0 place-items-center rounded-lg border bg-muted/60 text-muted-foreground"><FileText className="size-4" /></span><span className="min-w-0"><span className="block text-sm font-semibold">BIR Form 2303 (COR)</span><span className="mt-0.5 block text-xs text-muted-foreground">For BIR-registered freelancers, sole proprietors, or businesses</span></span></span>
+              <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
+            </summary>
+            <div className="border-t p-4">{registrationFields}</div>
+          </details>
+          <details className="group overflow-hidden rounded-xl border bg-background/30">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 transition-colors hover:bg-muted/30 [&::-webkit-details-marker]:hidden">
+              <span className="flex min-w-0 items-center gap-3"><span className="grid size-9 shrink-0 place-items-center rounded-lg border bg-muted/60 text-muted-foreground"><FileCheck2 className="size-4" /></span><span className="min-w-0"><span className="flex flex-wrap items-center gap-2 text-sm font-semibold">BIR Sworn Declaration <span className="rounded border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">0.5% Tax Exemption</span></span><span className="mt-0.5 block text-xs text-muted-foreground">Under BIR Revenue Regulation 16-2023</span></span></span>
+              <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
+            </summary>
+            <div className="border-t p-4"><FreelancerTaxDeclaration embedded hideSubmitButton /></div>
+          </details>
+        </div>
+        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+        <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <Button type="button" onClick={() => void saveTin()} disabled={tinBusy} className="bg-emerald-700 text-white hover:bg-emerald-600">{tinBusy ? <><LoaderCircle className="size-4 animate-spin" />Saving…</> : <><Save className="size-4" />Save Tax Profile</>}</Button>
+        </div>
+      </section>}
+      {!settingsMode && !loading && setupRequired && <details className="group overflow-hidden rounded-xl border bg-background/30" aria-label="Form 2303 document submission">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 transition-colors hover:bg-muted/30 [&::-webkit-details-marker]:hidden">
+          <span className="flex min-w-0 items-center gap-3">
+            <span className="grid size-9 shrink-0 place-items-center rounded-lg border bg-muted/60 text-muted-foreground"><FileText className="size-4" /></span>
+            <span className="min-w-0"><span className="block text-sm font-semibold">BIR Form 2303 (COR)</span><span className="mt-0.5 block text-xs text-muted-foreground">For BIR-registered freelancers, sole proprietors, or businesses</span></span>
+          </span>
+          <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
+        </summary>
+        <div className="space-y-4 border-t p-4">
           <div className="space-y-2">
-            <Label htmlFor="setup-bir-registered-name">Registered name shown on Form 2303 <span className="text-destructive">*</span></Label>
+            <Label htmlFor="setup-bir-registered-name">Registered name shown on Form 2303</Label>
             <Input id="setup-bir-registered-name" value={registeredName} maxLength={200} onChange={event => setRegisteredName(event.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="setup-bir-file">Form 2303 document <span className="text-destructive">*</span></Label>
+            <Label htmlFor="setup-bir-file">Form 2303 document</Label>
             <input ref={birFileInput} id="setup-bir-file" className="sr-only" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={event => { const next = event.target.files?.[0] ?? null; if (next && next.size > 5 * 1024 * 1024) { setFile(null); setError("Choose a file up to 5 MB."); event.target.value = ""; return; } setFile(next); setError(""); }} />
-            <button type="button" onClick={() => birFileInput.current?.click()} onDragOver={event => event.preventDefault()} onDrop={handleFileDrop} className="flex min-h-[76px] w-full flex-col items-center justify-center gap-1 rounded-lg border border-dashed px-3 py-3 text-center transition-colors hover:bg-muted/40">
-              <span className="flex items-center gap-2 text-sm font-medium"><UploadCloud className="size-4 shrink-0 text-emerald-500" />{file?.name ?? "Drag & drop your file or click to browse"}</span>
-              <span className="text-xs text-muted-foreground">Supported: PDF, JPG, or PNG (up to 5 MB)</span>
+            <button type="button" onClick={() => birFileInput.current?.click()} onDragOver={event => event.preventDefault()} onDrop={handleFileDrop} className="flex min-h-[76px] w-full flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed px-3 py-4 text-center transition-colors hover:border-emerald-500/50 hover:bg-muted/30">
+              <span className="flex items-center gap-2 text-sm font-medium"><UploadCloud className="size-4 shrink-0 text-emerald-500" />{file?.name ?? "Drag & drop your file here or browse"}</span>
+              <span className="text-xs text-muted-foreground">PDF, JPG, or PNG (up to 5 MB)</span>
             </button>
           </div>
+          {file && <Button type="button" size="sm" variant="ghost" onClick={() => { setFile(null); if (birFileInput.current) birFileInput.current.value = ""; }}>Remove selected file</Button>}
         </div>
-        <p className="text-xs text-muted-foreground">Save your profile below to unlock secure document submission.</p>
-        {file && <Button type="button" size="sm" variant="ghost" onClick={() => { setFile(null); if (birFileInput.current) birFileInput.current.value = ""; }}>Remove selected file</Button>}
-      </section>}
-      {!loading && !setupRequired && <>
+      </details>}
+      {!settingsMode && !loading && !setupRequired && <>
         <div className={`grid gap-4 rounded-lg border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2.2fr)] ${birApproved ? "border-emerald-500/30 bg-emerald-500/5" : "bg-muted/20"}`}>
           <div className="flex items-center gap-3 sm:border-r sm:pr-4">
             <span className={`grid size-9 shrink-0 place-items-center rounded-full ${birApproved ? "bg-emerald-500 text-white" : "bg-muted text-muted-foreground"}`}>{birApproved ? <Check className="size-5" /> : <ShieldCheck className="size-5" />}</span>
@@ -281,25 +425,18 @@ export default function TaxDocuments({ setupMode = false, refreshKey = 0 }: { se
           <div className="flex flex-wrap items-center justify-between gap-2 sm:pl-1"><div><p className="text-sm font-semibold">Form 2303 <span className={`ml-1 rounded-full border px-2 py-0.5 text-xs font-medium ${statusClass(canonicalBirCor.document?.status ?? "not_submitted")}`}>{birStatus}</span></p><p className="mt-1 text-xs text-muted-foreground">{canonicalBirCor.document?.status === "verified" ? "Your Form 2303 has been reviewed and approved." : canonicalBirCor.document?.status === "pending" ? "Your document is awaiting administrator review." : canonicalBirCor.document?.review_reason || "A verified Form 2303 is required for seller approval."}</p></div>{canonicalBirCor.document?.submitted_at && <span className="text-xs text-muted-foreground">Submitted {new Date(canonicalBirCor.document.submitted_at).toLocaleDateString()}</span>}</div>
         </div>
 
-        {freelancerAvailable && <section aria-label="Seller registration documents" className="space-y-3">
-          <DocumentationStep number={1} title="Seller registration" note="(Required)" />
-          <div className="space-y-4 rounded-lg border bg-card p-4">
-            {canonicalBirCor.needsReview && <p role="status" className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">Multiple latest Form 2303 records have conflicting or tied review histories. Seller approval and tax checks are paused until an administrator selects the canonical record.</p>}
-            {canonicalBirCor.document && <article className="flex flex-wrap items-center justify-between gap-3 border-b pb-3 text-sm">
-              <div className="flex items-start gap-3"><span className={`mt-0.5 grid size-7 shrink-0 place-items-center rounded-full border ${canonicalBirCor.document.status === "verified" ? "border-emerald-500 text-emerald-500" : "border-border text-muted-foreground"}`}>{canonicalBirCor.document.status === "verified" ? <Check className="size-4" /> : <FileText className="size-4" />}</span><div><p className={`text-xs font-semibold ${canonicalBirCor.document.status === "verified" ? "text-emerald-500" : "text-foreground"}`}>{statusLabel(canonicalBirCor.document.status)}</p><p className="mt-1 font-medium">{labels.bir_cor}{canonicalBirCor.document.registered_name ? ` · ${canonicalBirCor.document.registered_name}` : ""}</p><p className="mt-0.5 text-xs text-muted-foreground">Submitted {new Date(canonicalBirCor.document.submitted_at).toLocaleDateString()}{canonicalBirCor.document.review_reason ? ` · ${canonicalBirCor.document.review_reason}` : ""}</p></div></div>
-              <Button type="button" size="sm" variant="outline" onClick={() => void viewDocument(canonicalBirCor.document!.document_id)}><FileText className="mr-2 size-4" />View document</Button>
-            </article>}
-            {canonicalBirCor.document?.status === "rejected" && <p className="text-sm text-destructive">Review the administrator’s feedback, then submit a corrected Form 2303.</p>}
-            {canonicalBirCor.document?.status !== "pending" && <div className="grid items-end gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-              <div className="space-y-2"><Label htmlFor="canonical-bir-registered-name">Registered name on Form 2303 <span className="text-destructive">*</span></Label><Input id="canonical-bir-registered-name" placeholder="Enter registered name" value={registeredName} maxLength={200} onChange={event => setRegisteredName(event.target.value)} disabled={busy} /></div>
-              <div className="space-y-2"><Label htmlFor="canonical-bir-file">Form 2303 document <span className="text-destructive">*</span></Label><input ref={birFileInput} id="canonical-bir-file" className="sr-only" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={busy} onChange={event => { const next = event.target.files?.[0] ?? null; if (next && next.size > 5 * 1024 * 1024) { setFile(null); setError("Choose a file up to 5 MB."); event.target.value = ""; return; } setFile(next); setError(""); }} /><button type="button" onClick={() => birFileInput.current?.click()} onDragOver={event => event.preventDefault()} onDrop={handleFileDrop} disabled={busy} className="flex min-h-[76px] w-full flex-col items-center justify-center gap-1 rounded-lg border border-dashed px-3 py-3 text-center hover:bg-muted/40 disabled:opacity-50"><span className="flex items-center gap-2 text-sm font-medium"><UploadCloud className="size-4 shrink-0 text-emerald-500" />{file?.name ?? "Drag & drop your file or click to browse"}</span><span className="text-xs text-muted-foreground">Supported: PDF, JPG, or PNG (up to 5 MB)</span></button></div>
-              <Button type="button" className="bg-emerald-700 text-white hover:bg-emerald-600" onClick={() => void submitBirCor()} disabled={!file || !registeredName.trim() || busy || canonicalBirCor.needsReview}>{busy && <LoaderCircle className="mr-2 size-4 animate-spin" />}{busy ? "Submitting…" : canonicalBirCor.document?.status === "rejected" ? "Submit correction" : "Submit for review"}</Button>
-            </div>}
-            {error && <p role="alert" className="text-sm text-destructive">{error}</p>}{notice && <p role="status" className="text-sm text-emerald-600">{notice}</p>}
-          </div>
-        </section>}
+        {freelancerAvailable && (setupMode ? <details className="group overflow-hidden rounded-xl border bg-background/30" aria-label="BIR Form 2303 document submission">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 transition-colors hover:bg-muted/30 [&::-webkit-details-marker]:hidden">
+            <span className="flex min-w-0 items-center gap-3"><span className="grid size-9 shrink-0 place-items-center rounded-lg border bg-muted/60 text-muted-foreground"><FileText className="size-4" /></span><span className="min-w-0"><span className="block text-sm font-semibold">BIR Form 2303 (COR)</span><span className="mt-0.5 block text-xs text-muted-foreground">For BIR-registered freelancers, sole proprietors, or businesses</span></span></span>
+            <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
+          </summary>
+          <div className="border-t p-4">{registrationFields}</div>
+        </details> : <section aria-label="Seller registration documents" className="space-y-3">
+          <DocumentationStep number={1} title="Seller registration" note={setupMode ? "For seller approval" : "(Required)"} />
+          {registrationFields}
+        </section>)}
 
-        <section aria-label="Tax document categories" className="space-y-3">
+        {!setupMode && <section aria-label="Tax document categories" className="space-y-3">
           <DocumentationStep number={2} title="Tax documents" note="(Only if applicable)" />
           <div className="grid gap-3 sm:grid-cols-2">
             <button type="button" onClick={() => openCategory("vat")} className="group flex min-h-20 items-center gap-3 rounded-lg border bg-card p-3 text-left transition-colors hover:border-emerald-500/50 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -313,14 +450,14 @@ export default function TaxDocuments({ setupMode = false, refreshKey = 0 }: { se
               <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
             </button>
           </div>
-        </section>
+        </section>}
 
-        {freelancerAvailable && <section className="space-y-3">
+        {freelancerAvailable && !setupMode && <section className="space-y-3">
           <DocumentationStep number={3} title="Withholding tax declaration" />
           <div className="rounded-lg border bg-card p-4"><FreelancerTaxDeclaration embedded /></div>
         </section>}
 
-        {freelancerAvailable && <section className="space-y-3">
+        {freelancerAvailable && !setupMode && <section className="space-y-3">
           <DocumentationStep number={4} title="Other requirements" />
           <FreelancerSellerVerification compact />
         </section>}

@@ -44,6 +44,7 @@ next-env.d.ts
 /tests/*
 !/tests/job-agreement-order-id.test.cjs
 !/tests/calls-request-reliability.test.cjs
+!/tests/freelancer-tin.test.cjs
 !/supabase/
 /supabase/*
 !/supabase/migrations/
@@ -61,3 +62,6 @@ next-env.d.ts
 /docs/
 
 !/supabase/migrations/20261028224549_worksync_contract_workflow_replacement.sql
+!/supabase/migrations/20261029154101_encrypted_freelancer_tin.sql
+!/supabase/migrations/20261029154136_limit_freelancer_tin_service_role_privileges.sql
+!/FREELANCER_TIN_README.md

@@ -1,15 +1,6 @@
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-
-import { EMPLOYMENT_PREFERENCES } from "@/constants/account-setup.constants";
 
 import type { FreelancerSetupValues } from "@/types/account-setup.types";
 import type { Category, Skill } from "@/services/serviceP/categoryService";
@@ -17,6 +8,7 @@ import type { Category, Skill } from "@/services/serviceP/categoryService";
 import { FreelancerIndustrySection } from "./FreelancerIndustrySection";
 import { FreelancerSkillsSection } from "./FreelancerSkillsSection";
 import { AccountSetupFileDropzone } from "./AccountSetupFileDropzone";
+import { VerificationSection } from "./VerificationSection";
 
 type Props = {
   values: FreelancerSetupValues;
@@ -39,6 +31,14 @@ type Props = {
     field: keyof FreelancerSetupValues,
     file: File,
   ) => void;
+  onMultiFileSelect: (
+    field: "portfolioSamples" | "certifications",
+    files: File[],
+  ) => void;
+  onRemoveDocument: (
+    field: "portfolioSamples" | "certifications",
+    index: number,
+  ) => void;
 };
 
 export function FreelancerInformationSection({
@@ -51,6 +51,8 @@ export function FreelancerInformationSection({
   errors,
   onChange,
   onFileSelect,
+  onMultiFileSelect,
+  onRemoveDocument,
 }: Props) {
   return (
     <section className="rounded-2xl border bg-background p-6 shadow-sm">
@@ -62,9 +64,10 @@ export function FreelancerInformationSection({
 
       <div className="space-y-5">
         <div className="space-y-2">
-          <Label htmlFor="headline">Professional headline (optional)</Label>
+          <Label htmlFor="headline">Professional headline</Label>
           <Input
             id="headline"
+            aria-invalid={!!errors.headline}
             maxLength={120}
             value={values.headline ?? ""}
             onChange={(event) => onChange("headline", event.target.value)}
@@ -83,6 +86,7 @@ export function FreelancerInformationSection({
 
           <Input
             id="yearsOfExperience"
+            aria-invalid={!!errors.yearsOfExperience}
             type="number"
             min={0}
             max={50}
@@ -140,63 +144,15 @@ export function FreelancerInformationSection({
           )}
         </div>
 
-        {/* Employment Preference */}
-
-        <div className="space-y-2">
-          <Label htmlFor="employmentPreference">
-            Employment Preference <span className="text-destructive">*</span>
-          </Label>
-
-          <Select
-            value={values.employmentPreference}
-            onValueChange={(value) => onChange("employmentPreference", value)}
-          >
-            <SelectTrigger id="employmentPreference">
-              <SelectValue placeholder="Select preference" />
-            </SelectTrigger>
-
-            <SelectContent>
-              {EMPLOYMENT_PREFERENCES.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {errors.employmentPreference && (
-            <p className="text-xs text-destructive">
-              {errors.employmentPreference}
-            </p>
-          )}
-        </div>
-
         {/* URLs */}
 
         <div className="grid gap-5 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="portfolioWebsite">Portfolio Website</Label>
-
-            <Input
-              id="portfolioWebsite"
-              type="url"
-              value={values.portfolioWebsite}
-              onChange={(e) => onChange("portfolioWebsite", e.target.value)}
-              placeholder="https://yourportfolio.com"
-            />
-
-            {errors.portfolioWebsite && (
-              <p className="text-xs text-destructive">
-                {errors.portfolioWebsite}
-              </p>
-            )}
-          </div>
-
           <div className="space-y-2">
             <Label htmlFor="linkedIn">LinkedIn</Label>
 
             <Input
               id="linkedIn"
+              aria-invalid={!!errors.linkedIn}
               type="url"
               value={values.linkedIn}
               onChange={(e) => onChange("linkedIn", e.target.value)}
@@ -213,6 +169,7 @@ export function FreelancerInformationSection({
 
             <Input
               id="github"
+              aria-invalid={!!errors.github}
               type="url"
               value={values.github}
               onChange={(e) => onChange("github", e.target.value)}
@@ -228,13 +185,12 @@ export function FreelancerInformationSection({
         {/* Resume */}
 
         <div className="space-y-2">
-          <Label htmlFor="resume">
-            Resume / CV <span className="text-destructive">*</span>
-          </Label>
+          <Label htmlFor="resume">Resume / CV</Label>
 
           <AccountSetupFileDropzone
             accept="application/pdf,.pdf"
             supportedTypes="PDF (up to 5 MB)"
+            invalid={!!errors.resume}
             onFiles={(files) => {
               if (files[0]) onFileSelect("resume", files[0]);
             }}
@@ -271,6 +227,13 @@ export function FreelancerInformationSection({
             <p className="text-xs text-destructive">{errors.resume}</p>
           )}
         </div>
+
+        <VerificationSection
+          values={values}
+          errors={errors}
+          onMultiFileSelect={onMultiFileSelect}
+          onRemoveFile={onRemoveDocument}
+        />
       </div>
     </section>
   );

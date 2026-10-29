@@ -115,6 +115,7 @@ export function BasicInformationSection({
 
           <Input
             id="firstName"
+            aria-invalid={!!errors.firstName}
             value={values.firstName}
             onChange={(e) => handleChange("firstName", e.target.value)}
           />
@@ -132,6 +133,7 @@ export function BasicInformationSection({
 
           <Input
             id="lastName"
+            aria-invalid={!!errors.lastName}
             value={values.lastName}
             onChange={(e) => handleChange("lastName", e.target.value)}
           />
@@ -149,6 +151,8 @@ export function BasicInformationSection({
 
           <Input
             id="display_name"
+            aria-invalid={!!errors.display_name}
+            maxLength={20}
             value={values.display_name}
             onChange={(e) => handleChange("display_name", e.target.value)}
           />
@@ -166,6 +170,7 @@ export function BasicInformationSection({
           <div className="relative">
             <Input
               id="province"
+              aria-invalid={!!errors.province}
               placeholder="Search province..."
               value={values.province}
               autoComplete="off"
@@ -213,6 +218,7 @@ export function BasicInformationSection({
           <div className="relative">
             <Input
               id="city"
+              aria-invalid={!!errors.city}
               placeholder={
                 selectedProvince
                   ? "Search city or municipality..."
@@ -266,7 +272,7 @@ export function BasicInformationSection({
             value={values.englishProficiency}
             onValueChange={(value) => handleChange("englishProficiency", value)}
           >
-            <SelectTrigger id="englishProficiency">
+            <SelectTrigger id="englishProficiency" aria-invalid={!!errors.englishProficiency}>
               <SelectValue placeholder="Select proficiency" />
             </SelectTrigger>
 

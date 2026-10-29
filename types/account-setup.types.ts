@@ -8,8 +8,10 @@ export interface ClientSetupValues {
   city: string;
   englishProficiency: string;
   profilePhoto: File | null;
+  bannerImage?: File | null;
   shortBio: string;
   existingAvatarUrl?: string;
+  existingBannerUrl?: string;
 }
 
 export interface FreelancerSetupValues extends ClientSetupValues {
@@ -17,8 +19,6 @@ export interface FreelancerSetupValues extends ClientSetupValues {
   skills: string[];
   yearsOfExperience: number;
   industries: string[];
-  employmentPreference: string;
-  portfolioWebsite: string;
   linkedIn: string;
   github: string;
   resume: File | null;

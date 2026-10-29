@@ -19,6 +19,8 @@ export function FreelancerIndustrySection({
   onChange,
 }: Props) {
   const [search, setSearch] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
+  const errorHighlight = Boolean(error) && !searchFocused;
 
   const MAX_INDUSTRIES = 5;
 
@@ -69,26 +71,25 @@ export function FreelancerIndustrySection({
   }, [categories, selectedCategoryIds]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       {/* Search */}
 
       <div className="space-y-3">
-        <p className="text-sm font-medium">
-          Industries <span className="text-destructive">*</span>
-        </p>
         <div className="flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">
-            Search industries
+          <p className="text-sm font-medium">
+            Industries <span className="text-destructive">*</span>
           </p>
-
-          <p className="text-xs text-muted-foreground">
+          <p className={`text-xs ${errorHighlight ? "text-destructive" : "text-muted-foreground"}`}>
             {selectedCategoryIds.length} / {MAX_INDUSTRIES} selected
           </p>
         </div>
 
         <Input
+          aria-invalid={errorHighlight}
           placeholder="Search existing industries..."
           value={search}
+          onFocus={() => setSearchFocused(true)}
+          onBlur={() => setSearchFocused(false)}
           onChange={(e) => setSearch(e.target.value)}
         />
 

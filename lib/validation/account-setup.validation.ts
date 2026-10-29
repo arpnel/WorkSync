@@ -1,7 +1,6 @@
 import { listProvinces, listMuncities } from "@jobuntux/psgc";
 import {
   ENGLISH_PROFICIENCY,
-  EMPLOYMENT_PREFERENCES,
 } from "@/constants/account-setup.constants";
 import type {
   ClientSetupValues,
@@ -32,6 +31,7 @@ export function validateSetupFile(
 }
 export function validateClientSetup(
   values: ClientSetupValues,
+  allowDefaultAvatar = false,
 ): ValidationResult<ClientSetupValues> {
   const errors: Partial<Record<keyof ClientSetupValues, string>> = {};
   for (const field of ["firstName", "lastName"] as const) {
@@ -40,33 +40,35 @@ export function validateClientSetup(
       errors[field] =
         "Enter your name as it appears on your ID (up to 50 characters).";
   }
-  if (!values.display_name.trim() || values.display_name.trim().length > 50)
-    errors.display_name = "Enter a display name of up to 50 characters.";
+  if (!values.display_name.trim() || values.display_name.trim().length > 20)
+    errors.display_name = "Enter a display name of up to 20 characters.";
   const province = listProvinces().find(
     (p) => p.provName.toLowerCase() === values.province.trim().toLowerCase(),
   );
   if (!province) errors.province = "Choose a province from the list.";
-  if (
-    !province ||
+  if (!province) {
+    errors.city = "Choose a province first.";
+  } else if (
     !listMuncities(province.provCode).some(
       (c) => c.munCityName.toLowerCase() === values.city.trim().toLowerCase(),
     )
-  )
+  ) {
     errors.city = "Choose a city or municipality in your selected province.";
+  }
   if (
     !ENGLISH_PROFICIENCY.some(
       (option) => option.value === values.englishProficiency,
     )
   )
     errors.englishProficiency = "Select your English proficiency.";
-  if (!values.profilePhoto && !values.existingAvatarUrl)
+  if (!allowDefaultAvatar && !values.profilePhoto && !values.existingAvatarUrl)
     errors.profilePhoto = "Add a profile photo.";
   if (values.profilePhoto) {
     const error = validateSetupFile(values.profilePhoto, "photo");
     if (error) errors.profilePhoto = error;
   }
-  if (values.shortBio.trim().length < 10 || values.shortBio.trim().length > 500)
-    errors.shortBio = "Write a bio between 10 and 500 characters.";
+  if (values.shortBio.trim().length > 500)
+    errors.shortBio = "Keep your bio within 500 characters.";
   if (Object.keys(errors).length) return { ok: false, errors };
   return {
     ok: true,
@@ -84,29 +86,23 @@ export function validateClientSetup(
 export function validateFreelancerSetup(
   values: FreelancerSetupValues,
 ): ValidationResult<FreelancerSetupValues> {
-  const base = validateClientSetup(values);
+  const base = validateClientSetup(values, true);
   const errors: Partial<Record<keyof FreelancerSetupValues, string>> = base.ok
     ? {}
     : { ...base.errors };
   if ((values.headline?.trim().length ?? 0) > 120)
     errors.headline = "Keep your professional headline within 120 characters.";
   if (!values.industries.length || values.industries.length > 10)
-    errors.industries = "Select between 1 and 10 industries.";
+    errors.industries = "Select at least 1 industry.";
   if (!values.skills.length || values.skills.length > 25)
-    errors.skills = "Select between 1 and 25 skills.";
+    errors.skills = "Select at least 1 skill.";
   if (
     !Number.isInteger(values.yearsOfExperience) ||
     values.yearsOfExperience < 0 ||
     values.yearsOfExperience > 50
   )
     errors.yearsOfExperience = "Enter a whole number from 0 to 50.";
-  if (
-    !EMPLOYMENT_PREFERENCES.some(
-      (option) => option.value === values.employmentPreference,
-    )
-  )
-    errors.employmentPreference = "Select an employment preference.";
-  for (const field of ["portfolioWebsite", "linkedIn", "github"] as const) {
+  for (const field of ["linkedIn", "github"] as const) {
     if (!values[field].trim()) continue;
     try {
       const url = new URL(values[field].trim());
@@ -130,11 +126,9 @@ export function validateFreelancerSetup(
         throw new Error();
     } catch {
       errors[field] =
-        `Enter a valid ${field === "linkedIn" ? "LinkedIn" : field === "github" ? "GitHub" : "website"} URL.`;
+        `Enter a valid ${field === "linkedIn" ? "LinkedIn" : "GitHub"} URL.`;
     }
   }
-  if (!values.resume && !values.existingResumeUrl)
-    errors.resume = "Add your PDF resume.";
   if (values.resume) {
     const error = validateSetupFile(values.resume, "resume");
     if (error) errors.resume = error;
@@ -163,7 +157,6 @@ export function validateFreelancerSetup(
       industries: [...new Set(values.industries)],
       skills: [...new Set(values.skills)],
       headline: values.headline?.trim() ?? "",
-      portfolioWebsite: values.portfolioWebsite.trim(),
       linkedIn: values.linkedIn.trim(),
       github: values.github.trim(),
     },

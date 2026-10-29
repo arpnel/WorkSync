@@ -7,6 +7,7 @@ import type {
   ClientSetupValues,
   FreelancerSetupValues,
 } from "@/types/account-setup.types";
+import { uploadBanner } from "@/services/profile/profileservice";
 function check(error: { message: string } | null, step: string) {
   if (error) throw new Error(`${step}: ${error.message}`);
 }
@@ -24,12 +25,13 @@ export async function loadAccountSetup(
 ): Promise<{
   values: Partial<FreelancerSetupValues>;
   hasFreelancerProfile: boolean;
+  hasClientProfile: boolean;
 }> {
   const user = await currentUser();
   const { data: profile, error } = await supabase
     .from("profiles")
     .select(
-      "first_name,last_name,display_name,province,city,english_proficiency,avatar_url,bio",
+      "first_name,last_name,display_name,province,city,english_proficiency,avatar_url,banner_url,bio",
     )
     .eq("user_id", user.id)
     .maybeSingle();
@@ -43,19 +45,30 @@ export async function loadAccountSetup(
     englishProficiency: profile?.english_proficiency ?? "",
     shortBio: profile?.bio ?? "",
     existingAvatarUrl: profile?.avatar_url ?? "",
+    existingBannerUrl: profile?.banner_url ?? "",
   };
   if (role === "client")
-    return { values: shared, hasFreelancerProfile: false };
+    return { values: shared, hasFreelancerProfile: false, hasClientProfile: false };
   const { data: freelancer, error: roleError } = await supabase
     .from("freelancer_profiles")
     .select(
-      "freelancer_id,headline,years_of_experience,employment_preference,portfolio_website,linkedin_url,github_url,resume_url,portfolio_sample_urls,certification_urls",
+      "freelancer_id,headline,years_of_experience,linkedin_url,github_url,resume_url,portfolio_sample_urls,certification_urls",
     )
     .eq("user_id", user.id)
     .maybeSingle();
   check(roleError, "Load your freelancer profile");
+  const { data: clientProfile, error: clientError } = await supabase
+    .from("client_profiles")
+    .select("user_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  check(clientError, "Check your client account");
   if (!freelancer)
-    return { values: shared, hasFreelancerProfile: false };
+    return {
+      values: shared,
+      hasFreelancerProfile: false,
+      hasClientProfile: Boolean(clientProfile),
+    };
   const [categories, skills] = await Promise.all([
     supabase
       .from("freelancer_categories")
@@ -70,14 +83,13 @@ export async function loadAccountSetup(
   check(skills.error, "Load skills");
   return {
     hasFreelancerProfile: true,
+    hasClientProfile: Boolean(clientProfile),
     values: {
       ...shared,
       headline: freelancer.headline ?? "",
       industries: categories.data?.map((row) => row.category_id) ?? [],
       skills: skills.data?.map((row) => row.skill_id) ?? [],
       yearsOfExperience: freelancer.years_of_experience ?? 0,
-      employmentPreference: freelancer.employment_preference ?? "",
-      portfolioWebsite: freelancer.portfolio_website ?? "",
       linkedIn: freelancer.linkedin_url ?? "",
       github: freelancer.github_url ?? "",
       existingResumeUrl: freelancer.resume_url ?? "",
@@ -118,7 +130,11 @@ async function upload(
   uploads.set(file, values);
   return value;
 }
-async function saveProfile(userId: string, values: ClientSetupValues) {
+async function saveProfile(
+  userId: string,
+  values: ClientSetupValues,
+  useDefaultAvatar = false,
+) {
   const avatar = values.profilePhoto
     ? await upload("avatars", userId, values.profilePhoto, true)
     : undefined;
@@ -133,7 +149,11 @@ async function saveProfile(userId: string, values: ClientSetupValues) {
       location: [values.city, values.province].filter(Boolean).join(", "),
       english_proficiency: values.englishProficiency,
       bio: values.shortBio,
-      ...(avatar ? { avatar_url: avatar } : {}),
+      ...(avatar
+        ? { avatar_url: avatar }
+        : useDefaultAvatar && !values.existingAvatarUrl
+          ? { avatar_url: "/default-avatar.svg" }
+          : {}),
     },
     { onConflict: "user_id" },
   );
@@ -210,7 +230,7 @@ async function syncSelections(
 export async function submitClientSetup(
   payload: ClientSetupValues,
 ): Promise<void> {
-  const result = validateClientSetup(payload);
+  const result = validateClientSetup(payload, true);
   if (!result.ok) throw new Error(Object.values(result.errors)[0]);
   const user = await currentUser();
   await saveProfile(user.id, result.data);
@@ -235,7 +255,8 @@ export async function submitFreelancerSetup(
   if (!result.ok) throw new Error(Object.values(result.errors)[0]);
   const values = result.data;
   const user = await currentUser();
-  await saveProfile(user.id, values);
+  await saveProfile(user.id, values, true);
+  if (values.bannerImage) await uploadBanner(user.id, values.bannerImage);
   const { data: existing, error } = await supabase
     .from("freelancer_profiles")
     .select("freelancer_id,portfolio_sample_urls,certification_urls")
@@ -259,8 +280,6 @@ export async function submitFreelancerSetup(
     user_id: user.id,
     headline: values.headline || null,
     years_of_experience: values.yearsOfExperience,
-    employment_preference: values.employmentPreference,
-    portfolio_website: values.portfolioWebsite || null,
     linkedin_url: values.linkedIn || null,
     github_url: values.github || null,
     ...(resume ? { resume_url: resume } : {}),

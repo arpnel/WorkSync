@@ -9,6 +9,8 @@ type Props = {
   onFiles: (files: File[]) => void;
   multiple?: boolean;
   disabled?: boolean;
+  invalid?: boolean;
+  hideSupportedTypes?: boolean;
 };
 
 export function AccountSetupFileDropzone({
@@ -17,6 +19,8 @@ export function AccountSetupFileDropzone({
   onFiles,
   multiple = false,
   disabled = false,
+  invalid = false,
+  hideSupportedTypes = false,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -63,15 +67,18 @@ export function AccountSetupFileDropzone({
         }}
         onDrop={handleDrop}
         disabled={disabled}
-        className={`flex min-h-[76px] w-full flex-col items-center justify-center gap-1 rounded-lg border border-dashed px-3 py-3 text-center transition-colors hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-50 ${dragging ? "border-primary bg-primary/5" : ""}`}
+        aria-invalid={invalid}
+        className={`flex min-h-[76px] w-full flex-col items-center justify-center gap-1 rounded-lg border border-dashed px-3 py-3 text-center transition-colors hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-50 ${invalid ? "border-destructive ring-2 ring-destructive/20" : ""} ${dragging ? "border-primary bg-primary/5" : ""}`}
       >
         <span className="flex items-center gap-2 text-sm font-medium">
           <UploadCloud className="size-4 shrink-0 text-emerald-500" />
           Drag &amp; drop your file or click to browse
         </span>
-        <span className="text-xs text-muted-foreground">
-          Supported: {supportedTypes}
-        </span>
+        {!hideSupportedTypes && (
+          <span className="text-xs text-muted-foreground">
+            Supported: {supportedTypes}
+          </span>
+        )}
       </button>
     </>
   );

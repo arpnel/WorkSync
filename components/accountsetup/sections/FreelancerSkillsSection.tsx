@@ -37,8 +37,10 @@ export function FreelancerSkillsSection({
   onChange,
 }: Props) {
   const [search, setSearch] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
+  const errorHighlight = Boolean(error) && !searchFocused;
 
-  const maxSkills = industryIds.length * 5;
+  const maxSkills = 25;
 
   const toggleSkill = (skillId: string) => {
     const exists = selectedSkillIds.includes(skillId);
@@ -93,28 +95,26 @@ export function FreelancerSkillsSection({
   }, [recommendedSkills, selectedSkillIds]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       {/* Search */}
 
       <div className="space-y-3">
-        <p className="text-sm font-medium">
-          Skills <span className="text-destructive">*</span>
-        </p>
         <div className="flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">
-            Search skills
+          <p className="text-sm font-medium">
+            Skills <span className="text-destructive">*</span>
           </p>
-
-          <p className="text-xs text-muted-foreground">
+          <p className={`text-xs ${errorHighlight ? "text-destructive" : "text-muted-foreground"}`}>
             {selectedSkillIds.length} / {maxSkills} selected
           </p>
         </div>
 
         <Input
+          aria-invalid={errorHighlight}
           placeholder="Search existing skills..."
           value={search}
+          onFocus={() => setSearchFocused(true)}
+          onBlur={() => setSearchFocused(false)}
           onChange={(e) => setSearch(e.target.value)}
-          disabled={maxSkills === 0}
         />
 
         {/* Search Results */}
@@ -204,16 +204,8 @@ export function FreelancerSkillsSection({
 
       {availableRecommendedSkills.length > 0 && (
         <div className="space-y-3">
-          <div>
-            <p className="text-xs text-muted-foreground">
-              Recommended skills
-            </p>
-
-            {industries.length > 0 && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                Based on your selected industries
-              </p>
-            )}
+          <div className="flex flex-wrap items-baseline gap-x-2">
+            <p className="text-xs font-medium text-foreground">Recommended skills</p>
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -247,14 +239,6 @@ export function FreelancerSkillsSection({
         </div>
       )}
 
-      {/* No Industry Selected */}
-
-      {industryIds.length === 0 && (
-        <p className="text-sm text-muted-foreground">
-          Select at least one industry to choose skills.
-        </p>
-      )}
-
       {/* Error */}
 
       {error && (
@@ -267,9 +251,7 @@ export function FreelancerSkillsSection({
 
       {maxSkills > 0 && (
         <p className="text-xs text-muted-foreground">
-          You can select up to {maxSkills} skills based on{" "}
-          {industryIds.length} selected{" "}
-          {industryIds.length === 1 ? "industry" : "industries"}.
+          You can select up to {maxSkills} skills.
         </p>
       )}
     </div>

@@ -134,9 +134,9 @@ export default function VerificationSettings() {
       <CardHeader>
         <CardTitle>Verify your identity</CardTitle>
         <CardDescription>
-          For clients and freelancers. Have a valid government-issued ID ready
-          and follow Didit’s document and selfie instructions. Your documents
-          are submitted directly to Didit.
+          Clients and freelancers can verify their identity with a valid
+          government-issued ID. Follow the on-screen instructions to complete
+          verification.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -187,10 +187,6 @@ export default function VerificationSettings() {
             {checking ? "Checking…" : "Refresh verification status"}
           </Button>
         </div>
-        <p className="text-xs text-muted-foreground">
-          Saving your profile and verifying your identity are separate steps.
-          You can return to verification from Settings.
-        </p>
       </CardContent>
     </Card>
   );

@@ -19,7 +19,7 @@ export default function Page() {
           payouts: <PayoutSettings />,
           account: <AccountSettings />,
           verification: <VerificationSettings />,
-          "seller-verification": <TaxDocuments />,
+          "seller-verification": <TaxDocuments settingsMode />,
           notifications: <NotificationSettings />,
           messaging: <MessageSettings />,
           subscription: <SubscriptionSettings />,

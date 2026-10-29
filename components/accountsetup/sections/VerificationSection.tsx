@@ -17,12 +17,7 @@ export function VerificationSection({
   onRemoveFile: (field: Field, index: number) => void;
 }) {
   return (
-    <section className="space-y-5 rounded-2xl border bg-background p-6 shadow-sm">
-      <h3 className="text-sm font-semibold">Professional documents</h3>
-      <p className="text-sm text-muted-foreground">
-        Add optional work samples or certificates. These do not verify your
-        identity.
-      </p>
+    <div className="space-y-5">
       {(["portfolioSamples", "certifications"] as const).map((field) => {
         const saved =
           field === "portfolioSamples"
@@ -32,8 +27,8 @@ export function VerificationSection({
           <div key={field} className="space-y-2">
             <h4 className="text-sm font-medium">
               {field === "portfolioSamples"
-                ? "Portfolio samples (optional)"
-                : "Certifications (optional)"}
+                ? "Portfolio samples"
+                : "Certifications"}
             </h4>
             {!!saved?.length && (
               <p className="text-xs text-muted-foreground">
@@ -63,9 +58,6 @@ export function VerificationSection({
               multiple
               onFiles={(files) => onMultiFileSelect(field, files)}
             />
-            <p className="text-xs text-muted-foreground">
-              JPG, PNG or PDF · Up to 5 MB each · 10 files maximum
-            </p>
             {errors[field] && (
               <p role="alert" className="text-xs text-destructive">
                 {errors[field]}
@@ -74,6 +66,6 @@ export function VerificationSection({
           </div>
         );
       })}
-    </section>
+    </div>
   );
 }

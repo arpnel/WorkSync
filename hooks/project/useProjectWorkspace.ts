@@ -48,9 +48,7 @@ export function useProjectWorkspace(serviceOrderId: string) {
   const [sending, setSending] = useState(false);
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [updatingAgreement, setUpdatingAgreement] = useState(false);
-  const [updatingApprovalKey, setUpdatingApprovalKey] = useState<string | null>(
-    null,
-  );
+  const [updatingApprovalKey, setUpdatingApprovalKey] = useState<string | null>(null);
   const [isOtherParticipantTyping, setIsOtherParticipantTyping] =
     useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -234,7 +232,7 @@ export function useProjectWorkspace(serviceOrderId: string) {
   useEffect(() => {
     if (!workspace?.contractId) return;
 
-    const channel = supabase
+    let channel = supabase
       .channel(`project-contract:${workspace.contractId}`)
       .on(
         "postgres_changes",
@@ -255,8 +253,9 @@ export function useProjectWorkspace(serviceOrderId: string) {
           filter: `contract_id=eq.${workspace.contractId}`,
         },
         () => void load(false),
-      )
-      .on(
+      );
+    if (workspace.type === "milestone") {
+      channel = channel.on(
         "postgres_changes",
         {
           event: "*",
@@ -265,13 +264,14 @@ export function useProjectWorkspace(serviceOrderId: string) {
           filter: `contract_id=eq.${workspace.contractId}`,
         },
         () => void load(false),
-      )
-      .subscribe();
+      );
+    }
+    channel.subscribe();
 
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [load, serviceOrderId, workspace?.contractId]);
+  }, [load, serviceOrderId, workspace?.contractId, workspace?.type]);
 
   useEffect(() => {
     if (
@@ -419,23 +419,6 @@ export function useProjectWorkspace(serviceOrderId: string) {
     }
   };
 
-  const respondToAgreementItem = async (itemKey: string, approved: boolean) => {
-    try {
-      setUpdatingApprovalKey(itemKey);
-      await respondToProjectAgreementItem(serviceOrderId, itemKey, approved);
-      clearProjectReadCache();
-      await load(false);
-      return true;
-    } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "Unable to update agreement.",
-      );
-      return false;
-    } finally {
-      setUpdatingApprovalKey(null);
-    }
-  };
-
   const respondToAgreement = async (accepted: boolean) => {
     try {
       setUpdatingAgreement(true);
@@ -454,10 +437,22 @@ export function useProjectWorkspace(serviceOrderId: string) {
     }
   };
 
-  const saveAgreementItem = async (
-    itemKey: "budget" | "delivery" | "revisions",
-    value: number,
-  ) => {
+  const respondToAgreementItem = async (itemKey: string, approved: boolean) => {
+    try {
+      setUpdatingApprovalKey(itemKey);
+      await respondToProjectAgreementItem(serviceOrderId, itemKey, approved);
+      clearProjectReadCache();
+      await load(false);
+      return true;
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to update agreement.");
+      return false;
+    } finally {
+      setUpdatingApprovalKey(null);
+    }
+  };
+
+  const saveAgreementItem = async (itemKey: "budget" | "delivery" | "revisions", value: number) => {
     try {
       setUpdatingApprovalKey(itemKey);
       await updateProjectAgreementItem(serviceOrderId, itemKey, value);
@@ -465,9 +460,7 @@ export function useProjectWorkspace(serviceOrderId: string) {
       await load(false);
       return true;
     } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "Unable to update agreement.",
-      );
+      setError(cause instanceof Error ? cause.message : "Unable to update agreement.");
       return false;
     } finally {
       setUpdatingApprovalKey(null);
@@ -483,9 +476,7 @@ export function useProjectWorkspace(serviceOrderId: string) {
       await load(false);
       return true;
     } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "Unable to update agreement.",
-      );
+      setError(cause instanceof Error ? cause.message : "Unable to update agreement.");
       return false;
     } finally {
       setUpdatingAgreement(false);

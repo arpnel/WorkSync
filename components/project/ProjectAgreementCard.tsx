@@ -29,6 +29,7 @@ type Props = {
   project: ProjectWorkspace;
   updating: boolean;
   updatingApprovalKey: string | null;
+  singleAgreement?: boolean;
   onRespond: (accepted: boolean) => Promise<boolean>;
   onRespondItem: (itemKey: string, approved: boolean) => Promise<boolean>;
   onSaveItem: (itemKey: ItemKey, value: number) => Promise<boolean>;
@@ -255,6 +256,7 @@ export function ProjectAgreementCard({
   project,
   updating,
   updatingApprovalKey,
+  singleAgreement = false,
   onRespond,
   onRespondItem,
   onSaveItem,
@@ -322,9 +324,16 @@ export function ProjectAgreementCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Contract Approvals</CardTitle>
+        <CardTitle className="text-base">{singleAgreement ? "Contract Agreement" : "Contract Approvals"}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {singleAgreement && <>
+          <ContractSummary project={project} />
+          <p className="text-sm text-muted-foreground">
+            Review the complete contract, including its terms and milestones, then confirm it once below.
+          </p>
+        </>}
+        {!singleAgreement && <>
         <ApprovalRow
           key={`budget:${project.budget}`}
           label="Budget"
@@ -361,6 +370,7 @@ export function ProjectAgreementCard({
           onRespond={respondItem}
           onSave={saveItem}
         />
+        </>}
 
         {hasPastMilestoneDate && (
           <p role="alert" className="text-sm text-destructive">
@@ -388,14 +398,14 @@ export function ProjectAgreementCard({
               disabled={
                 updating ||
                 mineAccepted ||
-                !everyItemApproved ||
+                (!singleAgreement && !everyItemApproved) ||
                 hasPastMilestoneDate ||
                 !project.contractId
               }
               onClick={() => setPendingFinalResponse(true)}
             >
               <Check className="h-4 w-4" />
-              Confirm
+              {singleAgreement ? "Confirm agreement" : "Confirm"}
             </Button>
             <Button
               type="button"

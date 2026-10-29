@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 
 import { CalendarDays, RotateCcw, Wallet } from "lucide-react";
@@ -15,13 +16,20 @@ import { ProjectAgreementCard } from "@/components/project/ProjectAgreementCard"
 import { ProjectWorkspaceHeader } from "@/components/project/ProjectWorkspaceHeader";
 import { CancelledProjectWorkspace } from "@/components/project/CancelledProjectWorkspace";
 import { useProjectWorkspace } from "@/hooks/project/useProjectWorkspace";
+import { JobAgreementWizard } from "@/components/project/JobAgreementWizard";
+import { deleteContractCreationDraft } from "@/services/project/contractCreationDraftService";
+import { saveContractVersionForAgreement } from "@/services/project/projectWorkspaceService";
+import { sendConversationMessage } from "@/services/message/messageService";
 
 export function StandardProjectWorkspace({
   serviceOrderId,
+  initialAgreementView = false,
 }: {
   serviceOrderId: string;
+  initialAgreementView?: boolean;
 }) {
   const router = useRouter();
+  const [showExistingAgreement, setShowExistingAgreement] = useState(initialAgreementView);
   const {
     workspace,
     refresh,
@@ -78,6 +86,63 @@ export function StandardProjectWorkspace({
     );
   }
 
+  const pendingContractStatuses = ["draft", "pending", "pending_client", "pending_freelancer"];
+  const isPendingAgreement = Boolean(
+    workspace.contractId &&
+    pendingContractStatuses.includes(workspace.contractStatus ?? "") &&
+    !(workspace.clientSignedAt && workspace.freelancerSignedAt),
+  );
+  if (isPendingAgreement && !showExistingAgreement) {
+    return <JobAgreementWizard
+      draftKey={`worksync:contract-draft:${workspace.currentUserId}:${workspace.applicationId ?? workspace.contractId ?? workspace.orderId}`}
+      draftUserId={workspace.currentUserId}
+      initial={{
+        title: workspace.title,
+        description: workspace.description,
+        budget: workspace.budget,
+        estimatedDays: workspace.deliveryDays,
+        revisions: workspace.revisions,
+        deadline: workspace.dueDate,
+        startDate: workspace.startDate,
+        plan: workspace.proposedPlan,
+        planSource: workspace.proposedPlan ? "Submitted application plan" : "No plan selected",
+      }}
+      onBack={() => router.push("/home/projects")}
+      conversation={{
+        conversationId: workspace.conversationId,
+        messages: workspace.messages,
+        hasOlderMessages: workspace.hasOlderMessages,
+        loadingOlderMessages,
+        onLoadOlderMessages: loadOlderMessages,
+        sending,
+        isOtherParticipantTyping,
+        onSend: sendMessage,
+        onTypingChange: sendTyping,
+      }}
+      onOpenExistingAgreement={async (proposal, requestId, contractDocument) => {
+        if (!workspace.contractId || !workspace.contractVersion) {
+          throw new Error("The current contract version could not be identified.");
+        }
+        await saveContractVersionForAgreement({
+          ...proposal,
+          contractId: workspace.contractId,
+          expectedVersion: workspace.contractVersion,
+          requestId,
+        });
+        if (contractDocument) {
+          if (!workspace.conversationId) throw new Error("No agreement conversation is available for the document.");
+          await sendConversationMessage(workspace.conversationId, "Attached contract document for review.", contractDocument);
+        }
+        void deleteContractCreationDraft(
+          `worksync:contract-draft:${workspace.currentUserId}:${workspace.applicationId ?? workspace.contractId ?? workspace.orderId}`,
+          workspace.currentUserId,
+        ).catch((draftError) => console.warn("Saved contract draft could not be cleared:", draftError));
+        await refresh();
+        setShowExistingAgreement(true);
+      }}
+    />;
+  }
+
   return (
     <div className="mx-auto w-full max-w-[1800px] space-y-5 px-4 sm:px-6 lg:px-8">
       {error && (
@@ -116,6 +181,7 @@ export function StandardProjectWorkspace({
 
       <div className="grid gap-5 xl:grid-cols-2 2xl:grid-cols-[minmax(320px,1fr)_minmax(380px,1fr)] 2xl:items-start">
         <fieldset
+          id="contract"
           className="min-w-0"
           disabled={["active", "revision", "completed", "cancelled"].includes(
             workspace.status.toLowerCase(),
@@ -125,6 +191,7 @@ export function StandardProjectWorkspace({
             project={workspace}
             updating={updatingAgreement}
             updatingApprovalKey={updatingApprovalKey}
+            singleAgreement
             onRespond={respondToAgreement}
             onRespondItem={respondToAgreementItem}
             onSaveItem={saveAgreementItem}

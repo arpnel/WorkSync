@@ -18,6 +18,7 @@ import {
   uploadLargeFile,
 } from "@/services/storage/hybridStorageClient";
 import { createSignedUrlMap } from "@/services/storage/signedUrlBatch";
+import { projectPlanSnapshotSchema } from "@/services/project/projectPlanSnapshot";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type {
   ProjectWorkspace,
@@ -49,6 +50,23 @@ export interface ContractVersionPlanInput {
   name: string;
   description: string;
   content: { columns: readonly ContractVersionColumnInput[] };
+}
+
+export interface ContractVersionAgreementInput {
+  budget: number;
+  deliveryDays: number;
+  revisionsCount: number;
+  projectTitle: string;
+  description: string;
+  startDate: string;
+  deadline: string;
+  plan: ContractVersionPlanInput;
+}
+
+export interface SaveContractVersionInput extends ContractVersionAgreementInput {
+  contractId: string;
+  expectedVersion: number;
+  requestId: string;
 }
 
 export interface ContractVersionMilestoneInput {
@@ -317,6 +335,41 @@ export function mapContractVersionPayload(input: ContractVersionPayloadInput): C
   };
 }
 
+/** Saves the complete agreement against the exact version the caller loaded. */
+export async function saveContractVersionForAgreement(
+  input: SaveContractVersionInput,
+): Promise<number> {
+  const { data: milestoneRows, error: milestoneError } = await supabase
+    .from("contract_milestones")
+    .select("contract_milestone_id,title,description,amount,due_date,display_order")
+    .eq("contract_id", input.contractId)
+    .order("display_order", { ascending: true });
+  if (milestoneError) {
+    throw new Error(`Unable to load the complete contract milestone set: ${milestoneError.message}`);
+  }
+
+  const milestones: ContractVersionMilestoneInput[] = (milestoneRows ?? []).map((row) => ({
+    id: text(row.contract_milestone_id),
+    title: text(row.title),
+    description: text(row.description),
+    amount: numeric(row.amount),
+    dueDate: text(row.due_date) || null,
+    displayOrder: numeric(row.display_order),
+  }));
+  const payload = mapContractVersionPayload({
+    ...input,
+    completeSnapshot: true,
+    milestones,
+  });
+  const { data, error } = await supabase.rpc("worksync_save_contract_version", payload);
+  if (error) throw new Error(`Unable to save the contract version: ${error.message}`);
+  const savedVersion = Number(data);
+  if (!Number.isInteger(savedVersion) || savedVersion < 1) {
+    throw new Error("The contract-version RPC returned an invalid version number.");
+  }
+  return savedVersion;
+}
+
 function record(value: unknown): Record<string, unknown> | null {
   if (!value) return null;
   const item = Array.isArray(value) ? value[0] : value;
@@ -423,7 +476,7 @@ async function attachmentUrl(
 }
 
 const WORKSPACE_SELECT =
-  "order_id, service_id, freelancer_id, client_id, status, created_at, services(title, description, price, service_type, delivery_time_days, revisions_count, category_id), client_profiles(user_id), freelancer_profiles(user_id), projects(project_id, title, description, budget, status, start_date, due_date, milestones(milestone_id, title, description, amount, due_date, status, display_order)), contracts(contract_id, current_version, final_price, delivery_time_days, revisions_count, terms, status, client_signed_at, freelancer_signed_at)";
+  "order_id, application_id, service_id, freelancer_id, client_id, status, created_at, services(title, description, price, service_type, delivery_time_days, revisions_count, category_id), client_profiles(user_id), freelancer_profiles(user_id), projects(project_id, title, description, budget, status, start_date, due_date, milestones(milestone_id, title, description, amount, due_date, status, display_order)), contracts(contract_id, current_version, final_price, delivery_time_days, revisions_count, terms, status, client_signed_at, freelancer_signed_at)";
 
 export async function getProjectWorkspace(
   serviceOrderId: string,
@@ -453,6 +506,21 @@ export async function getProjectWorkspace(
   const service = record(row.services);
   const project = record(row.projects);
   const contract = record(row.contracts);
+  const applicationId = text(row.application_id) || null;
+  let proposedPlan: ProjectWorkspace["proposedPlan"] = null;
+  if (applicationId) {
+    const application = await supabase
+      .from("job_applications")
+      .select("proposed_plan")
+      .eq("application_id", applicationId)
+      .maybeSingle();
+    if (application.error) {
+      console.warn("Submitted application plan is unavailable:", application.error.message);
+    } else {
+      const parsedPlan = projectPlanSnapshotSchema.safeParse(application.data?.proposed_plan);
+      if (parsedPlan.success) proposedPlan = parsedPlan.data;
+    }
+  }
   let requestTitle = "";
   let requestDescription = "";
   let requestCategoryId = "";
@@ -562,14 +630,11 @@ export async function getProjectWorkspace(
 
   let agreementItems: WorkspaceAgreementItem[] = [];
   const contractId = text(contract?.contract_id);
-  if (contractId) {
+  if (contractId && text(service?.service_type) === "milestone") {
     const approvals = await supabase
       .from("contract_item_approvals")
-      .select(
-        "approval_id, item_key, client_approved_at, freelancer_approved_at",
-      )
+      .select("approval_id,item_key,client_approved_at,freelancer_approved_at")
       .eq("contract_id", contractId);
-
     if (!approvals.error) {
       agreementItems = (approvals.data ?? []).map((item) => ({
         id: item.approval_id,
@@ -577,11 +642,6 @@ export async function getProjectWorkspace(
         clientApprovedAt: item.client_approved_at,
         freelancerApprovedAt: item.freelancer_approved_at,
       }));
-    } else {
-      console.warn(
-        "Individual agreement approvals are unavailable:",
-        approvals.error.message,
-      );
     }
   }
 
@@ -625,6 +685,8 @@ export async function getProjectWorkspace(
 
   return {
     orderId: text(row.order_id),
+    applicationId,
+    proposedPlan,
     currentUserId: userId,
     currentParty: userId === clientUserId ? "client" : "freelancer",
     contractId: contractId || null,

@@ -48,6 +48,7 @@ next-env.d.ts
 /supabase/*
 !/supabase/migrations/
 /supabase/migrations/*
+!/supabase/migrations/20261029021432_worksync_contract_creation_drafts_and_single_acceptance.sql
 !/supabase/proposed_migrations/
 !/supabase/proposed_migrations/notifications_query_indexes.sql
 !/supabase/migrations/202610280001_project_plans.sql

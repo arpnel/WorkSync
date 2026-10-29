@@ -3,6 +3,7 @@ import type {
   ServiceOrderStatus,
   MilestoneStatus,
 } from "./status";
+import type { ProjectPlanSnapshotData } from "@/services/project/projectPlanSnapshot";
 export type WorkspaceProjectType = "standard" | "milestone";
 
 export interface WorkspaceMilestone {
@@ -36,6 +37,8 @@ export interface WorkspaceMessage {
 
 export interface ProjectWorkspace {
   orderId: string;
+  applicationId: string | null;
+  proposedPlan: ProjectPlanSnapshotData | null;
   currentUserId: string;
   currentParty: "client" | "freelancer";
   contractId: string | null;

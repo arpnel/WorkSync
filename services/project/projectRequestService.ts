@@ -27,6 +27,8 @@ export interface ProjectRequest {
   applicationId: string;
   jobId: string;
   jobTitle: string;
+  jobDescription: string;
+  jobPostedAt: string | null;
   categoryName: string | null;
   jobBudget: number | null;
   clientUserId: string;
@@ -150,7 +152,7 @@ export async function getProjectRequests(): Promise<ProjectRequestData> {
   ] = await Promise.all([
     supabase
       .from("jobs")
-      .select("job_id, client_id, title, budget_min, budget_max, category_id")
+      .select("job_id, client_id, title, description, created_at, budget_min, budget_max, category_id")
       .in("job_id", jobIds),
     supabase
       .from("freelancer_profiles")
@@ -257,6 +259,8 @@ export async function getProjectRequests(): Promise<ProjectRequestData> {
       applicationId: row.application_id,
       jobId: row.job_id,
       jobTitle: job?.title ?? "Untitled job",
+      jobDescription: job?.description ?? "",
+      jobPostedAt: job?.created_at ?? null,
       categoryName: categories.get(job?.category_id)?.name ?? null,
       jobBudget: job?.budget_max ?? job?.budget_min ?? null,
       clientUserId: client?.user_id ?? "",

@@ -30,18 +30,23 @@ test("the RPC result stays an order ID through navigation and workspace loading"
     "app/home/projects/standard/[orderId]/page.tsx",
     "utf8",
   );
+  const createContractPage = fs.readFileSync(
+    "app/home/projects/create-contract/[applicationId]/page.tsx",
+    "utf8",
+  );
   const projectsPage = fs.readFileSync("app/home/projects/page.tsx", "utf8");
   const workspace = fs.readFileSync(
     "services/project/projectWorkspaceService.ts",
     "utf8",
   );
 
-  assert.match(button, /worksync_job_agreement/);
-  assert.match(button, /const serviceOrderId = rpcResult;/);
-  assert.match(button, /\/home\/projects\/standard\/\$\{serviceOrderId\}/);
+  assert.match(button, /\/home\/projects\/create-contract\/\$\{applicationId\}/);
+  assert.match(createContractPage, /platformAction\("worksync_job_agreement"/);
+  assert.match(createContractPage, /\.eq\("order_id", rpcResult\)/);
+  assert.match(createContractPage, /router\.push\(`\/home\/projects\/standard\/\$\{serviceOrderId\}/);
   assert.match(route, /params: Promise<\{ orderId: string \}>/);
-  assert.match(route, /const \{ orderId: serviceOrderId \} = await params/);
-  assert.match(route, /StandardProjectWorkspace serviceOrderId=\{serviceOrderId\}/);
+  assert.match(route, /const \[\{ orderId: serviceOrderId \}, query\] = await Promise\.all\(\[params, searchParams\]\)/);
+  assert.match(route, /serviceOrderId=\{serviceOrderId\}/);
   assert.match(
     projectsPage,
     /serviceRequests=\{displayProjects\.filter\([\s\S]*?project\.status === "Request"/,

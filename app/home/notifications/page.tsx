@@ -11,6 +11,8 @@ import { formatDistanceToNow, isToday } from "date-fns";
 import {
   BellRing,
   BriefcaseBusiness,
+  ChevronLeft,
+  ChevronRight,
   CheckCheck,
   CircleX,
   Clock3,
@@ -41,9 +43,11 @@ const kindLabels: Record<NotificationKind, string> = {
   listing: "Request",
   system: "System",
 };
+const PAGE_SIZE = 10;
 
 export default function NotificationsPage() {
   const [selected, setSelected] = useState<NotificationRecord | null>(null);
+  const [page, setPage] = useState(1);
   const router = useRouter();
   const {
     items,
@@ -56,6 +60,26 @@ export default function NotificationsPage() {
     markRead,
     markAllRead,
   } = useNotifications();
+  const startIndex = (page - 1) * PAGE_SIZE;
+  const pageItems = items.slice(startIndex, startIndex + PAGE_SIZE);
+  const canGoNext = startIndex + PAGE_SIZE < items.length || hasMore;
+  const summaryGroup = pageItems.some(
+    (item) => !isToday(new Date(item.createdAt)),
+  )
+    ? "Earlier"
+    : "Today";
+  const rangeLabel = pageItems.length
+    ? `Showing ${startIndex + 1}–${startIndex + pageItems.length}`
+    : "No notifications shown";
+
+  const goToNextPage = async () => {
+    if (startIndex + PAGE_SIZE < items.length) {
+      setPage((current) => current + 1);
+      return;
+    }
+    if (hasMore && !loadingMore && (await loadMore()))
+      setPage((current) => current + 1);
+  };
   const openNotification = async (item: NotificationRecord) => {
     if (item.unread) void markRead(item.id).catch(() => undefined);
     const lowerTitle = item.title.toLowerCase();
@@ -101,9 +125,6 @@ export default function NotificationsPage() {
           />
           <div className="mt-2 flex items-center gap-2">
             <Badge variant="secondary">{unreadCount} unread</Badge>
-            <span className="text-xs text-muted-foreground">
-              {items.length} shown
-            </span>
           </div>
         </div>
         <Button
@@ -139,7 +160,7 @@ export default function NotificationsPage() {
         </div>
       )}
       {(["Today", "Earlier"] as const).map((group) => {
-        const grouped = items.filter((item) =>
+        const grouped = pageItems.filter((item) =>
           group === "Today"
             ? isToday(new Date(item.createdAt))
             : !isToday(new Date(item.createdAt)),
@@ -147,7 +168,14 @@ export default function NotificationsPage() {
         if (!grouped.length) return null;
         return (
           <section key={group}>
-            <h2 className="mb-3 text-sm font-semibold">{group}</h2>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-semibold">{group}</h2>
+              {group === summaryGroup && (
+                <span className="text-xs text-muted-foreground">
+                  {rangeLabel}
+                </span>
+              )}
+            </div>
             <div className="overflow-hidden rounded-lg border bg-card">
               {grouped.map((item) => {
                 const kind = getNotificationKind(item.type);
@@ -227,15 +255,26 @@ export default function NotificationsPage() {
           </section>
         );
       })}
-      {hasMore && (
-        <div className="flex justify-center py-2">
+      {(page > 1 || canGoNext) && (
+        <div className="flex items-center justify-center gap-3 py-2">
           <Button
             type="button"
             variant="outline"
-            disabled={loadingMore}
-            onClick={() => void loadMore()}
+            disabled={page === 1 || loadingMore}
+            onClick={() => setPage((current) => Math.max(1, current - 1))}
           >
-            {loadingMore ? "Loading…" : "Load older notifications"}
+            <ChevronLeft className="mr-1 size-4" />
+            Previous
+          </Button>
+          <span className="text-sm text-muted-foreground">Page {page}</span>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={!canGoNext || loadingMore}
+            onClick={() => void goToNextPage()}
+          >
+            {loadingMore ? "Loading…" : "Next"}
+            {!loadingMore && <ChevronRight className="ml-1 size-4" />}
           </Button>
         </div>
       )}

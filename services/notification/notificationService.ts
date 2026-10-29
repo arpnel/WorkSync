@@ -24,7 +24,7 @@ export interface NotificationBatch {
   hasMore: boolean;
 }
 
-const NOTIFICATION_PAGE_SIZE = 50;
+const NOTIFICATION_PAGE_SIZE = 10;
 
 async function currentUser() {
   const {

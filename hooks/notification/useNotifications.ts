@@ -186,16 +186,16 @@ export function useNotifications() {
     () => state,
     () => initial,
   );
-  const loadMore = async () => {
+  const loadMore = async (): Promise<boolean> => {
     const cursor = state.cursor;
     if (!cursor || !state.hasMore || state.loadingMore || loadingMoreRequest !== null)
-      return;
+      return false;
     const version = request;
     loadingMoreRequest = version;
     publish({ ...state, loadingMore: true, error: null });
     try {
       const batch = await getOlderNotifications(cursor);
-      if (version !== request) return;
+      if (version !== request) return false;
       publish({
         ...state,
         items: mergeItems(state.items, batch.items),
@@ -204,8 +204,9 @@ export function useNotifications() {
         loadedPages: state.loadedPages + 1,
         loadingMore: false,
       });
+      return true;
     } catch (cause) {
-      if (version !== request) return;
+      if (version !== request) return false;
       publish({
         ...state,
         loadingMore: false,
@@ -214,6 +215,7 @@ export function useNotifications() {
             ? cause.message
             : "Unable to load older notifications.",
       });
+      return false;
     } finally {
       if (loadingMoreRequest === version) {
         loadingMoreRequest = null;

@@ -73,6 +73,9 @@ export function FreelancerIndustrySection({
       {/* Search */}
 
       <div className="space-y-3">
+        <p className="text-sm font-medium">
+          Industries <span className="text-destructive">*</span>
+        </p>
         <div className="flex items-center justify-between">
           <p className="text-xs text-muted-foreground">
             Search industries
@@ -183,11 +186,6 @@ export function FreelancerIndustrySection({
         </p>
       )}
 
-      {/* Industry Limit */}
-
-      <p className="text-xs text-muted-foreground">
-        You can select up to {MAX_INDUSTRIES} industries.
-      </p>
     </div>
   );
 }

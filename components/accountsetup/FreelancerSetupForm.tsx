@@ -110,13 +110,7 @@ export function FreelancerSetupForm() {
         onRemoveFile={handleRemoveFile}
       />
 
-      <section className="space-y-5" aria-labelledby="setup-documentation-title">
-        <div>
-          <h2 id="setup-documentation-title" className="text-lg font-semibold">Seller and tax documentation</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Submit Form 2303, any additional seller requirements, and applicable tax records here. You can review them later in Settings.</p>
-        </div>
-        <TaxDocuments key={`tax-documents-${documentationVersion}`} setupMode />
-      </section>
+      <TaxDocuments setupMode refreshKey={documentationVersion} />
       {/* Submit */}
       <VerificationSettings />
 

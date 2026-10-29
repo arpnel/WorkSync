@@ -8,11 +8,8 @@ import { SubmitSection } from "./sections/SubmitSection";
 import { useClientSetup } from "./hooks/useClientSetup";
 import VerificationSettings from "@/components/account/VerificationSettings";
 import { Button } from "@/components/ui/button";
-import { useRef } from "react";
-import TaxDocumentOnboarding, { type TaxDocumentOnboardingHandle } from "./TaxDocumentOnboarding";
 
 export function ClientSetupForm() {
-  const taxDocumentRef = useRef<TaxDocumentOnboardingHandle>(null);
   const {
     values,
     photoPreview,
@@ -69,7 +66,6 @@ export function ClientSetupForm() {
         onPhotoRemove={handlePhotoRemove}
       />
 
-      <TaxDocumentOnboarding ref={taxDocumentRef} party="client" disabled={isSubmitting} />
       {/* Submit */}
       <VerificationSettings />
 
@@ -77,7 +73,7 @@ export function ClientSetupForm() {
         isSubmitting={isSubmitting}
         label="Save & Continue"
         loadingLabel="Saving..."
-        onSubmit={() => handleSubmit(() => taxDocumentRef.current?.submit() ?? Promise.resolve())}
+        onSubmit={() => void handleSubmit()}
       />
     </fieldset>
   );

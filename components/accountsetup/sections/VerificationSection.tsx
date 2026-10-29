@@ -1,6 +1,6 @@
-import { useRef, type ChangeEvent } from "react";
 import { Button } from "@/components/ui/button";
 import type { FreelancerSetupValues } from "@/types/account-setup.types";
+import { AccountSetupFileDropzone } from "./AccountSetupFileDropzone";
 type Field = "portfolioSamples" | "certifications";
 export function VerificationSection({
   values,
@@ -12,21 +12,18 @@ export function VerificationSection({
   errors: Partial<Record<keyof FreelancerSetupValues, string>>;
   onMultiFileSelect: (
     field: Field,
-    event: ChangeEvent<HTMLInputElement>,
+    files: File[],
   ) => void;
   onRemoveFile: (field: Field, index: number) => void;
 }) {
-  const samples = useRef<HTMLInputElement>(null);
-  const certificates = useRef<HTMLInputElement>(null);
   return (
     <section className="space-y-5 rounded-2xl border bg-background p-6 shadow-sm">
       <h3 className="text-sm font-semibold">Professional documents</h3>
       <p className="text-sm text-muted-foreground">
-        Add work samples and optional certificates. These do not verify your
+        Add optional work samples or certificates. These do not verify your
         identity.
       </p>
       {(["portfolioSamples", "certifications"] as const).map((field) => {
-        const ref = field === "portfolioSamples" ? samples : certificates;
         const saved =
           field === "portfolioSamples"
             ? values.existingPortfolioSamples
@@ -35,7 +32,7 @@ export function VerificationSection({
           <div key={field} className="space-y-2">
             <h4 className="text-sm font-medium">
               {field === "portfolioSamples"
-                ? "Portfolio samples (required)"
+                ? "Portfolio samples (optional)"
                 : "Certifications (optional)"}
             </h4>
             {!!saved?.length && (
@@ -60,22 +57,12 @@ export function VerificationSection({
                 </Button>
               </div>
             ))}
-            <input
-              ref={ref}
-              type="file"
-              multiple
+            <AccountSetupFileDropzone
               accept="image/png,image/jpeg,image/webp,application/pdf"
-              className="hidden"
-              onChange={(event) => onMultiFileSelect(field, event)}
+              supportedTypes="JPG, PNG, or PDF (up to 5 MB each)"
+              multiple
+              onFiles={(files) => onMultiFileSelect(field, files)}
             />
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => ref.current?.click()}
-            >
-              Add{" "}
-              {field === "portfolioSamples" ? "work samples" : "certificates"}
-            </Button>
             <p className="text-xs text-muted-foreground">
               JPG, PNG or PDF · Up to 5 MB each · 10 files maximum
             </p>

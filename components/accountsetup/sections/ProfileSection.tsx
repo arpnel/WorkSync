@@ -1,15 +1,14 @@
-import { useRef, type ChangeEvent } from "react";
-
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
-import { ImageIcon, Upload } from "lucide-react";
+import { ImageIcon } from "lucide-react";
 
 import { MAX_BIO_LENGTH } from "@/constants/account-setup.constants";
 
 import type { ClientSetupValues } from "@/types/account-setup.types";
+import { AccountSetupFileDropzone } from "./AccountSetupFileDropzone";
 
 type TValues = ClientSetupValues;
 
@@ -22,7 +21,7 @@ type Props = {
 
   onChange: (field: keyof TValues, value: TValues[keyof TValues]) => void;
 
-  onPhotoSelect: (event: ChangeEvent<HTMLInputElement>) => void;
+  onPhotoSelect: (file: File) => void;
 
   onPhotoRemove: () => void;
 };
@@ -35,8 +34,6 @@ export function ProfileSection({
   onPhotoSelect,
   onPhotoRemove,
 }: Props) {
-  const photoInputRef = useRef<HTMLInputElement>(null);
-
   return (
     <section className="rounded-2xl border bg-background p-6 shadow-sm">
       <div className="mb-5 flex items-center gap-3">
@@ -49,14 +46,9 @@ export function ProfileSection({
         {/* Profile Photo */}
 
         <div className="space-y-2">
-          <input
-            ref={photoInputRef}
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            className="hidden"
-            onChange={onPhotoSelect}
-          />
-
+          <Label>
+            Profile photo <span className="text-destructive">*</span>
+          </Label>
           {photoPreview ? (
             <div className="flex items-center gap-4">
               <Avatar className="size-20">
@@ -68,15 +60,6 @@ export function ProfileSection({
               </Avatar>
 
               <div className="flex flex-col gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => photoInputRef.current?.click()}
-                >
-                  Change Photo
-                </Button>
-
                 {values.profilePhoto && (
                   <Button
                     type="button"
@@ -90,38 +73,14 @@ export function ProfileSection({
                 )}
               </div>
             </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => photoInputRef.current?.click()}
-              className="
-                relative
-                flex
-                w-full
-                flex-col
-                items-center
-                justify-center
-                gap-2
-                rounded-lg
-                border-2
-                border-dashed
-                p-6
-                text-sm
-                transition-colors
-                hover:bg-muted/40
-              "
-            >
-              <Upload className="size-6 text-muted-foreground" />
-
-              <span className="font-medium text-muted-foreground">
-                Upload Profile Photo
-              </span>
-
-              <span className="text-xs text-muted-foreground">
-                PNG, JPEG, or WebP (max 5MB)
-              </span>
-            </button>
-          )}
+          ) : null}
+          <AccountSetupFileDropzone
+            accept="image/png,image/jpeg,image/webp"
+            supportedTypes="PNG, JPG, or WebP (up to 5 MB)"
+            onFiles={(files) => {
+              if (files[0]) onPhotoSelect(files[0]);
+            }}
+          />
 
           {errors.profilePhoto && (
             <p className="text-xs text-destructive">{errors.profilePhoto}</p>

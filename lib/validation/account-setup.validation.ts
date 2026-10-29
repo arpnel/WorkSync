@@ -146,11 +146,6 @@ export function validateFreelancerSetup(
     const error = validateSetupFile(values.resume, "resume");
     if (error) errors.resume = error;
   }
-  if (
-    !values.portfolioSamples.length &&
-    !values.existingPortfolioSamples?.length
-  )
-    errors.portfolioSamples = "Add at least one portfolio sample.";
   for (const field of ["portfolioSamples", "certifications"] as const) {
     const previous =
       field === "portfolioSamples"

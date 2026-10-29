@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { BadgeCheck, Building2, Check, ChevronRight, FileCheck2, FileText, Landmark, LoaderCircle, ReceiptText, ShieldCheck, UploadCloud } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
@@ -71,7 +71,7 @@ function rowBelongsToCategory(row: DocumentRow, category: Category) {
   return row.document_type === "business_tax_support" || (row.document_type === "tax_exemption" && (!treatment || treatment.includes("withholding")));
 }
 
-export default function TaxDocuments({ setupMode = false }: { setupMode?: boolean } = {}) {
+export default function TaxDocuments({ setupMode = false, refreshKey = 0 }: { setupMode?: boolean; refreshKey?: number } = {}) {
   const [freelancerAvailable, setFreelancerAvailable] = useState<boolean | null>(null);
   const [setupRequired, setSetupRequired] = useState(false);
   const [rows, setRows] = useState<DocumentRow[]>([]);
@@ -112,9 +112,16 @@ export default function TaxDocuments({ setupMode = false }: { setupMode?: boolea
   }, [request]);
 
   useEffect(() => {
-    void load().catch((cause) => setError(cause instanceof Error ? cause.message : "Tax documents unavailable."))
-      .finally(() => setLoading(false));
-  }, [load]);
+    let active = true;
+    setLoading(true);
+    setError("");
+    void load().catch((cause) => {
+      if (active) setError(cause instanceof Error ? cause.message : "Tax documents unavailable.");
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => { active = false; };
+  }, [load, refreshKey]);
 
   const categoryOptions = useMemo(() => category ? purposes.filter((option) => categoryPurposes[category].includes(option.value)) : [], [category]);
   const availablePurposes = categoryOptions.filter((option) => !rows.some((row) => row.party_type === "freelancer" && row.document_type === option.documentType && (row.claimed_tax_treatment ?? "").toLowerCase() === option.treatment.toLowerCase() && activeStatuses.has(row.status)));
@@ -133,6 +140,19 @@ export default function TaxDocuments({ setupMode = false }: { setupMode?: boolea
     setError("");
     setNotice("");
     if (fileInput.current) fileInput.current.value = "";
+  }
+
+  function handleFileDrop(event: DragEvent<HTMLElement>) {
+    event.preventDefault();
+    const next = event.dataTransfer.files[0];
+    if (!next) return;
+    if (next.size > 5 * 1024 * 1024) {
+      setFile(null);
+      setError("Choose a file up to 5 MB.");
+      return;
+    }
+    setFile(next);
+    setError("");
   }
 
   async function submit() {
@@ -232,7 +252,26 @@ export default function TaxDocuments({ setupMode = false }: { setupMode?: boolea
   return (
     <div className="space-y-4">
       {loading && <div className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" /> Loading tax documents…</div>}
-      {!loading && setupRequired && <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Save your freelancer profile below to enable secure document submissions here. You can submit Form 2303 and applicable tax documents without leaving account setup.</p>}
+      {!loading && setupRequired && <section className="space-y-3 rounded-lg border p-4" aria-label="Select Form 2303 for submission after profile setup">
+        <h2 className="text-base font-semibold">Seller Document</h2>
+        <p className="text-sm text-muted-foreground">Submit your Form 2303 to be considered for seller approval. Save your freelancer profile below to unlock secure submission; seller status updates after review.</p>
+        <div className="space-y-3">
+          <div className="space-y-2">
+            <Label htmlFor="setup-bir-registered-name">Registered name shown on Form 2303 <span className="text-destructive">*</span></Label>
+            <Input id="setup-bir-registered-name" value={registeredName} maxLength={200} onChange={event => setRegisteredName(event.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="setup-bir-file">Form 2303 document <span className="text-destructive">*</span></Label>
+            <input ref={birFileInput} id="setup-bir-file" className="sr-only" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={event => { const next = event.target.files?.[0] ?? null; if (next && next.size > 5 * 1024 * 1024) { setFile(null); setError("Choose a file up to 5 MB."); event.target.value = ""; return; } setFile(next); setError(""); }} />
+            <button type="button" onClick={() => birFileInput.current?.click()} onDragOver={event => event.preventDefault()} onDrop={handleFileDrop} className="flex min-h-[76px] w-full flex-col items-center justify-center gap-1 rounded-lg border border-dashed px-3 py-3 text-center transition-colors hover:bg-muted/40">
+              <span className="flex items-center gap-2 text-sm font-medium"><UploadCloud className="size-4 shrink-0 text-emerald-500" />{file?.name ?? "Drag & drop your file or click to browse"}</span>
+              <span className="text-xs text-muted-foreground">Supported: PDF, JPG, or PNG (up to 5 MB)</span>
+            </button>
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">Save your profile below to unlock secure document submission.</p>
+        {file && <Button type="button" size="sm" variant="ghost" onClick={() => { setFile(null); if (birFileInput.current) birFileInput.current.value = ""; }}>Remove selected file</Button>}
+      </section>}
       {!loading && !setupRequired && <>
         <div className={`grid gap-4 rounded-lg border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2.2fr)] ${birApproved ? "border-emerald-500/30 bg-emerald-500/5" : "bg-muted/20"}`}>
           <div className="flex items-center gap-3 sm:border-r sm:pr-4">
@@ -252,8 +291,8 @@ export default function TaxDocuments({ setupMode = false }: { setupMode?: boolea
             </article>}
             {canonicalBirCor.document?.status === "rejected" && <p className="text-sm text-destructive">Review the administrator’s feedback, then submit a corrected Form 2303.</p>}
             {canonicalBirCor.document?.status !== "pending" && <div className="grid items-end gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-              <div className="space-y-2"><Label htmlFor="canonical-bir-registered-name">Registered name on Form 2303</Label><Input id="canonical-bir-registered-name" placeholder="Enter registered name" value={registeredName} maxLength={200} onChange={event => setRegisteredName(event.target.value)} disabled={busy} /></div>
-              <div className="space-y-2"><Label htmlFor="canonical-bir-file">Form 2303 document</Label><input ref={birFileInput} id="canonical-bir-file" className="sr-only" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={busy} onChange={event => { const next = event.target.files?.[0] ?? null; if (next && next.size > 5 * 1024 * 1024) { setFile(null); setError("Choose a file up to 5 MB."); event.target.value = ""; return; } setFile(next); setError(""); }} /><button type="button" onClick={() => birFileInput.current?.click()} disabled={busy} className="flex min-h-12 w-full items-center gap-3 rounded-md border border-dashed px-3 text-left hover:bg-muted/40 disabled:opacity-50"><UploadCloud className="size-4 shrink-0 text-muted-foreground" /><span className="min-w-0"><span className="block truncate text-sm">{file?.name ?? "Choose file"}</span><span className="block text-xs text-muted-foreground">PDF, JPG, or PNG up to 5 MB</span></span></button></div>
+              <div className="space-y-2"><Label htmlFor="canonical-bir-registered-name">Registered name on Form 2303 <span className="text-destructive">*</span></Label><Input id="canonical-bir-registered-name" placeholder="Enter registered name" value={registeredName} maxLength={200} onChange={event => setRegisteredName(event.target.value)} disabled={busy} /></div>
+              <div className="space-y-2"><Label htmlFor="canonical-bir-file">Form 2303 document <span className="text-destructive">*</span></Label><input ref={birFileInput} id="canonical-bir-file" className="sr-only" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={busy} onChange={event => { const next = event.target.files?.[0] ?? null; if (next && next.size > 5 * 1024 * 1024) { setFile(null); setError("Choose a file up to 5 MB."); event.target.value = ""; return; } setFile(next); setError(""); }} /><button type="button" onClick={() => birFileInput.current?.click()} onDragOver={event => event.preventDefault()} onDrop={handleFileDrop} disabled={busy} className="flex min-h-[76px] w-full flex-col items-center justify-center gap-1 rounded-lg border border-dashed px-3 py-3 text-center hover:bg-muted/40 disabled:opacity-50"><span className="flex items-center gap-2 text-sm font-medium"><UploadCloud className="size-4 shrink-0 text-emerald-500" />{file?.name ?? "Drag & drop your file or click to browse"}</span><span className="text-xs text-muted-foreground">Supported: PDF, JPG, or PNG (up to 5 MB)</span></button></div>
               <Button type="button" className="bg-emerald-700 text-white hover:bg-emerald-600" onClick={() => void submitBirCor()} disabled={!file || !registeredName.trim() || busy || canonicalBirCor.needsReview}>{busy && <LoaderCircle className="mr-2 size-4 animate-spin" />}{busy ? "Submitting…" : canonicalBirCor.document?.status === "rejected" ? "Submit correction" : "Submit for review"}</Button>
             </div>}
             {error && <p role="alert" className="text-sm text-destructive">{error}</p>}{notice && <p role="status" className="text-sm text-emerald-600">{notice}</p>}
@@ -351,9 +390,9 @@ export default function TaxDocuments({ setupMode = false }: { setupMode?: boolea
                   if (nextFile && nextFile.size > 5 * 1024 * 1024) { setFile(null); setError("Choose a file up to 5 MB."); event.target.value = ""; return; }
                   setError(""); setFile(nextFile);
                 }} />
-                <div className="flex flex-wrap items-center gap-3 rounded-lg border border-dashed p-4">
+                <div onDragOver={event => event.preventDefault()} onDrop={handleFileDrop} className={`flex flex-wrap items-center gap-3 rounded-lg border border-dashed p-4 ${setupMode ? "min-h-[76px] flex-col justify-center text-center" : ""}`}>
                   <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground"><UploadCloud className="size-5" /></span>
-                  <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{file?.name ?? "Choose a file to upload"}</p><p className="mt-1 text-xs text-muted-foreground">PDF, JPG, or PNG · up to 5 MB</p></div>
+                  <div className={`min-w-0 flex-1 ${setupMode ? "text-center" : ""}`}><p className="truncate text-sm font-medium">{file?.name ?? (setupMode ? "Drag & drop your file or click to browse" : "Choose a file to upload")}</p><p className="mt-1 text-xs text-muted-foreground">{setupMode ? "Supported: PDF, JPG, or PNG (up to 5 MB)" : "PDF, JPG, or PNG · up to 5 MB"}</p></div>
                   <Button type="button" variant="outline" onClick={() => fileInput.current?.click()}>{file ? "Replace file" : "Browse files"}</Button>
                 </div>
               </div>

@@ -16,6 +16,7 @@ import type { Category, Skill } from "@/services/serviceP/categoryService";
 
 import { FreelancerIndustrySection } from "./FreelancerIndustrySection";
 import { FreelancerSkillsSection } from "./FreelancerSkillsSection";
+import { AccountSetupFileDropzone } from "./AccountSetupFileDropzone";
 
 type Props = {
   values: FreelancerSetupValues;
@@ -36,7 +37,7 @@ type Props = {
 
   onFileSelect: (
     field: keyof FreelancerSetupValues,
-    event: React.ChangeEvent<HTMLInputElement>,
+    file: File,
   ) => void;
 };
 
@@ -71,21 +72,6 @@ export function FreelancerInformationSection({
           />
           {errors.headline && (
             <p className="text-xs text-destructive">{errors.headline}</p>
-          )}
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="hourlyRate">Hourly rate (PHP, optional)</Label>
-          <Input
-            id="hourlyRate"
-            type="number"
-            min="0.01"
-            step="0.01"
-            value={values.hourlyRate ?? ""}
-            onChange={(event) => onChange("hourlyRate", event.target.value)}
-            placeholder="Your rate per hour"
-          />
-          {errors.hourlyRate && (
-            <p className="text-xs text-destructive">{errors.hourlyRate}</p>
           )}
         </div>
         {/* Years of Experience */}
@@ -246,21 +232,14 @@ export function FreelancerInformationSection({
             Resume / CV <span className="text-destructive">*</span>
           </Label>
 
-          <input
-            id="resume"
-            type="file"
-            accept="application/pdf"
-            className="hidden"
-            onChange={(event) => onFileSelect("resume", event)}
+          <AccountSetupFileDropzone
+            accept="application/pdf,.pdf"
+            supportedTypes="PDF (up to 5 MB)"
+            onFiles={(files) => {
+              if (files[0]) onFileSelect("resume", files[0]);
+            }}
           />
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => document.getElementById("resume")?.click()}
-            >
-              {values.resume ? "Replace PDF" : "Choose PDF"}
-            </Button>
             {values.resume && (
               <>
                 <span className="break-all text-sm text-muted-foreground">

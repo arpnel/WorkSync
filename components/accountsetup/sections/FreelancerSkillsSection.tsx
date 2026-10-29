@@ -97,6 +97,9 @@ export function FreelancerSkillsSection({
       {/* Search */}
 
       <div className="space-y-3">
+        <p className="text-sm font-medium">
+          Skills <span className="text-destructive">*</span>
+        </p>
         <div className="flex items-center justify-between">
           <p className="text-xs text-muted-foreground">
             Search skills
@@ -199,22 +202,22 @@ export function FreelancerSkillsSection({
 
       {/* Recommended */}
 
-      <div className="space-y-3">
-        <div>
-          <p className="text-xs text-muted-foreground">
-            Recommended skills
-          </p>
-
-          {industries.length > 0 && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              Based on your selected industries
+      {availableRecommendedSkills.length > 0 && (
+        <div className="space-y-3">
+          <div>
+            <p className="text-xs text-muted-foreground">
+              Recommended skills
             </p>
-          )}
-        </div>
 
-        <div className="flex flex-wrap gap-2">
-          {availableRecommendedSkills.length > 0 ? (
-            availableRecommendedSkills.map((skill) => {
+            {industries.length > 0 && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Based on your selected industries
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {availableRecommendedSkills.map((skill) => {
               const limitReached =
                 selectedSkillIds.length >= maxSkills;
 
@@ -239,14 +242,10 @@ export function FreelancerSkillsSection({
                   {skill.name}
                 </button>
               );
-            })
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              No recommended skills loaded.
-            </p>
-          )}
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* No Industry Selected */}
 

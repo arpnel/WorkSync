@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -96,9 +96,7 @@ export function useSetupForm(role: "client" | "freelancer") {
       URL.revokeObjectURL(url);
     };
   }, [values.profilePhoto]);
-  function handlePhotoSelect(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
+  function handlePhotoSelect(file: File) {
     if (!file) return;
     const error = validateSetupFile(file, "photo");
     if (error) {
@@ -113,11 +111,9 @@ export function useSetupForm(role: "client" | "freelancer") {
   }
   function handleFileSelect(
     field: keyof FreelancerSetupValues,
-    event: ChangeEvent<HTMLInputElement>,
+    file: File,
   ) {
     if (field !== "resume") return;
-    const file = event.target.files?.[0];
-    event.target.value = "";
     if (!file) return;
     const error = validateSetupFile(file, "resume");
     if (error) {
@@ -128,10 +124,8 @@ export function useSetupForm(role: "client" | "freelancer") {
   }
   function handleMultiFileSelect(
     field: "portfolioSamples" | "certifications",
-    event: ChangeEvent<HTMLInputElement>,
+    files: File[],
   ) {
-    const files = Array.from(event.target.files ?? []);
-    event.target.value = "";
     for (const file of files) {
       const error = validateSetupFile(file, "document");
       if (error) {

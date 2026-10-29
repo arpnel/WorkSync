@@ -128,7 +128,6 @@ function EditProfileContent({
     headline: profile.headline ?? "",
     bio: profile.bio ?? "",
     location: profile.location ?? "",
-    hourly_rate: profile.hourly_rate?.toString() ?? "",
   });
 
   const [initialDraft] = useState(() =>
@@ -185,12 +184,6 @@ function EditProfileContent({
     setError("");
     if (!form.first_name.trim() || !form.last_name.trim())
       return setError("First and last name are required.");
-    if (
-      form.hourly_rate &&
-      (!Number.isFinite(Number(form.hourly_rate)) ||
-        Number(form.hourly_rate) <= 0)
-    )
-      return setError("Enter an hourly rate greater than zero.");
     if (
       !Number.isInteger(Number(form.years_of_experience)) ||
       Number(form.years_of_experience) < 0 ||
@@ -282,7 +275,6 @@ function EditProfileContent({
                 ? { category_ids: industryIds }
                 : {}),
               headline: form.headline || null,
-              hourly_rate: form.hourly_rate ? Number(form.hourly_rate) : null,
             }
           : {}),
         bio: form.bio || null,
@@ -562,26 +554,6 @@ function EditProfileContent({
                         setForm({
                           ...form,
                           headline: e.target.value,
-                        })
-                      }
-                    />
-                  </div>
-                  {/* Hourly Rate */}
-                  <div className="space-y-2">
-                    <Label htmlFor="hourly_rate">Hourly Rate (PHP)</Label>
-
-                    <Input
-                      id="hourly_rate"
-                      disabled={profile.role !== "freelancer"}
-                      min="0.01"
-                      step="0.01"
-                      type="number"
-                      placeholder="25"
-                      value={form.hourly_rate}
-                      onChange={(e) =>
-                        setForm({
-                          ...form,
-                          hourly_rate: e.target.value,
                         })
                       }
                     />

@@ -14,7 +14,6 @@ export interface ClientSetupValues {
 
 export interface FreelancerSetupValues extends ClientSetupValues {
   headline?: string;
-  hourlyRate?: string;
   skills: string[];
   yearsOfExperience: number;
   industries: string[];

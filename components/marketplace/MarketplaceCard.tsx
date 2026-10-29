@@ -43,10 +43,6 @@ export default function MarketplaceCard({ listing, onClick, rating, available, f
       }).format(listing.budget_max);
 
   if (freelancerMode && isService) {
-    const hourlyRate = listing.freelancer?.hourly_rate;
-    const hourlyLabel = hourlyRate == null
-      ? "Hourly rate not listed"
-      : `${new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 }).format(hourlyRate)}/hr`;
     return (
       <button
         type="button"
@@ -76,11 +72,10 @@ export default function MarketplaceCard({ listing, onClick, rating, available, f
             </p>
           )}
           <div className="mt-4 flex items-center justify-between border-y py-3 text-sm">
-            <span className="flex items-center gap-1.5">
-              <Star className="size-4 fill-amber-400 text-amber-500" />
-              {rating == null ? "New freelancer" : `${rating.toFixed(1)} rating`}
+            <span className={`flex items-center gap-1.5 ${rating == null ? "text-muted-foreground" : ""}`}>
+              <Star className={`size-4 ${rating != null ? "fill-amber-400 text-amber-500" : "text-amber-500"}`} />
+              {rating == null ? "Not yet rated" : `${rating.toFixed(1)} rating`}
             </span>
-            <span className="font-medium">{hourlyLabel}</span>
           </div>
           <div className="mt-4 min-w-0">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Specialty</p>
@@ -240,15 +235,22 @@ export default function MarketplaceCard({ listing, onClick, rating, available, f
               Verified freelancer
             </p>
           )}
-          {rating != null && (
-            <p className="flex items-center gap-1.5 text-xs font-medium">
-              <Star
-                className="size-3.5 fill-amber-400 text-amber-600"
-                aria-hidden="true"
-              />
-              <span>{rating.toFixed(1)} rating</span>
-            </p>
-          )}
+          <p className={`flex items-center gap-1.5 text-xs font-medium ${rating == null ? "text-muted-foreground" : ""}`}>
+            {rating == null ? (
+              <>
+                <Star className="size-3.5 text-amber-600" aria-hidden="true" />
+                <span>Not yet rated</span>
+              </>
+            ) : (
+              <>
+                <Star
+                  className="size-3.5 fill-amber-400 text-amber-600"
+                  aria-hidden="true"
+                />
+                <span>{rating.toFixed(1)} rating</span>
+              </>
+            )}
+          </p>
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="truncate rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground">
               {listing.category?.name ?? "Category"}

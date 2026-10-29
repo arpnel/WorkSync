@@ -65,7 +65,6 @@ export async function getProjects(): Promise<ProjectRecord[]> {
         freelancer_id,
         user_id,
         headline,
-        hourly_rate,
         created_at,
         verification_status,
         years_of_experience,

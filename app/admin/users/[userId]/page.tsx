@@ -117,10 +117,6 @@ function AdminProfile({ userId }: { userId: string }) {
                     Joined: profile.created_at
                       ? new Date(profile.created_at).toLocaleDateString()
                       : null,
-                    "Hourly rate":
-                      profile.hourly_rate == null
-                        ? null
-                        : "PHP " + profile.hourly_rate.toLocaleString(),
                   }).map(([label, value]) => (
                     <div
                       key={label}

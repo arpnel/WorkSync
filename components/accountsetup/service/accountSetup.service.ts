@@ -49,7 +49,7 @@ export async function loadAccountSetup(
   const { data: freelancer, error: roleError } = await supabase
     .from("freelancer_profiles")
     .select(
-      "freelancer_id,headline,hourly_rate,years_of_experience,employment_preference,portfolio_website,linkedin_url,github_url,resume_url,portfolio_sample_urls,certification_urls",
+      "freelancer_id,headline,years_of_experience,employment_preference,portfolio_website,linkedin_url,github_url,resume_url,portfolio_sample_urls,certification_urls",
     )
     .eq("user_id", user.id)
     .maybeSingle();
@@ -73,8 +73,6 @@ export async function loadAccountSetup(
     values: {
       ...shared,
       headline: freelancer.headline ?? "",
-      hourlyRate:
-        freelancer.hourly_rate == null ? "" : String(freelancer.hourly_rate),
       industries: categories.data?.map((row) => row.category_id) ?? [],
       skills: skills.data?.map((row) => row.skill_id) ?? [],
       yearsOfExperience: freelancer.years_of_experience ?? 0,
@@ -260,7 +258,6 @@ export async function submitFreelancerSetup(
   const data = {
     user_id: user.id,
     headline: values.headline || null,
-    hourly_rate: values.hourlyRate ? Number(values.hourlyRate) : null,
     years_of_experience: values.yearsOfExperience,
     employment_preference: values.employmentPreference,
     portfolio_website: values.portfolioWebsite || null,

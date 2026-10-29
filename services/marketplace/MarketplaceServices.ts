@@ -77,7 +77,6 @@ export interface MarketplaceFreelancer {
   user_id: string;
 
   headline: string | null;
-  hourly_rate: number | null;
   verification_status: string | null;
   skills?: string[];
   has_portfolio?: boolean;

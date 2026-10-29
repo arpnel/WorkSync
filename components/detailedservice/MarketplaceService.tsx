@@ -590,12 +590,6 @@ export default function MarketplaceServiceDetails({
     : service.freelancer?.profile?.avatar_url;
   const freelancerProfessionalDetails = [
     [
-      "Hourly rate",
-      (freelancerProfile?.hourly_rate ?? service.freelancer?.hourly_rate) != null
-        ? `PHP ${(freelancerProfile?.hourly_rate ?? service.freelancer?.hourly_rate)?.toLocaleString()}/hr`
-        : null,
-    ],
-    [
       "Experience",
       freelancerProfile?.years_of_experience != null
         ? `${freelancerProfile.years_of_experience} ${freelancerProfile.years_of_experience === 1 ? "year" : "years"}`

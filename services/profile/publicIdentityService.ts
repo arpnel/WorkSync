@@ -19,7 +19,6 @@ export interface PublicIdentities {
     freelancer_id: string;
     user_id: string;
     headline: string | null;
-    hourly_rate: number | null;
     verification_status: string | null;
   }[];
 }

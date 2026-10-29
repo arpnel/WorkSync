@@ -24,7 +24,6 @@ const initial: FreelancerSetupValues = {
   shortBio: "",
   industries: [],
   headline: "",
-  hourlyRate: "",
   skills: [],
   yearsOfExperience: 0,
   employmentPreference: "",

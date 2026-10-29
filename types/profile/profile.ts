@@ -26,7 +26,6 @@ export type Profile = {
   /* ---------------- freelancer_profiles ---------------- */
 
   headline: string | null;
-  hourly_rate: number | null;
   verification_status: string | null;
   years_of_experience?: number | null;
   employment_preference?: string | null;
@@ -282,5 +281,4 @@ export type UpdateProfilePayload = {
   /* ---------------- freelancer_profiles ---------------- */
 
   headline?: string | null;
-  hourly_rate?: number | null;
 };

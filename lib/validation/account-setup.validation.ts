@@ -90,13 +90,6 @@ export function validateFreelancerSetup(
     : { ...base.errors };
   if ((values.headline?.trim().length ?? 0) > 120)
     errors.headline = "Keep your professional headline within 120 characters.";
-  if (
-    values.hourlyRate?.trim() &&
-    (!Number.isFinite(Number(values.hourlyRate)) ||
-      Number(values.hourlyRate) <= 0)
-  )
-    errors.hourlyRate =
-      "Enter an hourly rate greater than zero, or leave it blank.";
   if (!values.industries.length || values.industries.length > 10)
     errors.industries = "Select between 1 and 10 industries.";
   if (!values.skills.length || values.skills.length > 25)
@@ -170,7 +163,6 @@ export function validateFreelancerSetup(
       industries: [...new Set(values.industries)],
       skills: [...new Set(values.skills)],
       headline: values.headline?.trim() ?? "",
-      hourlyRate: values.hourlyRate?.trim() ?? "",
       portfolioWebsite: values.portfolioWebsite.trim(),
       linkedIn: values.linkedIn.trim(),
       github: values.github.trim(),

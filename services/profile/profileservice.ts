@@ -152,7 +152,6 @@ async function fetchCurrentProfile(
     /* ---------------- freelancer_profiles ---------------- */
 
     headline: null,
-    hourly_rate: null,
     verification_status: null,
 
     /* ---------------- Computed data ---------------- */
@@ -180,7 +179,6 @@ async function fetchCurrentProfile(
         freelancer_id,
         user_id,
         headline,
-        hourly_rate,
         verification_status,
         years_of_experience,
         employment_preference,
@@ -199,7 +197,6 @@ async function fetchCurrentProfile(
 
     if (freelancerData) {
       profile.headline = freelancerData.headline;
-      profile.hourly_rate = freelancerData.hourly_rate;
       profile.verification_status = freelancerData.verification_status;
       profile.years_of_experience = freelancerData.years_of_experience;
       profile.employment_preference = freelancerData.employment_preference;
@@ -271,7 +268,6 @@ export async function getPublicProfile(
     city: base.city,
     english_proficiency: base.english_proficiency,
     headline: freelancerResult.data?.headline ?? null,
-    hourly_rate: freelancerResult.data?.hourly_rate ?? null,
     verification_status: freelancerResult.data?.verification_status ?? null,
     rating: null,
     reviews_count: 0,
@@ -293,11 +289,6 @@ export async function updateProfile(
 ): Promise<Profile> {
   if (updates.headline && updates.headline.trim().length > 120)
     throw new Error("Keep your headline within 120 characters.");
-  if (
-    updates.hourly_rate != null &&
-    (!Number.isFinite(updates.hourly_rate) || updates.hourly_rate <= 0)
-  )
-    throw new Error("Enter an hourly rate greater than zero.");
   if (
     ("first_name" in updates && !updates.first_name?.trim()) ||
     ("last_name" in updates && !updates.last_name?.trim())
@@ -404,10 +395,6 @@ export async function updateProfile(
 
   if ("headline" in updates) {
     freelancerUpdates.headline = updates.headline;
-  }
-
-  if ("hourly_rate" in updates) {
-    freelancerUpdates.hourly_rate = updates.hourly_rate;
   }
 
   if (Object.keys(freelancerUpdates).length > 0) {

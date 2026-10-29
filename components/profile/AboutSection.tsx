@@ -90,12 +90,6 @@ export default function AboutSection({ profile }: { profile: Profile }) {
   const [passedCategoryIds, setPassedCategoryIds] = useState<string[]>([]);
   const professionalDetails = [
     [
-      "Hourly rate",
-      profile.hourly_rate != null
-        ? `PHP ${profile.hourly_rate.toLocaleString()}/hr`
-        : null,
-    ],
-    [
       "Experience",
       profile.years_of_experience != null
         ? `${profile.years_of_experience} ${profile.years_of_experience === 1 ? "year" : "years"}`

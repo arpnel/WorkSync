@@ -83,7 +83,7 @@ export async function POST(request: Request) {
         ? db
             .from("freelancer_profiles")
             .select(
-              "freelancer_id,user_id,headline,hourly_rate,verification_status",
+              "freelancer_id,user_id,headline,verification_status",
             )
             .or(
               [

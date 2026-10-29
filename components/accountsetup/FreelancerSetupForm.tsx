@@ -263,7 +263,7 @@ export function FreelancerSetupForm() {
         <div className="space-y-3 rounded-xl border bg-background/40 p-4 sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <label htmlFor="setup-tin" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Taxpayer Identification Number (TIN) <span className="text-destructive">*</span></label>
-            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-500"><Lock className="size-3" /> Mandatory for payouts</span>
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-500"><Lock className="size-3" /> Mandatory</span>
           </div>
           <div className="relative">
             <FileText className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />

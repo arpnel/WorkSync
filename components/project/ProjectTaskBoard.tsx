@@ -284,26 +284,33 @@ export function ProjectTaskBoard({
           >
             <div className="mb-3 flex items-center justify-between"><h3 className="text-sm font-semibold">{column}</h3><span className="rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground">{items.length}</span></div>
             <div className="space-y-2">
-              {items.map((task) => <button
-                key={task.id}
-                type="button"
-                draggable={project.currentParty === "freelancer"}
-                onDragStart={(event) => {
-                  if (project.currentParty !== "freelancer") return;
-                  event.dataTransfer.effectAllowed = "move";
-                  event.dataTransfer.setData("text/plain", task.id);
-                }}
-                onClick={() => { setAttachmentError(""); setSelection({ key: taskKey, id: task.id }); }}
-                className={`block w-full rounded-lg border bg-background/50 p-3 text-left transition hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${project.currentParty === "freelancer" ? "cursor-grab active:cursor-grabbing" : ""}`}
-              >
-                <span className="flex items-start gap-1.5"><GripVertical aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"/><span className="min-w-0 flex-1 font-medium">{task.title}</span>{task.status === "Done" && <CheckCircle2 aria-label="Done" className="size-4 shrink-0 fill-emerald-600 text-emerald-600" />}</span>
-                <span className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <span className={`rounded-full border px-2 py-0.5 ${task.priority === "High" ? "border-rose-500/30 text-rose-700 dark:text-rose-300" : ""}`}>{task.priority}</span>
-                  {task.dueDate && <span className="inline-flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" />{new Date(`${task.dueDate}T12:00:00`).toLocaleDateString()}</span>}
-                  {task.attachments.length > 0 && <span className="inline-flex items-center gap-1"><Paperclip className="h-3.5 w-3.5" />{task.attachments.length}</span>}
-                  {task.comments.length > 0 && <span className="inline-flex items-center gap-1"><MessageSquare className="h-3.5 w-3.5" />{task.comments.length}</span>}
-                </span>
-              </button>)}
+              {items.map((task) => <article key={task.id} className="rounded-lg border bg-background/50 p-3">
+                <button
+                  type="button"
+                  draggable={project.currentParty === "freelancer"}
+                  onDragStart={(event) => {
+                    if (project.currentParty !== "freelancer") return;
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData("text/plain", task.id);
+                  }}
+                  onClick={() => { setAttachmentError(""); setSelection({ key: taskKey, id: task.id }); }}
+                  className={`block w-full rounded text-left transition hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${project.currentParty === "freelancer" ? "cursor-grab active:cursor-grabbing" : ""}`}
+                >
+                  <span className="flex items-start gap-1.5"><GripVertical aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"/><span className="min-w-0 flex-1 font-medium">{task.title}</span>{task.status === "Done" && <CheckCircle2 aria-label="Done" className="size-4 shrink-0 fill-emerald-600 text-emerald-600" />}</span>
+                  <span className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <span className={`rounded-full border px-2 py-0.5 ${task.priority === "High" ? "border-rose-500/30 text-rose-700 dark:text-rose-300" : ""}`}>{task.priority}</span>
+                    {task.dueDate && <span className="inline-flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" />{new Date(`${task.dueDate}T12:00:00`).toLocaleDateString()}</span>}
+                    {task.attachments.length > 0 && <span className="inline-flex items-center gap-1"><Paperclip className="h-3.5 w-3.5" />{task.attachments.length}</span>}
+                    {task.comments.length > 0 && <span className="inline-flex items-center gap-1"><MessageSquare className="h-3.5 w-3.5" />{task.comments.length}</span>}
+                  </span>
+                </button>
+                {project.currentParty === "freelancer" && <label className="mt-2 flex items-center gap-2 border-t pt-2 text-xs text-muted-foreground">
+                  Move to
+                  <StyledSelect aria-label={`Move ${task.title} to`} className="h-8 min-w-0 flex-1 rounded-md border border-border/80 bg-background px-2 text-xs text-foreground" value={task.status} onChange={(event) => moveTask(task.id, event.target.value as TaskStatus)}>
+                    {columns.map((status) => <option key={status} value={status}>{status}</option>)}
+                  </StyledSelect>
+                </label>}
+              </article>)}
               {!items.length && <p className="rounded-md border border-dashed p-3 text-center text-xs text-muted-foreground">No tasks</p>}
             </div>
           </section>;

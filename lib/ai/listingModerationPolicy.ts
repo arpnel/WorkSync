@@ -12,11 +12,28 @@ export const LISTING_MODERATION_POLICY = {
 // whole-token after normalization so ordinary words containing a short term
 // (for example, "class") are not flagged.
 const profanityTokens = new Set([
+  "arsehole",
   "asshole",
   "bastard",
   "bitch",
+  "bobo",
+  "bwisit",
   "bullshit",
   "cunt",
+  "crap",
+  "dick",
+  "dickhead",
+  "inutil",
+  "leche",
+  "motherfucking",
+  "pakshet",
+  "prick",
+  "punyeta",
+  "slut",
+  "tanga",
+  "twat",
+  "wanker",
+  "whore",
   "fuck",
   "fucker",
   "fucking",
@@ -26,23 +43,25 @@ const profanityTokens = new Set([
   "gago",
   "gaga",
   "putangina",
+  "putanginamo",
   "puta",
   "tangina",
+  "tanginamo",
   "tarantado",
   "ulol",
 ]);
 
-function containsProfanity(value: string) {
-  const normalized = value
+export function containsProfanity(value: string) {
+  const normalized = value.replace(/f@ck/gi, "fuck")
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
-    .replace(/[0]/g, "o")
+    .replace(/0/g, "o")
     .replace(/[1!|]/g, "i")
-    .replace(/[3]/g, "e")
+    .replace(/3/g, "e")
     .replace(/[@4]/g, "a")
     .replace(/[5$]/g, "s")
-    .replace(/[7]/g, "t");
+    .replace(/7/g, "t");
   const tokens = normalized
     .split(/\s+/)
     .map((token) => token.replace(/[^a-z]/g, ""))

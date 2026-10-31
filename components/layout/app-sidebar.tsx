@@ -63,7 +63,6 @@ const NAV_GROUPS = [
     label: "More",
     items: [
       { label: "Assessment", icon: ClipboardCheck, href: "/home/assessments" },
-      { label: "Clients", icon: Users, href: "/home/Client" },
     ],
   },
 ] as const;

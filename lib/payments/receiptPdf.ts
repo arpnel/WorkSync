@@ -117,7 +117,9 @@ export function receiptDetailsFromSnapshot(receipt: { receipt_number: string; is
 }
 export function createReceiptPdf(details: ReceiptDetails) {
   const pages: string[][] = [[]]; let page = pages[0]; let y = 752;
-  const nextPage = () => { page = []; pages.push(page); y = 752; };
+  const watermark = () => page.push("q /WMGS gs 0.08 0.43 0.36 rg BT /F2 48 Tf 0.866 0.5 -0.5 0.866 126 348 Tm (WorkSync) Tj ET Q");
+  watermark();
+  const nextPage = () => { page = []; pages.push(page); watermark(); y = 752; };
   const put = (value: string, x: number, baseline: number, size = 10, bold = false, color = "0.16 0.20 0.25") => {
     page.push("BT /" + (bold ? "F2" : "F1") + " " + size + " Tf " + color + " rg " + x + " " + baseline + " Td (" + pdfText(value) + ") Tj ET");
   };
@@ -338,11 +340,12 @@ export function createReceiptPdf(details: ReceiptDetails) {
     }
   }
   const encoder = new TextEncoder(); const objects: string[] = [];
-  const pageIds = pages.map((_, index) => 3 + index); const regularId = 3 + pages.length; const boldId = regularId + 1; const imageId = details.logoJpeg ? boldId + 1 : null; const contentStartId = imageId ?? boldId; const contentIds = pages.map((_, index) => contentStartId + 1 + index);
+  const pageIds = pages.map((_, index) => 3 + index); const regularId = 3 + pages.length; const boldId = regularId + 1; const imageId = details.logoJpeg ? boldId + 1 : null; const watermarkId = (imageId ?? boldId) + 1; const contentIds = pages.map((_, index) => watermarkId + 1 + index);
   objects.push("<< /Type /Catalog /Pages 2 0 R >>"); objects.push("<< /Type /Pages /Kids [" + pageIds.map(id => id + " 0 R").join(" ") + "] /Count " + pages.length + " >>");
-  pages.forEach((_, index) => objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 " + regularId + " 0 R /F2 " + boldId + " 0 R >>" + (imageId ? " /XObject << /Im1 " + imageId + " 0 R >>" : "") + " >> /Contents " + contentIds[index] + " 0 R >>"));
+  pages.forEach((_, index) => objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 " + regularId + " 0 R /F2 " + boldId + " 0 R >>" + (imageId ? " /XObject << /Im1 " + imageId + " 0 R >>" : "") + " /ExtGState << /WMGS " + watermarkId + " 0 R >> >> /Contents " + contentIds[index] + " 0 R >>"));
   objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>", "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>");
   if (imageId && details.logoJpeg) { const hex = Array.from(details.logoJpeg).map(byte => byte.toString(16).padStart(2, "0")).join("") + ">"; objects.push("<< /Type /XObject /Subtype /Image /Width " + (details.logoWidth ?? 305) + " /Height " + (details.logoHeight ?? 277) + " /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter [/ASCIIHexDecode /DCTDecode] /Length " + hex.length + " >>\nstream\n" + hex + "\nendstream"); }
+  objects.push("<< /Type /ExtGState /ca 0.08 /CA 0.08 >>");
   pages.forEach(commands => { const stream = commands.join("\n") + "\n"; objects.push("<< /Length " + encoder.encode(stream).length + " >>\nstream\n" + stream + "endstream"); });
   let pdf = "%PDF-1.4\n"; const offsets = [0]; objects.forEach((object, index) => { offsets.push(encoder.encode(pdf).length); pdf += (index + 1) + " 0 obj\n" + object + "\nendobj\n"; });
   const xrefOffset = encoder.encode(pdf).length; pdf += "xref\n0 " + (objects.length + 1) + "\n0000000000 65535 f \n"; for (const offset of offsets.slice(1)) pdf += String(offset).padStart(10, "0") + " 00000 n \n";

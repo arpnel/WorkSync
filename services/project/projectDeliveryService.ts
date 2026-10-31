@@ -1,4 +1,5 @@
 import { submitPaidWork } from "./paidWorkService";
+import { containsProfanity } from "@/lib/ai/listingModerationPolicy";
 import { getProjectPayment } from "@/services/payments/paymentService";
 import { supabase } from "@/lib/supabaseClient";
 import { LARGE_FILE_MAX_BYTES, SUPABASE_MAX_FILE_BYTES, usesR2Storage } from "@/lib/storage/hybridStorage";
@@ -265,6 +266,8 @@ export async function leaveProjectReview(
 ) {
   if (!Number.isInteger(rating) || rating < 1 || rating > 5)
     throw new Error("Choose a rating from 1 to 5.");
+  if (containsProfanity(comment))
+    throw new Error("Please remove profanity or offensive language before submitting your review.");
   await platformAction("worksync_leave_review", {
     p_project: projectId,
     p_rating: rating,

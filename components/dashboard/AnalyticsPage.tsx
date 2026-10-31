@@ -50,6 +50,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
+import WorkContacts from "@/components/dashboard/WorkContacts";
 
 const money = (value: number) =>
   new Intl.NumberFormat("en-PH", {
@@ -575,6 +576,7 @@ export default function AnalyticsPage() {
               </TabsContent>
             </Tabs>
           </Panel>
+          <WorkContacts />
         </>
       )}
     </div>

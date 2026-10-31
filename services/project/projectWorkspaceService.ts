@@ -216,6 +216,16 @@ export function mapContractVersionPayload(input: ContractVersionPayloadInput): C
   const startDate = requireDate(input.startDate, "startDate");
   const deadline = requireDate(input.deadline, "deadline");
   if (deadline < startDate) throw new ContractVersionPayloadError("deadline must not precede startDate.");
+  const actualDeadlineDays = Math.max(
+    1,
+    Math.ceil(
+      (Date.parse(`${deadline}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) /
+        86_400_000,
+    ),
+  );
+  if (input.deliveryDays > actualDeadlineDays) {
+    throw new ContractVersionPayloadError("deliveryDays must not exceed the contract date range.");
+  }
 
   if (!input.plan || typeof input.plan !== "object") throw new ContractVersionPayloadError("plan is required.");
   const planName = requireText(input.plan.name, "plan.name", 1, 120);
@@ -284,6 +294,9 @@ export function mapContractVersionPayload(input: ContractVersionPayloadInput): C
       if (task.expectedDays !== undefined) {
         if (!Number.isInteger(task.expectedDays) || task.expectedDays < 1 || task.expectedDays > 3650) {
           throw new ContractVersionPayloadError(`${taskField}.expectedDays must be a whole number from 1 to 3650.`);
+        }
+        if (task.expectedDays > actualDeadlineDays) {
+          throw new ContractVersionPayloadError(`${taskField}.expectedDays must not exceed the contract date range.`);
         }
         mappedTask.expectedDays = task.expectedDays;
       }

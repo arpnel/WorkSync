@@ -13,6 +13,7 @@ import {
   clearProjectReadCache,
 } from "@/lib/projectReadCache";
 import { projectProgress } from "@/lib/projectProgress";
+import { containsProfanity } from "@/lib/ai/listingModerationPolicy";
 import { reviewableDeliveryIds } from "@/lib/projectDelivery";
 import { Plus } from "lucide-react";
 import { SubmissionInbox } from "./SubmissionInbox";
@@ -297,6 +298,9 @@ export function ProjectDeliveryPanel({
   const ownReview = history?.reviews.some(
     (review) => review.reviewer_role === project.currentParty,
   );
+  const reviewCommentError = containsProfanity(comment)
+    ? "Please remove profanity or offensive language before submitting your review."
+    : "";
   if (!project.projectId) return null;
   return (
     <div className="space-y-5">
@@ -770,6 +774,7 @@ export function ProjectDeliveryPanel({
               className="space-y-3 border-t pt-4"
               onSubmit={(e) => {
                 e.preventDefault();
+                if (reviewCommentError) return;
                 void act(
                   () => leaveProjectReview(projectId, Number(rating), comment),
                   "Review published.",
@@ -799,7 +804,8 @@ export function ProjectDeliveryPanel({
                   onChange={(e) => setComment(e.target.value)}
                 />
               </label>
-              <Button disabled={busy}>Publish review</Button>
+              {reviewCommentError && <p role="alert" className="text-sm text-destructive">{reviewCommentError}</p>}
+              <Button disabled={busy || !!reviewCommentError}>Publish review</Button>
             </form>
           )}
           {history?.reviews.map((review) => (

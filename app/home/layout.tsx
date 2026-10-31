@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import ModerationNotice from "@/components/account/ModerationNotice";
 import { WorkspaceDesign } from "@/components/layout/WorkspaceDesign";
 import CallProvider from "@/components/calls/CallProvider";
@@ -34,7 +35,9 @@ export default function DashboardLayout({
                 <DashboardHeader />
               </div>
               <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-                <AppSidebar />
+                <Suspense fallback={null}>
+                  <AppSidebar />
+                </Suspense>
 
                 {/* PAGE CONTENT */}
                 <main
@@ -46,7 +49,9 @@ export default function DashboardLayout({
                   <WorkspaceDesign>{children}</WorkspaceDesign>
                 </main>
               </div>
-              <MobileNavigation />
+              <Suspense fallback={null}>
+                <MobileNavigation />
+              </Suspense>
             </div>
             <FaqBubble supportEnabled aboveMobileNav />
           </SidebarProvider>

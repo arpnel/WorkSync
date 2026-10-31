@@ -573,18 +573,18 @@ export default function AdminRecords({
         ) : (
           <AdminStatusChart
             title={
-              module === "audit" || module === "transactions"
+              module === "transactions"
                 ? "Records over time"
                 : "Status breakdown"
             }
             description="Loaded page only, before page filters."
             counts={
-              module === "audit" || module === "transactions"
+              module === "transactions"
                 ? timeline
                 : statusCounts
             }
             variant={
-              module === "audit" || module === "transactions"
+              module === "transactions"
                 ? "line"
                 : module === "verification" || module === "users"
                   ? "donut"

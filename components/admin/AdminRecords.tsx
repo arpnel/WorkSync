@@ -795,11 +795,11 @@ export default function AdminRecords({
               </TableBody>
             </Table>
           ) : (
-            <Table className={module === "jobs" ? "min-w-[720px]" : undefined}>
+            <Table>
               <TableHeader className="hidden md:table-header-group">
                 <TableRow>
                   <TableHead>
-                    {module === "jobs" ? "Job / reference" : "Name / reference"}
+                    "Name / reference"
                   </TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Date</TableHead>

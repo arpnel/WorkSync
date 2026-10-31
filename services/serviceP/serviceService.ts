@@ -1,5 +1,6 @@
 ﻿import { invalidatePageReads } from "@/lib/pageReadCache";
 import { supabase } from "@/lib/supabaseClient";
+import { MAX_JOB_BUDGET_PHP } from "@/lib/validation/service.creation.validation";
 import type {
   CreateListingPayload,
   CreateListingResult,
@@ -335,6 +336,16 @@ async function createClientJob(
   userId: string,
   payload: CreateListingPayload,
 ): Promise<CreateListingResult> {
+  if (
+    !Number.isFinite(payload.budget_max) ||
+    payload.budget_max! <= 0 ||
+    payload.budget_max! > MAX_JOB_BUDGET_PHP
+  ) {
+    throw new Error(
+      "Budget must be greater than 0 and no more than PHP 100,000.",
+    );
+  }
+
   const { data: client, error: clientError } = await supabase
     .from("client_profiles")
     .select("client_id")

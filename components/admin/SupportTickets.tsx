@@ -25,7 +25,7 @@ import {
 import AdminPageHeader from "@/components/admin/AdminPageHeader";
 import { AdminFilterPanel } from "@/components/admin/admin-ui";
 import { toast } from "sonner";
-import { RefreshCw, Search } from "lucide-react";
+import { Search, SlidersHorizontal } from "lucide-react";
 
 type Ticket = {
   ticket_id: string;
@@ -59,6 +59,10 @@ export default function SupportTickets() {
   const [approveCapacity, setApproveCapacity] = useState(false);
   const [newProjectLimit, setNewProjectLimit] = useState(15);
   const [busy, setBusy] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [sort, setSort] = useState("newest");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -76,11 +80,18 @@ export default function SupportTickets() {
     return () => window.clearTimeout(request);
   }, [load]);
 
-  const visible = rows.filter((row) =>
-    `${row.subject} ${row.requester_email} ${row.category} ${row.ticket_id}`
-      .toLowerCase()
-      .includes(search.toLowerCase()),
-  );
+  const visible = rows
+    .filter((row) => {
+      const queryMatches = `${row.subject} ${row.requester_email} ${row.category} ${row.ticket_id}`
+        .toLowerCase().includes(search.toLowerCase());
+      const created = new Date(row.created_at).getTime();
+      return queryMatches && (!fromDate || created >= new Date(`${fromDate}T00:00:00`).getTime()) && (!toDate || created <= new Date(`${toDate}T23:59:59`).getTime());
+    })
+    .sort((a, b) => sort === "oldest" ? a.created_at.localeCompare(b.created_at) : b.created_at.localeCompare(a.created_at));
+  const ticketCounts = rows.reduce<Record<string, number>>((counts, ticket) => {
+    counts[ticket.status] = (counts[ticket.status] ?? 0) + 1;
+    return counts;
+  }, {});
 
   async function save() {
     if (!selected || busy || !response.trim()) return;
@@ -123,10 +134,19 @@ export default function SupportTickets() {
   }
 
   return (
-    <div className="min-w-0 space-y-7">
+    <div className="min-w-0 space-y-4">
       <AdminPageHeader title="Support tickets" />
+      <section aria-label="Support ticket summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[{ label: "Tickets loaded", value: rows.length }, { label: "Open", value: ticketCounts.open ?? 0 }, { label: "In progress", value: ticketCounts.in_progress ?? 0 }, { label: "Resolved / closed", value: (ticketCounts.resolved ?? 0) + (ticketCounts.closed ?? 0) }].map((item) => (
+          <Card key={item.label} className="gap-1 rounded-xl border p-3 shadow-none">
+            <p className="text-xs text-muted-foreground">{item.label}</p>
+            <p className="text-xl font-semibold tabular-nums">{item.value.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground">Tickets returned by current queue query</p>
+          </Card>
+        ))}
+      </section>
       <AdminFilterPanel ariaLabel="Search and filter support tickets">
-        <div className="grid items-end gap-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(12rem,0.4fr)_auto]">
+        <div className="grid items-end gap-3 grid-cols-[minmax(0,1fr)_auto]">
           <label className="grid min-w-0 gap-1.5 text-sm font-medium">
             Search tickets
             <span className="relative block">
@@ -140,44 +160,24 @@ export default function SupportTickets() {
               />
             </span>
           </label>
-          <label className="grid gap-1.5 text-sm font-medium">
-            Status
-            <Select value={filter} onValueChange={setFilter}>
-              <SelectTrigger className="h-10 rounded-lg bg-background font-normal">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                {["all", ...statuses].map((value) => (
-                  <SelectItem key={value} value={value}>
-                    {value === "all"
-                      ? "All statuses"
-                      : value.replaceAll("_", " ")}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
-          <div className="flex w-full flex-col gap-2 sm:col-span-2 sm:flex-row sm:justify-end xl:col-span-full">
-            <Button variant="outline" className="h-10 w-full rounded-lg sm:w-auto" onClick={() => void load()} disabled={loading}>
-              <RefreshCw className={loading ? "size-4 animate-spin" : "size-4"} />
-              Refresh
-            </Button>
-            <Button variant="ghost" className="h-10 w-full rounded-lg sm:w-auto" onClick={() => { setSearch(""); setFilter("all"); }}>
-              Reset filters
-            </Button>
-          </div>
+          <Button type="button" variant="outline" size="icon" className="size-10" aria-label={filtersOpen ? "Hide date filters" : "Show date filters"} aria-expanded={filtersOpen} onClick={() => setFiltersOpen((open) => !open)}><SlidersHorizontal className="size-4" /></Button>
         </div>
+        <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Filter by ticket status">
+          {["all", ...statuses].map((value) => (
+            <button key={value} type="button" aria-pressed={filter === value} onClick={() => setFilter(value)} className={`rounded-full px-3 py-1 text-xs font-medium capitalize ${filter === value ? "bg-blue-600 text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}>
+              {value === "all" ? "All tickets" : value.replaceAll("_", " ")}
+            </button>
+          ))}
+        </div>
+        {filtersOpen && <div className="mt-3 grid gap-3 border-t pt-3 sm:grid-cols-2">
+          <label className="grid gap-1.5 text-sm font-medium">Created from<Input type="date" value={fromDate} max={toDate || undefined} onChange={(event) => setFromDate(event.target.value)} /></label>
+          <label className="grid gap-1.5 text-sm font-medium">Created to<Input type="date" value={toDate} min={fromDate || undefined} onChange={(event) => setToDate(event.target.value)} /></label>
+        </div>}
       </AdminFilterPanel>
-      <Card className="rounded-xl shadow-sm">
-        <CardHeader className="flex flex-row items-center justify-between gap-3">
-          <CardTitle>
-            {filter === "all"
-              ? "Ticket queue"
-              : `${filter.replaceAll("_", " ")} tickets`}
-          </CardTitle>
-          <Badge variant="secondary" className="shrink-0 tabular-nums">
-            {visible.length}
-          </Badge>
+      <Card className="gap-0 rounded-xl border shadow-none">
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+          <div><CardTitle>Ticket queue</CardTitle><p className="mt-1 text-sm text-muted-foreground">Support requests and their current response status.</p><Badge variant="outline" className="mt-1 font-normal">{visible.length} {visible.length === 1 ? "ticket" : "tickets"}</Badge></div>
+          <label className="flex items-center gap-2 whitespace-nowrap text-sm text-muted-foreground">Sort by<Select value={sort} onValueChange={setSort}><SelectTrigger className="h-9 min-w-36"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="newest">Newest first</SelectItem><SelectItem value="oldest">Oldest first</SelectItem></SelectContent></Select></label>
         </CardHeader>
         <CardContent className="space-y-3">
           {loading ? (

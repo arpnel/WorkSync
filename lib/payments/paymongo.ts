@@ -6,6 +6,7 @@ export class PaymentError extends Error {
     message: string,
     public status = 503,
     public ambiguous = false,
+    public diagnostic?: { code?: string; status?: number; message?: string },
   ) {
     super(message);
   }

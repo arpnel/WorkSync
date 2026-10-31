@@ -9,6 +9,9 @@ type HiringType = "individual" | "business";
 
 export function ClientHiringTypeSection() {
   const [hiringType, setHiringType] = useState<HiringType>("individual");
+  const [businessName, setBusinessName] = useState("");
+  const [businessTin, setBusinessTin] = useState("");
+  const [businessAddress, setBusinessAddress] = useState("");
 
   return (
     <section className="rounded-2xl border bg-background p-4 shadow-sm sm:p-6">
@@ -56,37 +59,53 @@ export function ClientHiringTypeSection() {
         </div>
 
         <BusinessPreviewField
-          id="client-business-name-preview"
+          id="client-business-name"
           label="Registered Business Name"
           placeholder="Enter registered business name"
           hint="As registered with BIR, SEC, or DTI."
+          value={businessName}
+          onChange={setBusinessName}
         />
 
         <div className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <Label htmlFor="client-business-tin-preview" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tax Identification Number (TIN) <span className="text-destructive">*</span></Label>
+            <Label htmlFor="client-business-tin" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tax Identification Number (TIN) <span className="text-destructive">*</span></Label>
             <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-500"><Lock className="size-3" /> Required for business profile</span>
           </div>
           <div className="relative">
             <FileText aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              id="client-business-tin-preview"
+              id="client-business-tin"
               type="text"
               inputMode="numeric"
-              readOnly
-              aria-label="Business Tax Identification Number preview"
+              maxLength={17}
+              value={[
+                businessTin.slice(0, 3),
+                businessTin.slice(3, 6),
+                businessTin.slice(6, 9),
+                businessTin.slice(9),
+              ]
+                .filter(Boolean)
+                .join("-")}
+              onChange={(event) => {
+                const digits = event.target.value.replace(/\D/g, "").slice(0, 14);
+                setBusinessTin(digits);
+              }}
+              aria-label="Business Tax Identification Number"
               className="h-11 rounded-xl bg-card pl-10 font-mono focus-visible:border-emerald-500 focus-visible:ring-emerald-500"
-              placeholder="000-000-000-00000"
+              placeholder="000-000-000-0000"
             />
           </div>
-          <p className="text-xs text-muted-foreground">Enter the BIR-issued business TIN, including the branch code (12 to 15 digits).</p>
+          <p className="text-xs text-muted-foreground">Enter 12 to 14 digits, including the branch code if applicable. Hyphens separate the first three groups.</p>
         </div>
 
         <BusinessPreviewField
-          id="client-business-address-preview"
+          id="client-business-address"
           label="Business Address"
           placeholder="Building, street, city, ZIP code"
           hint="Use the address registered for billing and invoicing."
+          value={businessAddress}
+          onChange={setBusinessAddress}
         />
 
         <div className="space-y-3 rounded-xl border bg-background/30 p-4">
@@ -119,15 +138,19 @@ function BusinessPreviewField({
   label,
   placeholder,
   hint,
+  value,
+  onChange,
 }: {
   id: string;
   label: string;
   placeholder: string;
   hint: string;
+  value: string;
+  onChange: (value: string) => void;
 }) {
   return <div className="space-y-2">
     <Label htmlFor={id} className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label} <span className="text-destructive">*</span></Label>
-    <Input id={id} readOnly placeholder={placeholder} className="h-11 rounded-xl bg-card" />
+    <Input id={id} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="h-11 rounded-xl bg-card" />
     <p className="text-xs text-muted-foreground">{hint}</p>
   </div>;
 }

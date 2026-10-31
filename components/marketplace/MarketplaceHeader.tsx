@@ -7,17 +7,15 @@ import {
   Search,
   SlidersHorizontal,
   Plus,
-  ChevronDown,
   Check,
   LayoutGrid,
   Palette,
   Code,
   Video,
-  PenTool,
-  Megaphone,
-  Brain,
-  Music,
-  BriefcaseBusiness,
+  Gamepad2,
+  Smartphone,
+  ClipboardCheck,
+  Database,
 } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
@@ -26,12 +24,6 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 
 import { marketplaceCategories } from "../../types/marketplace/marketplace-categories";
-
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 
 import {
   Carousel,
@@ -46,14 +38,13 @@ import {
 ========================================================== */
 
 const categoryIcons: Record<string, React.ElementType> = {
-  "Creative & Design": Palette,
-  "Development & IT": Code,
-  "Video & Animation": Video,
-  "Writing & Translation": PenTool,
-  Marketing: Megaphone,
-  "AI & Data": Brain,
-  "Audio & Music": Music,
-  Business: BriefcaseBusiness,
+  "Game Development": Gamepad2,
+  "UI/UX Design & Prototyping": Palette,
+  "Mobile App Development": Smartphone,
+  Animation: Video,
+  "Software Testing & QA": ClipboardCheck,
+  "Database Development": Database,
+  "Web Development": Code,
 };
 
 /* ==========================================================
@@ -147,7 +138,7 @@ export default function MarketplaceHeader({
               type="button"
               variant="outline"
               onClick={onFilterClick}
-              className="h-10 rounded-md"
+              className="h-10 rounded-md lg:h-12"
             >
               <SlidersHorizontal className="size-4" />
               Filters
@@ -156,7 +147,7 @@ export default function MarketplaceHeader({
               type="button"
               onClick={onCreateClick}
               variant="outline"
-              className="h-10 rounded-md"
+              className="h-10 rounded-md lg:h-12"
             >
               <Plus className="h-4 w-4" />
               Create
@@ -169,9 +160,9 @@ export default function MarketplaceHeader({
         ================================================== */}
 
         <label className="block min-w-0 space-y-2 md:hidden">
-          <span className="text-sm font-medium">Browse services</span>
+          <span className="text-sm font-medium">Browse categories</span>
           <StyledSelect
-            aria-label="Browse marketplace services"
+            aria-label="Browse marketplace categories"
             value={hasExternalFilter ? "__external__" : (selectedService ?? "")}
             onChange={(event) => onServiceChange(event.target.value || null)}
             className="h-12 w-full min-w-0 rounded-xl border bg-card px-3 text-base"
@@ -181,13 +172,9 @@ export default function MarketplaceHeader({
               <option value="__external__">{externalFilterLabel}</option>
             )}
             {marketplaceCategories.map((category) => (
-              <optgroup key={category.name} label={category.name}>
-                {category.services.map((service) => (
-                  <option key={service} value={service}>
-                    {service}
-                  </option>
-                ))}
-              </optgroup>
+              <option key={category} value={category}>
+                {category}
+              </option>
             ))}
           </StyledSelect>
         </label>
@@ -242,112 +229,27 @@ export default function MarketplaceHeader({
                   ================================================== */}
 
                   {marketplaceCategories.map((category) => {
-                    const CategoryIcon = categoryIcons[category.name];
-
-                    const categorySelected = category.services.some(
-                      (service) => service === selectedService,
-                    );
-
+                    const CategoryIcon = categoryIcons[category];
+                    const categorySelected = category === selectedService;
                     return (
                       <CarouselItem
-                        key={category.name}
+                        key={category}
                         className="basis-auto pl-2"
                       >
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button
-                              type="button"
-                              variant={categorySelected ? "default" : "outline"}
-                              className="shrink-0 rounded-full"
-                            >
-                              {CategoryIcon && (
-                                <CategoryIcon className="h-4 w-4" />
-                              )}
-
-                              {category.name}
-
-                              <ChevronDown className="ml-2 h-4 w-4" />
-
-                              {categorySelected && (
-                                <Check className="ml-1 h-4 w-4" />
-                              )}
-                            </Button>
-                          </PopoverTrigger>
-
-                          {/* ==================================================
-                              CATEGORY POPOVER
-                          ================================================== */}
-
-                          <PopoverContent
-                            align="start"
-                            className="w-[320px] max-w-[calc(100vw-2rem)] p-3"
-                          >
-                            <div className="space-y-3">
-                              <div>
-                                <h4 className="font-semibold">
-                                  {category.name}
-                                </h4>
-
-                                <p className="text-xs text-muted-foreground">
-                                  Select a category service
-                                </p>
-                              </div>
-
-                              {/* ==================================================
-                                  ALL SERVICES IN CATEGORY
-                              ================================================== */}
-
-                              <Button
-                                type="button"
-                                variant={categorySelected ? "outline" : "ghost"}
-                                className="w-full justify-between"
-                                onClick={() => {
-                                  onServiceChange(null);
-                                  onSearch();
-                                }}
-                              >
-                                <span>All {category.name}</span>
-                              </Button>
-
-                              {/* ==================================================
-                                  SERVICES
-                              ================================================== */}
-
-                              <div className="grid grid-cols-1 gap-1">
-                                {category.services.map((service) => {
-                                  const selected = selectedService === service;
-
-                                  return (
-                                    <Button
-                                      key={service}
-                                      type="button"
-                                      variant={selected ? "default" : "ghost"}
-                                      className="justify-between"
-                                      onClick={() => {
-                                        onServiceChange(service);
-
-                                        /*
-                                         * Search is triggered after
-                                         * the selected service state
-                                         * is changed. The parent can
-                                         * use selectedService to
-                                         * perform the actual query.
-                                         */
-                                        onSearch();
-                                      }}
-                                    >
-                                      <span>{service}</span>
-
-                                      {selected && (
-                                        <Check className="h-4 w-4" />
-                                      )}
-                                    </Button>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          </PopoverContent>
-                        </Popover>
+                        <Button
+                          type="button"
+                          aria-pressed={categorySelected}
+                          variant={categorySelected ? "default" : "outline"}
+                          className="shrink-0 rounded-full"
+                          onClick={() => {
+                            onServiceChange(categorySelected ? null : category);
+                            onSearch();
+                          }}
+                        >
+                          {CategoryIcon && <CategoryIcon className="h-4 w-4" />}
+                          {category}
+                          {categorySelected && <Check className="ml-1 h-4 w-4" />}
+                        </Button>
                       </CarouselItem>
                     );
                   })}

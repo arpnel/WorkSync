@@ -49,6 +49,7 @@ export interface AdminResult {
   offset: number;
   hasNext: boolean;
   stats?: Record<string, number>;
+  total?: number;
 }
 export async function getAdminRecords(
   module: AdminModule,

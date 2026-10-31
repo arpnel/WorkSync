@@ -4,7 +4,6 @@ import type { ReactNode } from "react";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AdminSidebar from "@/components/admin/admin-sidebar";
 import AdminHeader from "@/components/admin/admin-header";
-import { FaqBubble } from "@/components/landing/FaqBubble";
 import { AdminPageFrame } from "@/components/admin/admin-ui";
 export default function AdminLayout({ children }: { children: ReactNode }) {
   return (
@@ -31,7 +30,6 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             </main>
           </div>
         </div>
-        <FaqBubble supportEnabled />
       </SidebarProvider>
     </AdminAccess>
   );

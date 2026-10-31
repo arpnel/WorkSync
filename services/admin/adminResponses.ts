@@ -273,6 +273,7 @@ export function parseAdminRecords(value: unknown, rpc: string, offset = 0) {
       hasNext: page
         ? (page.offset ?? offset) + rows.length < page.total
         : result.length > ADMIN_PAGE_SIZE,
+      total: page?.total,
     };
   }
   const result = parseResponse(recordsSchema, value, rpc);
@@ -285,6 +286,7 @@ export function parseAdminRecords(value: unknown, rpc: string, offset = 0) {
       : result.records.length > ADMIN_PAGE_SIZE ||
         (result.limit <= ADMIN_PAGE_SIZE && result.records.length === result.limit),
     stats: result.stats,
+    total: result.total,
   };
 }
 export function parseAdminAnalytics(value: unknown) {

@@ -2,11 +2,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowUpRight,
-  RefreshCw,
   ShieldCheck,
-  Flag,
   Scale,
+  ChartNoAxesCombined,
+  ClipboardCheck,
+  ScrollText,
+  Store,
+  Wallet,
 } from "lucide-react";
 import {
   getAdminRecords,
@@ -21,6 +23,15 @@ import { Button } from "@/components/ui/button";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import AdminMetricCard from "./AdminMetricCard";
 import AdminStatusChart from "./AdminStatusChart";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 const feeds = [
   {
     module: ADMIN_MODULES.transactions,
@@ -48,27 +59,35 @@ const feeds = [
     description: "Latest moderation decisions and recorded actions.",
   },
 ] as const;
+const reviewModules = [
+  ADMIN_MODULES.disputes,
+  ADMIN_MODULES.reports,
+  ADMIN_MODULES.verification,
+] as const;
 type FeedState = { data?: AdminResult; error?: string };
 export default function AdminDashboard() {
   const [results, setResults] = useState<
     Partial<Record<AdminModule, FeedState>>
   >({});
   const [loading, setLoading] = useState(true);
-  const [updated, setUpdated] = useState("");
   const sequence = useRef(0);
   const load = useCallback(async () => {
     const request = ++sequence.current;
     setLoading(true);
+    const modules: AdminModule[] = [
+      ...feeds.map((feed) => feed.module),
+      ...reviewModules,
+    ];
     const values = await Promise.all(
-      feeds.map(async (feed) => {
+      modules.map(async (module) => {
         try {
           return [
-            feed.module,
-            { data: await getAdminRecords(feed.module, "", 0) },
+            module,
+            { data: await getAdminRecords(module, "", 0) },
           ] as const;
         } catch (error) {
           return [
-            feed.module,
+            module,
             {
               error:
                 error instanceof Error
@@ -82,7 +101,6 @@ export default function AdminDashboard() {
     if (request === sequence.current) {
       setResults(Object.fromEntries(values));
       setLoading(false);
-      setUpdated(new Date().toLocaleTimeString());
     }
   }, []);
   useEffect(() => {
@@ -100,30 +118,95 @@ export default function AdminDashboard() {
     counts[row.status] = (counts[row.status] ?? 0) + 1;
     return counts;
   }, {});
+  const transactionCounts = (results.transactions?.data?.rows ?? []).reduce<
+    Record<string, number>
+  >((counts, row) => {
+    counts[row.status] = (counts[row.status] ?? 0) + 1;
+    return counts;
+  }, {});
+  const pendingActionCount = (module: (typeof reviewModules)[number]) => {
+    const data = results[module]?.data;
+    if (!data) return 0;
+    const pendingStatuses = new Set([
+      "pending",
+      "open",
+      "under_review",
+      "pending_review",
+      "awaiting_review",
+      "submitted",
+      "escalated",
+    ]);
+    return data.rows.filter((row) =>
+      pendingStatuses.has(row.status.toLowerCase()),
+    ).length;
+  };
+  const quickActions = [
+    {
+      label: "Transactions",
+      href: "/admin/financial",
+      Icon: Wallet,
+      pendingCount: 0,
+    },
+    {
+      label: "Verification",
+      href: "/admin/verification",
+      Icon: ShieldCheck,
+      pendingCount: pendingActionCount(ADMIN_MODULES.verification),
+    },
+    {
+      label: "Reports",
+      href: "/admin/reports",
+      Icon: ClipboardCheck,
+      pendingCount: pendingActionCount(ADMIN_MODULES.reports),
+    },
+    {
+      label: "Disputes",
+      href: "/admin/disputes",
+      Icon: Scale,
+      pendingCount: pendingActionCount(ADMIN_MODULES.disputes),
+    },
+    {
+      label: "Listing moderation",
+      href: "/admin/moderation",
+      Icon: Store,
+      pendingCount: 0,
+    },
+    {
+      label: "Seller & tax review",
+      href: "/admin/financial/tax",
+      Icon: ClipboardCheck,
+      pendingCount: 0,
+    },
+    {
+      label: "Analytics",
+      href: "/admin/analytics",
+      Icon: ChartNoAxesCombined,
+      pendingCount: 0,
+    },
+    {
+      label: "Audit history",
+      href: "/admin/audit",
+      Icon: ScrollText,
+      pendingCount: 0,
+    },
+  ]
+    .map((action, index) => ({ ...action, index }))
+    .sort(
+      (left, right) =>
+        (right.pendingCount ?? 0) - (left.pendingCount ?? 0) ||
+        left.index - right.index,
+    );
   return (
     <div className="space-y-6">
       <WorkspacePageHeader
-        title="Marketplace overview"
-        description="Follow freelance work, monitor payments, and keep the marketplace safe."
-        actions={
-          <Button
-            variant="outline"
-            disabled={loading}
-            onClick={() => void load()}
-          >
-            <RefreshCw className={loading ? "size-4 animate-spin" : "size-4"} />
-            Refresh overview
-          </Button>
-        }
+        title="Dashboard"
+        description="Monitor marketplace activity, review important queues, and open admin tools."
       />
-      {updated && (
-        <p className="text-xs text-muted-foreground">
-          Last refreshed {updated}. Transaction status is a snapshot, not a live
-          payment stream.
-        </p>
-      )}
       {loading ? (
-        <ContentSkeleton label="Loading marketplace overview" variant="cards" />
+        <ContentSkeleton
+          label="Loading admin dashboard"
+          variant="admin-dashboard"
+        />
       ) : (
         <>
           {stats && (
@@ -140,139 +223,241 @@ export default function AdminDashboard() {
                 ))}
             </div>
           )}
-          <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-            <Card>
-              <CardHeader>
-                <CardTitle>Review desk</CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  Protect clients and freelancers with timely, documented
-                  reviews.
+          <Card>
+            <CardHeader>
+              <div>
+                <CardTitle>Quick actions</CardTitle>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Open common admin workspaces.
                 </p>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {[
-                  {
-                    title: "Verification requests",
-                    description:
-                      "Review identity checks before approving accounts.",
-                    href: "/admin/verification",
-                    Icon: ShieldCheck,
-                  },
-                  {
-                    title: "Reported listings",
-                    description:
-                      stats?.pending_reports == null
-                        ? "Investigate flagged jobs and services."
-                        : stats.pending_reports +
-                          " reports awaiting attention.",
-                    href: "/admin/reports",
-                    Icon: Flag,
-                  },
-                  {
-                    title: "Project disputes",
-                    description:
-                      "Review evidence and help resolve delivery disagreements.",
-                    href: "/admin/disputes",
-                    Icon: Scale,
-                  },
-                ].map(({ title, description, href, Icon }) => (
+              </div>
+            </CardHeader>
+            <CardContent className="flex flex-wrap gap-2">
+              {quickActions.map(({ label, href, Icon, pendingCount }) => (
+                <Button
+                  key={href}
+                  variant="outline"
+                  asChild
+                  className={pendingCount ? "relative pr-8" : undefined}
+                >
                   <Link
-                    key={href}
                     href={href}
-                    className="flex items-center gap-3 rounded-xl border p-4 transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary"
+                    aria-label={
+                      pendingCount
+                        ? `${label}, ${pendingCount} pending actions in the loaded queue page`
+                        : label
+                    }
+                    title={
+                      pendingCount
+                        ? `${pendingCount} pending items on the loaded queue page`
+                        : undefined
+                    }
                   >
-                    <span className="rounded-xl bg-primary/10 p-2.5 text-primary">
-                      <Icon className="size-5" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-semibold">
-                        {title}
+                    <Icon className="size-4" />
+                    {label}
+                    {pendingCount ? (
+                      <span
+                        aria-hidden="true"
+                        className="absolute -top-2 -right-2 grid size-5 place-items-center rounded-full border-2 border-background bg-destructive text-[10px] leading-none text-destructive-foreground"
+                      >
+                        {pendingCount}
                       </span>
-                      <span className="mt-1 block text-xs text-muted-foreground">
-                        {description}
-                      </span>
-                    </span>
-                    <ArrowUpRight className="size-4 shrink-0 text-muted-foreground" />
+                    ) : null}
                   </Link>
-                ))}
-              </CardContent>
-            </Card>
-            {results.projects?.data ? (
-              <AdminStatusChart
-                title="Project delivery snapshot"
-                description="Status distribution of the latest loaded projects, not all projects."
-                counts={projectCounts}
-                variant="donut"
-              />
-            ) : (
-              <Card>
-                <CardContent className="pt-6">
-                  <p role="alert">
-                    {results.projects?.error || "Project snapshot unavailable."}
-                  </p>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-          <div className="grid items-start gap-6 xl:grid-cols-2">
-            {feeds.map((feed) => (
-              <Card key={feed.module}>
-                <CardHeader>
-                  <div className="flex items-start justify-between gap-3">
-                    <CardTitle>{feed.title}</CardTitle>
-                    <Link
-                      href={feed.href}
-                      className="shrink-0 text-xs font-medium text-primary hover:underline"
-                    >
-                      View all<span className="sr-only"> {feed.title}</span>
-                    </Link>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {feed.description}
-                  </p>
-                </CardHeader>
-                <CardContent>
-                  {results[feed.module]?.error ? (
+                </Button>
+              ))}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Active review queues</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Recent disputes, listing reports, and verification requests.
+              </p>
+            </CardHeader>
+            <CardContent>
+              <Tabs defaultValue="disputes" className="w-full">
+                <TabsList>
+                  <TabsTrigger value="disputes">Disputes</TabsTrigger>
+                  <TabsTrigger value="reports">Reports</TabsTrigger>
+                  <TabsTrigger value="verification">Verification</TabsTrigger>
+                </TabsList>
+                {reviewModules.map((module) => {
+                  const queue = results[module];
+                  return (
+                    <TabsContent key={module} value={module} className="mt-3">
+                      {queue?.error ? (
+                        <p
+                          role="alert"
+                          className="py-5 text-sm text-destructive"
+                        >
+                          {queue.error}
+                        </p>
+                      ) : queue?.data?.rows.length ? (
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Item</TableHead>
+                              <TableHead className="hidden md:table-cell">
+                                Details
+                              </TableHead>
+                              <TableHead>Status</TableHead>
+                              <TableHead className="hidden sm:table-cell">
+                                Submitted
+                              </TableHead>
+                              <TableHead>
+                                <span className="sr-only">Action</span>
+                              </TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {queue.data.rows.slice(0, 5).map((row) => (
+                              <TableRow key={row.id}>
+                                <TableCell className="max-w-52 truncate font-medium">
+                                  {row.title}
+                                </TableCell>
+                                <TableCell className="hidden max-w-80 truncate text-muted-foreground md:table-cell">
+                                  {row.detail}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge
+                                    variant="secondary"
+                                    className="capitalize"
+                                  >
+                                    {row.status.replaceAll("_", " ")}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="hidden sm:table-cell">
+                                  {row.created_at
+                                    ? new Date(
+                                        row.created_at,
+                                      ).toLocaleDateString()
+                                    : "—"}
+                                </TableCell>
+                                <TableCell>
+                                  <Button variant="outline" size="sm" asChild>
+                                    <Link href={`/admin/${module}`}>
+                                      Review
+                                    </Link>
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      ) : (
+                        <p className="py-8 text-center text-sm text-muted-foreground">
+                          No items in this queue.
+                        </p>
+                      )}
+                    </TabsContent>
+                  );
+                })}
+              </Tabs>
+            </CardContent>
+          </Card>
+          <section
+            className="space-y-3"
+            aria-labelledby="dashboard-charts-title"
+          >
+            <div>
+              <h2 id="dashboard-charts-title" className="text-lg font-semibold">
+                Financial & delivery snapshot
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Recent transaction statuses and project delivery progress.
+              </p>
+            </div>
+            <div className="grid items-start gap-6 xl:grid-cols-2">
+              {results.transactions?.data ? (
+                <AdminStatusChart
+                  title="Recent transactions by status"
+                  description="Status distribution of the latest loaded transaction records, not all transactions."
+                  counts={transactionCounts}
+                  variant="donut"
+                />
+              ) : (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Recent transactions by status</CardTitle>
+                  </CardHeader>
+                  <CardContent>
                     <p role="alert" className="text-sm text-destructive">
-                      {results[feed.module]?.error}
+                      {results.transactions?.error ||
+                        "Transaction snapshot unavailable."}
                     </p>
-                  ) : !results[feed.module]?.data?.rows.length ? (
-                    <p className="py-8 text-center text-sm text-muted-foreground">
-                      No records yet.
+                  </CardContent>
+                </Card>
+              )}
+              {results.projects?.data ? (
+                <AdminStatusChart
+                  title="Project delivery status"
+                  description="Status distribution of the latest loaded projects, not all projects."
+                  counts={projectCounts}
+                  variant="donut"
+                />
+              ) : (
+                <Card>
+                  <CardContent className="pt-6">
+                    <p role="alert">
+                      {results.projects?.error ||
+                        "Project snapshot unavailable."}
                     </p>
-                  ) : (
-                    <ul className="divide-y">
-                      {results[feed.module]?.data?.rows
-                        .slice(0, 5)
-                        .map((row) => (
-                          <li
-                            key={row.id}
-                            className="py-4 first:pt-0 last:pb-0"
-                          >
-                            <div className="flex flex-wrap items-start justify-between gap-2">
-                              <p className="min-w-0 flex-1 break-words text-sm font-medium">
-                                {row.title}
-                              </p>
-                              <Badge variant="secondary" className="capitalize">
-                                {row.status.replaceAll("_", " ")}
-                              </Badge>
-                            </div>
-                            <p className="mt-2 line-clamp-2 whitespace-pre-line break-words text-xs text-muted-foreground">
-                              {row.detail}
-                            </p>
-                            <p className="mt-2 text-xs text-muted-foreground">
-                              {row.created_at
-                                ? new Date(row.created_at).toLocaleDateString()
-                                : "Date unavailable"}
-                            </p>
-                          </li>
-                        ))}
-                    </ul>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </section>
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <CardTitle>System audit stream</CardTitle>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Latest recorded administrative and moderation activity.
+                  </p>
+                </div>
+                <Link
+                  href="/admin/audit"
+                  className="text-sm font-medium text-primary hover:underline"
+                >
+                  View history
+                </Link>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {results.overview?.error ? (
+                <p role="alert" className="text-sm text-destructive">
+                  {results.overview.error}
+                </p>
+              ) : results.overview?.data?.rows.length ? (
+                <ul className="divide-y">
+                  {results.overview.data.rows.slice(0, 5).map((row) => (
+                    <li
+                      key={row.id}
+                      className="flex flex-wrap items-start justify-between gap-3 py-3 first:pt-0 last:pb-0"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium">{row.title}</p>
+                        <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                          {row.detail}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {row.created_at
+                          ? new Date(row.created_at).toLocaleString()
+                          : "Date unavailable"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="py-5 text-sm text-muted-foreground">
+                  No recent audit activity.
+                </p>
+              )}
+            </CardContent>
+          </Card>
         </>
       )}
     </div>

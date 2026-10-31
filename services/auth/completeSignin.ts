@@ -29,7 +29,7 @@ export async function getPostSigninPath(
     .maybeSingle();
   if (error) throw error;
   return profile?.account_setup_completed
-    ? "/home/marketplace"
+    ? "/home/dashboard"
     : "/account-setup";
 }
 

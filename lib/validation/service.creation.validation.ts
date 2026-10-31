@@ -1,6 +1,8 @@
 import type { ServiceFormValues } from "@/components/services/types/service-form.types";
 import type { ListingRole } from "@/services/serviceP/service.types";
 
+export const MAX_JOB_BUDGET_PHP = 100_000;
+
 type ValidationResult<T> =
   | { ok: true; data: T }
   | { ok: false; errors: Partial<Record<keyof T, string>> };
@@ -65,9 +67,11 @@ export function validateListingCreationValues(
     if (
       values.budgetMax === undefined ||
       !Number.isFinite(values.budgetMax) ||
-      values.budgetMax <= 0
+      values.budgetMax <= 0 ||
+      values.budgetMax > MAX_JOB_BUDGET_PHP
     ) {
-      errors.budgetMax = "Maximum budget must be greater than 0.";
+      errors.budgetMax =
+        "Budget must be greater than 0 and no more than PHP 100,000.";
     }
 
     if (

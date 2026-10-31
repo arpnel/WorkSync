@@ -50,6 +50,7 @@ const NAV_GROUPS = [
       { label: "My Listings", icon: Clipboard, href: "/home/my-listings" },
       { label: "Schedule", icon: Calendar, href: "/home/schedule" },
       { label: "Analytics", icon: ChartNoAxesCombined, href: "/home/analytics" },
+      { label: "Assessment", icon: ClipboardCheck, href: "/home/assessments" },
     ],
   },
   {
@@ -59,19 +60,13 @@ const NAV_GROUPS = [
       { label: "Subscription", icon: CreditCard, href: "/home/subscription" },
     ],
   },
-  {
-    label: "More",
-    items: [
-      { label: "Assessment", icon: ClipboardCheck, href: "/home/assessments" },
-    ],
-  },
 ] as const;
 
 const MOBILE_ITEMS = [
   NAV_GROUPS[0].items[0],
   NAV_GROUPS[1].items[0],
   NAV_GROUPS[2].items[0],
-  NAV_GROUPS[4].items[0],
+  NAV_GROUPS[2].items[5],
 ] as const;
 
 function itemIsActive(pathname: string, listingType: string | null, href: string) {
@@ -109,7 +104,7 @@ export function AppSidebar() {
                       aria-current={active ? "page" : undefined}
                       title={iconOnly ? item.label : undefined}
                       className={cn(
-                        "flex min-h-10 items-center rounded-lg py-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary",
+                        "flex min-h-10 cursor-pointer select-none items-center rounded-lg py-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary",
                         iconOnly ? "justify-center px-0" : "gap-3 px-2",
                         "hover:bg-accent hover:text-accent-foreground",
                         active && "bg-primary/10 text-primary",

@@ -12,6 +12,7 @@ export type LayoutVariant =
   | "work-analytics"
   | "reports"
   | "dashboard"
+  | "admin-dashboard"
   | "dashboard-charts"
   | "account-settings"
   | "notification-settings"
@@ -202,12 +203,19 @@ function Calendar() {
 function AccountSetup({ stepCount }: { stepCount: 2 | 3 }) {
   return (
     <div className="mx-auto max-w-2xl space-y-8">
-      <ol className={`grid ${stepCount === 2 ? "grid-cols-2" : "grid-cols-3"} gap-2 sm:gap-5`}>
+      <ol
+        className={`grid ${stepCount === 2 ? "grid-cols-2" : "grid-cols-3"} gap-2 sm:gap-5`}
+      >
         {Array.from({ length: stepCount }, (_, i) => (
-          <li key={i} className={`space-y-2 border-t-2 pt-3 ${i === 0 ? "border-primary" : "border-border"}`}>
+          <li
+            key={i}
+            className={`space-y-2 border-t-2 pt-3 ${i === 0 ? "border-primary" : "border-border"}`}
+          >
             <div className="flex items-center gap-2">
               <Skeleton className="size-7 shrink-0 rounded-full" />
-              <Skeleton className={`h-4 max-w-full ${i === 0 ? "w-32" : "w-28"}`} />
+              <Skeleton
+                className={`h-4 max-w-full ${i === 0 ? "w-32" : "w-28"}`}
+              />
             </div>
             <Skeleton className="ml-9 h-3 w-36 max-w-[calc(100%-2.25rem)]" />
           </li>
@@ -468,6 +476,59 @@ function Shape({ variant, count }: { variant: LayoutVariant; count?: number }) {
           <Panel>
             <Skeleton className="h-6 w-40" />
             <TableRows />
+          </Panel>
+        </div>
+      );
+    case "admin-dashboard":
+      return (
+        <div className="@container space-y-6">
+          <Stats />
+          <Panel>
+            <div className="space-y-2">
+              <Skeleton className="h-6 w-36" />
+              <Skeleton className="h-4 w-64 max-w-full" />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {Array.from({ length: 8 }, (_, i) => (
+                <Skeleton key={i} className="h-10 w-32 max-w-full" />
+              ))}
+            </div>
+          </Panel>
+          <Panel>
+            <div className="space-y-2">
+              <Skeleton className="h-6 w-44" />
+              <Skeleton className="h-4 w-72 max-w-full" />
+            </div>
+            <div className="flex gap-2">
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={i} className="h-10 w-28" />
+              ))}
+            </div>
+            <TableRows count={5} />
+          </Panel>
+          <div className="grid gap-5 @min-[640px]:grid-cols-2">
+            <Chart />
+            <Chart />
+          </div>
+          <Panel>
+            <div className="space-y-2">
+              <Skeleton className="h-6 w-40" />
+              <Skeleton className="h-4 w-72 max-w-full" />
+            </div>
+            <div className="divide-y">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <div
+                  key={i}
+                  className="flex flex-wrap items-center justify-between gap-3 py-4"
+                >
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <Skeleton className="h-4 w-56 max-w-full" />
+                    <Skeleton className="h-3 w-80 max-w-full" />
+                  </div>
+                  <Skeleton className="h-3 w-28" />
+                </div>
+              ))}
+            </div>
           </Panel>
         </div>
       );

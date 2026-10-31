@@ -182,7 +182,7 @@ export function useSetupForm(role: "client" | "freelancer") {
     if (submitting.current || isLoadingProfile || loadError) return;
     const result =
       role === "client"
-        ? validateClientSetup(values)
+        ? validateClientSetup(values, true)
         : validateFreelancerSetup(values);
     if (!result.ok) {
       setErrors(result.errors);

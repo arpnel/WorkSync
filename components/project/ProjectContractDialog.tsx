@@ -21,15 +21,17 @@ function date(value: string | null) {
 
 export function ProjectContractDialog({
   project,
+  buttonLabel = "Agreed scope & contract",
 }: {
   project: ProjectWorkspace;
+  buttonLabel?: string;
 }) {
   return (
     <Dialog>
       <DialogTrigger asChild>
         <Button variant="outline" className="w-full">
           <FileText className="h-4 w-4" />
-          Agreed scope & contract
+          {buttonLabel}
         </Button>
       </DialogTrigger>
       <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">

@@ -9,6 +9,12 @@ import type {
 type ValidationResult<T> =
   | { ok: true; data: T }
   | { ok: false; errors: Partial<Record<keyof T, string>> };
+
+function normalizePortfolioWebsite(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed || /^[a-z][a-z\d+.-]*:/i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
 export function validateSetupFile(
   file: File,
   kind: "photo" | "resume" | "document",
@@ -102,10 +108,13 @@ export function validateFreelancerSetup(
     values.yearsOfExperience > 50
   )
     errors.yearsOfExperience = "Enter a whole number from 0 to 50.";
-  for (const field of ["linkedIn", "github"] as const) {
+  for (const field of ["linkedIn", "github", "portfolioWebsite"] as const) {
     if (!values[field].trim()) continue;
     try {
-      const url = new URL(values[field].trim());
+      const urlValue = field === "portfolioWebsite"
+        ? normalizePortfolioWebsite(values[field])
+        : values[field].trim();
+      const url = new URL(urlValue);
       if (
         !["https:", "http:"].includes(url.protocol) ||
         url.username ||
@@ -126,7 +135,7 @@ export function validateFreelancerSetup(
         throw new Error();
     } catch {
       errors[field] =
-        `Enter a valid ${field === "linkedIn" ? "LinkedIn" : "GitHub"} URL.`;
+        `Enter a valid ${field === "linkedIn" ? "LinkedIn" : field === "github" ? "GitHub" : "portfolio website"} URL.`;
     }
   }
   if (values.resume) {
@@ -159,6 +168,7 @@ export function validateFreelancerSetup(
       headline: values.headline?.trim() ?? "",
       linkedIn: values.linkedIn.trim(),
       github: values.github.trim(),
+      portfolioWebsite: normalizePortfolioWebsite(values.portfolioWebsite),
     },
   };
 }

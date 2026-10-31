@@ -4,7 +4,6 @@ import ContentSkeleton from "@/components/shared/ContentSkeleton";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
 import { NotificationDetailDialog } from "@/components/notifications/NotificationDetailDialog";
 import type { NotificationRecord } from "@/services/notification/notificationService";
 import { formatDistanceToNow, isToday } from "date-fns";
@@ -23,6 +22,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  getApprovedApplicationHref,
+  getProjectNotificationHref,
   getNotificationKind,
   getNotificationTone,
   type NotificationKind,
@@ -89,21 +90,24 @@ export default function NotificationsPage() {
       !/declined|rejected/.test(lowerTitle);
     if (selectedApplication && item.relatedId) {
       try {
-        const result = await supabase
-          .from("conversations")
-          .select("conversation_id")
-          .eq("job_id", item.relatedId)
-          .limit(1)
-          .maybeSingle();
-        if (result.data?.conversation_id) {
-          router.push(
-            "/home/messages?conversation=" +
-              encodeURIComponent(result.data.conversation_id),
-          );
+        const href = await getApprovedApplicationHref(item.relatedId);
+        if (href) {
+          router.push(href);
           return;
         }
       } catch {
-        // Fall back to the notification detail when chat cannot be resolved.
+        // Fall back to notification details when the discussion is unavailable.
+      }
+    }
+    if (item.relatedId && /project|contract|agreement|milestone/.test(item.type ?? "")) {
+      try {
+        const href = await getProjectNotificationHref(item.type, item.relatedId);
+        if (href) {
+          router.push(href);
+          return;
+        }
+      } catch {
+        // Keep the notification detail available if its project cannot be resolved.
       }
     }
     setSelected(item);

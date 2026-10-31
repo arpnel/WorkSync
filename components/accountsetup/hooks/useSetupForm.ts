@@ -29,6 +29,7 @@ const initial: FreelancerSetupValues = {
   yearsOfExperience: 0,
   linkedIn: "",
   github: "",
+  portfolioWebsite: "",
   resume: null,
   portfolioSamples: [],
   certifications: [],

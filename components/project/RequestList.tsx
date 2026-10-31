@@ -511,7 +511,7 @@ export function RequestList({
                         {selected.proposedPlan.name}
                       </h3>
                       <p className="text-xs text-muted-foreground">
-                        {selected.proposedPlan.content.columns.length - 1} stages{" · "}
+                        {selected.proposedPlan.content.columns.length} stages{" · "}
                         {selected.proposedPlan.content.columns.reduce(
                           (count, column) => count + column.tasks.length,
                           0,

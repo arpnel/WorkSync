@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import type { Category } from "@/services/serviceP/categoryService";
 
 import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 type Props = {
   selectedCategoryIds: string[];
@@ -44,15 +45,14 @@ export function FreelancerIndustrySection({
   const searchResults = useMemo(() => {
     const query = search.trim().toLowerCase();
 
-    if (!query) return [];
-
     return categories
       .filter(
         (category) =>
-          category.name.toLowerCase().includes(query) &&
+          (!query || category.name.toLowerCase().includes(query)) &&
           !selectedCategoryIds.includes(category.id),
       )
       .sort((a, b) => {
+        if (!query) return a.name.localeCompare(b.name);
         const aStart = a.name.toLowerCase().startsWith(query);
         const bStart = b.name.toLowerCase().startsWith(query);
 
@@ -60,8 +60,7 @@ export function FreelancerIndustrySection({
         if (!aStart && bStart) return 1;
 
         return a.name.localeCompare(b.name);
-      })
-      .slice(0, 10);
+      });
   }, [search, categories, selectedCategoryIds]);
 
   const selectedCategories = useMemo(() => {
@@ -95,10 +94,10 @@ export function FreelancerIndustrySection({
 
         {/* Search Results */}
 
-        {search.trim() && (
+        {(searchFocused || search.trim()) && (
           <>
             {searchResults.length > 0 ? (
-              <div className="overflow-hidden rounded-lg border bg-background">
+              <ScrollArea scrollbarType="always" className="h-60 rounded-lg border bg-background">
                 {searchResults.map((category) => {
                   const limitReached =
                     selectedCategoryIds.length >= MAX_INDUSTRIES;
@@ -108,6 +107,7 @@ export function FreelancerIndustrySection({
                       key={category.id}
                       type="button"
                       disabled={limitReached}
+                      onMouseDown={(event) => event.preventDefault()}
                       onClick={() => {
                         toggleCategory(category.id);
                         setSearch("");
@@ -130,9 +130,9 @@ export function FreelancerIndustrySection({
                     </button>
                   );
                 })}
-              </div>
+              </ScrollArea>
             ) : (
-              <p className="text-sm text-muted-foreground">
+              <p className="px-3 py-2 text-sm text-muted-foreground">
                 No existing industry found.
               </p>
             )}
@@ -186,6 +186,10 @@ export function FreelancerIndustrySection({
           {error}
         </p>
       )}
+
+      <p className="text-xs text-muted-foreground">
+        You can select up to {MAX_INDUSTRIES} industries.
+      </p>
 
     </div>
   );

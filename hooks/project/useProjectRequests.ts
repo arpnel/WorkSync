@@ -5,6 +5,7 @@ import {
   clearProjectReadCache,
 } from "@/lib/projectReadCache";
 import * as React from "react";
+import { supabase } from "@/lib/supabaseClient";
 import {
   getProjectRequests,
   rejectProjectRequest,
@@ -56,9 +57,9 @@ export function useProjectRequests() {
     }
   }, []);
   React.useEffect(() => {
-    void load(false, false);
+    void load(false, true);
     const refresh = () => {
-      if (document.visibilityState === "visible") void load(true, false);
+      if (document.visibilityState === "visible") void load(true, true);
     };
     // Read saved results only; polling never requests a Gemini evaluation.
     const timer = window.setInterval(refresh, 60000);
@@ -68,12 +69,24 @@ export function useProjectRequests() {
       setRequests(empty);
       void load(false, true);
     };
+    const applicationChanges = supabase
+      .channel("project-requests-applications")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "job_applications" },
+        () => {
+          clearProjectReadCache();
+          void load(true, true);
+        },
+      )
+      .subscribe();
     window.addEventListener("account-role-changed", onRoleChanged);
     return () => {
       window.clearInterval(timer);
       window.removeEventListener("focus", refresh);
       document.removeEventListener("visibilitychange", refresh);
       window.removeEventListener("account-role-changed", onRoleChanged);
+      void supabase.removeChannel(applicationChanges);
     };
   }, [load]);
   const reject = async (request: ProjectRequest) => {

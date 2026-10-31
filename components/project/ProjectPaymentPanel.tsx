@@ -11,12 +11,10 @@ import { openSavedTaxReceipt } from "@/lib/payments/receiptClient";
 import { Badge } from "@/components/ui/badge";
 import { ProjectContractDialog } from "./ProjectContractDialog";
 import { Button } from "@/components/ui/button";
-import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   getProjectPayment,
   startProjectPayment,
-  setAutoAccept,
   type ProjectPayment,
 } from "@/services/payments/paymentService";
 import type { ProjectWorkspace } from "@/types/project/projectWorkspace";
@@ -24,9 +22,11 @@ import type { ProjectWorkspace } from "@/types/project/projectWorkspace";
 export function ProjectPaymentPanel({
   project,
   onPayment,
+  showContractDetails = true,
 }: {
   project: ProjectWorkspace;
   onPayment?: (payment: ProjectPayment | null) => void;
+  showContractDetails?: boolean;
 }) {
   if (
     !project.projectId ||
@@ -37,7 +37,7 @@ export function ProjectPaymentPanel({
   return (
     <PaymentPanel
       key={project.projectId}
-      contractDetails={<ProjectContractDialog project={project} />}
+      contractDetails={showContractDetails ? <ProjectContractDialog project={project} /> : undefined}
       onPayment={onPayment}
       projectId={project.projectId}
       client={project.currentParty === "client"}
@@ -64,7 +64,6 @@ export function PaymentPanel({
   const [payment, setPayment] = useState<ProjectPayment | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [confirmAutoAccept, setConfirmAutoAccept] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const inFlight = useRef(false);
   const paymentStatus = payment?.status;
@@ -113,28 +112,6 @@ export function PaymentPanel({
       setError(
         cause instanceof Error ? cause.message : "Unable to open checkout.",
       );
-      setBusy(false);
-    }
-  }
-  async function changeAutoAccept() {
-    const next = !payment?.autoAccept;
-    if (next) {
-      setConfirmAutoAccept(true);
-      return;
-    }
-    await saveAutoAccept(false);
-  }
-  async function saveAutoAccept(next: boolean) {
-    setBusy(true);
-    setError("");
-    try {
-      await setAutoAccept(projectId, next);
-      await refresh();
-    } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "Unable to save preference.",
-      );
-    } finally {
       setBusy(false);
     }
   }
@@ -244,33 +221,6 @@ export function PaymentPanel({
                   Set up payout account
                 </a>
               )}
-          </div>
-        )}
-        {client && payable && payment?.settlementVersion === 2 && (
-          <div className="space-y-2 border-t pt-3 text-sm">
-            <p className="font-medium">
-              Automatic delivery acceptance: {payment.autoAccept ? "On" : "Off"}
-            </p>
-            <p className="text-muted-foreground">
-              When enabled, future deliveries are accepted without manual review
-              on processing. Otherwise, intermediate milestones have 3 days for
-              review; final milestones and standard deliveries have 7 days after
-              submission. Payouts run on the configured schedule.
-            </p>
-            {!payment.autoReleaseEnabled && (
-              <p className="text-muted-foreground">
-                Automatic processing is currently disabled.
-              </p>
-            )}
-            <Button
-              variant="outline"
-              disabled={busy || refreshing}
-              onClick={() => void changeAutoAccept()}
-            >
-              {payment.autoAccept
-                ? "Turn off auto-accept"
-                : "Enable auto-accept"}
-            </Button>
           </div>
         )}
         <dl className="space-y-3 text-sm" aria-label="Payment breakdown">
@@ -398,17 +348,6 @@ export function PaymentPanel({
         {contractDetails && (
           <div className="border-t pt-4">{contractDetails}</div>
         )}
-        <ConfirmActionDialog
-          open={confirmAutoAccept}
-          onOpenChange={setConfirmAutoAccept}
-          title="Enable automatic delivery acceptance?"
-          description="Future deliveries will be accepted without manual review. Approved deliveries can release money to the freelancer. Disputes and cancellation holds still apply."
-          confirmLabel="Enable auto-accept"
-          onConfirm={() => {
-            setConfirmAutoAccept(false);
-            void saveAutoAccept(true);
-          }}
-        />
       </CardContent>
     </Card>
   );

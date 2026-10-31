@@ -68,7 +68,6 @@ export function ProjectDeliveryPanel({
   paid = false,
   autoReleaseEnabled = false,
   finalMilestoneId,
-  autoAccept = false,
   readOnly = false,
   actions,
 }: {
@@ -77,7 +76,6 @@ export function ProjectDeliveryPanel({
   paid?: boolean;
   autoReleaseEnabled?: boolean;
   finalMilestoneId?: string | null;
-  autoAccept?: boolean;
   readOnly?: boolean;
   actions?: ReactNode;
 }) {

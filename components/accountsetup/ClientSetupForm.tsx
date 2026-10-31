@@ -68,8 +68,7 @@ export function ClientSetupForm() {
     return (
       <ContentSkeleton
         label="Loading your saved profile"
-        variant="setup"
-        count={2}
+        variant="client-setup"
       />
     );
   if (loadError)

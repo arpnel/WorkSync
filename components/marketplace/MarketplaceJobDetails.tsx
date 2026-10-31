@@ -27,6 +27,7 @@ import {
   getOwnJobApplication,
   canReapply,
   cancelJobApplication,
+  updateJobApplication,
   type OwnJobApplication,
 } from "@/services/marketplace/jobApplicationState";
 import { Badge } from "@/components/ui/badge";
@@ -71,6 +72,7 @@ export default function MarketplaceJobDetails({
   const [price, setPrice] = useState("");
   const [days, setDays] = useState("");
   const [busy, setBusy] = useState(false);
+  const [editingApplication, setEditingApplication] = useState(false);
   const [sent, setSent] = useState(false);
   const [application, setApplication] = useState<OwnJobApplication | null>(
     null,
@@ -89,6 +91,11 @@ export default function MarketplaceJobDetails({
         if (alive) {
           setJob(data);
           setApplication(own);
+          if (own) {
+            setProposal(own.proposal ?? "");
+            setPrice(String(own.proposed_price ?? ""));
+            setDays(String(own.estimated_days ?? ""));
+          }
           setApplicationReady(true);
         }
       })
@@ -117,34 +124,31 @@ export default function MarketplaceJobDetails({
   }, [jobId]);
   if (loading) return <ContentSkeleton label="Loading job" variant="job" />;
   if (!job) return <p role="alert">{error || "Job not found."}</p>;
+  const positionTaken =
+    job.status !== "open" || (hiringStats?.hiredCount ?? 0) > 0;
+  const canEditProposal = Boolean(
+    application &&
+      !positionTaken &&
+      ["pending", "in_review", "accepted"].includes(application.status),
+  );
   if (
     !guest &&
     application &&
-    ["accepted", "rejected"].includes(application.status)
+    application.status === "rejected"
   ) {
-    const discussing = application.status === "accepted";
     return (
       <div className="mx-auto max-w-2xl py-8">
         <Card>
           <CardHeader>
             <CardTitle>
-              {discussing
-                ? "This job is under discussion"
-                : "This application was declined"}
+              This application was declined
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-sm">
             <p className="text-muted-foreground">
-              {discussing
-                ? "Continue this opportunity from your project workspace."
-                : "This job is no longer part of your active opportunities. Your application record is preserved."}
+              This job is no longer part of your active opportunities. Your application record is preserved.
             </p>
             <div className="flex flex-wrap gap-2">
-              {discussing && (
-                <Button asChild>
-                  <Link href="/home/projects">Open Projects</Link>
-                </Button>
-              )}
               <Button asChild variant="outline">
                 <Link href="/home/marketplace">Browse marketplace</Link>
               </Button>
@@ -158,7 +162,9 @@ export default function MarketplaceJobDetails({
     <div className="mx-auto grid max-w-6xl items-start gap-5 break-words lg:grid-cols-[minmax(0,1fr)_minmax(0,400px)]">
       <GuestSignup open={signup} onOpenChange={setSignup} />
       <Button asChild variant="outline" className="w-fit lg:col-span-2">
-        <Link href={guest ? "/marketplace" : "/home/marketplace"}>
+        <Link
+          href={guest ? "/marketplace" : "/home/marketplace?listingType=job"}
+        >
           <ChevronLeft className="size-4" aria-hidden="true" />
           Back
         </Link>
@@ -402,6 +408,108 @@ export default function MarketplaceJobDetails({
               <Link href="/home/projects" className="block underline">
                 View application
               </Link>
+              {canEditProposal && !editingApplication && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setEditingApplication(true)}
+                >
+                  Edit proposal
+                </Button>
+              )}
+              {positionTaken && (
+                <p className="text-sm text-muted-foreground">
+                  This position has been taken or you’ve already been hired, so this proposal can’t be changed.
+                </p>
+              )}
+              {editingApplication && canEditProposal && (
+                <form
+                  className="space-y-3 rounded-lg border p-3"
+                  onSubmit={async (event) => {
+                    event.preventDefault();
+                    if (busy) return;
+                    setBusy(true);
+                    setError("");
+                    try {
+                      await updateJobApplication(
+                        application.application_id,
+                        proposal,
+                        Number(price),
+                        Number(days),
+                      );
+                      setApplication({
+                        ...application,
+                        proposal: proposal.trim(),
+                        proposed_price: Number(price),
+                        estimated_days: Number(days),
+                      });
+                      setEditingApplication(false);
+                    } catch (cause) {
+                      setError(
+                        cause instanceof Error
+                          ? cause.message
+                          : "Unable to update proposal.",
+                      );
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  <label className="block text-sm">
+                    Proposal
+                    <Textarea
+                      required
+                      maxLength={10000}
+                      rows={5}
+                      value={proposal}
+                      onChange={(event) => setProposal(event.target.value)}
+                    />
+                  </label>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="text-sm">
+                      Proposed price (PHP)
+                      <Input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        required
+                        value={price}
+                        onChange={(event) => setPrice(event.target.value)}
+                      />
+                    </label>
+                    <label className="text-sm">
+                      Delivery days
+                      <Input
+                        type="number"
+                        min="1"
+                        step="1"
+                        required
+                        value={days}
+                        onChange={(event) => setDays(event.target.value)}
+                      />
+                    </label>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button type="submit" disabled={busy || positionTaken}>
+                      {busy ? "Saving…" : "Save proposal"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => {
+                        setProposal(application.proposal ?? "");
+                        setPrice(String(application.proposed_price ?? ""));
+                        setDays(String(application.estimated_days ?? ""));
+                        setEditingApplication(false);
+                        setError("");
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </form>
+              )}
               {["pending", "in_review"].includes(application.status) && (
                 <Button
                   variant="outline"
@@ -472,6 +580,9 @@ export default function MarketplaceJobDetails({
                   setApplication({
                     application_id: applicationId,
                     status: "pending",
+                    proposal: proposal.trim(),
+                    proposed_price: Number(price),
+                    estimated_days: Number(days),
                   });
                 } catch (cause) {
                   setError(
@@ -546,6 +657,7 @@ export default function MarketplaceJobDetails({
                 disabled={
                   busy ||
                   fullyBooked ||
+                  positionTaken ||
                   !applicationReady ||
                   job.status !== "open"
                 }

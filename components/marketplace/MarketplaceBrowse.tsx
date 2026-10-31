@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { WorkspacePageHeader } from "@/components/shared/WorkspacePageHeader";
 import { invalidatePageReads } from "@/lib/pageReadCache";
 import { supabase } from "@/lib/supabaseClient";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import MarketplaceHeader from "@/components/marketplace/MarketplaceHeader";
 import MarketplaceFilterSheet from "@/components/marketplace/MarketplaceFilterSheet";
 import MarketplaceGrid from "@/components/marketplace/MarketplaceGrid";
@@ -52,6 +52,8 @@ export default function MarketplaceBrowse({
   const [signup, setSignup] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const requestedListingType = searchParams.get("listingType");
   const [deepCategoryId, setDeepCategoryId] = useState(initialCategoryId);
   const [deepSkillId, setDeepSkillId] = useState(
     initialCategoryId ? initialSkillId : "",
@@ -67,19 +69,56 @@ export default function MarketplaceBrowse({
   const [error, setError] = useState("");
   const [saveError, setSaveError] = useState("");
   const [search, setSearch] = useState("");
+  const initialListingType = requestedListingType === "job" || requestedListingType === "freelancer"
+    ? requestedListingType
+    : "service";
   const [selectedService, setSelectedService] = useState<string | null>(
     initialService || null,
   );
   const [filterOpen, setFilterOpen] = useState(false);
   const [filters, setFilters] = useState<MarketplaceFiltersValue>({
-    sort: guest ? ["latest"] : ["highestRated"],
-    listingType: "service",
+    sort: guest || initialListingType === "job" ? ["latest"] : ["highestRated"],
+    listingType: initialListingType,
     minPrice: "",
     maxPrice: "",
     rating: 0,
     savedOnly: false,
-    vatTreatment: "any",
   });
+  const appliedListingType = useRef(requestedListingType);
+  useEffect(() => {
+    if (appliedListingType.current === requestedListingType) return;
+    appliedListingType.current = requestedListingType;
+    const listingType = requestedListingType === "job" || requestedListingType === "freelancer"
+      ? requestedListingType
+      : "service";
+    setFilters((current) => current.listingType === listingType
+      ? current
+      : {
+          ...current,
+          listingType,
+          sort: listingType === "job"
+            ? ["latest"]
+            : listingType === "freelancer"
+              ? ["highestRated"]
+              : current.sort,
+        });
+  });
+  const marketplaceTitle = filters.listingType === "job"
+    ? "Find Jobs"
+    : filters.listingType === "freelancer"
+      ? "Hire Talents"
+      : "Marketplace";
+  const marketplaceDescription = filters.listingType === "job"
+    ? "Browse projects and job opportunities from clients."
+    : filters.listingType === "freelancer"
+      ? "Discover skilled freelancers for your next project."
+      : "Discover expert services and opportunities for your next collaboration.";
+  useEffect(() => {
+    document.title = marketplaceTitle;
+    return () => {
+      document.title = "WorkSync";
+    };
+  }, [marketplaceTitle]);
   const [saved, setSaved] = useState<Set<string>>(new Set());
   const savedOnly = filters.savedOnly;
   const [saving, setSaving] = useState<string | null>(null);
@@ -185,7 +224,6 @@ export default function MarketplaceBrowse({
           listingType: filters.listingType === "job" ? "job" : "service",
           page: pageIndex,
           pageSize: 24,
-          includeVatClassification: filters.vatTreatment !== "any",
           minPrice: filters.minPrice ? Number(filters.minPrice) : null,
           maxPrice: filters.maxPrice ? Number(filters.maxPrice) : null,
         });
@@ -203,12 +241,9 @@ export default function MarketplaceBrowse({
             filters.listingType === "job" ||
             (ratings.get(item.freelancer_id ?? "") ?? 0) >= filters.rating,
         );
-        const vatFiltered = filters.vatTreatment === "any" || filters.listingType === "job"
-          ? rated
-          : rated.filter(item => item.listing_type === "service" && item.vat_classification === filters.vatTreatment);
         const pageItems = filters.listingType === "freelancer"
-          ? vatFiltered.filter((item, index, rows) => item.freelancer_id && rows.findIndex((candidate) => candidate.freelancer_id === item.freelancer_id) === index)
-          : vatFiltered;
+          ? rated.filter((item, index, rows) => item.freelancer_id && rows.findIndex((candidate) => candidate.freelancer_id === item.freelancer_id) === index)
+          : rated;
         if (filters.sort.includes("highestRated"))
           pageItems.sort(
             (a, b) =>
@@ -354,8 +389,8 @@ export default function MarketplaceBrowse({
       </Dialog>
       <div className="mx-auto w-full max-w-[1600px] space-y-5">
         <WorkspacePageHeader
-          title="Marketplace"
-          description="Discover expert services and opportunities for your next collaboration."
+          title={marketplaceTitle}
+          description={marketplaceDescription}
         />
         <MarketplaceHeader
           search={search}
@@ -453,6 +488,11 @@ export default function MarketplaceBrowse({
               return;
             }
             setFilters(value);
+            const params = new URLSearchParams(window.location.search);
+            if (value.listingType === "service") params.delete("listingType");
+            else params.set("listingType", value.listingType);
+            const query = params.toString();
+            window.history.replaceState({}, "", query ? `${pathname}?${query}` : pathname);
             setFilterOpen(false);
           }}
         />

@@ -2,8 +2,6 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import {
-  CreditCard,
-  Wallet,
   Bell,
   MessageSquare,
   ShieldCheck,
@@ -20,12 +18,6 @@ const sections = [
     label: "General",
     description: "Account details and security",
     Icon: UserRound,
-  },
-  {
-    id: "payouts",
-    label: "Payouts",
-    description: "Where approved project payments are sent",
-    Icon: Wallet,
   },
   {
     id: "verification",
@@ -50,12 +42,6 @@ const sections = [
     label: "Messaging",
     description: "Conversation preferences",
     Icon: MessageSquare,
-  },
-  {
-    id: "subscription",
-    label: "Subscription",
-    description: "Review your plan and listing limits",
-    Icon: CreditCard,
   },
 ] as const;
 

@@ -15,7 +15,6 @@ export interface MarketplaceFiltersValue {
   maxPrice: string;
   rating: number;
   savedOnly: boolean;
-  vatTreatment: "any" | "vat_registered" | "non_vat";
 }
 interface MarketplaceFiltersProps {
   filters: MarketplaceFiltersValue;
@@ -29,49 +28,12 @@ export default function MarketplaceFilters({
   const services = filters.listingType !== "job";
   const hasFilters = Boolean(
     filters.savedOnly ||
-    filters.listingType !== "freelancer" ||
     filters.minPrice ||
     filters.maxPrice ||
-    filters.rating ||
-    filters.vatTreatment !== "any",
+    filters.rating,
   );
   return (
     <div aria-label="Marketplace filters" className="space-y-6">
-      <fieldset className="space-y-2">
-        <legend className="mb-2 text-sm font-semibold">Listing type</legend>
-        {[
-          { value: "freelancer", label: "Freelancers" },
-          { value: "service", label: "Services" },
-          { value: "job", label: "Jobs" },
-        ].map((option) => (
-          <label
-            key={option.value}
-            className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm"
-          >
-            <input
-              type="radio"
-              name="marketplace-listing-type"
-              value={option.value}
-              checked={filters.listingType === option.value}
-              onChange={() => {
-                const listingType = option.value as ListingType;
-                onChange({
-                  ...filters,
-                  listingType,
-                  sort:
-                    listingType === "job"
-                      ? ["latest"]
-                      : listingType === "freelancer"
-                        ? ["highestRated"]
-                        : filters.sort,
-                });
-              }}
-              className="size-4 accent-primary"
-            />
-            {option.label}
-          </label>
-        ))}
-      </fieldset>
       <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm">
         <input
           type="checkbox"
@@ -138,7 +100,6 @@ export default function MarketplaceFilters({
           </StyledSelect>
         </label>
       )}
-      {services && <label className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground"><span>Verified VAT treatment</span><StyledSelect className="h-11 w-full rounded-lg border bg-card px-3 text-sm text-foreground" value={filters.vatTreatment} onChange={event => onChange({ ...filters, vatTreatment: event.target.value as MarketplaceFiltersValue["vatTreatment"] })}><option value="any">Any status</option><option value="vat_registered">VAT-Registered</option><option value="non_vat">Verified Non-VAT</option></StyledSelect></label>}
       {hasFilters && (
         <Button
           type="button"
@@ -147,12 +108,10 @@ export default function MarketplaceFilters({
           onClick={() =>
             onChange({
               ...filters,
-              listingType: "freelancer",
               savedOnly: false,
               minPrice: "",
               maxPrice: "",
               rating: 0,
-              vatTreatment: "any",
             })
           }
         >

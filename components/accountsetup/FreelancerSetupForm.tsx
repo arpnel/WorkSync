@@ -7,11 +7,11 @@ import { FreelancerInformationSection } from "./sections/FreelancerInformationSe
 
 import { useFreelancerSetup } from "./hooks/useFreelancerSetup";
 import VerificationSettings from "@/components/account/VerificationSettings";
-import TaxDocuments from "@/components/account/TaxDocuments";
-import FreelancerTaxDeclaration from "@/components/account/FreelancerTaxDeclaration";
+import TaxDocuments, { type TaxDocumentsSetupHandle } from "@/components/account/TaxDocuments";
+import FreelancerTaxDeclaration, { type FreelancerTaxDeclarationHandle } from "@/components/account/FreelancerTaxDeclaration";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, ChevronRight, FileText, Lock } from "lucide-react";
 import { validateFreelancerSetup } from "@/lib/validation/account-setup.validation";
 import type { FreelancerSetupValues } from "@/types/account-setup.types";
@@ -25,7 +25,7 @@ const setupSteps = [
 
 const stepFields = [
   ["firstName", "lastName", "display_name", "province", "city", "englishProficiency", "profilePhoto", "shortBio"],
-  ["industries", "headline", "skills", "yearsOfExperience", "linkedIn", "github", "resume", "portfolioSamples", "certifications"],
+  ["industries", "headline", "skills", "yearsOfExperience", "linkedIn", "github", "portfolioWebsite", "resume", "portfolioSamples", "certifications"],
 ] as const;
 
 function formatTinInput(value: string) {
@@ -69,6 +69,8 @@ export function FreelancerSetupForm() {
   const [tin, setTin] = useState("");
   const [tinSaved, setTinSaved] = useState(false);
   const [tinError, setTinError] = useState("");
+  const taxDocumentsRef = useRef<TaxDocumentsSetupHandle>(null);
+  const taxDeclarationRef = useRef<FreelancerTaxDeclarationHandle>(null);
   const hasExistingAccount = hasClientProfile || hasFreelancerProfile;
 
   useEffect(() => {
@@ -157,6 +159,16 @@ export function FreelancerSetupForm() {
         setTin("");
         setTinError("");
       }
+      const documentResults = await Promise.allSettled([
+        taxDocumentsRef.current?.submitForSetup() ?? Promise.resolve(),
+        taxDeclarationRef.current?.submitForSetup() ?? Promise.resolve(),
+      ]);
+      const documentErrors = documentResults
+        .filter((result) => result.status === "rejected")
+        .map((result) => result.status === "rejected"
+          ? result.reason instanceof Error ? result.reason.message : "A document could not be submitted."
+          : "");
+      if (documentErrors.length) throw new Error(documentErrors.join(" "));
       setDocumentationVersion((version) => version + 1);
     }, true);
   }
@@ -169,8 +181,7 @@ export function FreelancerSetupForm() {
     return (
       <ContentSkeleton
         label="Loading your saved profile"
-        variant="setup"
-        count={4}
+        variant="freelancer-setup"
       />
     );
   if (loadError)
@@ -284,12 +295,16 @@ export function FreelancerSetupForm() {
           {tinSaved && !tin && <p className="text-xs text-muted-foreground">A TIN is securely saved to your account.</p>}
           {tinError && <p role="alert" className="text-xs text-destructive">{tinError}</p>}
         </div>
+        <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
+          <span className="font-semibold">BIR reminder:</span> Submit your BIR Form 2303 to be able to withdraw your earnings.
+        </p>
         <div className="space-y-4">
           <div className="space-y-1">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Optional tax documents</h3>
             <p className="pl-2 text-xs text-muted-foreground">Reduces or exempts withholding tax.</p>
           </div>
           <TaxDocuments
+            ref={taxDocumentsRef}
             setupMode
             refreshKey={documentationVersion}
             loadExistingData={hasClientProfile || hasFreelancerProfile}
@@ -304,7 +319,13 @@ export function FreelancerSetupForm() {
               <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
             </summary>
             <div className="border-t p-4">
-              <FreelancerTaxDeclaration setupMode embedded profileReady={hasFreelancerProfile} />
+              <FreelancerTaxDeclaration
+                ref={taxDeclarationRef}
+                setupMode
+                embedded
+                profileReady={hasFreelancerProfile}
+                hideSubmitButton
+              />
             </div>
           </details>
         </div>

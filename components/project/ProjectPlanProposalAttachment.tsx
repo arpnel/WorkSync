@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -61,6 +61,37 @@ export function ProjectPlanProposalAttachment({
     [plans, selectedId],
   );
 
+  useEffect(() => {
+    const handleProjectPlanCreated = (event: MessageEvent<unknown>) => {
+      if (event.origin !== window.location.origin) return;
+      if (
+        !event.data ||
+        typeof event.data !== "object" ||
+        (event.data as { type?: unknown }).type !==
+          "worksync:project-plan-created"
+      )
+        return;
+
+      setOpen(true);
+      setMode("choose");
+      setSelectedId("");
+      setLoading(true);
+      setError("");
+      void listProjectPlans(false)
+        .then(setPlans)
+        .catch((cause) =>
+          setError(
+            cause instanceof Error
+              ? cause.message
+              : "Your project plans could not be loaded.",
+          ),
+        )
+        .finally(() => setLoading(false));
+    };
+    window.addEventListener("message", handleProjectPlanCreated);
+    return () => window.removeEventListener("message", handleProjectPlanCreated);
+  }, []);
+
   async function openPicker() {
     setOpen(true);
     setMode("choose");
@@ -70,7 +101,7 @@ export function ProjectPlanProposalAttachment({
     try {
       const [auth, savedPlans] = await Promise.all([
         supabase.auth.getUser(),
-        listProjectPlans(),
+        listProjectPlans(false),
       ]);
       if (auth.error || !auth.data.user)
         throw new Error("Sign in to choose a saved project plan.");
@@ -122,7 +153,7 @@ export function ProjectPlanProposalAttachment({
           <div className="min-w-0">
             <p className="truncate text-sm font-medium">{value.name}</p>
             <p className="text-xs text-muted-foreground">
-              {value.content.columns.length - 1} stages · {attachedTaskCount}{" "}
+              {value.content.columns.length} stages · {attachedTaskCount}{" "}
               tasks attached
             </p>
           </div>
@@ -240,6 +271,11 @@ export function ProjectPlanProposalAttachment({
                                 >
                                   {task.priority} priority suggestion
                                 </Badge>
+                                {task.expectedDays != null && (
+                                  <p className="mt-2 text-xs text-muted-foreground">
+                                    Estimated {task.expectedDays} {task.expectedDays === 1 ? "day" : "days"}
+                                  </p>
+                                )}
                               </article>
                             ))}
                           </div>
@@ -332,9 +368,9 @@ export function ProjectPlanProposalAttachment({
                         className="mt-3"
                       >
                         <Link
-                          href="/home/project-plans?create=1"
+                          href="/home/project-plans?create=1&returnTo=proposal"
                           target="_blank"
-                          rel="noreferrer"
+                          rel="opener"
                         >
                           Create a new project plan <ExternalLink />
                         </Link>
@@ -360,7 +396,7 @@ export function ProjectPlanProposalAttachment({
                               {plan.description || "No plan summary."}
                             </span>
                             <span className="mt-2 block text-xs text-muted-foreground">
-                              {plan.content.columns.length - 1} stages ·{" "}
+                              {plan.content.columns.length} stages ·{" "}
                               {taskCount(plan)} tasks
                               {plan.shared ? " · Shared plan" : ""}
                             </span>
@@ -379,9 +415,9 @@ export function ProjectPlanProposalAttachment({
                         className="px-0"
                       >
                         <Link
-                          href="/home/project-plans?create=1"
+                          href="/home/project-plans?create=1&returnTo=proposal"
                           target="_blank"
-                          rel="noreferrer"
+                          rel="opener"
                         >
                           Create a new project plan <ExternalLink />
                         </Link>

@@ -40,7 +40,7 @@ function hasVersionedPlanShape(value: unknown): boolean {
   if (!isObject(value) || typeof value.name !== "string" || !value.name.trim() ||
       typeof value.description !== "string" || !isObject(value.content)) return false;
   const columns = value.content.columns;
-  if (!Array.isArray(columns) || columns.length < 2 || columns.length > 21) return false;
+  if (!Array.isArray(columns) || columns.length < 1 || columns.length > 21) return false;
   let doneCount = 0;
   let taskCount = 0;
   const stageIds = new Set<string>();
@@ -66,7 +66,7 @@ function hasVersionedPlanShape(value: unknown): boolean {
     }
     taskCount += column.tasks.length;
   }
-  return doneCount === 1 && taskCount >= 1 && taskCount <= 120 &&
+  return (doneCount === 0 || doneCount === 1) && taskCount >= 1 && taskCount <= 120 &&
     [...stageIds].every((id) => !taskIds.has(id));
 }
 

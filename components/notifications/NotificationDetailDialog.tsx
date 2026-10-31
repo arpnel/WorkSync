@@ -424,12 +424,17 @@ export function NotificationDetailDialog({
             "/home/projects/" +
             (service?.service_type === "milestone" ? "milestone" : "standard") +
             "/" +
-            encodeURIComponent(id),
+            encodeURIComponent(id) +
+            (/contract|agreement/.test(type)
+              ? "?view=agreement#contract"
+              : ""),
           action: isDeadline
             ? "View Project"
             : isRequest
               ? "Review Request"
-              : "View Project",
+              : /contract|agreement/.test(type)
+                ? "View Contract"
+                : "View Project",
         };
       }
       return {};

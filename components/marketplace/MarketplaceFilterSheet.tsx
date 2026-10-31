@@ -53,7 +53,7 @@ export default function MarketplaceFilterSheet({
         <SheetHeader className="border-b px-5 py-5">
           <SheetTitle>Filters</SheetTitle>
           <SheetDescription>
-            Choose freelancers, services, or jobs, then refine your results.
+            Refine your results by budget, rating, and other criteria.
           </SheetDescription>
         </SheetHeader>
         {open && (

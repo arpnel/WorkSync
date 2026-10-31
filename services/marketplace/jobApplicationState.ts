@@ -3,6 +3,9 @@ import { supabase } from "@/lib/supabaseClient";
 export interface OwnJobApplication {
   application_id: string;
   status: string;
+  proposal: string | null;
+  proposed_price: number | null;
+  estimated_days: number | null;
 }
 export function canReapply(status: string | null | undefined) {
   return status === "cancelled" || status === "withdrawn";
@@ -25,7 +28,7 @@ export async function getOwnJobApplication(
   if (!profile.data) return null;
   const application = await supabase
     .from("job_applications")
-    .select("application_id,status")
+    .select("application_id,status,proposal,proposed_price,estimated_days")
     .eq("job_id", jobId)
     .eq("freelancer_id", profile.data.freelancer_id)
     .maybeSingle();
@@ -43,4 +46,22 @@ export async function cancelJobApplication(
       `Application cancellation failed (${error.code}): ${error.message}`,
     );
   return data;
+}
+
+export async function updateJobApplication(
+  applicationId: string,
+  proposal: string,
+  price: number,
+  days: number,
+): Promise<void> {
+  const { error } = await supabase.rpc("worksync_update_job_application", {
+    p_application: applicationId,
+    p_proposal: proposal.trim(),
+    p_proposed_price: price,
+    p_estimated_days: days,
+  });
+  if (error)
+    throw new Error(
+      `Proposal update failed (${error.code}): ${error.message}`,
+    );
 }

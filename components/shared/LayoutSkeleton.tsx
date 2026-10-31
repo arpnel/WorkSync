@@ -25,7 +25,9 @@ export type LayoutVariant =
   | "recommendation"
   | "similar"
   | "messages"
-  | "setup";
+  | "setup"
+  | "freelancer-setup"
+  | "client-setup";
 
 function Lines({ count = 3 }: { count?: number }) {
   return (
@@ -192,6 +194,64 @@ function Calendar() {
           <Skeleton className="h-24 w-full" />
           <Skeleton className="h-24 w-full" />
         </aside>
+      </div>
+    </div>
+  );
+}
+
+function AccountSetup({ stepCount }: { stepCount: 2 | 3 }) {
+  return (
+    <div className="mx-auto max-w-2xl space-y-8">
+      <ol className={`grid ${stepCount === 2 ? "grid-cols-2" : "grid-cols-3"} gap-2 sm:gap-5`}>
+        {Array.from({ length: stepCount }, (_, i) => (
+          <li key={i} className={`space-y-2 border-t-2 pt-3 ${i === 0 ? "border-primary" : "border-border"}`}>
+            <div className="flex items-center gap-2">
+              <Skeleton className="size-7 shrink-0 rounded-full" />
+              <Skeleton className={`h-4 max-w-full ${i === 0 ? "w-32" : "w-28"}`} />
+            </div>
+            <Skeleton className="ml-9 h-3 w-36 max-w-[calc(100%-2.25rem)]" />
+          </li>
+        ))}
+      </ol>
+
+      <section className="overflow-hidden rounded-2xl border bg-background shadow-sm">
+        <Skeleton className="h-32 w-full rounded-none sm:h-40 lg:h-44" />
+        <div className="px-4 pb-6 sm:px-6">
+          <div className="flex flex-wrap items-end gap-3">
+            <Skeleton className="-mt-10 size-24 shrink-0 rounded-full border-4 border-card" />
+            <div className="space-y-2 pb-1">
+              <Skeleton className="h-5 w-36" />
+              <Skeleton className="h-3 w-24" />
+            </div>
+          </div>
+          <div className="mt-6 space-y-2">
+            <div className="flex items-center justify-between">
+              <Skeleton className="h-4 w-12" />
+              <Skeleton className="h-3 w-12" />
+            </div>
+            <Skeleton className="h-28 w-full rounded-md" />
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-5 rounded-2xl border bg-background p-6 shadow-sm">
+        <div className="mb-5 flex items-center gap-3">
+          <Skeleton className="h-5 w-36" />
+          <div className="h-px flex-1 bg-border" />
+        </div>
+        <div className="grid gap-5 sm:grid-cols-2">
+          {Array.from({ length: 6 }, (_, i) => (
+            <div key={i} className="space-y-2">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <div className="flex justify-end gap-3">
+        <Skeleton className="h-10 w-24" />
+        <Skeleton className="h-10 w-32" />
       </div>
     </div>
   );
@@ -608,6 +668,10 @@ function Shape({ variant, count }: { variant: LayoutVariant; count?: number }) {
           ))}
         </div>
       );
+    case "freelancer-setup":
+      return <AccountSetup stepCount={3} />;
+    case "client-setup":
+      return <AccountSetup stepCount={2} />;
   }
 }
 

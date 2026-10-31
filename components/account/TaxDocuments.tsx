@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type DragEvent } from "react";
 import { BadgeCheck, Building2, Check, ChevronRight, FileCheck2, FileText, Landmark, LoaderCircle, Lock, ReceiptText, Save, ShieldCheck, UploadCloud } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
@@ -79,7 +79,10 @@ function formatTinInput(value: string) {
   return digits;
 }
 
-export default function TaxDocuments({ setupMode = false, settingsMode = false, refreshKey = 0, loadExistingData = true }: { setupMode?: boolean; settingsMode?: boolean; refreshKey?: number; loadExistingData?: boolean } = {}) {
+type TaxDocumentsProps = { setupMode?: boolean; settingsMode?: boolean; refreshKey?: number; loadExistingData?: boolean };
+export type TaxDocumentsSetupHandle = { submitForSetup: () => Promise<void> };
+
+const TaxDocuments = forwardRef<TaxDocumentsSetupHandle, TaxDocumentsProps>(function TaxDocuments({ setupMode = false, settingsMode = false, refreshKey = 0, loadExistingData = true }, ref) {
   const [freelancerAvailable, setFreelancerAvailable] = useState<boolean | null>(null);
   const [setupRequired, setSetupRequired] = useState(false);
   const [rows, setRows] = useState<DocumentRow[]>([]);
@@ -300,10 +303,28 @@ export default function TaxDocuments({ setupMode = false, settingsMode = false, 
       setNotice("Form 2303 submitted for review. Seller approval and relevant tax checks will use this same reviewed record.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Form 2303 could not be submitted.");
+      throw cause;
     } finally {
       setBusy(false);
     }
   }
+
+  useImperativeHandle(ref, () => ({
+    async submitForSetup() {
+      if (!setupMode || (!file && !registeredName.trim())) return;
+      if (!file || !registeredName.trim()) {
+        const message = "Choose a Form 2303 file and enter the registered name before continuing.";
+        setError(message);
+        throw new Error(message);
+      }
+      if (canonicalBirCor.needsReview) {
+        const message = "Form 2303 submission is paused until an administrator resolves the document review history.";
+        setError(message);
+        throw new Error(message);
+      }
+      await submitBirCor();
+    },
+  }), [canonicalBirCor.needsReview, file, registeredName, setupMode, submitBirCor]);
 
   async function viewDocument(documentId: string) {
     setError("");
@@ -328,12 +349,12 @@ export default function TaxDocuments({ setupMode = false, settingsMode = false, 
       <Button type="button" size="sm" variant="outline" onClick={() => void viewDocument(canonicalBirCor.document!.document_id)}><FileText className="mr-2 size-4" />View document</Button>
     </article>}
     {canonicalBirCor.document?.status === "rejected" && <p className="text-sm text-destructive">Review the administrator’s feedback, then submit a corrected Form 2303.</p>}
-    {canonicalBirCor.document?.status !== "pending" && <div className={`grid gap-4 ${settingsMode ? "" : "items-end lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"}`}>
+    {canonicalBirCor.document?.status !== "pending" && <div className="space-y-4">
       <div className="space-y-2"><Label htmlFor="canonical-bir-registered-name">Registered name on Form 2303 <span className="text-destructive">*</span></Label><Input id="canonical-bir-registered-name" placeholder="Enter registered name" value={registeredName} maxLength={200} onChange={event => setRegisteredName(event.target.value)} disabled={busy} /></div>
       <div className="space-y-2"><Label htmlFor="canonical-bir-file">Form 2303 document <span className="text-destructive">*</span></Label>
         {settingsMode ? <Input ref={birFileInput} id="canonical-bir-file" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={busy} onChange={event => { const next = event.target.files?.[0] ?? null; if (next && next.size > 5 * 1024 * 1024) { setFile(null); setError("Choose a file up to 5 MB."); event.target.value = ""; return; } setFile(next); setError(""); }} /> : <><input ref={birFileInput} id="canonical-bir-file" className="sr-only" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={busy} onChange={event => { const next = event.target.files?.[0] ?? null; if (next && next.size > 5 * 1024 * 1024) { setFile(null); setError("Choose a file up to 5 MB."); event.target.value = ""; return; } setFile(next); setError(""); }} /><button type="button" onClick={() => birFileInput.current?.click()} onDragOver={event => event.preventDefault()} onDrop={handleFileDrop} disabled={busy} className="flex min-h-[76px] w-full flex-col items-center justify-center gap-1 rounded-lg border border-dashed px-3 py-3 text-center hover:bg-muted/40 disabled:opacity-50"><span className="flex items-center gap-2 text-sm font-medium"><UploadCloud className="size-4 shrink-0 text-emerald-500" />{file?.name ?? "Drag & drop your file or click to browse"}</span><span className="text-xs text-muted-foreground">Supported: PDF, JPG, or PNG (up to 5 MB)</span></button></>}
       </div>
-      {!settingsMode && <Button type="button" className="bg-emerald-700 text-white hover:bg-emerald-600" onClick={() => void submitBirCor()} disabled={!file || !registeredName.trim() || busy || canonicalBirCor.needsReview}>{busy && <LoaderCircle className="mr-2 size-4 animate-spin" />}{busy ? "Submitting…" : canonicalBirCor.document?.status === "rejected" ? "Submit correction" : "Submit for review"}</Button>}
+      {!settingsMode && !setupMode && <div className="flex justify-end border-t pt-4"><Button type="button" className="bg-emerald-700 text-white hover:bg-emerald-600" onClick={() => void submitBirCor().catch(() => undefined)} disabled={!file || !registeredName.trim() || busy || canonicalBirCor.needsReview}>{busy && <LoaderCircle className="mr-2 size-4 animate-spin" />}{busy ? "Submitting…" : canonicalBirCor.document?.status === "rejected" ? "Submit correction" : "Submit for review"}</Button></div>}
     </div>}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}{notice && <p role="status" className="text-sm text-emerald-600">{notice}</p>}
   </div>;
@@ -548,4 +569,6 @@ export default function TaxDocuments({ setupMode = false, settingsMode = false, 
         {notice && <p role="status" className="text-sm text-primary">{notice}</p>}
     </div>
   );
-}
+});
+
+export default TaxDocuments;

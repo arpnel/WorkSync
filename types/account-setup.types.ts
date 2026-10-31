@@ -21,6 +21,7 @@ export interface FreelancerSetupValues extends ClientSetupValues {
   industries: string[];
   linkedIn: string;
   github: string;
+  portfolioWebsite: string;
   resume: File | null;
   portfolioSamples: File[];
   certifications: File[];

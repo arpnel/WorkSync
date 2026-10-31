@@ -182,6 +182,24 @@ export function FreelancerInformationSection({
           </div>
         </div>
 
+        <div className="space-y-2">
+          <Label htmlFor="portfolioWebsite">Portfolio website</Label>
+          <Input
+            id="portfolioWebsite"
+            aria-invalid={!!errors.portfolioWebsite}
+            type="url"
+            value={values.portfolioWebsite ?? ""}
+            onChange={(event) => onChange("portfolioWebsite", event.target.value)}
+            placeholder="yourportfolio.dev"
+          />
+          <p className="text-xs text-muted-foreground">
+            Add any portfolio domain, such as yourportfolio.dev or opreko.website. You can enter it with or without https://.
+          </p>
+          {errors.portfolioWebsite && (
+            <p className="text-xs text-destructive">{errors.portfolioWebsite}</p>
+          )}
+        </div>
+
         {/* Resume */}
 
         <div className="space-y-2">

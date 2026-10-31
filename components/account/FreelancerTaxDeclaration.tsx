@@ -1,5 +1,5 @@
 ﻿"use client";
-import { useCallback, useEffect, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,9 @@ import { StyledSelect } from "@/components/ui/styled-select";
 import { currentTaxYear, hasBlockingDeclaration, isSupportedTaxYear, supportedTaxYears } from "@/lib/tax/taxDeclaration";
 
 type Declaration = { declaration_id: string; tax_year: number; reported_threshold_status: string; status: string; submitted_at: string; reviewed_at: string | null; review_notes: string; document_url: string | null };
-export default function FreelancerTaxDeclaration({ embedded = false, setupMode = false, profileReady = true, hideSubmitButton = false }: { embedded?: boolean; setupMode?: boolean; profileReady?: boolean; hideSubmitButton?: boolean } = {}) {
+export type FreelancerTaxDeclarationHandle = { submitForSetup: () => Promise<void> };
+
+const FreelancerTaxDeclaration = forwardRef<FreelancerTaxDeclarationHandle, { embedded?: boolean; setupMode?: boolean; profileReady?: boolean; hideSubmitButton?: boolean }>(function FreelancerTaxDeclaration({ embedded = false, setupMode = false, profileReady = true, hideSubmitButton = false }, ref) {
   const [rows, setRows] = useState<Declaration[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -35,8 +37,8 @@ export default function FreelancerTaxDeclaration({ embedded = false, setupMode =
     void request("GET").then((result) => { if (active) setRows(result.declarations ?? []); }).catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : "Tax records unavailable."); });
     return () => { active = false; };
   }, [profileReady, request, setupMode]);
-  async function submit() {
-    if (busy || !profileReady) return;
+  async function submit(allowProfileJustSaved = false) {
+    if (busy || (!profileReady && !allowProfileJustSaved)) return;
     if (!isSupportedTaxYear(year)) {
       setError("Choose a supported tax year.");
       return;
@@ -70,22 +72,35 @@ export default function FreelancerTaxDeclaration({ embedded = false, setupMode =
       const fresh = await request("GET");
       setRows(fresh.declarations ?? []);
       setNotice("Document submitted for manual review. WorkSync does not automatically verify BIR authenticity.");
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Document submission failed."); }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Document submission failed."); throw cause; }
     finally { setBusy(false); }
   }
   const selectedYear = isSupportedTaxYear(year) ? Number(year) : null;
   const hasBlockingRecord = selectedYear !== null && hasBlockingDeclaration(rows, selectedYear);
   const canSubmit = profileReady && selectedYear !== null && !!file && !busy && !hasBlockingRecord;
+  useImperativeHandle(ref, () => ({
+    async submitForSetup() {
+      if (!setupMode || !file) return;
+      if (selectedYear === null || busy || hasBlockingRecord) {
+        const message = error || "The sworn declaration cannot be submitted with the current tax year or review status.";
+        setError(message);
+        throw new Error(message);
+      }
+      await submit(true);
+    },
+  }), [busy, error, file, hasBlockingRecord, selectedYear, setupMode, submit]);
   return <section className={embedded || setupMode ? "space-y-4" : "space-y-4 border-t pt-5"}>
     {!embedded && <div><h3 className="font-semibold">{setupMode ? "BIR-Received Sworn Declaration" : "Withholding tax declaration"}</h3><p className="mt-1 text-sm text-muted-foreground">{setupMode ? "For the selected tax year." : "Submit the BIR-received sworn declaration for the selected tax year. The tax year is the period covered by the declaration; it is separate from the date the document was signed or prepared."}</p></div>}
     {rows.map((row) => <article key={row.declaration_id} className="flex flex-wrap justify-between gap-2 border-t pt-3 text-sm"><span>{row.tax_year} declaration ({row.reported_threshold_status.replaceAll("_", " ")})</span><span className="capitalize">{row.status.replaceAll("_", " ")}</span>{row.document_url && <a className="text-primary underline" href={row.document_url} target="_blank" rel="noreferrer">Download document</a>}{row.review_notes && <p className="w-full text-muted-foreground">Review note: {row.review_notes}</p>}</article>)}
-    <div className="grid gap-4 sm:grid-cols-2">
+    <div className="space-y-4">
       <div className="space-y-2"><Label htmlFor="tax-declaration-year">Tax year covered by this declaration</Label><StyledSelect id="tax-declaration-year" value={year} disabled={busy} aria-invalid={year !== "" && !isSupportedTaxYear(year)} onChange={(event) => { setYear(event.target.value); setError(""); }}><option value="">Choose tax year</option>{supportedTaxYears().map((supportedYear) => <option key={supportedYear} value={supportedYear}>{supportedYear}{supportedYear === currentTaxYear() ? " (current year)" : ""}</option>)}</StyledSelect>{year === "" && <p className="text-xs text-destructive">Choose the tax year covered by your declaration.</p>}{year !== "" && !isSupportedTaxYear(year) && <p className="text-xs text-destructive">Choose a tax year from 2024 through {currentTaxYear() + 1}.</p>}</div>
       <div className="space-y-2"><Label htmlFor="tax-declaration-threshold">Expected annual marketplace remittances</Label><StyledSelect id="tax-declaration-threshold" className="h-10 w-full rounded-lg border bg-background px-3 text-sm" value={thresholdStatus} onChange={(event) => setThresholdStatus(event.target.value)}><option value="not_exceeding">Up to PHP 500,000</option><option value="exceeded">Over PHP 500,000</option></StyledSelect></div>
-      <div className="space-y-2 sm:col-span-2"><Label htmlFor="tax-declaration-file">BIR-signed sworn declaration for {selectedYear ?? "the selected tax year"}</Label><Input id="tax-declaration-file" type="file" disabled={!selectedYear || busy || hasBlockingRecord} accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /><p className="text-xs text-muted-foreground">PDF, JPG, or PNG up to 5 MB.</p></div>
-      <div className="flex flex-col gap-2 sm:col-span-2 sm:flex-row sm:items-center">{!hideSubmitButton && <Button type="button" disabled={!canSubmit} onClick={() => void submit()}>{busy ? "Submitting…" : "Submit for review"}</Button>}{setupMode && !profileReady && <p className="text-xs text-muted-foreground">Save your profile to enable submission.</p>}{!setupMode && !hideSubmitButton && <p className="text-xs text-muted-foreground">The declaration must cover the selected tax year; its signing date may be earlier.</p>}{hasBlockingRecord && <p className="text-sm text-muted-foreground">A {selectedYear} declaration is already pending or accepted. You can submit again if it is rejected or revoked.</p>}</div>
+      <div className="space-y-2"><Label htmlFor="tax-declaration-file">BIR-signed sworn declaration for {selectedYear ?? "the selected tax year"}</Label><Input id="tax-declaration-file" type="file" disabled={!selectedYear || busy || hasBlockingRecord} accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /><p className="text-xs text-muted-foreground">PDF, JPG, or PNG up to 5 MB.</p></div>
+      {(!hideSubmitButton || hasBlockingRecord) && <div className="flex flex-col gap-2 sm:flex-row sm:items-center">{!hideSubmitButton && <Button type="button" disabled={!canSubmit} onClick={() => void submit().catch(() => undefined)}>{busy ? "Submitting…" : "Submit for review"}</Button>}{!setupMode && !hideSubmitButton && <p className="text-xs text-muted-foreground">The declaration must cover the selected tax year; its signing date may be earlier.</p>}{hasBlockingRecord && <p className="text-sm text-muted-foreground">A {selectedYear} declaration is already pending or accepted. You can submit again if it is rejected or revoked.</p>}</div>}
     </div>
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}{notice && <p role="status" className="text-sm text-primary">{notice}</p>}
   </section>;
-}
+});
+
+export default FreelancerTaxDeclaration;
 

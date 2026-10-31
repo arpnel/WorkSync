@@ -115,7 +115,6 @@ export async function getProjectRequests(): Promise<ProjectRequestData> {
           .from("job_applications")
           .select(fields)
           .in("job_id", jobIds)
-          .in("status", ["pending", "in_review", "accepted"])
           .order("created_at", { ascending: false }),
       );
     }
@@ -311,7 +310,9 @@ export async function getProjectRequests(): Promise<ProjectRequestData> {
     };
   };
 
-  const received = receivedRows.map(mapRow);
+  const received = receivedRows
+    .map(mapRow)
+    .filter((item) => !["rejected", "cancelled", "withdrawn"].includes(item.status));
   const sent = sentRows.map(mapRow);
   const discussions = [...received, ...sent].filter(
     (item, index, items) =>

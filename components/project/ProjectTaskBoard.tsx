@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNod
 import {
   CalendarDays,
   Check,
+  CheckCircle2,
   FileText,
+  GripVertical,
   MessageSquare,
   Pencil,
   Plus,
@@ -44,7 +46,7 @@ type Task = {
   persistedStatusLabel?: string;
   persisted?: boolean;
 };
-const columns: TaskStatus[] = ["To Do", "In Progress", "Done"];
+const completedColumns: TaskStatus[] = ["To Do", "In Progress", "Done"];
 
 export type TaskBoardLoadStatus = "loading" | "legacy" | "versioned" | "empty" | "unknown" | "error";
 export interface TaskBoardLoadState {
@@ -140,16 +142,19 @@ export function ProjectTaskBoard({
   onRefresh,
   paid,
   actions,
+  compact = false,
 }: {
   project: ProjectWorkspace;
   onRefresh: () => Promise<void>;
   paid: boolean;
   actions?: ReactNode;
+  compact?: boolean;
 }) {
   const [taskLoad, setTaskLoad] = useState<TaskBoardLoadState>(() => loadingTaskBoardState(""));
   const [selection, setSelection] = useState<{ key: string; id: string } | null>(null);
   const loadSequence = useRef(0);
   const taskKey = workspaceTaskKey(project);
+  const columns = completedColumns;
   const reloadTasks = useCallback(async () => {
     const sequence = ++loadSequence.current;
     const key = workspaceTaskKey(project);
@@ -184,6 +189,13 @@ export function ProjectTaskBoard({
     if (!selected) return;
     setTaskLoad((current) => current.key === taskKey
       ? { ...current, tasks: current.tasks.map((task) => task.id === selected.id ? { ...task, ...patch } : task) }
+      : current);
+  }
+
+  function moveTask(taskId: string, status: TaskStatus) {
+    if (project.currentParty !== "freelancer") return;
+    setTaskLoad((current) => current.key === taskKey
+      ? { ...current, tasks: current.tasks.map((task) => task.id === taskId ? { ...task, status } : task) }
       : current);
   }
 
@@ -230,7 +242,8 @@ export function ProjectTaskBoard({
   }
 
   return (
-    <section aria-label="Project task board" className="space-y-4 rounded-xl border bg-card p-4 sm:p-5">
+    <section aria-label="Project task board" className={compact ? "space-y-3" : "space-y-4 rounded-xl border bg-card p-4 sm:p-5"}>
+      {!compact && <>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">Project work</h2>
@@ -240,6 +253,7 @@ export function ProjectTaskBoard({
       </div>
 
       <p className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">{visibleLoad.status === "versioned" || visibleLoad.status === "empty" ? "Tasks are loaded from the accepted contract plan. Task edits, comments, and reference attachments are still a local preview. Existing submissions, feedback, and revisions continue to use the project or milestone delivery flow." : "Board cards and comments are a UI preview and are not saved yet. Existing submissions, feedback, and revisions remain saved at project or milestone level."}</p>
+      </>}
 
       {visibleLoad.status === "loading" && <p role="status" className="rounded-md border px-3 py-4 text-sm text-muted-foreground">Loading the accepted task plan…</p>}
       {visibleLoad.status === "unknown" && <div role="alert" className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-4 text-sm">{visibleLoad.message}</div>}
@@ -252,14 +266,37 @@ export function ProjectTaskBoard({
         <div className="flex gap-2"><Button type="submit" size="sm">Create task</Button><Button type="button" size="sm" variant="ghost" onClick={() => setAdding(false)}>Cancel</Button></div>
       </form>}
 
-      {(visibleLoad.status === "legacy" || visibleLoad.status === "versioned" || visibleLoad.status === "empty") && <div className="grid gap-3 md:grid-cols-3">
+      {(visibleLoad.status === "legacy" || visibleLoad.status === "versioned" || visibleLoad.status === "empty") && <div className={`grid gap-3 ${compact ? "md:grid-cols-3" : "md:grid-cols-3"}`}>
         {columns.map((column) => {
           const items = tasks.filter((task) => task.status === column);
-          return <section key={column} aria-label={`${column} tasks`} className="min-w-0 rounded-lg bg-muted/35 p-3">
-            <div className="mb-3 flex items-center justify-between"><h3 className="text-sm font-semibold">{column}</h3><span className="rounded-full bg-background px-2 py-0.5 text-xs text-muted-foreground">{items.length}</span></div>
+          return <section
+            key={column}
+            aria-label={`${column} tasks`}
+            onDragOver={(event) => {
+              if (project.currentParty === "freelancer") event.preventDefault();
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              const taskId = event.dataTransfer.getData("text/plain");
+              if (taskId) moveTask(taskId, column);
+            }}
+            className="min-w-0 rounded-lg border bg-card/60 p-3 sm:p-4"
+          >
+            <div className="mb-3 flex items-center justify-between"><h3 className="text-sm font-semibold">{column}</h3><span className="rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground">{items.length}</span></div>
             <div className="space-y-2">
-              {items.map((task) => <button key={task.id} type="button" onClick={() => { setAttachmentError(""); setSelection({ key: taskKey, id: task.id }); }} className="block w-full rounded-lg border bg-card p-3 text-left shadow-sm transition hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                <span className="block font-medium">{task.title}</span>
+              {items.map((task) => <button
+                key={task.id}
+                type="button"
+                draggable={project.currentParty === "freelancer"}
+                onDragStart={(event) => {
+                  if (project.currentParty !== "freelancer") return;
+                  event.dataTransfer.effectAllowed = "move";
+                  event.dataTransfer.setData("text/plain", task.id);
+                }}
+                onClick={() => { setAttachmentError(""); setSelection({ key: taskKey, id: task.id }); }}
+                className={`block w-full rounded-lg border bg-background/50 p-3 text-left transition hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${project.currentParty === "freelancer" ? "cursor-grab active:cursor-grabbing" : ""}`}
+              >
+                <span className="flex items-start gap-1.5"><GripVertical aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"/><span className="min-w-0 flex-1 font-medium">{task.title}</span>{task.status === "Done" && <CheckCircle2 aria-label="Done" className="size-4 shrink-0 fill-emerald-600 text-emerald-600" />}</span>
                 <span className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                   <span className={`rounded-full border px-2 py-0.5 ${task.priority === "High" ? "border-rose-500/30 text-rose-700 dark:text-rose-300" : ""}`}>{task.priority}</span>
                   {task.dueDate && <span className="inline-flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" />{new Date(`${task.dueDate}T12:00:00`).toLocaleDateString()}</span>}
@@ -305,7 +342,7 @@ export function ProjectTaskBoard({
                 </main>
 
                 <aside className="space-y-5 border-t bg-muted/35 p-5 lg:border-l lg:border-t-0" aria-label="Task properties and comments">
-                  <section className="space-y-3"><h3 className="text-sm font-semibold">Task properties</h3><div className="space-y-2"><label htmlFor="task-status" className="text-xs font-medium text-muted-foreground">Status</label>{selected.persisted ? <p id="task-status" className="rounded-md border border-border/80 bg-background px-3 py-2 text-sm" data-database-status={selected.persistedStatus}>{selected.persistedStatusLabel}</p> : <StyledSelect id="task-status" className="h-10 w-full rounded-md border border-border/80 bg-background px-3 text-sm" value={selected.status} onChange={(event) => updateSelected({ status: event.target.value as TaskStatus })}>{columns.map((status) => <option key={status}>{status}</option>)}</StyledSelect>}</div>
+                  <section className="space-y-3"><h3 className="text-sm font-semibold">Task properties</h3><div className="space-y-2"><label htmlFor="task-status" className="text-xs font-medium text-muted-foreground">{project.currentParty === "freelancer" ? "Board column (preview)" : "Status"}</label>{project.currentParty === "freelancer" ? <StyledSelect id="task-status" className="h-10 w-full rounded-md border border-border/80 bg-background px-3 text-sm" value={selected.status} onChange={(event) => updateSelected({ status: event.target.value as TaskStatus })}>{columns.map((status) => <option key={status}>{status}</option>)}</StyledSelect> : <p id="task-status" className="rounded-md border border-border/80 bg-background px-3 py-2 text-sm" data-database-status={selected.persistedStatus}>{selected.persisted ? selected.persistedStatusLabel : selected.status}</p>}{project.currentParty === "freelancer" && <p className="text-xs text-muted-foreground">Moving a card changes its board position only. Delivery approval and project completion still follow the review process.</p>}</div>
                   <div className="space-y-2"><label htmlFor="task-due-date" className="flex items-center gap-2 text-xs font-medium text-muted-foreground"><CalendarDays className="h-3.5 w-3.5"/>Due date</label><Input id="task-due-date" type="date" className="h-10 border-border/80 bg-background" value={selected.dueDate} onChange={(event) => updateSelected({ dueDate: event.target.value })}/></div>
                   <div className="space-y-2"><label htmlFor="task-priority" className="text-xs font-medium text-muted-foreground">Priority</label><StyledSelect id="task-priority" className="h-10 w-full rounded-md border border-border/80 bg-background px-3 text-sm" value={selected.priority} onChange={(event) => updateSelected({ priority: event.target.value as Priority })}>{(["High", "Medium", "Low"] as Priority[]).map((priority) => <option key={priority}>{priority}</option>)}</StyledSelect></div></section>
                   <section className="space-y-3 border-t pt-4">

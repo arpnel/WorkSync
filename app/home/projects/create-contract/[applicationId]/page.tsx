@@ -130,6 +130,6 @@ export default function CreateContractPage() {
       deadline: null,
       plan: request.proposedPlan,
       planSource: request.proposedPlan ? "Submitted application plan" : "No plan selected",
-    }} draftKey={`worksync:contract-draft:${request.currentParty === "client" ? request.clientUserId : request.freelancerUserId}:${applicationId}`} draftUserId={request.currentParty === "client" ? request.clientUserId : request.freelancerUserId} busy={busy} onBack={() => router.push("/home/projects")} onOpenExistingAgreement={(proposal, requestId, file) => openExistingAgreement(proposal, requestId, file)}/>
+    }} draftKey={`worksync:contract-draft:${request.currentParty === "client" ? request.clientUserId : request.freelancerUserId}:${applicationId}`} draftUserId={request.currentParty === "client" ? request.clientUserId : request.freelancerUserId} busy={busy} onBack={() => router.push("/home/projects?status=In%20Discussion")} onOpenExistingAgreement={(proposal, requestId, file) => openExistingAgreement(proposal, requestId, file)}/>
   </>;
 }

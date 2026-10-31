@@ -421,7 +421,6 @@ export async function getProjectPayment(
     vatBreakdown,
     payout: payout.error ? { status: "unavailable" } : payout.data,
     settlementVersion,
-    autoAccept: details?.data?.autoAccept === true,
     finalMilestoneId: details?.data?.finalMilestoneId ?? null,
     payouts: upgraded ? settlementPayouts : undefined,
     refunds: upgraded

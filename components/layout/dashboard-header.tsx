@@ -8,13 +8,19 @@ import {
   BriefcaseBusiness,
   ChevronDown,
   Crown,
+  Moon,
   LogOut,
   Loader2,
   MessageCircle,
+  Sun,
   Users,
+  UserRound,
+  Settings,
 } from "lucide-react";
+import { useTheme } from "next-themes";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Switch } from "@/components/ui/switch";
 
 import { LogoIcon } from "@/components/shared/logo";
 
@@ -72,6 +78,7 @@ export function DashboardHeader() {
   );
   const router = useRouter();
   const premium = usePremiumStatus();
+  const { resolvedTheme, setTheme } = useTheme();
 
   /* ==========================================================
      STATE
@@ -467,6 +474,34 @@ export function DashboardHeader() {
             </DropdownMenuTrigger>
 
             <DropdownMenuContent align="end" className="z-[100] w-48">
+              <DropdownMenuItem asChild>
+                <Link href="/home/profile">
+                  <UserRound className="mr-2 h-4 w-4" />
+                  Profile
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/home/settings">
+                  <Settings className="mr-2 h-4 w-4" />
+                  Settings
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <div className="flex items-center justify-between gap-3 px-2 py-1.5 text-sm">
+                <span className="flex items-center gap-2">
+                  {resolvedTheme === "dark" ? (
+                    <Moon className="h-4 w-4" />
+                  ) : (
+                    <Sun className="h-4 w-4" />
+                  )}
+                  Dark mode
+                </span>
+                <Switch
+                  checked={resolvedTheme === "dark"}
+                  onCheckedChange={(enabled) => setTheme(enabled ? "dark" : "light")}
+                  aria-label="Dark mode"
+                />
+              </div>
               <DropdownMenuSeparator />
 
               <DropdownMenuItem

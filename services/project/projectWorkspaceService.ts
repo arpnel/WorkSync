@@ -28,13 +28,14 @@ import type {
 } from "@/types/project/projectWorkspace";
 
 export type ContractVersionPriority = "low" | "medium" | "high";
-export type ContractVersionColumnType = "stage" | "done";
+export type ContractVersionColumnType = "stage";
 
 export interface ContractVersionTaskInput {
   id: string;
   title: string;
   description: string;
   priority: ContractVersionPriority;
+  expectedDays?: number;
   dueDate?: string | null;
   milestoneId?: string | null;
 }
@@ -116,6 +117,7 @@ export interface ContractVersionTermsPayload {
         title: string;
         description: string;
         priority: ContractVersionPriority;
+        expectedDays?: number;
         dueDate?: string | null;
         milestoneId?: string | null;
       }>;
@@ -219,8 +221,8 @@ export function mapContractVersionPayload(input: ContractVersionPayloadInput): C
   const planName = requireText(input.plan.name, "plan.name", 1, 120);
   const planDescription = requireText(input.plan.description, "plan.description", 0, 1500);
   const rawColumns: unknown = input.plan?.content?.columns;
-  if (!Array.isArray(rawColumns) || rawColumns.length < 2 || rawColumns.length > 21) {
-    throw new ContractVersionPayloadError("plan.content.columns must contain 1–20 stages followed by Done.");
+  if (!Array.isArray(rawColumns) || rawColumns.length < 1 || rawColumns.length > 20) {
+    throw new ContractVersionPayloadError("plan.content.columns must contain 1 to 20 stages.");
   }
   const columns = rawColumns as readonly ContractVersionColumnInput[];
   if (!Array.isArray(input.milestones)) throw new ContractVersionPayloadError("milestones must be the complete milestone array (use [] only when there are none).");
@@ -252,27 +254,19 @@ export function mapContractVersionPayload(input: ContractVersionPayloadInput): C
   const stageIds = new Set<string>();
   const taskIds = new Set<string>();
   let taskCount = 0;
-  let doneCount = 0;
   const mappedColumns = columns.map((column, columnIndex) => {
     const field = `plan.content.columns[${columnIndex}]`;
     if (!column || typeof column !== "object") throw new ContractVersionPayloadError(`${field} is required.`);
     const id = requireText(column.id, `${field}.id`, 1, 80);
     const name = requireText(column.name, `${field}.name`, 1, 80);
-    if (column.type !== "stage" && column.type !== "done") throw new ContractVersionPayloadError(`${field}.type must be stage or done.`);
+    if (column.type !== "stage") throw new ContractVersionPayloadError(`${field}.type must be stage.`);
     if (stageIds.has(id)) throw new ContractVersionPayloadError(`${field}.id is duplicated.`);
     stageIds.add(id);
     if (!Array.isArray(column.tasks)) throw new ContractVersionPayloadError(`${field}.tasks must be an explicit array.`);
     if (column.tasks.length > 25) throw new ContractVersionPayloadError(`${field}.tasks may contain at most 25 tasks.`);
-    if (column.type === "done") {
-      doneCount += 1;
-      if (columnIndex !== columns.length - 1 || column.tasks.length !== 0) {
-        throw new ContractVersionPayloadError("Done must be the final column and contain no tasks.");
-      }
-    }
     const tasks = column.tasks.map((task, taskIndex) => {
       const taskField = `${field}.tasks[${taskIndex}]`;
       if (!task || typeof task !== "object") throw new ContractVersionPayloadError(`${taskField} is required.`);
-      if (column.type === "done") throw new ContractVersionPayloadError("Done must not contain tasks.");
       const taskId = requireText(task.id, `${taskField}.id`, 1, 80);
       if (taskIds.has(taskId) || stageIds.has(taskId)) throw new ContractVersionPayloadError(`${taskField}.id must be unique across stages and tasks.`);
       taskIds.add(taskId);
@@ -287,6 +281,12 @@ export function mapContractVersionPayload(input: ContractVersionPayloadInput): C
         description: taskDescription,
         priority: task.priority,
       };
+      if (task.expectedDays !== undefined) {
+        if (!Number.isInteger(task.expectedDays) || task.expectedDays < 1 || task.expectedDays > 3650) {
+          throw new ContractVersionPayloadError(`${taskField}.expectedDays must be a whole number from 1 to 3650.`);
+        }
+        mappedTask.expectedDays = task.expectedDays;
+      }
       if (task.dueDate !== undefined) {
         const dueDate = task.dueDate === null ? null : requireDate(task.dueDate, `${taskField}.dueDate`);
         if (dueDate && (dueDate < startDate || dueDate > deadline)) throw new ContractVersionPayloadError(`${taskField}.dueDate must fall within the contract dates.`);
@@ -310,7 +310,6 @@ export function mapContractVersionPayload(input: ContractVersionPayloadInput): C
     });
     return { id, name, type: column.type, tasks };
   });
-  if (doneCount !== 1) throw new ContractVersionPayloadError("plan must contain exactly one final Done column.");
   if (taskCount < 1 || taskCount > 120) throw new ContractVersionPayloadError("plan must contain between 1 and 120 tasks.");
   for (const stageId of stageIds) {
     if (taskIds.has(stageId)) throw new ContractVersionPayloadError("stage IDs and task IDs must be distinct.");

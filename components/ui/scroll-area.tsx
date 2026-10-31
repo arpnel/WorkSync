@@ -5,14 +5,20 @@ import { ScrollArea as ScrollAreaPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 
+type ScrollAreaProps = React.ComponentProps<typeof ScrollAreaPrimitive.Root> & {
+  scrollbarType?: React.ComponentProps<typeof ScrollAreaPrimitive.Root>["type"]
+}
+
 function ScrollArea({
   className,
   children,
+  scrollbarType = "hover",
   ...props
-}: React.ComponentProps<typeof ScrollAreaPrimitive.Root>) {
+}: ScrollAreaProps) {
   return (
     <ScrollAreaPrimitive.Root
       data-slot="scroll-area"
+      type={scrollbarType}
       className={cn("relative", className)}
       {...props}
     >

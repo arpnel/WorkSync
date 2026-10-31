@@ -11,8 +11,6 @@ import {
   requestSecurityReauthentication,
   updatePasswordOnServer,
 } from "@/services/auth/passwordService";
-import { useTheme } from "next-themes";
-import { StyledSelect } from "@/components/ui/styled-select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -24,7 +22,6 @@ import {
 } from "@/components/ui/card";
 
 export default function AccountSettings() {
-  const { theme, setTheme } = useTheme();
   const [email, setEmail] = useState("");
   const [hasPasswordCredential, setHasPasswordCredential] = useState(false);
   const [newEmail, setNewEmail] = useState("");
@@ -182,26 +179,6 @@ export default function AccountSettings() {
           {feedback}
         </p>
       )}
-      <Card>
-        <CardHeader>
-          <CardTitle>Appearance</CardTitle>
-          <CardDescription>
-            Choose how WorkSync looks on this device.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="max-w-lg space-y-2">
-          <Label htmlFor="appearance-theme">Theme</Label>
-          <StyledSelect
-            id="appearance-theme"
-            value={theme ?? "system"}
-            onChange={(event) => setTheme(event.target.value)}
-          >
-            <option value="system">System</option>
-            <option value="light">Light</option>
-            <option value="dark">Dark</option>
-          </StyledSelect>
-        </CardContent>
-      </Card>
       <Card>
         <CardHeader>
           <CardTitle>Security</CardTitle>

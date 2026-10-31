@@ -5,6 +5,7 @@ export type PlanTask = {
   title: string;
   description: string;
   priority: "low" | "medium" | "high";
+  expectedDays?: number;
 };
 export type PlanColumn = {
   id: string;
@@ -31,7 +32,10 @@ export type ProjectPlan = {
 };
 
 /** Repairs legacy or stale plan order while preserving stage/task contents. */
-export function normalizePlanContent(content: unknown): PlanContent {
+export function normalizePlanContent(
+  content: unknown,
+  ensureDone = false,
+): PlanContent {
   const rawColumns =
     content && typeof content === "object" && "columns" in content
       ? (content as { columns?: unknown }).columns
@@ -85,6 +89,7 @@ export function normalizePlanContent(content: unknown): PlanContent {
   const stages = columns
     .filter((_, index) => index !== doneIndex)
     .map((column) => ({ ...column, type: "stage" as const }));
+  if (doneIndex < 0 && !ensureDone) return { columns: stages };
   const done =
     doneIndex >= 0
       ? { ...columns[doneIndex], type: "done" as const }
@@ -101,9 +106,10 @@ export function reorderPlanStage(
   content: unknown,
   stageId: string,
   destinationIndex: number,
+  ensureDone = false,
 ): PlanContent {
-  const normalized = normalizePlanContent(content);
-  const done = normalized.columns.at(-1)!;
+  const normalized = normalizePlanContent(content, ensureDone);
+  const done = normalized.columns.find((column) => column.type === "done");
   const stages = normalized.columns.filter((column) => column.type !== "done");
   const sourceIndex = stages.findIndex((column) => column.id === stageId);
   if (sourceIndex < 0) return normalized;
@@ -113,15 +119,16 @@ export function reorderPlanStage(
     0,
     stage,
   );
-  return { columns: [...stages, done] };
+  return { columns: done ? [...stages, done] : stages };
 }
 
 export function dropPlanStageBefore(
   content: unknown,
   stageId: string,
   targetStageId: string,
+  ensureDone = false,
 ): PlanContent {
-  const normalized = normalizePlanContent(content);
+  const normalized = normalizePlanContent(content, ensureDone);
   const stages = normalized.columns.filter((column) => column.type !== "done");
   const sourceIndex = stages.findIndex((column) => column.id === stageId);
   const target = normalized.columns.find(
@@ -133,10 +140,10 @@ export function dropPlanStageBefore(
       ? stages.length
       : stages.findIndex((column) => column.id === targetStageId);
   if (target.type !== "done" && sourceIndex < destination) destination -= 1;
-  return reorderPlanStage(normalized, stageId, destination);
+  return reorderPlanStage(normalized, stageId, destination, ensureDone);
 }
 
-export async function listProjectPlans() {
+export async function listProjectPlans(ensureDone = false) {
   const { data, error } = await supabase
     .from("project_plans")
     .select("*, project_plan_shares(recipient_id)")
@@ -144,7 +151,7 @@ export async function listProjectPlans() {
   if (error) throw error;
   return (data ?? []).map((row) => ({
     ...row,
-    content: normalizePlanContent(row.content),
+    content: normalizePlanContent(row.content, ensureDone),
     shared: (row.project_plan_shares?.length ?? 0) > 0,
   })) as ProjectPlan[];
 }
@@ -157,12 +164,13 @@ export async function saveProjectPlan(
         "plan_id" | "owner_id" | "created_at" | "updated_at" | "shared"
       >,
   ownerId: string,
+  ensureDone = false,
 ) {
   const values = {
     owner_id: ownerId,
     name: plan.name.trim(),
     description: plan.description.trim(),
-    content: normalizePlanContent(plan.content),
+    content: normalizePlanContent(plan.content, ensureDone),
     updated_at: new Date().toISOString(),
   };
   const query =

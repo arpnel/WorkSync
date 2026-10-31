@@ -18,7 +18,6 @@ export interface ProjectPayment {
   paymentMethod?: string | null;
   autoReleaseEnabled?: boolean;
   settlementVersion?: number;
-  autoAccept?: boolean;
   finalMilestoneId?: string | null;
   payouts?: {
     payout_id: string;
@@ -77,22 +76,4 @@ export async function getProjectPayment(
 }
 export async function startProjectPayment(projectId: string): Promise<string> {
   return (await requestPayment(projectId, true)).checkoutUrl;
-}
-export async function setAutoAccept(projectId: string, autoAccept: boolean) {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session) throw new Error("Sign in to change automatic acceptance.");
-  const response = await fetch("/api/payment-preferences", {
-    method: "PATCH",
-    headers: {
-      Authorization: `Bearer ${session.access_token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ projectId, autoAccept }),
-  });
-  const body = await response.json();
-  if (!response.ok)
-    throw new Error(body.error || "Unable to save automatic acceptance.");
-  return body;
 }

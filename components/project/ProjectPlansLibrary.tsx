@@ -80,15 +80,11 @@ const blankPlan = (): {
   name: "",
   description: "",
   content: {
-    columns: [
-      { id: newId(), name: "To do", type: "stage", tasks: [] },
-      { id: newId(), name: "In progress", type: "stage", tasks: [] },
-      { id: newId(), name: "Done", type: "done", tasks: [] },
-    ],
+    columns: [{ id: newId(), name: "New stage", type: "stage", tasks: [] }],
   },
 });
 const cleanPlanContent = (content: PlanContent): PlanContent => ({
-  columns: normalizePlanContent(content).columns.map((column) => ({
+  columns: normalizePlanContent(content, false).columns.map((column) => ({
     id: column.id,
     name: column.name,
     type: column.type,
@@ -98,6 +94,7 @@ const cleanPlanContent = (content: PlanContent): PlanContent => ({
       title: task.title,
       description: task.description ?? "",
       priority: task.priority ?? "medium",
+      expectedDays: task.expectedDays,
     })),
   })),
 });
@@ -139,6 +136,7 @@ export default function ProjectPlansLibrary() {
     title: "",
     description: "",
     priority: "medium" as PlanTask["priority"],
+    expectedDays: "",
   });
   const [editorDelete, setEditorDelete] = useState<{
     kind: "task" | "column";
@@ -150,6 +148,7 @@ export default function ProjectPlansLibrary() {
   const [recipient, setRecipient] = useState("");
   const createRequested = useRef(false);
   const editRequestedPlanId = useRef("");
+  const returnToProposal = useRef(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -161,7 +160,7 @@ export default function ProjectPlansLibrary() {
           error: authError,
         },
         rows,
-      ] = await Promise.all([supabase.auth.getUser(), listProjectPlans()]);
+      ] = await Promise.all([supabase.auth.getUser(), listProjectPlans(false)]);
       if (authError || !user)
         throw new Error("Sign in to open your project plans.");
       setUserId(user.id);
@@ -187,7 +186,8 @@ export default function ProjectPlansLibrary() {
     !!currentDialogTask?.title &&
     (taskForm.title !== currentDialogTask.title ||
       taskForm.description !== currentDialogTask.description ||
-      taskForm.priority !== currentDialogTask.priority);
+      taskForm.priority !== currentDialogTask.priority ||
+      taskForm.expectedDays !== (currentDialogTask.expectedDays?.toString() ?? ""));
   const dirty =
     editing &&
     (JSON.stringify(draft) !== JSON.stringify(savedSnapshot) || taskFormDirty);
@@ -223,7 +223,7 @@ export default function ProjectPlansLibrary() {
     const nextDraft = {
       name: plan.name,
       description: plan.description,
-      content: normalizePlanContent(structuredClone(plan.content)),
+      content: normalizePlanContent(structuredClone(plan.content), false),
     };
     setSelected(plan);
     setDraft(nextDraft);
@@ -245,6 +245,7 @@ export default function ProjectPlansLibrary() {
     if (loading || !userId || createRequested.current) return;
     const url = new URL(window.location.href);
     if (url.searchParams.get("create") !== "1") return;
+    returnToProposal.current = url.searchParams.get("returnTo") === "proposal";
     createRequested.current = true;
     url.searchParams.delete("create");
     window.history.replaceState(
@@ -277,6 +278,15 @@ export default function ProjectPlansLibrary() {
       !window.confirm("Discard unsaved changes and leave this plan?")
     )
       return;
+    if (
+      returnToProposal.current &&
+      window.opener &&
+      !window.opener.closed
+    ) {
+      window.opener.focus();
+      window.close();
+      return;
+    }
     setSelected(null);
     setEditing(false);
     setPreviewing(false);
@@ -362,7 +372,12 @@ export default function ProjectPlansLibrary() {
       const { stageId } = JSON.parse(payload) as { stageId: string };
       setDraft((current) => ({
         ...current,
-        content: dropPlanStageBefore(current.content, stageId, targetStageId),
+        content: dropPlanStageBefore(
+          current.content,
+          stageId,
+          targetStageId,
+          false,
+        ),
       }));
     } catch {
       /* Ignore malformed drag payloads. */
@@ -382,7 +397,7 @@ export default function ProjectPlansLibrary() {
       ...column,
       tasks: [...column.tasks, task],
     }));
-    setTaskForm({ title: "", description: "", priority: "medium" });
+    setTaskForm({ title: "", description: "", priority: "medium", expectedDays: "" });
     setTaskDialog({ columnId, taskId: task.id });
   };
   const editTask = (columnId: string, task: PlanTask) => {
@@ -390,6 +405,7 @@ export default function ProjectPlansLibrary() {
       title: task.title,
       description: task.description,
       priority: task.priority,
+      expectedDays: task.expectedDays?.toString() ?? "",
     });
     setTaskDialog({ columnId, taskId: task.id });
   };
@@ -399,9 +415,21 @@ export default function ProjectPlansLibrary() {
       toast.error("Enter a task title to add it to this plan.");
       return;
     }
+    const expectedDays = Number(taskForm.expectedDays);
+    if (
+      !taskForm.expectedDays.trim() ||
+      !Number.isInteger(expectedDays) ||
+      expectedDays < 1 ||
+      expectedDays > 3650
+    ) {
+      toast.error("Enter a whole number of estimated days from 1 to 3650.");
+      return;
+    }
     updateTask(taskDialog.columnId, taskDialog.taskId, {
-      ...taskForm,
       title: taskForm.title.trim(),
+      description: taskForm.description,
+      priority: taskForm.priority,
+      expectedDays,
     });
     setTaskDialog(null);
   };
@@ -424,7 +452,7 @@ export default function ProjectPlansLibrary() {
       tasks: [],
     };
     setDraft((current) => {
-      const columns = normalizePlanContent(current.content).columns;
+      const columns = normalizePlanContent(current.content, false).columns;
       const doneIndex = columns.findIndex((column) => column.type === "done");
       columns.splice(doneIndex < 0 ? columns.length : doneIndex, 0, newStage);
       return { ...current, content: { columns } };
@@ -444,7 +472,7 @@ export default function ProjectPlansLibrary() {
       tasks: source.tasks.map((task) => ({ ...task, id: newId() })),
     };
     setDraft((current) => {
-      const columns = normalizePlanContent(current.content).columns;
+      const columns = normalizePlanContent(current.content, false).columns;
       const sourceIndex = columns.findIndex((column) => column.id === columnId);
       if (sourceIndex < 0) return current;
       columns.splice(
@@ -507,14 +535,26 @@ export default function ProjectPlansLibrary() {
     setBusy(true);
     try {
       const saved = selected
-        ? await saveProjectPlan({ ...selected, ...cleaned }, userId)
-        : await saveProjectPlan(cleaned, userId);
+        ? await saveProjectPlan({ ...selected, ...cleaned }, userId, false)
+        : await saveProjectPlan(cleaned, userId, false);
       setSelected(saved);
       setDraft(cleaned);
       setSavedSnapshot(cleaned);
       setPreviewing(false);
       toast.success("Project plan saved.");
       await refresh();
+      if (
+        returnToProposal.current &&
+        window.opener &&
+        !window.opener.closed
+      ) {
+        window.opener.postMessage(
+          { type: "worksync:project-plan-created" },
+          window.location.origin,
+        );
+        window.opener.focus();
+        window.close();
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not save this plan.");
     } finally {
@@ -530,6 +570,7 @@ export default function ProjectPlansLibrary() {
           content: cleanPlanContent(structuredClone(plan.content)),
         },
         userId,
+        false,
       );
       toast.success("Independent copy created.");
       await refresh();
@@ -983,6 +1024,11 @@ export default function ProjectPlansLibrary() {
                                 {task.priority} priority suggestion
                               </span>
                             )}
+                            {task.expectedDays != null && (
+                              <span className="mt-2 block text-xs text-muted-foreground">
+                                Estimated {task.expectedDays} {task.expectedDays === 1 ? "day" : "days"}
+                              </span>
+                            )}
                           </div>
                           {editing && !previewing && (
                             <div className="relative z-20">
@@ -1115,6 +1161,26 @@ export default function ProjectPlansLibrary() {
                   }))
                 }
               />
+              <label className="grid gap-1 text-sm">
+                Estimated days
+                <Input
+                  type="number"
+                  min={1}
+                  max={3650}
+                  step={1}
+                  inputMode="numeric"
+                  required
+                  onKeyDown={(event) => {
+                    if (event.key === "." || event.key === ",") event.preventDefault();
+                  }}
+                  aria-label="Estimated days"
+                  placeholder="e.g. 3"
+                  value={taskForm.expectedDays}
+                  onChange={(event) =>
+                    setTaskForm((current) => ({ ...current, expectedDays: event.target.value }))
+                  }
+                />
+              </label>
               <label className="grid gap-1 text-sm">
                 Priority suggestion{" "}
                 <select
@@ -1364,7 +1430,7 @@ export default function ProjectPlansLibrary() {
                                 plan.name,
                               );
                               if (name?.trim())
-                                void saveProjectPlan({ ...plan, name }, userId)
+                                void saveProjectPlan({ ...plan, name }, userId, false)
                                   .then(refresh)
                                   .catch(() => toast.error("Rename failed."));
                             }}

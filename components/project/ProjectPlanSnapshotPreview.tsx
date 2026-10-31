@@ -97,6 +97,11 @@ export function ProjectPlanSnapshotPreview({
                           <Badge variant="outline" className="mt-2 capitalize">
                             {task.priority} priority suggestion
                           </Badge>
+                          {task.expectedDays != null && (
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              Estimated {task.expectedDays} {task.expectedDays === 1 ? "day" : "days"}
+                            </p>
+                          )}
                         </article>
                       ))}
                     </div>

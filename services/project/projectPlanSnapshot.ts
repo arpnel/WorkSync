@@ -5,12 +5,13 @@ const planTaskSchema = z.object({
   title: z.string().trim().min(1).max(160),
   description: z.string().max(1000),
   priority: z.enum(["low", "medium", "high"]),
+  expectedDays: z.number().int().min(1).max(3650).optional(),
 });
 
 const planColumnSchema = z.object({
   id: z.string().min(1).max(80),
   name: z.string().trim().min(1).max(80),
-  type: z.enum(["stage", "done"]),
+  type: z.literal("stage"),
   tasks: z.array(planTaskSchema).max(25),
   pinned: z.boolean().optional(),
 });
@@ -20,19 +21,11 @@ export const projectPlanSnapshotSchema = z
     name: z.string().trim().min(1).max(120),
     description: z.string().max(1500),
     content: z.object({
-      columns: z.array(planColumnSchema).min(1).max(21),
+      columns: z.array(planColumnSchema).min(1).max(20),
     }),
   })
   .superRefine((plan, context) => {
     const columns = plan.content.columns;
-    const doneColumns = columns.filter((column) => column.type === "done");
-    if (doneColumns.length !== 1 || columns.at(-1)?.type !== "done") {
-      context.addIssue({
-        code: "custom",
-        path: ["content", "columns"],
-        message: "The final Done stage must be the last stage.",
-      });
-    }
     const taskCount = columns.reduce(
       (total, column) => total + column.tasks.length,
       0,

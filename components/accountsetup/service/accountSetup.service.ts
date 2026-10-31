@@ -52,7 +52,7 @@ export async function loadAccountSetup(
   const { data: freelancer, error: roleError } = await supabase
     .from("freelancer_profiles")
     .select(
-      "freelancer_id,headline,years_of_experience,linkedin_url,github_url,resume_url,portfolio_sample_urls,certification_urls",
+      "freelancer_id,headline,years_of_experience,linkedin_url,github_url,portfolio_website,resume_url,portfolio_sample_urls,certification_urls",
     )
     .eq("user_id", user.id)
     .maybeSingle();
@@ -92,6 +92,7 @@ export async function loadAccountSetup(
       yearsOfExperience: freelancer.years_of_experience ?? 0,
       linkedIn: freelancer.linkedin_url ?? "",
       github: freelancer.github_url ?? "",
+      portfolioWebsite: freelancer.portfolio_website ?? "",
       existingResumeUrl: freelancer.resume_url ?? "",
       existingPortfolioSamples: freelancer.portfolio_sample_urls ?? [],
       existingCertifications: freelancer.certification_urls ?? [],
@@ -282,6 +283,7 @@ export async function submitFreelancerSetup(
     years_of_experience: values.yearsOfExperience,
     linkedin_url: values.linkedIn || null,
     github_url: values.github || null,
+    portfolio_website: values.portfolioWebsite || null,
     ...(resume ? { resume_url: resume } : {}),
     portfolio_sample_urls: [
       ...new Set([...(existing?.portfolio_sample_urls ?? []), ...samples]),

@@ -47,7 +47,7 @@ async function loadInput(
       .select(applicationFields)
       .eq("application_id", applicationId)
       .maybeSingle();
-    application = fallback.data;
+    application = fallback.data ? { ...fallback.data, proposed_plan: null } : null;
     applicationError = fallback.error;
   }
   if (applicationError)

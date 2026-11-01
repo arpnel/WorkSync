@@ -278,6 +278,9 @@ export function JobAgreementWizard({
       title: task.title,
       description: task.description,
     }))) ?? [];
+  const allMilestoneTasksAssigned = milestoneTasks.length > 0 && milestoneTasks.every((task) =>
+    milestones.some((milestone) => milestone.title === task.title && milestone.description === task.description),
+  );
   const milestoneFingerprint = JSON.stringify(milestoneAgreementStatus?.milestones ?? []);
   useEffect(() => {
     if (!milestonePlanDirty && milestoneAgreementStatus) setMilestones(milestoneAgreementStatus.milestones);

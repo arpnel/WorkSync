@@ -18,6 +18,7 @@ export interface ApplicantScreeningResponse {
 
 export async function requestApplicantScreening(
   applicationId: string,
+  options: { force?: boolean } = {},
 ): Promise<ApplicantScreeningResponse> {
   const {
     data: { session },
@@ -27,7 +28,11 @@ export async function requestApplicantScreening(
     `/api/applications/${encodeURIComponent(applicationId)}/screening`,
     {
       method: "POST",
-      headers: { Authorization: `Bearer ${session.access_token}` },
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+        ...(options.force ? { "Content-Type": "application/json" } : {}),
+      },
+      ...(options.force ? { body: JSON.stringify({ force: true }) } : {}),
     },
   );
   const data = await response.json().catch(() => null);

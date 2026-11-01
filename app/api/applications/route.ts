@@ -11,7 +11,7 @@ const inputSchema = z
   .object({
     jobId: z.string().uuid(),
     proposal: z.string().trim().min(1).max(10000),
-    price: z.number().finite().positive(),
+    price: z.number().finite().positive().max(100_000),
     days: z.number().int().positive().max(2147483647),
     proposedPlan: projectPlanSnapshotSchema.nullable().optional(),
   })

@@ -121,11 +121,16 @@ export function ProjectPlanProposalAttachment({
     if (!selectedPlan) return;
     onChange({
       name: selectedPlan.name,
-      description: selectedPlan.description,
+      description: selectedPlan.description ?? "",
       content: {
+        // Keep the terminal Done column: the application RPC requires it last.
         columns: selectedPlan.content.columns.map((column) => ({
           ...column,
-          tasks: column.tasks.map((task) => ({ ...task })),
+          tasks: column.tasks.map((task) => ({
+            ...task,
+            // Legacy saved plans can store an unset optional estimate as null.
+            expectedDays: task.expectedDays ?? undefined,
+          })),
         })),
       },
     });

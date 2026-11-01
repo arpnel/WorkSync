@@ -3,6 +3,7 @@ import ContentSkeleton from "@/components/shared/ContentSkeleton";
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -79,13 +80,22 @@ export function RequestList({
   onServiceChanged,
   onRefreshRequests,
 }: Props) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [selectedRequest, setSelected] = React.useState<ProjectRequest | null>(
     null,
   );
   const [planPreview, setPlanPreview] = React.useState<
     ProjectRequest["proposedPlan"]
   >(null);
-  const [view, setView] = React.useState<"received" | "sent">("received");
+  const view = searchParams.get("view") === "sent" ? "sent" : "received";
+  const setView = (nextView: "received" | "sent") => {
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.set("view", nextView);
+    router.replace(`/home/projects?${nextParams.toString()}`, {
+      scroll: false,
+    });
+  };
   const [sortByScore, setSortByScore] = React.useState(false);
   const [responseErrors, setResponseErrors] = React.useState<
     Record<string, string>
@@ -125,6 +135,7 @@ export function RequestList({
   const selectedIsScreening = selected?.applicationId === screeningPendingId;
   const screeningPreparing =
     assessmentState === "preparing" || selectedIsScreening;
+
   React.useEffect(() => {
     if (
       !selectedApplicationId ||
@@ -591,7 +602,9 @@ export function RequestList({
               </div>
             </div>
             <div className="space-y-3 rounded-lg border p-4">
-              <h3 className="font-semibold">AI screening</h3>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-semibold">AI screening</h3>
+              </div>
               {!selected.screening && (
                 <p className="text-sm text-muted-foreground">
                   {screeningPreparing
@@ -619,11 +632,6 @@ export function RequestList({
                   {screeningErrors[selected.applicationId]}
                 </p>
               )}
-              <p className="text-xs text-muted-foreground">
-                Evidence match score, not a probability of success. Based on
-                listed skills, profile text and the proposal; portfolios are not
-                assessed. Review the application before deciding.
-              </p>
               {selected.screening?.screenedAt && (
                 <p className="text-xs text-muted-foreground">
                   Screened{" "}
@@ -640,22 +648,22 @@ export function RequestList({
                       Strengths
                     </p>
                     {asItems(selected.screening.strengths).map((item) => (
-                      <p key={item} className="mt-1 text-sm">
+                      <p key={item} className="ml-2 mt-1 text-sm">
                         • {item}
                       </p>
                     ))}
                   </div>
-                  <div>
+                  <div className="border-t pt-3">
                     <p className="text-xs font-medium uppercase text-muted-foreground">
                       Weaknesses
                     </p>
                     {asItems(selected.screening.weaknesses).map((item) => (
-                      <p key={item} className="mt-1 text-sm">
+                      <p key={item} className="ml-2 mt-1 text-sm">
                         • {item}
                       </p>
                     ))}
                   </div>
-                  <div>
+                  <div className="border-t pt-3">
                     <p className="text-xs font-medium uppercase text-muted-foreground">
                       Recommendation
                     </p>

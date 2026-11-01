@@ -471,11 +471,15 @@ export default function MarketplaceJobDetails({
                       <Input
                         type="number"
                         min="0.01"
+                        max="100000"
                         step="0.01"
                         required
                         value={price}
                         onChange={(event) => setPrice(event.target.value)}
                       />
+                      <span className="text-xs text-muted-foreground">
+                        Maximum: PHP 100,000
+                      </span>
                     </label>
                     <label className="text-sm">
                       Delivery days
@@ -629,11 +633,15 @@ export default function MarketplaceJobDetails({
                   <Input
                     type="number"
                     min="0.01"
+                    max="100000"
                     step="0.01"
                     required
                     value={price}
                     onChange={(e) => setPrice(e.target.value)}
                   />
+                  <span className="text-xs text-muted-foreground">
+                    Maximum: PHP 100,000
+                  </span>
                 </label>
                 <label className="text-sm">
                   Delivery days

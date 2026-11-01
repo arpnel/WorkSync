@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 
 import { CalendarDays, RotateCcw, Wallet } from "lucide-react";
@@ -20,6 +20,12 @@ import { JobAgreementWizard } from "@/components/project/JobAgreementWizard";
 import { deleteContractCreationDraft } from "@/services/project/contractCreationDraftService";
 import { saveContractVersionForAgreement } from "@/services/project/projectWorkspaceService";
 import { sendConversationMessage } from "@/services/message/messageService";
+import {
+  agreeToJobBasicTerms,
+  getJobBasicTermsAgreement,
+  type JobBasicTerms,
+  type JobBasicTermsAgreement,
+} from "@/services/project/jobBasicTermsAgreementService";
 
 export function StandardProjectWorkspace({
   serviceOrderId,
@@ -30,6 +36,12 @@ export function StandardProjectWorkspace({
 }) {
   const router = useRouter();
   const [showExistingAgreement, setShowExistingAgreement] = useState(initialAgreementView);
+  const [basicAgreementLoading, setBasicAgreementLoading] = useState(false);
+  const [basicAgreement, setBasicAgreement] = useState<(JobBasicTermsAgreement & {
+    currentParty: "client" | "freelancer";
+    updating: boolean;
+    error?: string;
+  }) | null>(null);
   const {
     workspace,
     refresh,
@@ -47,6 +59,63 @@ export function StandardProjectWorkspace({
     respondToAgreementItem,
     saveAgreementItem,
   } = useProjectWorkspace(serviceOrderId);
+  const basicTermsApplicationId = workspace?.applicationId ?? null;
+  const basicTermsCurrentParty = workspace?.currentParty;
+
+  useEffect(() => {
+    const applicationId = basicTermsApplicationId;
+    if (!applicationId || !basicTermsCurrentParty) {
+      setBasicAgreement(null);
+      setBasicAgreementLoading(false);
+      return;
+    }
+    let active = true;
+    const refresh = async () => {
+      try {
+        const saved = await getJobBasicTermsAgreement(applicationId);
+        if (active) setBasicAgreement({
+          ...saved,
+          currentParty: basicTermsCurrentParty,
+          updating: false,
+        });
+      } catch (cause) {
+        if (active) setBasicAgreement({
+          terms: null,
+          clientAgreed: false,
+          freelancerAgreed: false,
+          currentParty: basicTermsCurrentParty,
+          updating: false,
+          error: cause instanceof Error ? cause.message : "Basic terms agreement could not be loaded.",
+        });
+      } finally {
+        if (active) setBasicAgreementLoading(false);
+      }
+    };
+    setBasicAgreementLoading(true);
+    void refresh();
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refresh();
+    }, 10000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [basicTermsApplicationId, basicTermsCurrentParty]);
+
+  const agreeToBasics = async (terms: JobBasicTerms) => {
+    if (!workspace?.applicationId) throw new Error("Application details are unavailable.");
+    setBasicAgreement((current) => current ? { ...current, updating: true } : current);
+    try {
+      const saved = await agreeToJobBasicTerms(workspace.applicationId, terms);
+      setBasicAgreement({ ...saved, currentParty: workspace.currentParty, updating: false });
+      return saved;
+    } catch (cause) {
+      setBasicAgreement((current) => current ? { ...current, updating: false } : current);
+      throw cause;
+    }
+  };
 
   if (loading) {
     return <ContentSkeleton label="Loading project" variant="workspace" />;
@@ -92,7 +161,18 @@ export function StandardProjectWorkspace({
     pendingContractStatuses.includes(workspace.contractStatus ?? "") &&
     !(workspace.clientSignedAt && workspace.freelancerSignedAt),
   );
-  if (isPendingAgreement && !showExistingAgreement) {
+  const today = new Date();
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const hasPastMilestoneDate = workspace.milestones.some(
+    (milestone) => milestone.dueDate && milestone.dueDate.slice(0, 10) < todayKey,
+  );
+  if (isPendingAgreement && workspace.applicationId && basicAgreementLoading) {
+    return <ContentSkeleton label="Loading agreement approvals" variant="workspace" />;
+  }
+  const bothBasicPartiesAgreed = Boolean(
+    basicAgreement?.clientAgreed && basicAgreement?.freelancerAgreed,
+  );
+  if (isPendingAgreement && (!showExistingAgreement || (workspace.applicationId && !bothBasicPartiesAgreed))) {
     return <JobAgreementWizard
       draftKey={`worksync:contract-draft:${workspace.currentUserId}:${workspace.applicationId ?? workspace.contractId ?? workspace.orderId}`}
       draftUserId={workspace.currentUserId}
@@ -108,6 +188,28 @@ export function StandardProjectWorkspace({
         planSource: workspace.proposedPlan ? "Submitted application plan" : "No plan selected",
       }}
       onBack={() => router.push("/home/projects")}
+      agreementStatus={{
+        currentParty: workspace.currentParty,
+        clientAgreed: Boolean(workspace.clientSignedAt),
+        freelancerAgreed: Boolean(workspace.freelancerSignedAt),
+        isNew: false,
+        hasPastMilestoneDate,
+        updating: updatingAgreement,
+      }}
+      basicAgreementStatus={workspace.applicationId ? basicAgreement ?? {
+        currentParty: workspace.currentParty,
+        clientAgreed: false,
+        freelancerAgreed: false,
+        terms: null,
+        updating: basicAgreementLoading,
+        error: "Refresh the project to load agreement status.",
+      } : undefined}
+      onAgreeBasics={workspace.applicationId ? agreeToBasics : undefined}
+      onAgree={async () => {
+        const saved = await respondToAgreement(true);
+        if (saved) setShowExistingAgreement(true);
+        return saved;
+      }}
       conversation={{
         conversationId: workspace.conversationId,
         messages: workspace.messages,

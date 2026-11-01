@@ -252,7 +252,9 @@ export function NotificationDetailDialog({
               .maybeSingle();
         if (appResult.error) throw appResult.error;
         const budget = job.data.budget_max ?? job.data.budget_min;
-        let href = "/home/marketplace/jobs/" + encodeURIComponent(id);
+        let href = isDeclined
+          ? "/home/marketplace/jobs/" + encodeURIComponent(id)
+          : "/home/projects?status=Request&view=received";
         let action = isDeclined ? "Browse projects" : "View application";
         if (isSelectedApplication) {
           const conversation = await supabase

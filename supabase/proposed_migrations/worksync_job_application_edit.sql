@@ -66,7 +66,7 @@ begin
     raise exception 'This application can no longer be edited' using errcode='22023';
   end if;
   if coalesce(length(trim(p_proposal)), 0) not between 1 and 10000
-     or p_proposed_price is null or p_proposed_price <= 0
+     or p_proposed_price is null or p_proposed_price <= 0 or p_proposed_price > 100000
      or p_proposed_price::text in ('NaN', 'Infinity', '-Infinity')
      or p_estimated_days is null or p_estimated_days < 1 then
     raise exception 'Enter a valid proposal, price and delivery time' using errcode='22023';

@@ -1,5 +1,5 @@
 import "server-only";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { evaluateApplicant, screeningModel } from "@/lib/ai/gemini";
 import {
@@ -7,6 +7,7 @@ import {
   RUBRIC_VERSION,
   screeningLabel,
 } from "@/lib/ai/screening";
+import { projectPlanSnapshotSchema } from "@/services/project/projectPlanSnapshot";
 
 export class ScreeningError extends Error {
   constructor(
@@ -26,13 +27,29 @@ async function loadInput(
   userId: string,
   applicationId: string,
 ) {
-  const { data: application, error: applicationError } = await db
+  const applicationFields =
+    "application_id,job_id,freelancer_id,status,proposal,proposed_price,estimated_days,created_at,updated_at,screening_id";
+  let { data: application, error: applicationError } = await db
     .from("job_applications")
     .select(
-      "application_id,job_id,freelancer_id,status,proposal,proposed_price,estimated_days,created_at,updated_at,screening_id",
+      `${applicationFields},proposed_plan`,
     )
     .eq("application_id", applicationId)
     .maybeSingle();
+  if (
+    applicationError &&
+    (applicationError.code === "PGRST204" ||
+      applicationError.code === "42703" ||
+      applicationError.message.includes("proposed_plan"))
+  ) {
+    const fallback = await db
+      .from("job_applications")
+      .select(applicationFields)
+      .eq("application_id", applicationId)
+      .maybeSingle();
+    application = fallback.data;
+    applicationError = fallback.error;
+  }
   if (applicationError)
     throw new ScreeningError("Applicant data is unavailable.");
   if (!application) throw new ScreeningError("Application unavailable.", 404);
@@ -60,25 +77,113 @@ async function loadInput(
       "This application is no longer open for assessment.",
       409,
     );
-  const [freelancer, required, offered, category] = await Promise.all([
+  const [freelancerRows, required, offered, category] = await Promise.all([
     db
       .from("freelancer_profiles")
       .select("user_id,headline,years_of_experience,employment_preference")
       .eq("freelancer_id", application.freelancer_id)
-      .single(),
+      .limit(2),
     db.from("job_skills").select("skill_id").eq("job_id", job.job_id),
     db
       .from("freelancer_skills")
       .select("skill_id")
       .eq("freelancer_id", application.freelancer_id),
-    db
-      .from("job_categories")
-      .select("name")
-      .eq("id", job.category_id)
-      .maybeSingle(),
+    job.category_id
+      ? db
+          .from("job_categories")
+          .select("name")
+          .eq("id", job.category_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
   ]);
-  if ([freelancer, required, offered, category].some((r) => r.error))
-    throw new ScreeningError("Professional information could not be loaded.");
+  let freelancerData =
+    freelancerRows.data?.length === 1 ? freelancerRows.data[0] : null;
+  if (!freelancerRows.error && (freelancerRows.data?.length ?? 0) === 0) {
+    const secret = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!secret)
+      throw new ScreeningError(
+        "The applicant profile is not visible to this job owner, and server-side screening access is not configured.",
+        503,
+        "SCREENING_PROFILE_ACCESS_NOT_CONFIGURED",
+      );
+    // Application access and job ownership were verified above under the
+    // caller's session. Read only the linked applicant's screening fields.
+    const privileged = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      secret,
+      { auth: { persistSession: false, autoRefreshToken: false } },
+    );
+    const privilegedProfile = await privileged
+      .from("freelancer_profiles")
+      .select("user_id,headline,years_of_experience,employment_preference")
+      .eq("freelancer_id", application.freelancer_id)
+      .limit(2);
+    if (privilegedProfile.error) {
+      console.error("Applicant screening privileged profile lookup failed", {
+        code: privilegedProfile.error.code,
+      });
+      throw new ScreeningError(
+        `Server-side applicant profile lookup failed (${privilegedProfile.error.code || "unknown"}).`,
+        503,
+        "SCREENING_PROFILE_LOOKUP_FAILED",
+      );
+    }
+    const privilegedRows = privilegedProfile.data ?? [];
+    if (privilegedRows.length === 0) {
+      console.error("Applicant screening profile linkage failed", {
+        reason: "no_profile_row_for_application_freelancer_id",
+      });
+      throw new ScreeningError(
+        "No freelancer_profiles row matches this application's freelancer_id. Check the application-to-profile linkage.",
+        503,
+        "FREELANCER_PROFILE_NOT_FOUND",
+      );
+    }
+    if (privilegedRows.length > 1) {
+      console.error("Applicant screening profile linkage failed", {
+        reason: "multiple_profiles_for_application_freelancer_id",
+      });
+      throw new ScreeningError(
+        "Multiple freelancer_profiles rows match this application's freelancer_id. Check the profile key and application linkage.",
+        503,
+        "FREELANCER_PROFILE_AMBIGUOUS",
+      );
+    }
+    freelancerData = privilegedRows[0];
+    console.info("Applicant screening used authorized profile access fallback", {
+      reason: "profile_hidden_from_job_owner_session",
+    });
+  }
+  if (!freelancerRows.error && (freelancerRows.data?.length ?? 0) > 1) {
+    console.error("Applicant screening profile linkage failed", {
+      reason: "multiple_profiles_for_application_freelancer_id",
+    });
+    throw new ScreeningError(
+      "Multiple freelancer profiles match this application's freelancer_id. Check the freelancer_profiles key and application linkage.",
+      503,
+      "FREELANCER_PROFILE_AMBIGUOUS",
+    );
+  }
+  const professionalDataErrors = [
+    { table: "freelancer_profiles", error: freelancerRows.error },
+    { table: "job_skills", error: required.error },
+    { table: "freelancer_skills", error: offered.error },
+    { table: "job_categories", error: category.error },
+  ].filter(({ error }) => Boolean(error));
+  if (professionalDataErrors.length) {
+    const failedLookups = professionalDataErrors.map(({ table, error }) => ({
+      table,
+      code: error?.code || "unknown",
+    }));
+    console.error("Applicant screening professional data lookup failed", {
+      errors: failedLookups,
+    });
+    throw new ScreeningError(
+      `Professional information lookup failed (${failedLookups
+        .map(({ table, code }) => `${table}: ${code}`)
+        .join(", ")}).`,
+    );
+  }
   const ids = [
     ...new Set(
       [...(required.data || []), ...(offered.data || [])].map(
@@ -97,10 +202,29 @@ async function loadInput(
       .filter(Boolean)
       .sort();
   const text = redactScreeningText;
+  const savedPlan = projectPlanSnapshotSchema.safeParse(
+    application.proposed_plan,
+  );
+  const proposedPlan = savedPlan.success
+    ? {
+        name: text(savedPlan.data.name, 120),
+        description: text(savedPlan.data.description, 2000),
+        stages: savedPlan.data.content.columns.map((column) => ({
+          name: text(column.name, 80),
+          type: column.type,
+          tasks: column.tasks.map((task) => ({
+            title: text(task.title, 160),
+            description: text(task.description, 1000),
+            priority: task.priority,
+            expectedDays: task.expectedDays,
+          })),
+        })),
+      }
+    : null;
   let assessment: Record<string, unknown> | null = null;
-  if (freelancer.data?.user_id && job.category_id) {
+  if (freelancerData?.user_id && job.category_id) {
     const evidence = await db.rpc("worksync_skill_assessment_evidence", {
-      p_user: freelancer.data.user_id,
+      p_user: freelancerData.user_id,
       p_category: job.category_id,
     });
     // Deployment may precede the prepared migration; keep existing screening usable.
@@ -139,24 +263,25 @@ async function loadInput(
       description: text(job.description),
       category: text(category.data?.name, 120),
       skills: skills(required.data || []),
-      budgetMin: job.budget_min,
-      budgetMax: job.budget_max,
+      budgetMinPhp: job.budget_min,
+      budgetMaxPhp: job.budget_max,
       pricingType: job.pricing_type,
       deadline: job.deadline,
       experienceLevel: text(job.experience_level, 120),
     },
     application: {
       proposal: text(application.proposal),
-      price: application.proposed_price,
+      proposedPricePhp: application.proposed_price,
       estimatedDays: application.estimated_days,
       submittedAt: application.created_at,
+      proposedPlan,
     },
     freelancer: {
       assessment,
-      headline: text(freelancer.data?.headline, 300),
+      headline: text(freelancerData?.headline, 300),
       skills: skills(offered.data || []),
-      yearsOfExperience: freelancer.data?.years_of_experience,
-      employmentPreference: text(freelancer.data?.employment_preference, 120),
+      yearsOfExperience: freelancerData?.years_of_experience,
+      employmentPreference: text(freelancerData?.employment_preference, 120),
     },
   };
   const hash = createHash("sha256")
@@ -189,6 +314,7 @@ export async function screenApplicant(
   userId: string,
   applicationId: string,
   rateLimitUserId = userId,
+  forceRescreen = false,
 ) {
   // Authorize each request, including requests joining an in-flight operation.
   const snapshot = await loadInput(db, userId, applicationId);
@@ -196,7 +322,7 @@ export async function screenApplicant(
   const existing = running.get(key);
   if (existing) return existing;
   const execute = async () => {
-    if (snapshot.application.screening_id) {
+    if (!forceRescreen && snapshot.application.screening_id) {
       const { data: saved, error } = await db
         .from("screening_results")
         .select("*")
@@ -293,6 +419,7 @@ export async function screenApplicant(
           version: RUBRIC_VERSION,
           inputHash: snapshot.hash,
           label: evaluation.result,
+          ...(forceRescreen ? { rescreenId: randomUUID() } : {}),
         }),
         p_strengths: JSON.stringify(evaluation.strengths),
         p_weaknesses: JSON.stringify(evaluation.weaknesses),

@@ -14,6 +14,7 @@ import { ProjectChatPanel } from "@/components/project/ProjectChatPanel";
 import { ProjectPlanSnapshotPreview } from "@/components/project/ProjectPlanSnapshotPreview";
 import type { ProjectPlanSnapshotData } from "@/services/project/projectPlanSnapshot";
 import type { ContractVersionAgreementInput } from "@/services/project/projectWorkspaceService";
+import type { JobBasicTerms } from "@/services/project/jobBasicTermsAgreementService";
 import {
   loadContractCreationDraft,
   saveContractCreationDraft,
@@ -166,6 +167,11 @@ export function JobAgreementWizard({
   onOpenExistingAgreement,
   busy = false,
   conversation,
+  conversationError,
+  agreementStatus,
+  basicAgreementStatus,
+  onAgreeBasics,
+  onAgree,
   draftKey,
   draftUserId,
 }: {
@@ -178,16 +184,43 @@ export function JobAgreementWizard({
   ) => void | Promise<void>;
   busy?: boolean;
   conversation?: Omit<Parameters<typeof ProjectChatPanel>[0], "className">;
+  conversationError?: string;
+  agreementStatus?: {
+    currentParty: "client" | "freelancer";
+    clientAgreed: boolean;
+    freelancerAgreed: boolean;
+    isNew: boolean;
+    hasPastMilestoneDate: boolean;
+    updating: boolean;
+  };
+  basicAgreementStatus?: {
+    currentParty: "client" | "freelancer";
+    clientAgreed: boolean;
+    freelancerAgreed: boolean;
+    terms: JobBasicTerms | null;
+    updating: boolean;
+    error?: string;
+  };
+  onAgreeBasics?: (terms: JobBasicTerms) => Promise<{
+    terms: JobBasicTerms | null;
+    clientAgreed: boolean;
+    freelancerAgreed: boolean;
+  }>;
+  onAgree?: (
+    proposal: ContractVersionAgreementInput,
+    requestId: string,
+    contractDocument?: File,
+  ) => Promise<boolean>;
   draftKey: string;
   draftUserId: string;
 }) {
   const [step, setStep] = useState(0);
-  const [title, setTitle] = useState(initial.title);
-  const [description, setDescription] = useState(initial.description);
-  const [budget, setBudget] = useState(String(initial.budget ?? ""));
-  const [revisions, setRevisions] = useState(String(initial.revisions ?? 0));
-  const [startDate, setStartDate] = useState(() => initial.startDate?.slice(0, 10) || todayDate());
-  const [deadline, setDeadline] = useState(() => initial.deadline?.slice(0, 10) || suggestedDeadline(initial.estimatedDays, initial.postingSubmittedAt));
+  const [title, setTitle] = useState(basicAgreementStatus?.terms?.projectTitle ?? initial.title);
+  const [description, setDescription] = useState(basicAgreementStatus?.terms?.description ?? initial.description);
+  const [budget, setBudget] = useState(String(basicAgreementStatus?.terms?.budget ?? initial.budget ?? ""));
+  const [revisions, setRevisions] = useState(String(basicAgreementStatus?.terms?.revisionsCount ?? initial.revisions ?? 0));
+  const [startDate, setStartDate] = useState(() => basicAgreementStatus?.terms?.startDate || initial.startDate?.slice(0, 10) || todayDate());
+  const [deadline, setDeadline] = useState(() => basicAgreementStatus?.terms?.deadline || initial.deadline?.slice(0, 10) || suggestedDeadline(initial.estimatedDays, initial.postingSubmittedAt));
   const [contractDocument, setContractDocument] = useState<File | null>(null);
   const [documentError, setDocumentError] = useState("");
   const [draggingDocument, setDraggingDocument] = useState(false);
@@ -200,6 +233,34 @@ export function JobAgreementWizard({
     description: initial.description,
     content: { ...initial.plan.content, columns: initial.plan.content.columns.map((column) => ({ ...column, tasks: column.tasks.map((task) => ({ ...task })) })) },
   } : null);
+  const agreementBaselineRef = useRef<string | null>(null);
+  const agreementDraftFingerprint = JSON.stringify({ title, description, budget, revisions, startDate, deadline, plan });
+  if (agreementBaselineRef.current === null) {
+    agreementBaselineRef.current = agreementDraftFingerprint;
+  }
+  const agreementDraftChanged = agreementDraftFingerprint !== agreementBaselineRef.current;
+  const basicTerms: JobBasicTerms = {
+    projectTitle: title.trim(),
+    description: description.trim(),
+    budget: Number(budget),
+    revisionsCount: Number(revisions),
+    startDate,
+    deadline,
+  };
+  const basicTermsMatch = Boolean(
+    basicAgreementStatus?.terms &&
+    JSON.stringify(basicAgreementStatus.terms) === JSON.stringify(basicTerms),
+  );
+  const clientBasicAgreed = basicTermsMatch && basicAgreementStatus?.clientAgreed === true;
+  const freelancerBasicAgreed = basicTermsMatch && basicAgreementStatus?.freelancerAgreed === true;
+  const bothBasicTermsAgreed = clientBasicAgreed && freelancerBasicAgreed;
+  const basicAgreementAtMountRef = useRef(basicAgreementStatus);
+  const bothBasicTermsAgreedAtMountRef = useRef(bothBasicTermsAgreed);
+  const currentPartyBasicAgreed = basicAgreementStatus?.currentParty === "client"
+    ? clientBasicAgreed
+    : freelancerBasicAgreed;
+  const serverBasicTermsFingerprint = JSON.stringify(basicAgreementStatus?.terms ?? null);
+  const serverBasicTermsFingerprintRef = useRef(serverBasicTermsFingerprint);
   const [editingPlan, setEditingPlan] = useState(false);
   const [conversationOpen, setConversationOpen] = useState(true);
   const [finalConfirmationOpen, setFinalConfirmationOpen] = useState(false);
@@ -234,13 +295,15 @@ export function JobAgreementWizard({
           setNotice("A saved draft could not be read. Your current application details were kept.");
           return;
         }
-        setStep(draft.step);
-        setTitle(draft.title);
-        setDescription(draft.description);
-        setBudget(draft.budget);
-        setRevisions(draft.revisions);
-        setStartDate(draft.startDate);
-        setDeadline(draft.deadline);
+        setStep(basicAgreementAtMountRef.current && !bothBasicTermsAgreedAtMountRef.current ? 0 : draft.step);
+        if (!basicAgreementAtMountRef.current?.terms) {
+          setTitle(draft.title);
+          setDescription(draft.description);
+          setBudget(draft.budget);
+          setRevisions(draft.revisions);
+          setStartDate(draft.startDate);
+          setDeadline(draft.deadline);
+        }
         setPlan(draft.plan);
         versionRequestIdRef.current = draft.versionRequestId;
         versionRequestFingerprintRef.current = draft.versionRequestFingerprint;
@@ -257,6 +320,20 @@ export function JobAgreementWizard({
       });
     return () => { current = false; };
   }, [draftKey, draftUserId]);
+
+  useEffect(() => {
+    if (serverBasicTermsFingerprintRef.current === serverBasicTermsFingerprint) return;
+    serverBasicTermsFingerprintRef.current = serverBasicTermsFingerprint;
+    const terms = basicAgreementStatus?.terms;
+    if (!terms) return;
+    setTitle(terms.projectTitle);
+    setDescription(terms.description);
+    setBudget(String(terms.budget));
+    setRevisions(String(terms.revisionsCount));
+    setStartDate(terms.startDate);
+    setDeadline(terms.deadline);
+    setPlan((current) => current ? { ...current, name: terms.projectTitle, description: terms.description } : current);
+  }, [basicAgreementStatus?.terms, serverBasicTermsFingerprint]);
 
   function validateDetails() {
     if (!title.trim()) return "Enter a project title.";
@@ -303,7 +380,7 @@ export function JobAgreementWizard({
     }
   }
 
-  async function openAgreementFlow(): Promise<boolean> {
+  async function openAgreementFlow(agree = false): Promise<boolean> {
     setError("");
     const validation = validateDetails();
     if (validation) {
@@ -343,11 +420,48 @@ export function JobAgreementWizard({
       if (!(await saveDraftNotice(requestId, fingerprint))) {
         throw new Error("The draft must be saved before its terms can be sent for signature.");
       }
-      await onOpenExistingAgreement(proposal, requestId, contractDocument ?? undefined);
+      if (agree) {
+        if (!onAgree || !(await onAgree(proposal, requestId, contractDocument ?? undefined)))
+          throw new Error("Your agreement could not be recorded. Please try again.");
+      } else {
+        await onOpenExistingAgreement(proposal, requestId, contractDocument ?? undefined);
+      }
       return true;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to send the contract document.");
       return false;
+    } finally {
+      setOpeningAgreement(false);
+    }
+  }
+
+  async function agreeToContract(): Promise<boolean> {
+    if (!onAgree || agreementDraftChanged) return false;
+    return openAgreementFlow(true);
+  }
+
+  async function agreeToBasicTerms(): Promise<void> {
+    if (!onAgreeBasics || !basicAgreementStatus) return;
+    const validation = validateDetails();
+    if (validation) {
+      setError(validation);
+      return;
+    }
+    setError("");
+    setNotice("");
+    setOpeningAgreement(true);
+    try {
+      const result = await onAgreeBasics(basicTerms);
+      if (result.terms) {
+        setTitle(result.terms.projectTitle);
+        setDescription(result.terms.description);
+        setBudget(String(result.terms.budget));
+        setRevisions(String(result.terms.revisionsCount));
+        setStartDate(result.terms.startDate);
+        setDeadline(result.terms.deadline);
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to record agreement to the basic terms.");
     } finally {
       setOpeningAgreement(false);
     }
@@ -424,24 +538,24 @@ export function JobAgreementWizard({
 
     <ol aria-label="Contract creation progress" className="grid grid-cols-3 gap-2 sm:gap-5">{stepLabels.map((label, index) => <li key={label} aria-current={step === index ? "step" : undefined} className={`border-t-2 pt-3 ${index <= step ? "border-primary" : "border-border"}`}><div className="flex items-center gap-2"><span className={`flex size-7 shrink-0 items-center justify-center rounded-full text-sm ${index < step ? "bg-primary text-primary-foreground" : index === step ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>{index < step ? <Check className="size-4"/> : index + 1}</span><span className={`text-xs font-medium sm:text-sm ${index === step ? "text-foreground" : "text-muted-foreground"}`}>{label}</span></div><p className="mt-1 pl-9 text-xs text-muted-foreground">{index === 0 ? "Budget, revisions, deadline" : index === 1 ? "Stages and tasks" : "Preview contract"}</p></li>)}</ol>
 
-    {step === 0 && <div className="grid items-stretch gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.95fr)]">
+    {step === 0 && <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.95fr)]">
       <Card className="border-border/80 bg-card/70"><CardHeader><CardTitle>Contract Details</CardTitle><p className="text-sm text-muted-foreground">Define the basic terms of your agreement.</p></CardHeader><CardContent className="space-y-5">
         <Field id="wizard-title" label="Project title" required error={error && !title.trim() ? "Project title is required." : ""}><Input id="wizard-title" value={title} onChange={(event) => { const next = event.target.value; setTitle(next); setPlan((current) => current ? { ...current, name: next } : current); }} placeholder="Project title" aria-invalid={!!error && !title.trim()}/></Field>
         <Field id="wizard-description" label="Description" required error={error && !description.trim() ? "Description is required." : ""}><Textarea id="wizard-description" value={description} onChange={(event) => { const next = event.target.value; setDescription(next); setPlan((current) => current ? { ...current, description: next } : current); }} placeholder="Describe the agreed scope and intended outcome…" className="min-h-24" aria-invalid={!!error && !description.trim()}/></Field>
         <div className="grid gap-4 sm:grid-cols-2"><Field id="wizard-budget" label="Budget (PHP)" required error={error && (!Number.isFinite(Number(budget)) || Number(budget) <= 0) ? "Enter a positive budget." : ""}><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">₱</span><Input id="wizard-budget" type="number" min="1" step="0.01" className="pl-8" value={budget} onChange={(event) => setBudget(event.target.value)}/></div></Field><Field id="wizard-revisions" label="Included revisions" required error={error && (!revisions.trim() || !Number.isInteger(Number(revisions)) || Number(revisions) < 0) ? "Enter zero or more revisions." : ""}><Input id="wizard-revisions" type="number" min="0" step="1" value={revisions} onChange={(event) => setRevisions(event.target.value)}/></Field></div>
-        <div className="grid gap-4 sm:grid-cols-2"><Field id="wizard-start-date" label="Project start date" required error={error && (!validDate(startDate) || startDate < todayDate()) ? "Choose today or a future project start date." : ""}><div className="relative"><CalendarDays className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"/><Input id="wizard-start-date" type="date" min={todayDate()} className="pl-10" value={startDate} onChange={(event) => { if (event.target.value >= todayDate()) setStartDate(event.target.value); }}/></div></Field><Field id="wizard-deadline" label="Delivery deadline" required error={error && (!validDate(deadline) || deadline < startDate) ? "Choose a delivery deadline on or after the project start date." : ""}><div className="relative"><CalendarDays className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"/><Input id="wizard-deadline" type="date" min={startDate} className="pl-10" value={deadline} onChange={(event) => { if (event.target.value >= startDate) setDeadline(event.target.value); }}/></div>{initial.estimatedDays && !initial.deadline ? <p className="text-xs text-muted-foreground">Suggested from the marketplace post date and the submitted estimate of {initial.estimatedDays} days.</p> : <p className="text-xs text-muted-foreground">Choose a deadline on or after the project start date.</p>}</Field></div>
+        <div className="grid gap-4 sm:grid-cols-2"><Field id="wizard-start-date" label="Project start date" required error={error && (!validDate(startDate) || startDate < todayDate()) ? "Choose today or a future project start date." : ""}><div className="relative"><CalendarDays className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"/><Input id="wizard-start-date" type="date" min={todayDate()} className="pl-10" value={startDate} onChange={(event) => { if (event.target.value >= todayDate()) setStartDate(event.target.value); }}/></div></Field><Field id="wizard-deadline" label="Delivery deadline" required error={error && (!validDate(deadline) || deadline < startDate) ? "Choose a delivery deadline on or after the project start date." : ""}><div className="relative"><CalendarDays className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"/><Input id="wizard-deadline" type="date" min={startDate} className="pl-10" value={deadline} onChange={(event) => { if (event.target.value >= startDate) setDeadline(event.target.value); }}/></div>{!(initial.estimatedDays && !initial.deadline) && <p className="text-xs text-muted-foreground">Choose a deadline on or after the project start date.</p>}</Field></div>
         <Field id="contract-document" label="Attach your contract document (optional)"><input ref={contractDocumentInput} id="contract-document" type="file" className="sr-only" aria-label="Choose a PDF or Word contract document" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => setContractDocumentFile(event.target.files?.[0] ?? null)}/><div onDragEnter={(event) => { event.preventDefault(); setDraggingDocument(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDraggingDocument(false); }} onDrop={(event) => { event.preventDefault(); setDraggingDocument(false); setContractDocumentFile(event.dataTransfer.files.item(0)); }} className={`flex min-h-[76px] items-center gap-3 rounded-lg border px-4 py-3 transition ${draggingDocument ? "border-primary bg-primary/10" : "border-border/80 bg-muted/30"}`}><button type="button" aria-label="Drag and drop a PDF, DOC, or DOCX file here, or click to browse" onClick={() => contractDocumentInput.current?.click()} className="flex min-w-0 flex-1 cursor-pointer items-center justify-center gap-2 rounded-md text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><FileUp className="size-6 shrink-0 text-primary"/><span className="max-w-[85%]">{contractDocument ? <><span className="block truncate text-xs font-medium text-foreground">{contractDocument.name}</span><span className="mt-1 block text-[10px] text-muted-foreground">{(contractDocument.size / (1024 * 1024)).toFixed(2)} MB · click to replace</span></> : <><span className="block text-xs font-medium text-foreground">Drag &amp; drop your file or click to browse</span><span className="mt-1 block text-[10px] text-muted-foreground">Supported: PDF, DOC, DOCX</span></>}</span></button>{contractDocument && <Button type="button" variant="ghost" size="icon" className="shrink-0" aria-label="Remove contract document" onClick={() => { setContractDocumentFile(null); if (contractDocumentInput.current) contractDocumentInput.current.value = ""; }}><X className="size-4"/></Button>}</div>{documentError && <p role="alert" className="text-xs text-destructive">{documentError}</p>}<p className="text-xs text-muted-foreground">Attach a custom contract document for the other party to review in your agreement conversation.</p></Field>
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-        <div className="flex justify-end gap-2"><Button type="button" variant="outline" disabled={!draftReady || draftSaving} onClick={() => void saveDraftNotice()}>{draftSaving ? "Saving…" : "Save draft"}</Button><Button type="button" onClick={() => { const validation = validateDetails(); setError(validation); setNotice(""); if (!validation) setStep(1); }}>Continue to planner <ArrowRight/></Button></div>
+        <div className="flex justify-end gap-2"><Button type="button" variant="outline" disabled={!draftReady || draftSaving} onClick={() => void saveDraftNotice()}>{draftSaving ? "Saving…" : "Save draft"}</Button><Button type="button" disabled={Boolean(basicAgreementStatus && !bothBasicTermsAgreed)} onClick={() => { const validation = validateDetails(); setError(validation || (basicAgreementStatus && !bothBasicTermsAgreed ? "Both the client and freelancer must agree to these basic terms before continuing to the planner." : "")); setNotice(""); if (!validation && (!basicAgreementStatus || bothBasicTermsAgreed)) setStep(1); }}>Continue to planner <ArrowRight/></Button></div>
       </CardContent></Card>
-      <Card className="border-border/80 bg-card/70"><CardHeader><CardTitle>Contract Summary</CardTitle></CardHeader><CardContent className="space-y-5"><SummaryRow icon={<FileText/>} label="Project" value={title || "Not set"}/><SummaryRow icon={<Wallet/>} label="Budget" value={budget && Number(budget) > 0 ? `PHP ${Number(budget).toLocaleString("en-PH", { minimumFractionDigits: 2 })}` : "Not set"}/><SummaryRow icon={<RotateCcw/>} label="Included revisions" value={revisions || "Not set"}/><SummaryRow icon={<CalendarDays/>} label="Delivery deadline" value={deadline ? new Date(`${deadline}T00:00:00`).toLocaleDateString() : "Not set"}/><div className="border-t pt-5"><h3 className="font-semibold">What’s next?</h3><p className="mt-2 text-sm text-muted-foreground">Plan the work by adding stages and tasks or choosing a saved plan.</p><ol className="mt-4 space-y-3 text-sm">{["Set up the project stages", "Review tasks and details", "Review the complete agreement"].map((item, index) => <li key={item} className="flex items-center gap-3"><span className="flex size-6 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold text-primary">{index + 1}</span>{item}</li>)}</ol></div></CardContent></Card>
+      <Card className="border-border/80 bg-card/70"><CardHeader><CardTitle>Contract Summary</CardTitle></CardHeader><CardContent className="space-y-5"><SummaryRow icon={<FileText/>} label="Project" value={title || "Not set"}/><SummaryRow icon={<Wallet/>} label="Budget" value={budget && Number(budget) > 0 ? `PHP ${Number(budget).toLocaleString("en-PH", { minimumFractionDigits: 2 })}` : "Not set"}/><SummaryRow icon={<RotateCcw/>} label="Included revisions" value={revisions || "Not set"}/><SummaryRow icon={<CalendarDays/>} label="Delivery deadline" value={deadline ? new Date(`${deadline}T00:00:00`).toLocaleDateString() : "Not set"}/>{basicAgreementStatus && onAgreeBasics && <div className="space-y-3 border-t pt-4"><h3 className="font-semibold">Basic terms agreement</h3>{basicAgreementStatus.error && <p role="alert" className="text-xs text-destructive">Agreement status could not be loaded: {basicAgreementStatus.error}</p>}<div className="flex items-center justify-between gap-3 text-sm"><span className="text-muted-foreground">Client</span><Badge variant={clientBasicAgreed ? "secondary" : "outline"}>{clientBasicAgreed ? "Agreed" : "Pending"}</Badge></div><div className="flex items-center justify-between gap-3 text-sm"><span className="text-muted-foreground">Freelancer</span><Badge variant={freelancerBasicAgreed ? "secondary" : "outline"}>{freelancerBasicAgreed ? "Agreed" : "Pending"}</Badge></div>{basicAgreementStatus.terms && !basicTermsMatch && <p className="text-xs text-muted-foreground">These terms changed. Both parties must agree to the updated terms.</p>}{!bothBasicTermsAgreed && <p className="text-xs text-muted-foreground">Both parties must agree to these basic terms before the planner can continue.</p>}<Button type="button" className="w-full" disabled={busy || openingAgreement || basicAgreementStatus.updating || !draftReady || currentPartyBasicAgreed} onClick={() => void agreeToBasicTerms()}>{openingAgreement ? "Saving agreement…" : currentPartyBasicAgreed ? "Agreed to basic terms" : "Agree to basic terms"}</Button></div>}<div className="border-t pt-5"><h3 className="font-semibold">Conversation</h3>{conversationError && <p role="alert" className="mt-2 text-sm text-destructive">{conversationError}</p>}{conversation ? <ProjectChatPanel {...conversation} className="mt-3 h-[min(55vh,520px)] min-h-[320px]"/> : !conversationError ? <p className="mt-2 text-sm text-muted-foreground">Loading the shared conversation…</p> : null}</div></CardContent></Card>
     </div>}
 
     {step === 1 && <div className={conversation && conversationOpen ? "grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(280px,0.75fr)] xl:items-stretch" : ""}><Card className="flex h-[min(75vh,760px)] min-h-[480px] flex-col border-border/80 bg-card/70"><CardHeader className="flex flex-wrap items-start justify-between gap-3 sm:flex-row"><div><CardTitle>Plan the Work</CardTitle><p className="mt-1 text-sm text-muted-foreground">Review the plan attached by the freelancer to this application.</p></div><div className="flex flex-col items-end gap-2"><Badge variant="outline">{planSource}</Badge>{plan && <Button type="button" variant="outline" onClick={() => setEditingPlan((value) => !value)}><Pencil/>{editingPlan ? "Done editing" : "Edit plan"}</Button>}{conversation && <Button type="button" variant="outline" aria-expanded={conversationOpen} onClick={() => setConversationOpen((open) => !open)}><MessageSquare/>{conversationOpen ? "Hide conversation" : "Show conversation"}</Button>}</div></CardHeader><CardContent className="min-h-0 flex-1 space-y-5 overflow-y-auto">{deadlineViolationIds.size > 0 && <p role="alert" className="rounded-lg border border-destructive bg-destructive/10 p-3 text-sm text-destructive">{deadlineViolationIds.size} {deadlineViolationIds.size === 1 ? "task exceeds" : "tasks exceed"} the contract delivery deadline. Shorten the estimate or move the due date to on or before {deadline} to continue.</p>}{plan ? <><div className="space-y-2"><h3 className="font-semibold">{plan.name}</h3><p className="text-sm text-muted-foreground">{plan.description || "No plan description."}</p></div>{editingPlan ? <PlanEditor value={plan} startDate={startDate} deadline={deadline} invalidTaskIds={deadlineViolationIds} onUpdateColumn={updatePlanColumn} onUpdateTask={updateTask} onMoveTask={movePlanTask} onUpdateDetails={(patch) => setPlan((current) => current ? { ...current, ...patch } : current)} /> : <PlanColumns value={plan} invalidTaskIds={deadlineViolationIds}/>}</> : <div className="rounded-xl border border-dashed p-12 text-center"><FileText className="mx-auto size-8 text-muted-foreground"/><h3 className="mt-3 font-medium">No attached work plan</h3><p className="mx-auto mt-1 max-w-lg text-sm text-muted-foreground">This application does not include a freelancer-submitted plan. A different saved plan cannot be selected here.</p></div>}<p className="rounded-lg border border-border/80 bg-muted/20 p-3 text-sm text-muted-foreground">Edits in this step apply only to this contract proposal; they do not change the freelancer’s reusable Project Planner template. Use Save draft to keep your proposal in your WorkSync account.</p>{error && <p role="alert" className="text-sm text-destructive">{error}</p>}<div className="flex flex-col-reverse justify-between gap-2 sm:flex-row"><Button type="button" variant="outline" onClick={() => { setError(""); setStep(0); }}>Back to contract details</Button><div className="flex justify-end gap-2"><Button type="button" variant="outline" disabled={!draftReady || draftSaving} onClick={() => void saveDraftNotice()}>{draftSaving ? "Saving…" : "Save draft"}</Button><Button type="button" disabled={!plan || deadlineViolationIds.size > 0} onClick={() => { setError(""); setEditingPlan(false); setStep(2); }}>Continue to review <ArrowRight/></Button></div></div></CardContent></Card>{conversation && <ProjectChatPanel {...conversation} className={`${conversationOpen ? "h-[min(75vh,760px)] min-h-[480px]" : "hidden"}`} />}</div>}
 
     {step === 2 && <Card className="border-border/80 bg-card/70"><CardHeader><CardTitle>Review & Agreement</CardTitle><p className="text-sm text-muted-foreground">Review the prepared details and plan before final confirmation.</p></CardHeader><CardContent className="space-y-5"><section className="rounded-xl border p-4"><h2 className="text-lg font-semibold">{title}</h2><p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{description}</p><div className="mt-4 grid gap-3 border-t pt-4 sm:grid-cols-4"><InlineSummaryRow label="Budget" value={`PHP ${Number(budget).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`}/><InlineSummaryRow label="Included revisions" value={revisions}/><InlineSummaryRow label="Project start" value={new Date(`${startDate}T00:00:00`).toLocaleDateString()}/><InlineSummaryRow label="Delivery deadline" value={new Date(`${deadline}T00:00:00`).toLocaleDateString()}/></div>{contractDocument && <div className="mt-4 flex items-center gap-2 border-t pt-4 text-sm"><Paperclip className="size-4 text-muted-foreground"/><span>{contractDocument.name}</span><span className="text-xs text-muted-foreground">Will be sent in the agreement conversation for review; it is not automatically part of the signed terms.</span></div>}</section>{plan && <Card className="border-border/80 bg-card/50"><CardHeader className="pb-3"><CardTitle className="text-base">{plan.name}</CardTitle>{plan.description && <p className="whitespace-pre-wrap text-sm text-muted-foreground">{plan.description}</p>}</CardHeader><CardContent className="pt-0"><PlanColumns value={plan} fit invalidTaskIds={deadlineViolationIds}/></CardContent></Card>}{error && <p role="alert" className="text-sm text-destructive">{error}</p>}<div className="flex flex-col-reverse justify-between gap-2 sm:flex-row"><Button type="button" variant="outline" onClick={() => setStep(1)}>Back to planner</Button><Button type="button" disabled={busy || openingAgreement || deadlineViolationIds.size > 0} onClick={() => { setTermsPolicyAccepted(false); setAgreementReviewed(false); setWillVerifySavedTerms(false); setFinalConfirmationOpen(true); }}>Final confirmation</Button></div></CardContent></Card>}
 
-    {step === 2 && <Dialog open={finalConfirmationOpen} onOpenChange={(open) => { setFinalConfirmationOpen(open); if (!open) { setTermsPolicyAccepted(false); setAgreementReviewed(false); setWillVerifySavedTerms(false); } }}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl"><DialogHeader><DialogTitle>Final proposal confirmation</DialogTitle><DialogDescription>Review the project terms and plan before continuing to the existing contract view.</DialogDescription></DialogHeader><section className="rounded-lg border p-4"><ul className="space-y-2 text-sm"><li><span className="font-semibold">Project name:</span> {title}</li><li><span className="font-semibold">Description:</span> <span className="line-clamp-2 text-muted-foreground">{description}</span></li><li><span className="font-semibold">Budget:</span> PHP {Number(budget).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</li><li><span className="font-semibold">Included revisions:</span> {revisions}</li><li><span className="font-semibold">Project start:</span> {new Date(`${startDate}T00:00:00`).toLocaleDateString()}</li><li><span className="font-semibold">Delivery deadline:</span> {new Date(`${deadline}T00:00:00`).toLocaleDateString()}</li>{contractDocument && <li><span className="font-semibold">Custom contract (optional):</span> {contractDocument.name}</li>}</ul></section>{plan && <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3"><div className="min-w-0"><h3 className="truncate text-sm font-medium">{plan.name}</h3><p className="text-xs text-muted-foreground">{plan.content.columns.length} stages · {plan.content.columns.reduce((count, column) => count + column.tasks.length, 0)} tasks</p></div><Button type="button" size="sm" variant="outline" className="shrink-0" onClick={() => setPlanPreviewOpen(true)}><Eye/>View full plan</Button></section>}<section className="space-y-3 rounded-lg border p-4"><h3 className="font-semibold">Terms and agreement</h3><label className="flex cursor-pointer items-start gap-3 text-sm"><Checkbox checked={termsPolicyAccepted} onCheckedChange={(checked) => setTermsPolicyAccepted(checked === true)} aria-label="I agree to WorkSync Terms and Privacy Policy" className="mt-0.5 size-5"/><span>I agree to WorkSync&#39;s <u className="underline underline-offset-2">Terms and Privacy Policy</u>.</span></label><label className="flex cursor-pointer items-start gap-3 text-sm"><Checkbox checked={agreementReviewed} onCheckedChange={(checked) => setAgreementReviewed(checked === true)} aria-label="Confirm that I reviewed the agreement terms above" className="mt-0.5 size-5"/><span>I confirm that I have reviewed the agreement terms above.</span></label><label className="flex cursor-pointer items-start gap-3 text-sm"><Checkbox checked={willVerifySavedTerms} onCheckedChange={(checked) => setWillVerifySavedTerms(checked === true)} aria-label="Confirm that I will verify the saved contract terms before signing" className="mt-0.5 size-5"/><span>I will verify the saved contract terms before signing.</span></label></section><DialogFooter><Button type="button" disabled={!(termsPolicyAccepted && agreementReviewed && willVerifySavedTerms) || busy || openingAgreement} onClick={() => void openAgreementFlow().then((opened) => { if (opened) setFinalConfirmationOpen(false); })}>{busy || openingAgreement ? "Opening…" : "Continue to contract view"}</Button></DialogFooter></DialogContent></Dialog>}{plan && <ProjectPlanSnapshotPreview plan={plan} open={planPreviewOpen} onOpenChange={setPlanPreviewOpen}/> }
+    {step === 2 && <Dialog open={finalConfirmationOpen} onOpenChange={(open) => { setFinalConfirmationOpen(open); if (!open) { setTermsPolicyAccepted(false); setAgreementReviewed(false); setWillVerifySavedTerms(false); } }}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl"><DialogHeader><DialogTitle>{onAgree ? agreementStatus?.isNew ? "Review and agree to contract" : "Confirm contract agreement" : "Final proposal confirmation"}</DialogTitle><DialogDescription>{onAgree ? agreementStatus?.isNew ? "Review the proposed terms. Agreeing will create the contract and record your confirmation." : "Review the saved contract terms and confirm your agreement." : "Review the project terms and plan before continuing to the existing contract view."}</DialogDescription></DialogHeader><section className="rounded-lg border p-4"><ul className="space-y-2 text-sm"><li><span className="font-semibold">Project name:</span> {title}</li><li><span className="font-semibold">Description:</span> <span className="line-clamp-2 text-muted-foreground">{description}</span></li><li><span className="font-semibold">Budget:</span> PHP {Number(budget).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</li><li><span className="font-semibold">Included revisions:</span> {revisions}</li><li><span className="font-semibold">Project start:</span> {new Date(`${startDate}T00:00:00`).toLocaleDateString()}</li><li><span className="font-semibold">Delivery deadline:</span> {new Date(`${deadline}T00:00:00`).toLocaleDateString()}</li>{contractDocument && <li><span className="font-semibold">Custom contract (optional):</span> {contractDocument.name}</li>}</ul></section>{plan && <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3"><div className="min-w-0"><h3 className="truncate text-sm font-medium">{plan.name}</h3><p className="text-xs text-muted-foreground">{plan.content.columns.length} stages · {plan.content.columns.reduce((count, column) => count + column.tasks.length, 0)} tasks</p></div><Button type="button" size="sm" variant="outline" className="shrink-0" onClick={() => setPlanPreviewOpen(true)}><Eye/>View full plan</Button></section>}<section className="space-y-3 rounded-lg border p-4"><h3 className="font-semibold">Terms and agreement</h3><label className="flex cursor-pointer items-start gap-3 text-sm"><Checkbox checked={termsPolicyAccepted} onCheckedChange={(checked) => setTermsPolicyAccepted(checked === true)} aria-label="I agree to WorkSync Terms and Privacy Policy" className="mt-0.5 size-5"/><span>I agree to WorkSync&#39;s <u className="underline underline-offset-2">Terms and Privacy Policy</u>.</span></label><label className="flex cursor-pointer items-start gap-3 text-sm"><Checkbox checked={agreementReviewed} onCheckedChange={(checked) => setAgreementReviewed(checked === true)} aria-label="Confirm that I reviewed the agreement terms above" className="mt-0.5 size-5"/><span>I confirm that I have reviewed the agreement terms above.</span></label><label className="flex cursor-pointer items-start gap-3 text-sm"><Checkbox checked={willVerifySavedTerms} onCheckedChange={(checked) => setWillVerifySavedTerms(checked === true)} aria-label="Confirm that I will verify the saved contract terms before signing" className="mt-0.5 size-5"/><span>I will verify the saved contract terms before signing.</span></label></section>{error && <p role="alert" className="text-sm text-destructive">{error}</p>}<DialogFooter><Button type="button" disabled={!(termsPolicyAccepted && agreementReviewed && willVerifySavedTerms) || busy || openingAgreement || agreementStatus?.updating} onClick={() => void (onAgree ? agreeToContract() : openAgreementFlow()).then((opened) => { if (opened) setFinalConfirmationOpen(false); })}>{busy || openingAgreement || agreementStatus?.updating ? "Saving agreement…" : onAgree ? agreementStatus?.isNew ? "Agree and create contract" : "Agree to contract" : "Continue to contract view"}</Button></DialogFooter></DialogContent></Dialog>}{plan && <ProjectPlanSnapshotPreview plan={plan} open={planPreviewOpen} onOpenChange={setPlanPreviewOpen}/> }
 
     <section className="flex flex-col gap-3 rounded-xl border border-border/80 bg-card/50 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium">Contract drafts are saved to your WorkSync account</p><p className="mt-1 text-sm text-muted-foreground">Save draft to continue later from this account. Uploaded documents must be selected again if you leave this page.</p>{notice && <p role={noticeError ? "alert" : "status"} className={`mt-2 text-sm ${noticeError ? "text-destructive" : "text-emerald-700 dark:text-emerald-300"}`}>{notice}</p>}</div><div className="flex gap-2"><Button type="button" variant="outline" asChild><Link href="/home/projects">View projects</Link></Button></div></section>
   </main>;

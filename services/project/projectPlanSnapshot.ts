@@ -11,7 +11,7 @@ const planTaskSchema = z.object({
 const planColumnSchema = z.object({
   id: z.string().min(1).max(80),
   name: z.string().trim().min(1).max(80),
-  type: z.literal("stage"),
+  type: z.enum(["stage", "done"]),
   tasks: z.array(planTaskSchema).max(25),
   pinned: z.boolean().optional(),
 });
@@ -19,13 +19,30 @@ const planColumnSchema = z.object({
 export const projectPlanSnapshotSchema = z
   .object({
     name: z.string().trim().min(1).max(120),
-    description: z.string().max(1500),
+    // Keep this in sync with the reusable plan editor's 2,000 character limit.
+    description: z.string().max(2000),
     content: z.object({
       columns: z.array(planColumnSchema).min(1).max(20),
     }),
   })
   .superRefine((plan, context) => {
     const columns = plan.content.columns;
+    const doneIndexes = columns.flatMap((column, index) =>
+      column.type === "done" ? [index] : [],
+    );
+    if (doneIndexes.length > 1) {
+      context.addIssue({
+        code: "custom",
+        path: ["content", "columns"],
+        message: "A project plan can contain only one Done stage.",
+      });
+    } else if (doneIndexes.length === 1 && doneIndexes[0] !== columns.length - 1) {
+      context.addIssue({
+        code: "custom",
+        path: ["content", "columns", doneIndexes[0], "type"],
+        message: "The Done stage must be final.",
+      });
+    }
     const taskCount = columns.reduce(
       (total, column) => total + column.tasks.length,
       0,

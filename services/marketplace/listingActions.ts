@@ -83,22 +83,63 @@ export async function applyForJob(
   days: number,
   proposedPlan: ProjectPlanSnapshot | null = null,
 ) {
+  const planColumns = proposedPlan?.content.columns ?? [];
+  const doneColumn = planColumns.find((column) => column.type === "done");
+  const planStages = planColumns
+    .filter((column) => column.type !== "done")
+    .map((column) => ({
+      ...column,
+      type: "stage" as const,
+      tasks: column.tasks.map((task) => ({
+        ...task,
+        expectedDays: task.expectedDays ?? undefined,
+      })),
+    }));
+  const terminalDone = doneColumn
+    ? {
+        ...doneColumn,
+        tasks: doneColumn.tasks.map((task) => ({
+          ...task,
+          expectedDays: task.expectedDays ?? undefined,
+        })),
+      }
+    : {
+        id: "proposal-done-stage",
+        name: "Done",
+        type: "done" as const,
+        tasks: [],
+      };
+  const submissionPlan = proposedPlan
+    ? {
+        ...proposedPlan,
+        description: proposedPlan.description ?? "",
+        content: { columns: [...planStages, terminalDone] },
+      }
+    : null;
   if (!proposal.trim() || proposal.length > 10000)
     throw new Error("Enter a proposal of up to 10,000 characters.");
   if (
     !Number.isFinite(price) ||
     price <= 0 ||
+    price > 100_000 ||
     !Number.isInteger(days) ||
     days < 1
   )
     throw new Error(
-      "Enter a positive price and whole number of delivery days.",
+      "Enter a price from PHP 0.01 to PHP 100,000 and whole number of delivery days.",
     );
-  if (
-    proposedPlan &&
-    !projectPlanSnapshotSchema.safeParse(proposedPlan).success
-  )
-    throw new Error("Review the attached project plan before submitting.");
+  if (submissionPlan) {
+    const planResult = projectPlanSnapshotSchema.safeParse(submissionPlan);
+    if (!planResult.success) {
+      const issue = planResult.error.issues[0];
+      const field = issue?.path.join(".");
+      throw new Error(
+        field
+          ? `The attached plan has invalid ${field}: ${issue.message}`
+          : "The attached project plan contains invalid details. Reattach the plan and try again.",
+      );
+    }
+  }
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -118,7 +159,7 @@ export async function applyForJob(
       proposal: proposal.trim(),
       price,
       days,
-      proposedPlan,
+      proposedPlan: submissionPlan,
     }),
   });
   const result = await response.json().catch(() => null);

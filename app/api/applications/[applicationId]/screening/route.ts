@@ -39,7 +39,21 @@ export async function POST(
         { error: "Your session expired. Please sign in again." },
         401,
       );
-    return json(await screenApplicant(db, user.id, applicationId));
+    const requestBody = z
+      .object({ force: z.boolean().optional() })
+      .strict()
+      .safeParse(await request.json().catch(() => ({})));
+    if (!requestBody.success)
+      return json({ error: "Invalid screening request." }, 400);
+    return json(
+      await screenApplicant(
+        db,
+        user.id,
+        applicationId,
+        user.id,
+        requestBody.data.force === true,
+      ),
+    );
   } catch (error) {
     const providerStatus =
       error &&

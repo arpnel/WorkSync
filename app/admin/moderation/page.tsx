@@ -48,6 +48,8 @@ type Submission = {
 const PAGE_SIZE = 10;
 const STATUSES = ["pending_review", "manual_review", "approved", "rejected"];
 const RISKS = ["low", "medium", "high", "critical"];
+const isReviewable = (status: string) =>
+  status === "pending_review" || status === "manual_review";
 
 export default function ModerationPage() {
   const [rows, setRows] = useState<Submission[]>([]);
@@ -147,6 +149,13 @@ export default function ModerationPage() {
 
   async function act() {
     if (!selected || !decision || busy) return;
+    if (!isReviewable(selected.status)) {
+      setDecision(null);
+      setSelected(null);
+      await load();
+      setError("This submission has already been reviewed.");
+      return;
+    }
     if (
       decision === "reject" &&
       (explanation.trim().length < 12 || category.trim().length < 2)
@@ -301,11 +310,15 @@ export default function ModerationPage() {
                     <TableCell><Badge className="capitalize">{row.status.replaceAll("_", " ")}</Badge></TableCell>
                     <TableCell className="whitespace-nowrap text-muted-foreground">{new Date(row.created_at).toLocaleDateString()}</TableCell>
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button size="sm" variant="outline" onClick={() => { setSelected(row); setDecision("flag"); }}>Flag</Button>
-                        <Button size="sm" variant="outline" onClick={() => { setSelected(row); setDecision("reject"); }}>Reject</Button>
-                        <Button size="sm" onClick={() => { setSelected(row); setDecision("approve"); }}>Approve</Button>
-                      </div>
+                      {isReviewable(row.status) ? (
+                        <div className="flex justify-end gap-2">
+                          <Button size="sm" variant="outline" onClick={() => { setSelected(row); setDecision("flag"); }}>Flag</Button>
+                          <Button size="sm" variant="outline" onClick={() => { setSelected(row); setDecision("reject"); }}>Reject</Button>
+                          <Button size="sm" onClick={() => { setSelected(row); setDecision("approve"); }}>Approve</Button>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">Reviewed</span>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -379,18 +392,24 @@ export default function ModerationPage() {
                 </blockquote>
               ))}
             </section>
-            <div className="flex flex-wrap gap-2 border-t pt-4">
-              <Button onClick={() => setDecision("approve")}>Approve</Button>
-              <Button variant="outline" onClick={() => setDecision("flag")}>
-                Flag for review
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={() => setDecision("reject")}
-              >
-                Reject
-              </Button>
-            </div>
+            {selected && isReviewable(selected.status) ? (
+              <div className="flex flex-wrap gap-2 border-t pt-4">
+                <Button onClick={() => setDecision("approve")}>Approve</Button>
+                <Button variant="outline" onClick={() => setDecision("flag")}>
+                  Flag for review
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={() => setDecision("reject")}
+                >
+                  Reject
+                </Button>
+              </div>
+            ) : (
+              <p className="border-t pt-4 text-sm text-muted-foreground">
+                This submission has already been reviewed.
+              </p>
+            )}
           </div>
         </DialogContent>
       </Dialog>

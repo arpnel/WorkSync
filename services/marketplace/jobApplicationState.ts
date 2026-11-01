@@ -54,6 +54,9 @@ export async function updateJobApplication(
   price: number,
   days: number,
 ): Promise<void> {
+  if (!Number.isFinite(price) || price <= 0 || price > 100_000) {
+    throw new Error("Proposed price must be no more than PHP 100,000.");
+  }
   const { error } = await supabase.rpc("worksync_update_job_application", {
     p_application: applicationId,
     p_proposal: proposal.trim(),

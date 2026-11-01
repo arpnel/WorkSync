@@ -26,7 +26,11 @@ function parse(value: unknown): JobMilestonePlanAgreement {
     if (typeof row.id !== "string" || typeof row.title !== "string" || typeof row.description !== "string" || typeof row.amount !== "number" || !(typeof row.dueDate === "string" || row.dueDate === null) || typeof row.displayOrder !== "number") {
       throw new Error(`Milestone ${index + 1} is invalid.`);
     }
-    return { id: row.id, title: row.title, description: row.description, amount: row.amount, dueDate: row.dueDate, displayOrder: row.displayOrder };
+    const taskIds = row.taskIds === undefined ? [] : row.taskIds;
+    if (!Array.isArray(taskIds) || taskIds.some((taskId) => typeof taskId !== "string")) {
+      throw new Error(`Milestone ${index + 1} task assignments are invalid.`);
+    }
+    return { id: row.id, title: row.title, description: row.description, amount: row.amount, dueDate: row.dueDate, displayOrder: row.displayOrder, taskIds };
   });
   return { milestones, clientAgreed: result.clientAgreed === true, freelancerAgreed: result.freelancerAgreed === true };
 }
@@ -43,7 +47,7 @@ export async function agreeToJobMilestonePlan(
 ): Promise<JobMilestonePlanAgreement> {
   const { data, error } = await supabase.rpc("worksync_agree_job_milestone_plan", {
     p_application: applicationId,
-    p_milestones: milestones.map(({ id, title, description, amount, dueDate, displayOrder }) => ({ id, title, description, amount, dueDate, displayOrder })),
+    p_milestones: milestones.map(({ id, title, description, amount, dueDate, displayOrder, taskIds }) => ({ id, title, description, amount, dueDate, displayOrder, taskIds: taskIds ?? [] })),
   });
   if (error) throw explainError(error);
   return parse(data);

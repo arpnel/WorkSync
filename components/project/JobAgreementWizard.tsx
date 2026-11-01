@@ -118,6 +118,17 @@ function localDateString(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+type MilestoneTaskRef = { id: string; title: string; description: string; stage?: string };
+
+function findTaskForMilestone(milestone: ContractVersionMilestoneInput, tasks: readonly MilestoneTaskRef[]): MilestoneTaskRef | undefined {
+  const assignedIds = new Set(milestone.taskIds ?? []);
+  return tasks.find((task) => assignedIds.has(task.id));
+}
+
+function findMilestoneForTask(task: MilestoneTaskRef, milestones: readonly ContractVersionMilestoneInput[]): ContractVersionMilestoneInput | undefined {
+  return milestones.find((milestone) => milestone.taskIds?.includes(task.id));
+}
+
 function todayDate(): string {
   return localDateString(new Date());
 }
@@ -249,6 +260,7 @@ export function JobAgreementWizard({
   } : null);
   const [milestones, setMilestones] = useState<ContractVersionMilestoneInput[]>(() => milestoneAgreementStatus?.milestones ?? []);
   const [milestonePlanDirty, setMilestonePlanDirty] = useState(false);
+  const [milestoneRevisionMode, setMilestoneRevisionMode] = useState(false);
   const [milestoneReviewed, setMilestoneReviewed] = useState(false);
   const basicTerms: JobBasicTerms = {
     projectTitle: title.trim(),
@@ -265,11 +277,12 @@ export function JobAgreementWizard({
   const clientBasicAgreed = basicTermsMatch && basicAgreementStatus?.clientAgreed === true;
   const freelancerBasicAgreed = basicTermsMatch && basicAgreementStatus?.freelancerAgreed === true;
   const bothBasicTermsAgreed = clientBasicAgreed && freelancerBasicAgreed;
-  const milestonePlanMatches = Boolean(milestoneAgreementStatus && JSON.stringify(milestoneAgreementStatus.milestones) === JSON.stringify(milestones));
+  const milestonePlanMatches = !milestoneRevisionMode && Boolean(milestoneAgreementStatus && JSON.stringify(milestoneAgreementStatus.milestones) === JSON.stringify(milestones));
   const clientMilestoneAgreed = milestonePlanMatches && milestoneAgreementStatus?.clientAgreed === true;
   const freelancerMilestoneAgreed = milestonePlanMatches && milestoneAgreementStatus?.freelancerAgreed === true;
   const bothMilestonePartiesAgreed = clientMilestoneAgreed && freelancerMilestoneAgreed;
   const milestoneTotal = milestones.reduce((sum, item) => sum + (Number.isFinite(item.amount) ? item.amount : 0), 0);
+  const milestoneBudgetMatches = Math.round(milestoneTotal * 100) === Math.round(Number(budget) * 100);
   const milestoneTasks = plan?.content.columns
     .filter((column) => column.type === "stage")
     .flatMap((column) => column.tasks.map((task) => ({
@@ -278,9 +291,6 @@ export function JobAgreementWizard({
       title: task.title,
       description: task.description,
     }))) ?? [];
-  const allMilestoneTasksAssigned = milestoneTasks.length > 0 && milestoneTasks.every((task) =>
-    milestones.some((milestone) => milestone.title === task.title && milestone.description === task.description),
-  );
   const milestoneFingerprint = JSON.stringify(milestoneAgreementStatus?.milestones ?? []);
   useEffect(() => {
     if (!milestonePlanDirty && milestoneAgreementStatus) setMilestones(milestoneAgreementStatus.milestones);
@@ -291,8 +301,8 @@ export function JobAgreementWizard({
     ? clientBasicAgreed
     : freelancerBasicAgreed;
   const currentPartyContractAgreed = agreementStatus?.currentParty === "client"
-    ? agreementStatus.clientAgreed
-    : agreementStatus?.currentParty === "freelancer" && agreementStatus.freelancerAgreed;
+    ? agreementStatus?.clientAgreed
+    : agreementStatus?.currentParty === "freelancer" && agreementStatus?.freelancerAgreed;
   const serverBasicTermsFingerprint = JSON.stringify(basicAgreementStatus?.terms ?? null);
   const serverBasicTermsFingerprintRef = useRef(serverBasicTermsFingerprint);
   const [editingPlan, setEditingPlan] = useState(false);
@@ -406,7 +416,7 @@ export function JobAgreementWizard({
     try {
       await saveContractCreationDraft(draftKey, draftUserId, draft as unknown as Record<string, unknown>);
       setNoticeError(false);
-      setNotice(`Draft saved to your WorkSync account at ${new Date(draft.savedAt).toLocaleTimeString()}.${contractDocument ? " The attached document itself is not saved; select it again before sending." : ""}`);
+      setNotice("");
       return true;
     } catch {
       setNoticeError(true);
@@ -452,7 +462,9 @@ export function JobAgreementWizard({
             ...column,
             tasks: column.tasks.map((task) => ({
               ...task,
-              milestoneId: milestones.find((milestone) => milestone.title === task.title && milestone.description === task.description)?.id,
+              milestoneId: milestones.find((milestone) =>
+                milestone.taskIds?.includes(`${column.id}:${task.id}`),
+              )?.id,
             })),
           })),
         },
@@ -540,7 +552,7 @@ export function JobAgreementWizard({
     if (!onAgreeMilestonePlan || !milestoneAgreementStatus) return;
     if (!milestoneReviewed) { setError("Confirm that you agree to the milestone plan before submitting."); return; }
     if (milestones.length < 1) { setError("Add at least one milestone."); return; }
-    if (milestones.some((item) => !milestoneTasks.some((task) => task.title === item.title && task.description === item.description) || item.amount <= 0 || !validDate(item.dueDate ?? ""))) {
+    if (milestones.some((item) => !findTaskForMilestone(item, milestoneTasks) || item.amount <= 0 || !validDate(item.dueDate ?? ""))) {
       setError("Choose a plan task, positive budget amount, and valid deadline for every milestone."); return;
     }
     if (Math.round(milestoneTotal * 100) !== Math.round(Number(budget) * 100)) {
@@ -549,15 +561,13 @@ export function JobAgreementWizard({
     if (milestones.some((item) => !item.dueDate || item.dueDate < startDate || item.dueDate > deadline) || milestones.some((item, index) => index > 0 && (item.dueDate ?? "") < (milestones[index - 1].dueDate ?? ""))) {
       setError("Set milestone deadlines in order, within the agreed project dates."); return;
     }
-    if (!allMilestoneTasksAssigned) {
-      setError("Assign every plan task to a milestone before agreeing to the milestone plan."); return;
-    }
     setError("");
     setOpeningAgreement(true);
     try {
       const saved = await onAgreeMilestonePlan(milestones.map((item, index) => ({ ...item, displayOrder: index + 1 })));
       setMilestones(saved.milestones);
       setMilestonePlanDirty(false);
+      setMilestoneRevisionMode(false);
       setMilestoneReviewed(false);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to save agreement to the milestone plan.");
@@ -654,11 +664,11 @@ export function JobAgreementWizard({
     {step === 1 && <div className={conversation && conversationOpen ? "grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(280px,0.75fr)] xl:items-stretch" : ""}><Card className="flex h-[min(92dvh,1000px)] min-h-[480px] flex-col border-border/80 bg-card/70"><CardHeader className="flex flex-wrap items-start justify-between gap-3 sm:flex-row"><div><CardTitle>Plan the Work</CardTitle><p className="mt-1 text-sm text-muted-foreground">Review the plan attached by the freelancer to this application.</p></div><div className="flex flex-col items-end gap-2"><Badge variant="outline">{planSource}</Badge><div className="flex flex-nowrap gap-2">{plan && <Button type="button" variant="outline" onClick={() => setEditingPlan(true)}><Pencil/>Edit plan</Button>}{conversation && <Button type="button" variant="outline" aria-expanded={conversationOpen} onClick={() => setConversationOpen((open) => !open)}><MessageSquare/>{conversationOpen ? "Hide conversation" : "Show conversation"}</Button>}</div></div></CardHeader><CardContent className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">{deadlineViolationIds.size > 0 && <p role="alert" className="rounded-lg border border-destructive bg-destructive/10 p-3 text-sm text-destructive">{deadlineViolationIds.size} {deadlineViolationIds.size === 1 ? "task exceeds" : "tasks exceed"} the contract delivery deadline. Shorten the estimate or move the due date to on or before {deadline} to continue.</p>}{plan ? <div className="flex h-[min(66dvh,720px)] min-h-[420px] shrink-0 flex-col gap-3"><div className="shrink-0 space-y-2"><h3 className="font-semibold">{plan.name}</h3><p className="text-sm text-muted-foreground">{plan.description || "No plan description."}</p></div><div className="min-h-0 flex-1 overflow-auto"><PlanColumns value={plan} fit invalidTaskIds={deadlineViolationIds}/></div></div> : <div className="rounded-xl border border-dashed p-12 text-center"><FileText className="mx-auto size-8 text-muted-foreground"/><h3 className="mt-3 font-medium">No attached work plan</h3><p className="mx-auto mt-1 max-w-lg text-sm text-muted-foreground">This application does not include a freelancer-submitted plan. A different saved plan cannot be selected here.</p></div>}<p className="shrink-0 rounded-lg border border-border/80 bg-muted/20 p-3 text-sm text-muted-foreground">Edits in this step apply only to this contract proposal; they do not change the freelancer&#39;s reusable Project Planner template. Use Save draft to keep your proposal in your WorkSync account.</p>{error && <p role="alert" className="text-sm text-destructive">{error}</p>}<div className="flex shrink-0 flex-col-reverse justify-between gap-2 sm:flex-row"><Button type="button" variant="outline" onClick={() => { setError(""); setStep(0); }}>Back to contract details</Button><div className="flex justify-end gap-2"><Button type="button" variant="outline" disabled={!draftReady || draftSaving} onClick={() => void saveDraftNotice()}>{draftSaving ? "Savingâ€¦" : "Save draft"}</Button><Button type="button" disabled={!plan || deadlineViolationIds.size > 0} onClick={() => { setError(""); setEditingPlan(false); setStep(isMilestoneProject ? milestoneStep : reviewStep); }}>{isMilestoneProject ? "Continue to milestone plan" : "Continue to review"} <ArrowRight/></Button></div></div></CardContent></Card>{plan && <Dialog open={editingPlan} onOpenChange={setEditingPlan}><DialogContent className="flex h-[96dvh] max-h-[96dvh] w-[98vw] max-w-[98vw] flex-col gap-3 overflow-hidden p-4 sm:max-w-[98vw]"><DialogHeader className="shrink-0"><DialogTitle>Edit project plan</DialogTitle><DialogDescription>Update the plan name, description, stages, and tasks for this contract proposal.</DialogDescription></DialogHeader><div className="flex min-h-0 flex-1"><PlanEditor value={plan} startDate={startDate} deadline={deadline} invalidTaskIds={deadlineViolationIds} onUpdateColumn={updatePlanColumn} onUpdateTask={updateTask} onMoveTask={movePlanTask} onUpdateDetails={(patch) => setPlan((current) => current ? { ...current, ...patch } : current)} /></div><DialogFooter className="shrink-0"><Button type="button" onClick={() => setEditingPlan(false)}>Done editing</Button></DialogFooter></DialogContent></Dialog>}{conversation && <ProjectChatPanel {...conversation} className={`${conversationOpen ? "h-[min(92dvh,1000px)] min-h-[480px]" : "hidden"}`} />}</div>}
 
     {step === milestoneStep && isMilestoneProject && <div className={conversation && conversationOpen ? "grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(280px,0.75fr)] xl:items-stretch" : ""}>
-      <MilestonePlanAgreementSection projectType={initial.projectType} status={milestoneAgreementStatus} budget={Number(budget)} deadline={deadline} milestones={milestones} tasks={milestoneTasks} clientAgreed={clientMilestoneAgreed} freelancerAgreed={freelancerMilestoneAgreed} currentParty={milestoneAgreementStatus?.currentParty ?? basicAgreementStatus?.currentParty ?? "client"} updating={openingAgreement || Boolean(milestoneAgreementStatus?.updating)} reviewed={milestoneReviewed} onReviewedChange={setMilestoneReviewed} onChange={(next) => { setMilestones(next); setMilestonePlanDirty(true); setMilestoneReviewed(false); }} onAgree={() => void agreeToMilestonePlan()} headerAction={conversation ? <Button type="button" variant="outline" aria-expanded={conversationOpen} onClick={() => setConversationOpen((open) => !open)}><MessageSquare/>{conversationOpen ? "Hide conversation" : "Show conversation"}</Button> : null} navigation={<div className="flex flex-col-reverse justify-between gap-2 border-t pt-4 sm:flex-row"><Button type="button" variant="outline" onClick={() => { setError(""); setStep(1); }}>Back to Plan the Work</Button><Button type="button" disabled={!bothMilestonePartiesAgreed || !allMilestoneTasksAssigned || deadlineViolationIds.size > 0 || milestones.length === 0 || Math.abs(milestoneTotal - Number(budget)) > 0.01} onClick={() => { setError(""); setStep(reviewStep); }}>Continue to review <ArrowRight/></Button></div>} />
+      <MilestonePlanAgreementSection projectType={initial.projectType} status={milestoneAgreementStatus} budget={Number(budget)} deadline={deadline} milestones={milestones} tasks={milestoneTasks} clientAgreed={clientMilestoneAgreed} freelancerAgreed={freelancerMilestoneAgreed} currentParty={milestoneAgreementStatus?.currentParty ?? basicAgreementStatus?.currentParty ?? "client"} updating={openingAgreement || Boolean(milestoneAgreementStatus?.updating)} reviewed={milestoneReviewed} onReviewedChange={setMilestoneReviewed} onRequestRevision={() => { setMilestoneRevisionMode(true); setMilestonePlanDirty(true); setMilestoneReviewed(false); }} onChange={(next) => { setMilestones(next); setMilestonePlanDirty(true); setMilestoneReviewed(false); }} onAgree={() => void agreeToMilestonePlan()} headerAction={conversation ? <Button type="button" variant="outline" aria-expanded={conversationOpen} onClick={() => setConversationOpen((open) => !open)}><MessageSquare/>{conversationOpen ? "Hide conversation" : "Show conversation"}</Button> : null} navigation={<div className="flex flex-col-reverse justify-between gap-2 border-t pt-4 sm:flex-row"><Button type="button" variant="outline" onClick={() => { setError(""); setStep(1); }}>Back to Plan the Work</Button><Button type="button" disabled={!bothMilestonePartiesAgreed || deadlineViolationIds.size > 0 || milestones.length === 0 || !milestoneBudgetMatches} onClick={() => { setError(""); setStep(reviewStep); }}>Continue to review <ArrowRight/></Button></div>} />
       {conversation && <ProjectChatPanel {...conversation} className={`${conversationOpen ? "h-[min(92dvh,1000px)] min-h-[480px]" : "hidden"}`} />}
     </div>}
 
-    {step === reviewStep && <Card className="border-border/80 bg-card/70"><CardHeader><CardTitle>Review & Agreement</CardTitle><p className="text-sm text-muted-foreground">Review the prepared details and plan before final confirmation.</p></CardHeader><CardContent className="space-y-5">{agreementStatus && <section aria-label="Party agreement status" className="space-y-3 rounded-xl border p-4"><h2 className="font-semibold">Agreement status</h2><div className="grid gap-2 sm:grid-cols-2"><div className="flex items-center justify-between gap-3 rounded-lg bg-muted/30 px-3 py-2 text-sm"><span>Client{agreementStatus.currentParty === "client" ? " (you)" : ""}</span><Badge variant={agreementStatus.clientAgreed ? "secondary" : "outline"}>{agreementStatus.clientAgreed ? "Agreed" : "Pending"}</Badge></div><div className="flex items-center justify-between gap-3 rounded-lg bg-muted/30 px-3 py-2 text-sm"><span>Freelancer{agreementStatus.currentParty === "freelancer" ? " (you)" : ""}</span><Badge variant={agreementStatus.freelancerAgreed ? "secondary" : "outline"}>{agreementStatus.freelancerAgreed ? "Agreed" : "Pending"}</Badge></div></div>{currentPartyContractAgreed && <p className="text-sm text-muted-foreground">You have agreed to this contract. You can review the terms, but cannot submit your agreement again.</p>}</section>}<section className="rounded-xl border p-4"><h2 className="text-lg font-semibold">{title}</h2><p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{description}</p><div className="mt-4 grid gap-3 border-t pt-4 sm:grid-cols-4"><InlineSummaryRow label="Budget" value={`PHP ${Number(budget).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`}/><InlineSummaryRow label="Included revisions" value={revisions}/><InlineSummaryRow label="Project start" value={new Date(`${startDate}T00:00:00`).toLocaleDateString()}/><InlineSummaryRow label="Delivery deadline" value={new Date(`${deadline}T00:00:00`).toLocaleDateString()}/></div>{contractDocument && <div className="mt-4 flex items-center gap-2 border-t pt-4 text-sm"><Paperclip className="size-4 text-muted-foreground"/><span>{contractDocument.name}</span><span className="text-xs text-muted-foreground">Will be sent in the agreement conversation for review; it is not automatically part of the signed terms.</span></div>}</section>{initial.projectType === "milestone" && <section className="rounded-xl border p-4"><h2 className="font-semibold">Agreed milestone schedule</h2><div className="mt-3 space-y-2">{milestones.map((milestone, index) => <div key={milestone.id} className="flex flex-wrap justify-between gap-2 border-t pt-2 text-sm"><span>{index + 1}. {milestone.title}</span><span className="text-muted-foreground">PHP {milestone.amount.toLocaleString("en-PH", { minimumFractionDigits: 2 })} · Due {milestone.dueDate}</span></div>)}</div><p className="mt-3 border-t pt-3 text-sm font-medium">Total: PHP {milestoneTotal.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</p></section>}{plan && <Card className="border-border/80 bg-card/50"><CardHeader className="pb-3"><CardTitle className="text-base">{plan.name}</CardTitle>{plan.description && <p className="whitespace-pre-wrap text-sm text-muted-foreground">{plan.description}</p>}</CardHeader><CardContent className="pt-0"><PlanColumns value={plan} fit invalidTaskIds={deadlineViolationIds}/></CardContent></Card>}{error && <p role="alert" className="text-sm text-destructive">{error}</p>}<div className="flex flex-col-reverse justify-between gap-2 sm:flex-row"><Button type="button" variant="outline" onClick={() => setStep(isMilestoneProject ? milestoneStep : 1)}>{isMilestoneProject ? "Back to Milestone Plan" : "Back to Plan the Work"}</Button><Button type="button" disabled={busy || openingAgreement || deadlineViolationIds.size > 0} onClick={() => { setTermsPolicyAccepted(false); setAgreementReviewed(false); setWillVerifySavedTerms(false); setFinalConfirmationOpen(true); }}>Final confirmation</Button></div></CardContent></Card>}
+    {step === reviewStep && <Card className="border-border/80 bg-card/70"><CardHeader><CardTitle>Review & Agreement</CardTitle><p className="text-sm text-muted-foreground">Review the prepared details and plan before final confirmation.</p></CardHeader><CardContent className="space-y-5"><section className="rounded-xl border p-4"><h2 className="text-lg font-semibold">{title}</h2><p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{description}</p><div className="mt-4 grid gap-3 border-t pt-4 sm:grid-cols-4"><InlineSummaryRow label="Budget" value={`PHP ${Number(budget).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`}/><InlineSummaryRow label="Included revisions" value={revisions}/><InlineSummaryRow label="Project start" value={new Date(`${startDate}T00:00:00`).toLocaleDateString()}/><InlineSummaryRow label="Delivery deadline" value={new Date(`${deadline}T00:00:00`).toLocaleDateString()}/></div>{contractDocument && <div className="mt-4 flex items-center gap-2 border-t pt-4 text-sm"><Paperclip className="size-4 text-muted-foreground"/><span>{contractDocument.name}</span><span className="text-xs text-muted-foreground">Will be sent in the agreement conversation for review; it is not automatically part of the signed terms.</span></div>}</section>{initial.projectType === "milestone" && <section className="rounded-xl border p-4"><h2 className="font-semibold">Agreed milestone schedule</h2><div className="mt-3 space-y-2">{milestones.map((milestone, index) => <div key={milestone.id} className="flex flex-wrap justify-between gap-2 border-t pt-2 text-sm"><span>{index + 1}. {milestone.title}</span><span className="text-muted-foreground">PHP {milestone.amount.toLocaleString("en-PH", { minimumFractionDigits: 2 })} · Due {milestone.dueDate}</span></div>)}</div><p className="mt-3 border-t pt-3 text-sm font-medium">Total: PHP {milestoneTotal.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</p></section>}{plan && <Card className="border-border/80 bg-card/50"><CardHeader className="pb-3"><CardTitle className="text-base">{plan.name}</CardTitle>{plan.description && <p className="whitespace-pre-wrap text-sm text-muted-foreground">{plan.description}</p>}</CardHeader><CardContent className="pt-0"><PlanColumns value={plan} fit invalidTaskIds={deadlineViolationIds}/></CardContent></Card>}{error && <p role="alert" className="text-sm text-destructive">{error}</p>}{(agreementStatus || initial.projectType === "milestone") && <section aria-label="Party agreement status" className="space-y-3 rounded-xl border p-4"><h2 className="font-semibold">Final contract confirmation</h2><div className="grid gap-2 sm:grid-cols-2"><div className="flex items-center justify-between gap-3 rounded-lg bg-muted/30 px-3 py-2 text-sm"><span>Client{agreementStatus?.currentParty === "client" ? " (you)" : ""}</span><Badge variant={agreementStatus?.clientAgreed ? "secondary" : "outline"}>{agreementStatus?.clientAgreed ? "Agreed" : "Pending"}</Badge></div><div className="flex items-center justify-between gap-3 rounded-lg bg-muted/30 px-3 py-2 text-sm"><span>Freelancer{agreementStatus?.currentParty === "freelancer" ? " (you)" : ""}</span><Badge variant={agreementStatus?.freelancerAgreed ? "secondary" : "outline"}>{agreementStatus?.freelancerAgreed ? "Agreed" : "Pending"}</Badge></div></div><p className="text-xs text-muted-foreground">The project becomes Active after both parties confirm the final contract.</p></section>}<div className="flex flex-col-reverse justify-between gap-2 sm:flex-row"><Button type="button" variant="outline" onClick={() => setStep(isMilestoneProject ? milestoneStep : 1)}>{isMilestoneProject ? "Back to Milestone Plan" : "Back to Plan the Work"}</Button><Button type="button" disabled={busy || openingAgreement || deadlineViolationIds.size > 0} onClick={() => { setTermsPolicyAccepted(false); setAgreementReviewed(false); setWillVerifySavedTerms(false); setFinalConfirmationOpen(true); }}>Final confirmation</Button></div></CardContent></Card>}
 
     {step === reviewStep && <Dialog open={finalConfirmationOpen} onOpenChange={(open) => { setFinalConfirmationOpen(open); if (!open) { setTermsPolicyAccepted(false); setAgreementReviewed(false); setWillVerifySavedTerms(false); } }}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl"><DialogHeader><DialogTitle>{onAgree ? agreementStatus?.isNew ? "Review and agree to contract" : "Confirm contract agreement" : "Final proposal confirmation"}</DialogTitle><DialogDescription>{onAgree ? agreementStatus?.isNew ? "Review the proposed terms. Agreeing will create the contract and record your confirmation." : "Review the saved contract terms and confirm your agreement." : "Review the project terms and plan before continuing to the existing contract view."}</DialogDescription></DialogHeader><section className="rounded-lg border p-4"><ul className="space-y-2 text-sm"><li><span className="font-semibold">Project name:</span> {title}</li><li><span className="font-semibold">Description:</span> <span className="line-clamp-2 text-muted-foreground">{description}</span></li><li><span className="font-semibold">Budget:</span> PHP {Number(budget).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</li><li><span className="font-semibold">Included revisions:</span> {revisions}</li><li><span className="font-semibold">Project start:</span> {new Date(`${startDate}T00:00:00`).toLocaleDateString()}</li><li><span className="font-semibold">Delivery deadline:</span> {new Date(`${deadline}T00:00:00`).toLocaleDateString()}</li>{contractDocument && <li><span className="font-semibold">Custom contract (optional):</span> {contractDocument.name}</li>}</ul></section>{initial.projectType === "milestone" && <section className="rounded-lg border p-4"><h3 className="font-semibold">Agreed milestone schedule</h3><ul className="mt-2 space-y-2 text-sm">{milestones.map((milestone, index) => <li key={milestone.id} className="flex flex-wrap justify-between gap-2 border-t pt-2"><span>{index + 1}. {milestone.title}</span><span>PHP {milestone.amount.toLocaleString("en-PH", { minimumFractionDigits: 2 })} · {milestone.dueDate}</span></li>)}</ul><p className="mt-2 text-right text-sm font-semibold">Total: PHP {milestoneTotal.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</p></section>}{plan && <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3"><div className="min-w-0"><h3 className="truncate text-sm font-medium">{plan.name}</h3><p className="text-xs text-muted-foreground">{plan.content.columns.length} stages Â· {plan.content.columns.reduce((count, column) => count + column.tasks.length, 0)} tasks</p></div><Button type="button" size="sm" variant="outline" className="shrink-0" onClick={() => setPlanPreviewOpen(true)}><Eye/>View full plan</Button></section>}<section className="space-y-3 rounded-lg border p-4"><h3 className="font-semibold">Terms and agreement</h3><label className="flex cursor-pointer items-start gap-3 text-sm"><Checkbox checked={termsPolicyAccepted} onCheckedChange={(checked) => setTermsPolicyAccepted(checked === true)} aria-label="I agree to WorkSync Terms and Privacy Policy" className="mt-0.5 size-5"/><span>I agree to WorkSync&#39;s <u className="underline underline-offset-2">Terms and Privacy Policy</u>.</span></label><label className="flex cursor-pointer items-start gap-3 text-sm"><Checkbox checked={agreementReviewed} onCheckedChange={(checked) => setAgreementReviewed(checked === true)} aria-label="Confirm that I reviewed the agreement terms above" className="mt-0.5 size-5"/><span>I confirm that I have reviewed the agreement terms above.</span></label><label className="flex cursor-pointer items-start gap-3 text-sm"><Checkbox checked={willVerifySavedTerms} onCheckedChange={(checked) => setWillVerifySavedTerms(checked === true)} aria-label="Confirm that I will verify the saved contract terms before signing" className="mt-0.5 size-5"/><span>I will verify the saved contract terms before signing.</span></label></section>{error && <p role="alert" className="text-sm text-destructive">{error}</p>}<DialogFooter><Button type="button" disabled={currentPartyContractAgreed ? busy || openingAgreement || agreementStatus?.updating : !(termsPolicyAccepted && agreementReviewed && willVerifySavedTerms) || busy || openingAgreement || agreementStatus?.updating} onClick={() => { if (currentPartyContractAgreed) { setFinalConfirmationOpen(false); setTermsPolicyAccepted(false); setAgreementReviewed(false); setWillVerifySavedTerms(false); return; } void (onAgree ? agreeToContract() : openAgreementFlow()).then((opened) => { if (opened) setFinalConfirmationOpen(false); }); }}>{busy || openingAgreement || agreementStatus?.updating ? "Saving agreement…" : currentPartyContractAgreed ? "Close" : onAgree ? agreementStatus?.isNew ? "Agree and create contract" : "Agree to contract" : "Continue to contract view"}</Button></DialogFooter></DialogContent></Dialog>}{plan && <ProjectPlanSnapshotPreview plan={plan} open={planPreviewOpen} onOpenChange={setPlanPreviewOpen}/> }
 
@@ -728,7 +738,7 @@ function PlanEditor({ value, startDate, deadline, invalidTaskIds, onUpdateColumn
   </section>;
 }
 
-function MilestonePlanAgreementSection({ projectType, status, budget, deadline, milestones, tasks, clientAgreed, freelancerAgreed, currentParty, updating, reviewed, onReviewedChange, onChange, onAgree, headerAction, navigation }: {
+function MilestonePlanAgreementSection({ projectType, status, budget, deadline, milestones, tasks, clientAgreed, freelancerAgreed, currentParty, updating, reviewed, onReviewedChange, onRequestRevision, onChange, onAgree, headerAction, navigation }: {
   projectType?: "standard" | "milestone";
   status?: JobMilestonePlanAgreement & { currentParty: "client" | "freelancer"; updating: boolean; error?: string };
   budget: number;
@@ -741,6 +751,7 @@ function MilestonePlanAgreementSection({ projectType, status, budget, deadline, 
   updating: boolean;
   reviewed: boolean;
   onReviewedChange: (checked: boolean) => void;
+  onRequestRevision: () => void;
   onChange: (milestones: ContractVersionMilestoneInput[]) => void;
   onAgree: () => void;
   headerAction?: React.ReactNode;
@@ -748,6 +759,7 @@ function MilestonePlanAgreementSection({ projectType, status, budget, deadline, 
 }) {
   const [draftTaskId, setDraftTaskId] = useState("");
   const [draftAmount, setDraftAmount] = useState("");
+  const [editingMilestoneId, setEditingMilestoneId] = useState<string | null>(null);
   if (projectType !== "milestone") return null;
   const total = milestones.reduce((sum, milestone) => sum + (Number.isFinite(milestone.amount) ? milestone.amount : 0), 0);
   const totalMatches = Math.round(total * 100) === Math.round(budget * 100);
@@ -755,39 +767,48 @@ function MilestonePlanAgreementSection({ projectType, status, budget, deadline, 
   const hasPositiveAmounts = milestones.every((milestone) => Number.isFinite(milestone.amount) && milestone.amount > 0);
   const myApproval = currentParty === "client" ? clientAgreed : freelancerAgreed;
   const remainingBudget = Math.round((budget - total) * 100) / 100;
+  const editingMilestone = milestones.find((milestone) => milestone.id === editingMilestoneId);
+  const draftBudgetLimit = Math.max(0, remainingBudget + (editingMilestone?.amount ?? 0));
   const draftTask = tasks.find((task) => task.id === draftTaskId);
   const assignedTaskIds = new Set(milestones.flatMap((milestone) => {
-    const task = tasks.find((item) => item.title === milestone.title && item.description === milestone.description);
-    return task ? [task.id] : [];
+    if (milestone.id === editingMilestoneId) return [];
+    return milestone.taskIds ?? [];
   }));
   const draftAmountValue = Number(draftAmount);
   const canAddMilestone = Boolean(
-    !updating && !myApproval && draftTask && !assignedTaskIds.has(draftTask.id) &&
-    Number.isFinite(draftAmountValue) && draftAmountValue > 0 && draftAmountValue <= remainingBudget,
+    !updating && !myApproval && (!editingMilestone || draftTask) && (!draftTask || !assignedTaskIds.has(draftTask.id)) &&
+    Number.isFinite(draftAmountValue) && draftAmountValue > 0 && draftAmountValue <= draftBudgetLimit,
   );
   const visibleMilestones = milestones.filter((milestone) => {
-    const task = tasks.find((item) => item.title === milestone.title && item.description === milestone.description);
+    const task = findTaskForMilestone(milestone, tasks);
     return task || milestone.amount > 0;
   });
   const addMilestone = () => {
     if (!canAddMilestone) return;
+    if (editingMilestone) {
+      onChange(milestones.map((milestone) => milestone.id === editingMilestone.id
+        ? { ...milestone, title: draftTask!.title, description: draftTask!.description, amount: draftAmountValue, taskIds: [...new Set([...(milestone.taskIds ?? []), draftTask!.id])] }
+        : milestone));
+      setEditingMilestoneId(null);
+      setDraftTaskId("");
+      setDraftAmount("");
+      return;
+    }
     const existing = milestones.filter((milestone) => {
-      const task = tasks.find((item) => item.title === milestone.title && item.description === milestone.description);
+      const task = findTaskForMilestone(milestone, tasks);
       return task || milestone.amount > 0;
     });
     const next = {
-      id: globalThis.crypto.randomUUID(), title: draftTask!.title, description: draftTask!.description, amount: draftAmountValue,
+      id: globalThis.crypto.randomUUID(), title: draftTask?.title ?? `Milestone ${existing.length + 1}`, description: draftTask?.description ?? "", amount: draftAmountValue, taskIds: draftTask ? [draftTask.id] : [],
       dueDate: deadline || null, displayOrder: existing.length + 1,
     };
     onChange([...existing, next]);
+    setEditingMilestoneId(null);
     setDraftTaskId("");
     setDraftAmount("");
   };
   const hasTaskSelections = milestones.length > 0 && milestones.every((milestone) =>
-    tasks.some((task) => task.title === milestone.title && task.description === milestone.description),
-  );
-  const allTasksAssigned = tasks.length > 0 && tasks.every((task) =>
-    milestones.some((milestone) => milestone.title === task.title && milestone.description === task.description),
+    (milestone.taskIds ?? []).some((taskId) => tasks.some((task) => task.id === taskId)),
   );
   return <section aria-label="Milestone plan and agreement" className="min-w-0 space-y-3 rounded-xl border border-border/80 bg-muted/15 p-3">
     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -795,30 +816,31 @@ function MilestonePlanAgreementSection({ projectType, status, budget, deadline, 
       {headerAction}
     </div>
     {tasks.length === 0 ? <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Add tasks to the freelancer&#39;s plan before creating milestones.</p> : <div className="grid gap-2 rounded-lg border bg-card/60 p-2 sm:grid-cols-[minmax(0,1.5fr)_minmax(180px,1fr)] sm:items-start">
-      <Field compact id="milestone-new-task" label="Milestone task"><select id="milestone-new-task" value={draftTaskId} disabled={updating || myApproval} onChange={(event) => setDraftTaskId(event.target.value)} className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"><option value="">Choose a plan task</option>{tasks.map((task) => <option key={task.id} value={task.id} disabled={assignedTaskIds.has(task.id)}>{task.stage} · {task.title}{assignedTaskIds.has(task.id) ? " (already assigned)" : ""}</option>)}</select></Field>
-      <Field compact id="milestone-new-amount" label="Budget amount (PHP)"><Input className="h-9" id="milestone-new-amount" type="number" min="0.01" max={Math.max(0, remainingBudget)} step="0.01" value={draftAmount} disabled={updating || myApproval || remainingBudget <= 0} placeholder="0.00" onChange={(event) => { const value = event.target.value === "" ? "" : Number(event.target.value); if (value === "") setDraftAmount(""); else if (Number.isFinite(value) && value > 0) setDraftAmount(String(Math.min(value, Math.max(remainingBudget, 0)))); }}/></Field>
+      <Field compact id="milestone-new-task" label="Milestone task (optional)"><select id="milestone-new-task" value={draftTaskId} disabled={updating || myApproval} onChange={(event) => setDraftTaskId(event.target.value)} className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"><option value="">Choose a plan task</option>{tasks.map((task) => <option key={task.id} value={task.id} disabled={assignedTaskIds.has(task.id)}>{task.stage} · {task.title}{assignedTaskIds.has(task.id) ? " (already assigned)" : ""}</option>)}</select></Field>
+      <Field compact id="milestone-new-amount" label="Budget amount (PHP)"><Input className="h-9" id="milestone-new-amount" type="number" min="0.01" max={draftBudgetLimit} step="0.01" value={draftAmount} disabled={updating || myApproval || draftBudgetLimit <= 0} placeholder="0.00" onChange={(event) => { const value = event.target.value === "" ? "" : Number(event.target.value); if (value === "") setDraftAmount(""); else if (Number.isFinite(value) && value > 0) setDraftAmount(String(Math.min(value, draftBudgetLimit))); }}/></Field>
     </div>}
-    <div className="flex justify-end"><Button type="button" size="sm" variant="outline" disabled={!canAddMilestone} onClick={addMilestone}><Plus className="size-4"/>Add milestone</Button></div>
+    <div className="flex justify-end gap-2">{editingMilestoneId && <Button type="button" size="sm" variant="ghost" onClick={() => { setEditingMilestoneId(null); setDraftTaskId(""); setDraftAmount(""); }}>Cancel edit</Button>}<Button type="button" size="sm" variant="outline" disabled={!canAddMilestone} title={editingMilestone && !draftTask ? "Choose a plan task for this milestone." : draftBudgetLimit <= 0 ? "Edit a milestone and lower its budget to free funds first." : "Enter a positive amount within the available budget."} onClick={addMilestone}>{editingMilestone ? <><Check className="size-4"/>Update milestone</> : <><Plus className="size-4"/>Add milestone</>}</Button></div>
     {visibleMilestones.length > 0 && <div className="divide-y rounded-lg border bg-card/30">{visibleMilestones.map((milestone, index) => {
-      const task = tasks.find((item) => item.title === milestone.title && item.description === milestone.description);
-      return <div key={milestone.id} className="flex items-center gap-3 px-3 py-3 transition-colors hover:bg-muted/30">
-        <span className="flex min-w-0 flex-1 items-center gap-3 text-left">
-          <span className="size-4 shrink-0 rounded-full border border-muted-foreground/50" aria-hidden="true"/>
+      const task = findTaskForMilestone(milestone, tasks);
+      const selected = editingMilestoneId === milestone.id;
+      const beginEdit = () => { if (myApproval) onRequestRevision(); setEditingMilestoneId(milestone.id); setDraftTaskId(task?.id ?? ""); setDraftAmount(String(milestone.amount)); };
+      return <div key={milestone.id} className={`flex items-center gap-3 px-3 py-3 transition-colors ${selected ? "bg-primary/5" : "hover:bg-muted/30"}`}>
+        <button type="button" aria-pressed={selected} disabled={updating} onClick={beginEdit} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+          <span className={`size-4 shrink-0 rounded-full border ${selected ? "border-primary bg-primary" : "border-muted-foreground/50"}`} aria-hidden="true"/>
           <span className="min-w-0"><span className="block truncate text-sm font-medium">{task ? `${task.stage} · ${task.title}` : `Milestone ${index + 1}`}</span><span className="block truncate text-xs text-muted-foreground">{task?.description || (task ? "No task description." : "Choose a task from the plan.")}</span></span>
-        </span>
+        </button>
         <span className={`shrink-0 text-right text-sm font-medium ${totalExceedsBudget ? "text-destructive" : "text-foreground"}`}>PHP {milestone.amount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-        <Button type="button" size="icon" variant="ghost" className="size-8 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={updating || myApproval} aria-label={`Remove milestone ${index + 1}`} title={`Remove milestone ${index + 1}`} onClick={() => onChange(milestones.filter((item) => item.id !== milestone.id).map((item, itemIndex) => ({ ...item, displayOrder: itemIndex + 1 })))}><X className="size-4"/></Button>
+        <Button type="button" size="icon" variant="ghost" className="size-8 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={updating || myApproval} aria-label={`Remove milestone ${index + 1}`} title={`Remove milestone ${index + 1}`} onClick={() => { onChange(milestones.filter((item) => item.id !== milestone.id).map((item, itemIndex) => ({ ...item, displayOrder: itemIndex + 1 }))); if (editingMilestoneId === milestone.id) { setEditingMilestoneId(null); setDraftTaskId(""); setDraftAmount(""); } }}><X className="size-4"/></Button>
       </div>;
     })}</div>}
     <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-sm"><span className="text-muted-foreground">Allocated budget</span><span className={`font-medium ${totalMatches ? "text-emerald-500" : totalExceedsBudget ? "text-destructive" : "text-muted-foreground"}`}>PHP {total.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / PHP {budget.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
     {!totalMatches && milestones.length > 0 && <p className="text-xs text-muted-foreground">Milestone amounts must total the agreed project budget.</p>}
-    {milestones.length > 0 && !allTasksAssigned && <p className="text-xs text-muted-foreground">Assign every plan task to a milestone before agreeing.</p>}
     {status?.error && <p role="alert" className="text-sm text-destructive">Milestone agreement status could not be loaded: {status.error}</p>}
     <div className="grid gap-2 sm:grid-cols-2"><div className="flex items-center justify-between rounded-lg bg-muted/30 px-3 py-2 text-sm"><span>Client</span><Badge variant={clientAgreed ? "secondary" : "outline"}>{clientAgreed ? "Agreed" : "Pending"}</Badge></div><div className="flex items-center justify-between rounded-lg bg-muted/30 px-3 py-2 text-sm"><span>Freelancer</span><Badge variant={freelancerAgreed ? "secondary" : "outline"}>{freelancerAgreed ? "Agreed" : "Pending"}</Badge></div></div>
     <label className="flex cursor-pointer items-start gap-3 text-sm"><Checkbox checked={reviewed} disabled={updating || myApproval} onCheckedChange={(checked) => onReviewedChange(checked === true)} className="mt-0.5 size-5"/><span>I agree to this milestone schedule and budget split.</span></label>
-    {myApproval && <p className="text-sm text-muted-foreground">You agreed to this schedule. Editing it will require both parties to agree again.</p>}
+
     {clientAgreed && freelancerAgreed && <p className="text-sm text-emerald-500">Both parties agreed to the milestone plan.</p>}
-    <Button type="button" className="w-full" disabled={updating || myApproval || !reviewed || !hasTaskSelections || !allTasksAssigned || !hasPositiveAmounts || !totalMatches} onClick={onAgree}>{updating ? "Saving milestone agreement..." : myApproval ? "Agreed to milestone plan" : "Agree to milestone plan"}</Button>
+    <Button type="button" className="w-full" disabled={updating || myApproval || !reviewed || !hasTaskSelections || !hasPositiveAmounts || !totalMatches} title={!hasTaskSelections ? "Choose a plan task for each milestone." : !totalMatches ? "Milestone amounts must equal the agreed project budget." : !reviewed ? "Check the agreement box above first." : undefined} onClick={onAgree}>{updating ? "Saving milestone agreement..." : myApproval ? "Agreed to milestone plan" : "Agree to milestone plan"}</Button>
     {navigation}
   </section>;
 }

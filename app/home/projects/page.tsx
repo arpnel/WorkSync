@@ -4,7 +4,7 @@ import { WorkspacePageHeader } from "@/components/shared/WorkspacePageHeader";
 import { Suspense } from "react";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 
-import { JobAgreementButton } from "@/components/project/JobAgreementButton";
+import { ProjectCard } from "@/components/project/ProjectCard";
 import { ProjectList } from "@/components/project/ProjectList";
 import { ProjectTabs } from "@/components/project/ProjectTabs";
 import { ProjectToolbar } from "@/components/project/ProjectToolbar";
@@ -50,16 +50,33 @@ function ProjectsPage() {
       ),
     },
   };
-  const acceptedApplicationIds = new Set(
-    requestState.requests.discussions.map((request) => request.applicationId),
-  );
-  const displayProjects = projects.map((project) =>
-    project.applicationId &&
-    acceptedApplicationIds.has(project.applicationId) &&
-    project.status === "Request"
-      ? { ...project, status: "In Discussion" }
-      : project,
-  );
+  const matchesDiscussion = (
+    project: (typeof projects)[number],
+    request: (typeof requestState.requests.discussions)[number],
+  ) => {
+    if (project.applicationId) return project.applicationId === request.applicationId;
+    return Boolean(
+      project.jobId &&
+        project.freelancerId &&
+        project.jobId === request.jobId &&
+        project.freelancerId === request.freelancerId,
+    );
+  };
+  const displayProjects = projects.map((project) => {
+    const discussion = requestState.requests.discussions.find((request) =>
+      matchesDiscussion(project, request),
+    );
+    if (!discussion) return project;
+
+    return {
+      ...project,
+      title: discussion.jobTitle,
+      requestDescription: discussion.jobDescription || project.requestDescription,
+      requestCategoryName: discussion.categoryName || project.requestCategoryName,
+      type: discussion.projectType === "milestone" ? "Milestone" : "Standard",
+      status: project.status === "Request" ? "In Discussion" : project.status,
+    };
+  });
   const {
     activeFilter,
     setActiveFilter,
@@ -76,13 +93,8 @@ function ProjectsPage() {
     filteredProjects,
   } = useProjectFilters(displayProjects);
 
-  const linkedApplications = new Set(
-    displayProjects
-      .map((project) => project.applicationId)
-      .filter((applicationId): applicationId is string => Boolean(applicationId)),
-  );
   const discussions = requestState.requests.discussions.filter((request) =>
-    !linkedApplications.has(request.applicationId) &&
+    !displayProjects.some((project) => matchesDiscussion(project, request)) &&
       [request.jobTitle, request.clientName, request.freelancerName].some(
         (value) => value.toLowerCase().includes(search.trim().toLowerCase()),
       ),
@@ -91,8 +103,7 @@ function ProjectsPage() {
     activeFilter === "In Discussion"
       ? filteredProjects.filter(
           (project) =>
-            !project.applicationId ||
-            !acceptedApplicationIds.has(project.applicationId),
+            !discussions.some((request) => matchesDiscussion(project, request)),
         )
       : filteredProjects;
 
@@ -248,28 +259,37 @@ function ProjectsPage() {
             </p>
           </div>
           {discussions.map((request) => (
-            <JobAgreementButton
+            <ProjectCard
               key={request.applicationId}
-              applicationId={request.applicationId}
-            >
-              <Card>
-                <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="font-semibold">{request.jobTitle}</h3>
-                    </div>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      With{" "}
-                      {request.currentParty === "freelancer"
-                        ? request.clientName
-                        : request.freelancerName}{" "}
-                      • Discuss price, delivery, revisions, milestones, and
-                      final terms.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </JobAgreementButton>
+              project={{
+                orderId: `application:${request.applicationId}`,
+                applicationId: request.applicationId,
+                jobId: request.jobId,
+                freelancerId: request.freelancerId,
+                projectId: null,
+                title: request.jobTitle,
+                client: request.clientName,
+                counterpartyName:
+                  request.currentParty === "freelancer"
+                    ? request.clientName
+                    : request.freelancerName,
+                type: request.projectType === "milestone" ? "Milestone" : "Standard",
+                budget: request.proposedPrice ?? request.jobBudget ?? 0,
+                createdAt: request.createdAt,
+                status: "In Discussion",
+                due: null,
+                progress: 0,
+                milestones:
+                  request.proposedPlan?.content.columns.filter(
+                    (column) => column.type === "stage",
+                  ).length ?? 0,
+                currentParty: request.currentParty,
+                requestDescription: request.jobDescription,
+                deliveryDays: request.estimatedDays,
+                revisions: null,
+                requestCategoryName: request.categoryName,
+              }}
+            />
           ))}
         </section>
       )}

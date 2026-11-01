@@ -27,11 +27,47 @@ import {
 import {
   saveContractVersionForAgreement,
   createProjectTypingChannel,
+  activateConfirmedProjectAgreement,
   getProjectConversationMessages,
   respondToProjectAgreement,
   type ContractVersionAgreementInput,
+  type ContractVersionMilestoneInput,
 } from "@/services/project/projectWorkspaceService";
 import type { WorkspaceMessage } from "@/types/project/projectWorkspace";
+
+type FinalContractAgreementStatus = {
+  currentParty: "client" | "freelancer";
+  clientAgreed: boolean;
+  freelancerAgreed: boolean;
+  isNew: boolean;
+  hasPastMilestoneDate: boolean;
+  updating: boolean;
+};
+
+function restoreMilestoneTaskIds(
+  milestones: readonly ContractVersionMilestoneInput[],
+  plan: ProjectRequest["proposedPlan"],
+): ContractVersionMilestoneInput[] {
+  if (!plan) return milestones.map((milestone) => ({ ...milestone }));
+  const tasks = plan.content.columns
+    .filter((column) => column.type === "stage")
+    .flatMap((column) => column.tasks.map((task) => ({
+      id: `${column.id}:${task.id}`,
+      title: task.title,
+      description: task.description,
+    })));
+
+  return milestones.map((milestone) => {
+    if (milestone.taskIds?.length) return { ...milestone, taskIds: [...milestone.taskIds] };
+    const matches = tasks.filter((task) =>
+      task.title === milestone.title &&
+      (!milestone.description || task.description === milestone.description),
+    );
+    return matches.length === 1
+      ? { ...milestone, taskIds: [matches[0].id] }
+      : { ...milestone, taskIds: [] };
+  });
+}
 
 export default function CreateContractPage() {
   const params = useParams<{ applicationId: string }>();
@@ -46,6 +82,8 @@ export default function CreateContractPage() {
   const [conversationMessages, setConversationMessages] = useState<WorkspaceMessage[]>([]);
   const [conversationError, setConversationError] = useState("");
   const [canCreateAgreement, setCanCreateAgreement] = useState(false);
+  const [agreementOrderId, setAgreementOrderId] = useState<string | null>(null);
+  const [finalContractStatus, setFinalContractStatus] = useState<FinalContractAgreementStatus | null>(null);
   const [basicAgreement, setBasicAgreement] = useState<(JobBasicTermsAgreement & {
     currentParty: "client" | "freelancer";
     updating: boolean;
@@ -70,6 +108,8 @@ export default function CreateContractPage() {
     setConversationMessages([]);
     setConversationError("");
     setCanCreateAgreement(false);
+    setAgreementOrderId(null);
+    setFinalContractStatus(null);
     setBasicAgreement(null);
     setMilestoneAgreement(null);
     void (async () => {
@@ -104,7 +144,7 @@ export default function CreateContractPage() {
         if (found.projectType === "milestone") {
           try {
             const savedPlan = await getJobMilestonePlanAgreement(applicationId);
-            if (current) setMilestoneAgreement({ ...savedPlan, currentParty: found.currentParty, updating: false });
+            if (current) setMilestoneAgreement({ ...savedPlan, milestones: restoreMilestoneTaskIds(savedPlan.milestones, found.proposedPlan), currentParty: found.currentParty, updating: false });
           } catch (cause) {
             if (current) setMilestoneAgreement({ milestones: [], clientAgreed: false, freelancerAgreed: false, currentParty: found.currentParty, updating: false, error: cause instanceof Error ? cause.message : "Milestone agreement could not be loaded." });
           }
@@ -114,10 +154,46 @@ export default function CreateContractPage() {
           .select("order_id")
           .eq("application_id", applicationId)
           .maybeSingle();
-        if (current)
-          setCanCreateAgreement(
-            !existingOrder.error && !existingOrder.data && found.currentParty === "client",
-          );
+        const canCreate = !existingOrder.error && !existingOrder.data && found.currentParty === "client";
+        if (current) {
+          setCanCreateAgreement(canCreate);
+          if (existingOrder.data?.order_id) {
+            setAgreementOrderId(existingOrder.data.order_id);
+            const { data: contract, error: contractStatusError } = await supabase
+              .from("contracts")
+              .select("current_version,client_signed_version,freelancer_signed_version")
+              .eq("order_id", existingOrder.data.order_id)
+              .maybeSingle();
+            if (!contractStatusError && contract) {
+              const clientAgreed = contract.client_signed_version === contract.current_version;
+              const freelancerAgreed = contract.freelancer_signed_version === contract.current_version;
+              setFinalContractStatus({
+                currentParty: found.currentParty,
+                clientAgreed,
+                freelancerAgreed,
+                isNew: false,
+                hasPastMilestoneDate: false,
+                updating: false,
+              });
+              if (clientAgreed && freelancerAgreed) {
+                try {
+                  await activateConfirmedProjectAgreement(existingOrder.data.order_id);
+                } catch (cause) {
+                  if (current) setError(`Both parties agreed, but project activation failed: ${cause instanceof Error ? cause.message : "Unknown activation error."}`);
+                }
+              }
+            }
+          } else if (canCreate) {
+            setFinalContractStatus({
+              currentParty: found.currentParty,
+              clientAgreed: false,
+              freelancerAgreed: false,
+              isNew: true,
+              hasPastMilestoneDate: false,
+              updating: false,
+            });
+          }
+        }
         const { currentUserId, conversations } = await getMessageConversations();
         const otherParticipantId = found.currentParty === "client"
           ? found.freelancerUserId
@@ -209,8 +285,20 @@ export default function CreateContractPage() {
     setMilestoneAgreement((current) => current ? { ...current, updating: true, error: undefined } : current);
     try {
       const saved = await agreeToJobMilestonePlan(applicationId, milestones);
-      setMilestoneAgreement({ ...saved, currentParty: request.currentParty, updating: false });
-      return saved;
+      const savedWithTaskIds = {
+        ...saved,
+        milestones: saved.milestones.map((milestone) => {
+          const submitted = milestones.find((item) => item.id === milestone.id);
+          return {
+            ...milestone,
+            taskIds: submitted?.taskIds?.length
+              ? [...submitted.taskIds]
+              : milestone.taskIds ?? [],
+          };
+        }),
+      };
+      setMilestoneAgreement({ ...savedWithTaskIds, currentParty: request.currentParty, updating: false });
+      return savedWithTaskIds;
     } catch (cause) {
       setMilestoneAgreement((current) => current ? { ...current, updating: false, error: cause instanceof Error ? cause.message : "Unable to record milestone agreement." } : current);
       throw cause;
@@ -311,6 +399,20 @@ export default function CreateContractPage() {
         `worksync:contract-draft:${draftOwnerId}:${applicationId}`,
         draftOwnerId,
       ).catch((draftError) => console.warn("Saved contract draft could not be cleared:", draftError));
+      if (agreeNow) {
+        setAgreementOrderId(serviceOrderId);
+        setFinalContractStatus({
+          currentParty: activeRequest.currentParty,
+          clientAgreed: activeRequest.currentParty === "client",
+          freelancerAgreed: activeRequest.currentParty === "freelancer",
+          isNew: false,
+          hasPastMilestoneDate: false,
+          updating: false,
+        });
+        setCanCreateAgreement(false);
+        setBusy(false);
+        return true;
+      }
       const projectRoute = activeRequest.projectType === "milestone" ? "milestone" : "standard";
       router.push(`/home/projects/${projectRoute}/${serviceOrderId}?view=agreement#contract`);
       return true;
@@ -320,6 +422,27 @@ export default function CreateContractPage() {
       return false;
     }
   }, [applicationId, busy, conversationId, request, router]);
+
+  const confirmExistingContract = useCallback(async () => {
+    if (!request || !agreementOrderId || !finalContractStatus || finalContractStatus.isNew) return false;
+    setBusy(true);
+    setFinalContractStatus((current) => current ? { ...current, updating: true } : current);
+    try {
+      await respondToProjectAgreement(agreementOrderId, true);
+      setFinalContractStatus((current) => current ? {
+        ...current,
+        clientAgreed: current.clientAgreed || request.currentParty === "client",
+        freelancerAgreed: current.freelancerAgreed || request.currentParty === "freelancer",
+        updating: false,
+      } : current);
+      setBusy(false);
+      return true;
+    } catch (cause) {
+      setFinalContractStatus((current) => current ? { ...current, updating: false } : current);
+      setBusy(false);
+      throw cause;
+    }
+  }, [agreementOrderId, finalContractStatus, request]);
 
   if (loading) return <ContentSkeleton label="Loading contract details" variant="workspace"/>;
   if (!request) return <div role="alert" className="mx-auto max-w-3xl px-6 py-16 text-center text-sm text-destructive">{error || "Application not found."}</div>;
@@ -338,14 +461,14 @@ export default function CreateContractPage() {
       plan: request.proposedPlan,
       planSource: request.proposedPlan ? "Submitted application plan" : "No plan selected",
       projectType: request.projectType,
-    }} draftKey={`worksync:contract-draft:${request.currentParty === "client" ? request.clientUserId : request.freelancerUserId}:${applicationId}`} draftUserId={request.currentParty === "client" ? request.clientUserId : request.freelancerUserId} busy={busy} conversationError={conversationError} agreementStatus={canCreateAgreement ? {
-      currentParty: "client",
+    }} draftKey={`worksync:contract-draft:${request.currentParty === "client" ? request.clientUserId : request.freelancerUserId}:${applicationId}`} draftUserId={request.currentParty === "client" ? request.clientUserId : request.freelancerUserId} busy={busy} conversationError={conversationError} agreementStatus={finalContractStatus ?? (canCreateAgreement ? {
+      currentParty: request.currentParty,
       clientAgreed: false,
       freelancerAgreed: false,
       isNew: true,
       hasPastMilestoneDate: false,
       updating: busy,
-    } : undefined} basicAgreementStatus={basicAgreement ?? undefined} onAgreeBasics={agreeToBasics} milestoneAgreementStatus={milestoneAgreement ?? undefined} onAgreeMilestonePlan={agreeToMilestonePlan} onAgree={canCreateAgreement ? async (proposal, requestId, file) => proposal && requestId ? openExistingAgreement(proposal, requestId, file, true) : false : undefined} conversation={conversationId ? {
+    } : undefined)} basicAgreementStatus={basicAgreement ?? undefined} onAgreeBasics={agreeToBasics} milestoneAgreementStatus={milestoneAgreement ?? undefined} onAgreeMilestonePlan={agreeToMilestonePlan} onAgree={finalContractStatus?.isNew === false && agreementOrderId ? confirmExistingContract : canCreateAgreement ? async (proposal, requestId, file) => proposal && requestId ? openExistingAgreement(proposal, requestId, file, true) : false : undefined} conversation={conversationId ? {
       conversationId,
       messages: conversationMessages,
       sending,

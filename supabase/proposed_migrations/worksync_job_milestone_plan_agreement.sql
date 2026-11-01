@@ -72,6 +72,9 @@ declare
   normalized_plan jsonb;
   plan_total numeric := 0;
   item jsonb;
+  task_item jsonb;
+  task_key text;
+  task_keys text[] := '{}';
   item_count integer := 0;
   item_title text;
   item_due date;
@@ -123,6 +126,22 @@ begin
        or jsonb_typeof(item->'dueDate') is distinct from 'string' then
       raise exception 'Milestone % has invalid details', item_count using errcode = '22023';
     end if;
+    if jsonb_typeof(item->'taskIds') is distinct from 'array' then
+      raise exception 'Milestone % must include at least one selected plan task', item_count using errcode = '22023';
+    end if;
+    if jsonb_array_length(item->'taskIds') not between 1 and 120 then
+      raise exception 'Milestone % must include at least one selected plan task', item_count using errcode = '22023';
+    end if;
+    for task_item in select value from jsonb_array_elements(item->'taskIds') loop
+      if jsonb_typeof(task_item) is distinct from 'string' then
+        raise exception 'Milestone % has an invalid plan task selection', item_count using errcode = '22023';
+      end if;
+      task_key := btrim(task_item #>> '{}');
+      if length(task_key) not between 1 and 161 or task_key = any(task_keys) then
+        raise exception 'Milestone % task selections must be non-empty and unique', item_count using errcode = '22023';
+      end if;
+      task_keys := array_append(task_keys, task_key);
+    end loop;
     begin
       perform (item->>'id')::uuid;
       if (item->>'amount')::numeric <= 0 then raise exception 'amount must be positive'; end if;
@@ -152,7 +171,8 @@ begin
       'description', coalesce(value->>'description', ''),
       'amount', round((value->>'amount')::numeric, 2),
       'dueDate', value->>'dueDate',
-      'displayOrder', ord
+      'displayOrder', ord,
+      'taskIds', value->'taskIds'
     ) order by ord
   ) into normalized_plan
   from jsonb_array_elements(p_milestones) with ordinality as rows(value, ord);

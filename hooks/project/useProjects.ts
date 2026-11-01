@@ -116,6 +116,9 @@ function getClientName(record: ProjectRecord): string {
 
 function getProjectType(record: ProjectRecord): "Standard" | "Milestone" {
   const project = getRelatedRecord(record.project) as Record<string, unknown> | null;
+  if (Array.isArray(project?.milestones) && project.milestones.length > 0) {
+    return "Milestone";
+  }
   if (project?.project_type === "standard" || project?.project_type === "milestone") {
     return project.project_type === "milestone" ? "Milestone" : "Standard";
   }
@@ -245,12 +248,12 @@ export function getProjectStatus(record: ProjectRecord): Project["status"] {
     return "Cancelled";
   if (projectStatus === "completed" || orderStatus === "completed")
     return "Completed";
-  if (["accepted", "negotiating", "in_discussion"].includes(orderStatus))
-    return "In Discussion";
   if (["active", "in_progress", "revision"].includes(projectStatus))
     return "Active";
   if (["active", "in_progress", "revision", "converted"].includes(orderStatus))
     return "Active";
+  if (["accepted", "negotiating", "in_discussion"].includes(orderStatus))
+    return "In Discussion";
   return "Request";
 }
 
@@ -294,6 +297,8 @@ export function mapProject(record: ProjectRecord): Project {
   return {
     orderId: record.order_id,
     applicationId: record.application_id ?? null,
+    jobId: record.job_id ?? null,
+    freelancerId: record.freelancer_id,
     clientSignedAt:
       typeof contract?.client_signed_at === "string"
         ? contract.client_signed_at

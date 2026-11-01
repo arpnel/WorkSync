@@ -31,6 +31,8 @@ import { format } from "date-fns";
 export interface Project {
   orderId: string;
   applicationId?: string | null;
+  jobId?: string | null;
+  freelancerId?: string | null;
   clientSignedAt?: string | null;
   freelancerSignedAt?: string | null;
   currentUserId?: string;
@@ -66,6 +68,10 @@ export function ProjectCard({ project, onChanged }: ProjectCardProps) {
   const openProject = () => {
     if (project.status === "Request") {
       setReviewOpen(true);
+      return;
+    }
+    if (project.status === "In Discussion" && project.applicationId) {
+      router.push(`/home/projects/create-contract/${project.applicationId}`);
       return;
     }
     const type = project.type === "Milestone" ? "milestone" : "standard";

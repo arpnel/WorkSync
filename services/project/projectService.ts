@@ -8,6 +8,7 @@ export interface ProjectRecord {
   current_user_id: string;
   order_id: string;
   application_id?: string | null;
+  job_id?: string | null;
   service_id: string;
   freelancer_id: string;
   client_id: string;
@@ -26,6 +27,7 @@ export interface ProjectRecord {
 interface ProjectOrderRow {
   order_id: string;
   application_id: string | null;
+  job_id: string | null;
   service_id: string;
   freelancer_id: string;
   client_id: string;
@@ -173,6 +175,7 @@ export async function getProjects(): Promise<ProjectRecord[]> {
       current_user_id: account.userId,
       order_id: order.order_id,
       application_id: order.application_id,
+      job_id: order.job_id,
       service_id: order.service_id,
       freelancer_id: order.freelancer_id,
       client_id: order.client_id,

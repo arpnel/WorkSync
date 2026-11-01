@@ -79,6 +79,8 @@ export interface ContractVersionMilestoneInput {
   amount: number;
   dueDate: string | null;
   displayOrder: number;
+  /** Explicit plan task keys assigned to this milestone during negotiation. */
+  taskIds?: string[];
 }
 
 export interface ContractVersionPayloadInput {
@@ -139,6 +141,7 @@ export interface ContractVersionPayload {
     amount: number;
     dueDate: string | null;
     displayOrder: number;
+    taskIds: string[];
   }>;
 }
 
@@ -256,7 +259,26 @@ export function mapContractVersionPayload(input: ContractVersionPayloadInput): C
     milestoneOrders.add(milestone.displayOrder);
     const dueDate = milestone.dueDate === null ? null : requireDate(milestone.dueDate, `${field}.dueDate`);
     if (dueDate && (dueDate < startDate || dueDate > deadline)) throw new ContractVersionPayloadError(`${field}.dueDate must fall within the contract dates.`);
-    return { id: milestone.id, title, description: milestoneDescription, amount: milestone.amount, dueDate, displayOrder: milestone.displayOrder };
+    const taskIds = Array.isArray(milestone.taskIds) ? [...milestone.taskIds] : [];
+    if (taskIds.length === 0) {
+      const matches = columns
+        .filter((column) => column.type === "stage")
+        .flatMap((column) => column.tasks
+          .filter((task) => task.title === title && (!milestoneDescription || task.description === milestoneDescription))
+          .map((task) => `${column.id}:${task.id}`));
+      if (matches.length !== 1) {
+        throw new ContractVersionPayloadError(`${field}.taskIds could not be recovered uniquely from its selected plan task. Reopen the milestone plan and select the task again.`);
+      }
+      taskIds.push(matches[0]);
+    }
+    const assignedTaskIds = new Set<string>();
+    for (const taskId of taskIds) {
+      if (typeof taskId !== "string" || taskId.length < 1 || taskId.length > 161 || assignedTaskIds.has(taskId)) {
+        throw new ContractVersionPayloadError(`${field}.taskIds must contain unique plan task keys.`);
+      }
+      assignedTaskIds.add(taskId);
+    }
+    return { id: milestone.id, title, description: milestoneDescription, amount: milestone.amount, dueDate, displayOrder: milestone.displayOrder, taskIds: [...assignedTaskIds] };
   });
 
   if (milestones.length > 0 && !milestoneTotalMatchesBudget(milestones, input.budget)) {
@@ -266,6 +288,7 @@ export function mapContractVersionPayload(input: ContractVersionPayloadInput): C
   const stageIds = new Set<string>();
   const taskIds = new Set<string>();
   let taskCount = 0;
+  const planTaskKeys = new Set<string>();
   let doneCount = 0;
   const mappedColumns = columns.map((column, columnIndex) => {
     const field = `plan.content.columns[${columnIndex}]`;
@@ -291,6 +314,8 @@ export function mapContractVersionPayload(input: ContractVersionPayloadInput): C
       const taskId = requireText(task.id, `${taskField}.id`, 1, 80);
       if (taskIds.has(taskId) || stageIds.has(taskId)) throw new ContractVersionPayloadError(`${taskField}.id must be unique across stages and tasks.`);
       taskIds.add(taskId);
+      const planTaskKey = `${id}:${taskId}`;
+      planTaskKeys.add(planTaskKey);
       const title = requireText(task.title, `${taskField}.title`, 1, 160);
       const taskDescription = requireText(task.description, `${taskField}.description`, 0, 1000);
       if (task.priority !== "low" && task.priority !== "medium" && task.priority !== "high") {
@@ -316,18 +341,24 @@ export function mapContractVersionPayload(input: ContractVersionPayloadInput): C
         if (dueDate && (dueDate < startDate || dueDate > deadline)) throw new ContractVersionPayloadError(`${taskField}.dueDate must fall within the contract dates.`);
         mappedTask.dueDate = dueDate;
       }
-      if (task.milestoneId !== undefined) {
-        if (task.milestoneId === null || task.milestoneId === "") {
-          if (milestones.length > 0) throw new ContractVersionPayloadError(`${taskField}.milestoneId is required for a milestone contract.`);
-          mappedTask.milestoneId = task.milestoneId;
+      const assignedMilestones = milestones.filter((milestone) => milestone.taskIds.includes(planTaskKey));
+      if (assignedMilestones.length > 1) {
+        throw new ContractVersionPayloadError(`${taskField} is assigned to more than one milestone.`);
+      }
+      const explicitMilestoneId = assignedMilestones[0]?.id;
+      if (task.milestoneId && explicitMilestoneId && task.milestoneId !== explicitMilestoneId) {
+        throw new ContractVersionPayloadError(`${taskField}.milestoneId conflicts with its explicit milestone task assignment.`);
+      }
+      const milestoneId = task.milestoneId ?? explicitMilestoneId;
+      if (milestoneId !== undefined) {
+        if (milestoneId === null || milestoneId === "") {
+          mappedTask.milestoneId = milestoneId;
         } else {
-          if (!UUID_PATTERN.test(task.milestoneId) || !milestoneIds.has(task.milestoneId)) {
+          if (!UUID_PATTERN.test(milestoneId) || !milestoneIds.has(milestoneId)) {
             throw new ContractVersionPayloadError(`${taskField}.milestoneId must reference a milestone in this complete snapshot.`);
           }
-          mappedTask.milestoneId = task.milestoneId;
+          mappedTask.milestoneId = milestoneId;
         }
-      } else if (milestones.length > 0) {
-        throw new ContractVersionPayloadError(`${taskField}.milestoneId is required for a milestone contract.`);
       }
       taskCount += 1;
       return mappedTask;
@@ -338,6 +369,11 @@ export function mapContractVersionPayload(input: ContractVersionPayloadInput): C
   if (taskCount < 1 || taskCount > 120) throw new ContractVersionPayloadError("plan must contain between 1 and 120 tasks.");
   for (const stageId of stageIds) {
     if (taskIds.has(stageId)) throw new ContractVersionPayloadError("stage IDs and task IDs must be distinct.");
+  }
+  for (const milestone of milestones) {
+    if (milestone.taskIds.some((taskId) => !planTaskKeys.has(taskId))) {
+      throw new ContractVersionPayloadError(`milestones[${milestone.displayOrder - 1}].taskIds contains a task that is not in the plan.`);
+    }
   }
 
   return {
@@ -355,7 +391,7 @@ export function mapContractVersionPayload(input: ContractVersionPayloadInput): C
       deadline,
       plan: { name: planName, description: planDescription, content: { columns: mappedColumns } },
     },
-    p_milestones: milestones,
+    p_milestones: milestones.map(({ id, title, description, amount, dueDate, displayOrder, taskIds }) => ({ id, title, description, amount, dueDate, displayOrder, taskIds })),
   };
 }
 
@@ -533,12 +569,16 @@ export async function getProjectWorkspace(
   const service = record(row.services);
   const project = record(row.projects);
   const contract = record(row.contracts);
-  let projectType: ProjectWorkspace["type"] = text(project?.project_type) === "milestone" || text(service?.service_type) === "milestone" ? "milestone" : "standard";
+  const hasProjectMilestones = records(project?.milestones).length > 0;
+  let projectType: ProjectWorkspace["type"] =
+    hasProjectMilestones || text(project?.project_type) === "milestone" || text(service?.service_type) === "milestone"
+      ? "milestone"
+      : "standard";
   const applicationId = text(row.application_id) || null;
-  if (!project && applicationId) {
+  if (projectType === "standard" && applicationId) {
     const job = await supabase.from("jobs").select("project_type").eq("job_id", row.job_id).maybeSingle();
     if (job.error) throw new Error(job.error.message);
-    projectType = job.data?.project_type === "milestone" ? "milestone" : "standard";
+    if (job.data?.project_type === "milestone") projectType = "milestone";
   }
   let proposedPlan: ProjectWorkspace["proposedPlan"] = null;
   if (applicationId) {

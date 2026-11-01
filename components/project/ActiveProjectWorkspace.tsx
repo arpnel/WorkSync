@@ -125,18 +125,13 @@ export function ActiveProjectWorkspace({
             </Card>
             <ProjectProgressSummary project={project} />
             {project.type === "standard"
-              ? <TaskSubmissionPanel project={project} taskTitle={project.title} milestoneId={null} paid={paid} onRefresh={onRefresh} />
-              : project.milestones.map((milestone) => <TaskSubmissionPanel key={milestone.id} project={project} taskTitle={milestone.title} milestoneId={milestone.id} paid={paid} onRefresh={onRefresh} />)}
-            {project.type === "milestone" && <Card>
-              <CardHeader className="pb-3"><CardTitle className="text-base">Milestone summary</CardTitle></CardHeader>
-              <CardContent className="grid gap-3 md:grid-cols-2">
-                {project.milestones.map((milestone, index) => <div key={milestone.id} className="space-y-2 rounded-lg border p-3">
-                  <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="text-xs text-muted-foreground">Milestone {index + 1}</p><h3 className="mt-1 text-sm font-medium">{milestone.title}</h3></div><span className="shrink-0 rounded-full border px-2 py-1 text-xs capitalize">{milestone.status.replaceAll("_", " ")}</span></div>
-                  <p className="line-clamp-2 text-xs text-muted-foreground">{milestone.description}</p>
-                  <p className="text-xs text-muted-foreground">PHP {milestone.amount.toLocaleString()}{milestone.dueDate ? ` · Due ${new Date(milestone.dueDate).toLocaleDateString()}` : ""}</p>
-                </div>)}
-              </CardContent>
-            </Card>}
+              ? <TaskSubmissionPanel project={project} taskTitle={project.title} milestoneId={null} paid={paid} payment={payment} onRefresh={onRefresh} />
+              : <Card>
+                  <CardHeader className="pb-2"><CardTitle className="text-base">Milestones and submissions</CardTitle></CardHeader>
+                  <CardContent className="divide-y p-4 pt-0 sm:p-6 sm:pt-0">
+                    {project.milestones.map((milestone, index) => <TaskSubmissionPanel key={milestone.id} embedded project={project} taskTitle={milestone.title} milestoneNumber={index + 1} milestoneId={milestone.id} milestoneAmount={milestone.amount} paid={paid} payment={payment} onRefresh={onRefresh} />)}
+                  </CardContent>
+                </Card>}
             <RecentProjectActivity project={project} />
           </> : <>
             {!paid && !completed && <section className="flex items-start gap-3 rounded-xl border bg-muted/20 p-4 text-sm">

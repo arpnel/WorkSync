@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
-import { ChevronDown, FileCheck2, Loader2, Paperclip, Upload } from "lucide-react";
+import { CheckCircle2, ChevronDown, FileCheck2, Loader2, LockKeyhole, Paperclip, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { StyledSelect } from "@/components/ui/styled-select";
@@ -9,6 +9,7 @@ import { SubmissionComments } from "./SubmissionComments";
 import { SubmissionImage } from "./SubmissionImage";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { ProjectWorkspace } from "@/types/project/projectWorkspace";
+import type { ProjectPayment } from "@/services/payments/paymentService";
 import { readProjectCache, clearProjectReadCache } from "@/lib/projectReadCache";
 import { reviewableDeliveryIds } from "@/lib/projectDelivery";
 import {
@@ -27,13 +28,21 @@ export function TaskSubmissionPanel({
   project,
   taskTitle,
   milestoneId,
+  milestoneAmount,
+  milestoneNumber,
+  embedded = false,
   paid,
+  payment,
   onRefresh,
 }: {
   project: ProjectWorkspace;
   taskTitle: string;
   milestoneId: string | null;
+  milestoneAmount?: number;
+  milestoneNumber?: number;
+  embedded?: boolean;
   paid: boolean;
+  payment: ProjectPayment | null;
   onRefresh: () => Promise<void>;
 }) {
   const [history, setHistory] = useState<Awaited<ReturnType<typeof getDeliveryHistory>> | null>(null);
@@ -113,10 +122,29 @@ export function TaskSubmissionPanel({
       .filter((item) => !["approved", "completed", "cancelled"].includes(item.status))
       .sort((a, b) => a.displayOrder - b.displayOrder)[0] ?? null
     : null;
+  const milestoneRecord = milestoneId ? project.milestones.find((item) => item.id === milestoneId) : null;
+  const milestoneComplete = milestoneRecord ? ["approved", "completed"].includes(milestoneRecord.status) : false;
+  const milestoneLocked = Boolean(
+    milestoneId && project.type === "milestone" && currentMilestone &&
+    currentMilestone.id !== milestoneId && !milestoneComplete,
+  );
   const canSubmit = project.currentParty === "freelancer" && active && paid &&
     (project.type !== "milestone" || currentMilestone?.id === milestoneId);
   const ownReview = history?.reviews.some((review) => review.reviewer_role === project.currentParty) ?? false;
   const projectReviewScope = project.type === "standard" || project.milestones.at(-1)?.id === milestoneId;
+  const milestonePayout = milestoneId
+    ? payment?.payouts?.find((payout) => payout.milestone_id === milestoneId) ?? null
+    : null;
+  const payoutStatusLabel: Record<string, string> = {
+    awaiting_account: "Payout account needed",
+    ready: "Ready for payout",
+    processing: "Payout processing",
+    pending: "Payout pending",
+    paid: "Paid",
+    failed: "Payout failed",
+    needs_review: "Payout under review",
+    cancelled: "Payout cancelled",
+  };
 
   async function submitFile(selectedFile: File) {
     if (!project.projectId || busy || !paid) return;
@@ -187,10 +215,11 @@ export function TaskSubmissionPanel({
 
   if (!project.projectId) return null;
   return (
-    <section aria-label={`Work submissions for ${taskTitle}`} className="space-y-3 rounded-xl border bg-card p-4 sm:p-5">
+    <section aria-label={`Work submissions for ${taskTitle}`} className={embedded ? `space-y-3 rounded-md px-3 py-4 first:pt-2 last:pb-2 ${milestoneLocked ? "bg-muted/20 opacity-50" : milestoneComplete ? "bg-emerald-500/5" : "bg-primary/5"}` : "space-y-3 rounded-xl border bg-card p-4 sm:p-5"}>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0 space-y-1"><h3 className="text-base font-semibold">Work submissions</h3><p className="text-sm text-foreground/80">Submit completed work for “{taskTitle}” and review feedback.</p><p className="text-xs text-muted-foreground">{milestoneId ? "Existing submissions are milestone-level, not tagged with a task ID." : "Existing submissions are project-level, not tagged with a task ID."}</p>{project.currentParty === "freelancer" && active && <p className="text-xs font-medium text-muted-foreground">{remaining == null ? "Revision allowance unavailable" : `${remaining} project revisions remaining`}</p>}</div>
+        <div className="min-w-0 space-y-1"><h3 className="flex items-center gap-2 text-base font-semibold">{milestoneId ? `Milestone ${milestoneNumber ?? ""}: ${taskTitle}` : "Work submissions"}{milestoneComplete && <CheckCircle2 aria-label="Milestone approved" className="size-4 text-emerald-600"/>}{milestoneLocked && <LockKeyhole aria-label="Milestone locked" className="size-4 text-muted-foreground"/>}</h3>{milestoneId && <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"><span>Amount: PHP {(milestoneAmount ?? 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</span>{payment?.settlementVersion && payment.settlementVersion >= 2 && milestonePayout && <span>{payoutStatusLabel[milestonePayout.status] ?? "Payout status unavailable"} · PHP {milestonePayout.amount.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</span>}</div>}<p className="text-sm font-medium text-foreground/80">Submission</p>{project.currentParty === "freelancer" && active && <p className="text-xs font-medium text-muted-foreground">{remaining == null ? "Revision allowance unavailable" : `${remaining} project revisions remaining`}</p>}</div>
       </div>
+      {milestoneLocked && <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground"><LockKeyhole className="size-3.5 shrink-0"/>Complete and get approval for the previous milestone to unlock this one. Milestones must be completed in order; you cannot skip ahead.</p>}
       {error && <p role="alert" className="rounded-md border border-destructive/30 p-3 text-sm text-destructive">{error}</p>}
       {notice && <p role="status" className="rounded-md border p-3 text-sm">{notice}</p>}
       {loading && <p role="status" className="text-sm text-muted-foreground">Loading task deliveries…</p>}
@@ -232,8 +261,8 @@ export function TaskSubmissionPanel({
           <div className="flex items-start gap-3 rounded-lg border border-dashed bg-muted/20 px-3 py-3">
             <span className="rounded-md bg-primary/10 p-2 text-primary"><Upload className="h-4 w-4" /></span>
             <div className="min-w-0">
-              <p className="text-sm font-medium">No submissions yet</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">No submissions are recorded for this {milestoneId ? "milestone" : "project"} scope yet.</p>
+              <p className="text-sm font-medium">{milestoneLocked ? "Submission locked" : "No submissions yet"}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{milestoneLocked ? "Finish the earlier milestone before submitting work here." : `No submissions are recorded for this ${milestoneId ? "milestone" : "project"} scope yet.`}</p>
             </div>
           </div>
       )}

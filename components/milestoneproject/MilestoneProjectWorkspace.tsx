@@ -1,5 +1,5 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 
 import { MilestonePlanningForm } from "@/components/project/MilestonePlanningForm";
@@ -17,6 +17,7 @@ import { ProjectWorkspaceHeader } from "@/components/project/ProjectWorkspaceHea
 import { useProjectWorkspace } from "@/hooks/project/useProjectWorkspace";
 import { MilestoneWorkspaceList } from "./MilestoneWorkspaceList";
 import { CancelledProjectWorkspace } from "@/components/project/CancelledProjectWorkspace";
+import { activateConfirmedProjectAgreement } from "@/services/project/projectWorkspaceService";
 
 export function MilestoneProjectWorkspace({
   serviceOrderId,
@@ -24,6 +25,8 @@ export function MilestoneProjectWorkspace({
   serviceOrderId: string;
 }) {
   const router = useRouter();
+  const [activationError, setActivationError] = useState("");
+  const activationAttemptedFor = useRef<string | null>(null);
   const {
     workspace,
     refresh,
@@ -39,6 +42,28 @@ export function MilestoneProjectWorkspace({
   useEffect(() => {
     if (workspace?.type === "standard") router.replace(`/home/projects/standard/${serviceOrderId}`);
   }, [router, serviceOrderId, workspace?.type]);
+
+  useEffect(() => {
+    const contractId = workspace?.contractId;
+    if (
+      !workspace ||
+      !contractId ||
+      !workspace.clientSignedAt ||
+      !workspace.freelancerSignedAt ||
+      ["active", "completed"].includes(workspace.contractStatus ?? "") ||
+      activationAttemptedFor.current === contractId
+    ) return;
+
+    activationAttemptedFor.current = contractId;
+    setActivationError("");
+    void activateConfirmedProjectAgreement(workspace.orderId)
+      .then((activated) => {
+        if (activated) return refresh();
+      })
+      .catch((cause) => {
+        setActivationError(cause instanceof Error ? cause.message : "The confirmed contract could not be activated.");
+      });
+  }, [workspace?.contractId, workspace?.orderId, workspace?.clientSignedAt, workspace?.freelancerSignedAt, workspace?.contractStatus, refresh]);
 
   if (loading)
     return <ContentSkeleton label="Loading project" variant="workspace" />;
@@ -73,7 +98,7 @@ export function MilestoneProjectWorkspace({
       <ActiveProjectWorkspace
         project={workspace}
         onRefresh={refresh}
-        error={error}
+        error={activationError || error}
         onBack={() => router.push("/home/projects")}
       />
     );
@@ -81,9 +106,9 @@ export function MilestoneProjectWorkspace({
 
   return (
     <div className="mx-auto w-full max-w-[1800px] space-y-5 px-4 sm:px-6 lg:px-8">
-      {error && (
+      {(activationError || error) && (
         <p role="alert" className="text-sm text-destructive">
-          {error}
+          {activationError || error}
         </p>
       )}
       <ProjectWorkspaceHeader

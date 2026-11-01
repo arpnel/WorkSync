@@ -263,30 +263,25 @@ export default function CreateContractPage() {
       }
       const rpcResult = await platformAction("worksync_job_agreement", { p_application: applicationId });
       if (typeof rpcResult !== "string") throw new Error("Agreement RPC did not return a service order ID.");
-      const { data: order, error: orderError } = await supabase
-        .from("service_orders")
-        .select("order_id, conversation_id")
-        .eq("order_id", rpcResult)
-        .maybeSingle();
-      if (orderError) throw new Error("Unable to verify access to the agreement.");
-
-      let serviceOrderId = order?.order_id;
-      if (!serviceOrderId) {
-        const { data: contract, error: contractError } = await supabase
-          .from("contracts")
-          .select("order_id")
-          .eq("contract_id", rpcResult)
-          .maybeSingle();
-        if (contractError) throw new Error("Unable to verify access to the agreement.");
-        if (typeof contract?.order_id !== "string") throw new Error("The agreement project could not be found.");
-        serviceOrderId = contract.order_id;
-      }
-      const { data: agreement, error: agreementError } = await supabase
+      let serviceOrderId = rpcResult;
+      const agreementByOrder = await supabase
         .from("contracts")
-        .select("contract_id,current_version")
+        .select("contract_id, order_id, current_version")
         .eq("order_id", serviceOrderId)
         .maybeSingle();
-      if (agreementError) throw new Error("Unable to load the agreement version for saving.");
+      if (agreementByOrder.error) throw new Error(`Unable to load the agreement version for saving: ${agreementByOrder.error.message}`);
+      let agreement = agreementByOrder.data;
+      if (!agreement) {
+        const { data: contractById, error: contractError } = await supabase
+          .from("contracts")
+          .select("contract_id, order_id, current_version")
+          .eq("contract_id", rpcResult)
+          .maybeSingle();
+        if (contractError) throw new Error(`Unable to load the agreement version for saving: ${contractError.message}`);
+        if (typeof contractById?.order_id !== "string") throw new Error("The agreement project could not be found.");
+        agreement = contractById;
+        serviceOrderId = contractById.order_id;
+      }
       if (!agreement?.contract_id || !Number.isInteger(agreement.current_version)) {
         throw new Error("The agreement version is unavailable.");
       }
@@ -297,18 +292,18 @@ export default function CreateContractPage() {
         requestId,
       });
       if (contractDocument) {
-        let conversationId = typeof order?.conversation_id === "string" ? order.conversation_id : null;
-        if (!conversationId) {
+        let agreementConversationId = conversationId;
+        if (!agreementConversationId) {
           const { data: relatedOrder, error: relatedOrderError } = await supabase
             .from("service_orders")
             .select("conversation_id")
             .eq("order_id", serviceOrderId)
             .maybeSingle();
           if (relatedOrderError) throw new Error("The agreement was created, but its conversation could not be loaded to send the document.");
-          conversationId = typeof relatedOrder?.conversation_id === "string" ? relatedOrder.conversation_id : null;
+          agreementConversationId = typeof relatedOrder?.conversation_id === "string" ? relatedOrder.conversation_id : null;
         }
-        if (!conversationId) throw new Error("The agreement was created, but no agreement conversation is available for the document.");
-        await sendConversationMessage(conversationId, "Attached contract document for review.", contractDocument);
+        if (!agreementConversationId) throw new Error("The agreement was created, but no agreement conversation is available for the document.");
+        await sendConversationMessage(agreementConversationId, "Attached contract document for review.", contractDocument);
       }
       if (agreeNow) await respondToProjectAgreement(serviceOrderId, true);
       const draftOwnerId = activeRequest.currentParty === "client" ? activeRequest.clientUserId : activeRequest.freelancerUserId;
@@ -324,7 +319,7 @@ export default function CreateContractPage() {
       setBusy(false);
       return false;
     }
-  }, [applicationId, busy, request, router]);
+  }, [applicationId, busy, conversationId, request, router]);
 
   if (loading) return <ContentSkeleton label="Loading contract details" variant="workspace"/>;
   if (!request) return <div role="alert" className="mx-auto max-w-3xl px-6 py-16 text-center text-sm text-destructive">{error || "Application not found."}</div>;

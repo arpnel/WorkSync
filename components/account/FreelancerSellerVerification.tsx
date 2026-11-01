@@ -74,9 +74,9 @@ export const FreelancerSellerVerification = forwardRef<FreelancerSellerVerificat
   const content = <div className="space-y-4">
     {!compact && <p className="text-sm text-muted-foreground">These are any additional seller requirements configured for your account. Form 2303 is submitted once in the Seller Registration section above. Identity verification remains separate.</p>}
     <div className="space-y-3 rounded-lg border p-4">
-      {otherRequirements.map(item => <div key={item.requirement_id} className="flex flex-wrap items-center justify-between gap-2 text-sm"><span>{item.requirement_label}{item.required_for_publishing ? " (required for services)" : " (optional)"}</span><span className="rounded-full border px-2 py-1">{statusLabel(item.status)}</span></div>)}
+      {otherRequirements.map(item => <div key={item.requirement_id} className="flex flex-wrap items-center justify-between gap-2 text-sm"><span>{item.requirement_label}{item.required_for_publishing ? " (required for checkout and withdrawal)" : " (optional)"}</span><span className="rounded-full border px-2 py-1">{statusLabel(item.status)}</span></div>)}
       {data && otherRequirements.length === 0 && <p className="text-sm text-muted-foreground">No additional seller documents are currently required.</p>}
-      {data && !data.eligible && <p className="text-sm text-amber-600">Service submissions and publishing are unavailable until all required documents are verified.</p>}
+      {data && !data.eligible && <p className="text-sm text-amber-600">Checkout and withdrawal remain unavailable until required seller documents are verified.</p>}
       {!data && !error && <p className="text-sm text-muted-foreground">Loading seller verification status…</p>}
       {data?.setupRequired && <p className="text-sm text-muted-foreground">Save your freelancer profile below to enable seller-document submissions here.</p>}
       {otherRequirements.some(item => item.status === "not_submitted" || item.status === "rejected") && <div className="grid gap-3 sm:grid-cols-2">

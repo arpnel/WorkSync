@@ -304,14 +304,16 @@ export async function getProjectPayment(
     rate: snapshotVat.rate,
     total: snapshotVat.total,
   };
+  const sellerEligibility = await db.rpc("worksync_freelancer_seller_eligible", {
+    p_user: freelancerUserId,
+  });
+  const sellerEligible = !sellerEligibility.error && sellerEligibility.data === true;
+  const sellerVerificationMessage = sellerEligibility.error
+    ? "Freelancer document eligibility could not be checked. Try again before checkout or withdrawal."
+    : sellerEligible
+      ? undefined
+      : "The freelancer must submit the required seller documents and receive approval before checkout or withdrawal.";
   if (!row) {
-    // Seller verification is shown to the freelancer as an account notice; it
-    // does not prevent the client from paying a signed project contract.
-    const sellerEligibility = isClient
-      ? null
-      : await db.rpc("worksync_freelancer_seller_eligible", {
-          p_user: freelancerUserId,
-        });
     return {
       status: "unpaid",
       mode: paymentMode(),
@@ -319,11 +321,9 @@ export async function getProjectPayment(
       amount: (vatBreakdown.total ?? basePrice) + Math.round(basePrice * 0.1 * 100) / 100,
       baseAmount: basePrice,
       transactionFee: Math.round(basePrice * 0.1 * 100) / 100,
-      checkoutAllowed: vatBreakdown.status === "applicable",
-      sellerVerificationMessage:
-        sellerEligibility && (sellerEligibility.error || sellerEligibility.data !== true)
-          ? "The freelancer has not completed required seller verification."
-          : undefined,
+      checkoutAllowed: vatBreakdown.status === "applicable" && sellerEligible,
+      checkoutMessage: !sellerEligible ? sellerVerificationMessage : undefined,
+      sellerVerificationMessage: isClient ? undefined : sellerVerificationMessage,
     };
   }
   let paid = row.status === "paid";
@@ -378,7 +378,9 @@ export async function getProjectPayment(
     amount: row.amount,
     baseAmount: basePrice,
     transactionFee: row.platform_service_fee == null ? null : Number(row.platform_service_fee),
-    checkoutAllowed: true,
+    checkoutAllowed: sellerEligible,
+    checkoutMessage: !sellerEligible ? sellerVerificationMessage : undefined,
+    sellerVerificationMessage: isClient ? undefined : sellerVerificationMessage,
     paymentId: row.payment_id,
     paymentMethod: row.payment_method,
     vatBreakdown,
@@ -412,6 +414,13 @@ export async function createProjectCheckout(
   );
   if (!isClient)
     throw new PaymentError("Only the project client can pay.", 403);
+  const sellerEligibility = await db.rpc("worksync_freelancer_seller_eligible", {
+    p_user: freelancerUserId,
+  });
+  if (sellerEligibility.error)
+    throw new PaymentError("Freelancer document eligibility could not be checked. Try again before checkout or withdrawal.", 503);
+  if (sellerEligibility.data !== true)
+    throw new PaymentError("The freelancer must submit the required seller documents and receive approval before checkout or withdrawal.", 409);
   await storageReady(db);
   if (!["active", "revision", "completed"].includes(project.status))
     throw new PaymentError(

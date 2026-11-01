@@ -107,6 +107,9 @@ export async function POST(request: Request) {
     const role = await db.from("freelancer_profiles").select("freelancer_id").eq("user_id", user.id).maybeSingle();
     if (role.error) throw new PaymentError("Unable to check account role.");
     if (!role.data) throw new PaymentError("A freelancer account is required.", 403);
+    const sellerEligibility = await db.rpc("worksync_freelancer_seller_eligible", { p_user: user.id });
+    if (sellerEligibility.error) throw new PaymentError("Seller document eligibility could not be checked. Try again before requesting withdrawal.", 503);
+    if (sellerEligibility.data !== true) throw new PaymentError("Submit the required seller documents and wait for approval before requesting withdrawal.", 409);
     const account = await db.from("freelancer_payout_accounts").select("user_id").eq("user_id", user.id).eq("mode", paymentMode()).maybeSingle();
     if (account.error) throw new PaymentError("Unable to verify your payout account.");
     if (!account.data) throw new PaymentError("Add a payout account before requesting withdrawal.", 409);

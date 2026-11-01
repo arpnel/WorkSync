@@ -623,12 +623,10 @@ export default function MarketplaceJobDetails({
                   onChange={(e) => setProposal(e.target.value)}
                 />
               </label>
-              {freelancerId && (
-                <ProjectPlanProposalAttachment
-                  value={proposedPlan}
-                  onChange={setProposedPlan}
-                />
-              )}
+              <ProjectPlanProposalAttachment
+                value={proposedPlan}
+                onChange={setProposedPlan}
+              />
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="text-sm">
                   Proposed price (PHP)

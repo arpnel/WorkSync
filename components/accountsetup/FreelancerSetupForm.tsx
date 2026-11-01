@@ -296,7 +296,7 @@ export function FreelancerSetupForm() {
           {tinError && <p role="alert" className="text-xs text-destructive">{tinError}</p>}
         </div>
         <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
-          <span className="font-semibold">BIR reminder:</span> Submit your BIR Form 2303 to be able to withdraw your earnings.
+          <span className="font-semibold">BIR reminder:</span> Submit your BIR Form 2303 and wait for approval before checkout or withdrawing your earnings.
         </p>
         <div className="space-y-4">
           <div className="space-y-1">

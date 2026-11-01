@@ -484,6 +484,15 @@ export function ProjectCard({ project, onChanged }: ProjectCardProps) {
                   </div>
                 </div>
 
+                {/* Milestones */}
+                {project.type === "Milestone" && (
+                  <div className="text-sm">
+                    <p className="text-xs text-muted-foreground">Milestones</p>
+
+                    <p className="font-medium">{project.milestones}</p>
+                  </div>
+                )}
+
                 {/* Deadline */}
                 {project.status === "Request" ||
                 project.status === "In Discussion" ? (
@@ -513,15 +522,6 @@ export function ProjectCard({ project, onChanged }: ProjectCardProps) {
 
                       <p className="font-medium">{project.due}</p>
                     </div>
-                  </div>
-                )}
-
-                {/* Milestones */}
-                {project.type === "Milestone" && (
-                  <div className="text-sm">
-                    <p className="text-xs text-muted-foreground">Milestones</p>
-
-                    <p className="font-medium">{project.milestones}</p>
                   </div>
                 )}
 

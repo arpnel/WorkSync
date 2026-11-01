@@ -65,9 +65,9 @@ export async function notifySellerDocumentReviewed(
           ? "A seller document is no longer required"
           : "Please correct your seller document",
       message: verified
-        ? `${documentLabel} was verified. Check Seller verification in Settings for your current publishing eligibility.`
+        ? `${documentLabel} was verified. Check Seller verification in Settings for your checkout and withdrawal eligibility.`
         : notApplicable
-          ? `${documentLabel} was marked not applicable. Check Seller verification in Settings for your current publishing eligibility.`
+          ? `${documentLabel} was marked not applicable. Check Seller verification in Settings for your checkout and withdrawal eligibility.`
           : `${documentLabel} was rejected: ${reviewReason} Submit a corrected document from Seller verification in Settings.`,
       actionLabel: "View seller verification",
       actionUrl: workSyncUrl("/home/settings#seller-verification"),

@@ -533,7 +533,7 @@ export async function getProjectWorkspace(
   const service = record(row.services);
   const project = record(row.projects);
   const contract = record(row.contracts);
-  let projectType = text(project?.project_type) === "milestone" || text(service?.service_type) === "milestone" ? "milestone" : "standard";
+  let projectType: ProjectWorkspace["type"] = text(project?.project_type) === "milestone" || text(service?.service_type) === "milestone" ? "milestone" : "standard";
   const applicationId = text(row.application_id) || null;
   if (!project && applicationId) {
     const job = await supabase.from("jobs").select("project_type").eq("job_id", row.job_id).maybeSingle();

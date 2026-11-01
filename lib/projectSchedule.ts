@@ -1,4 +1,3 @@
-﻿import type { ProjectRecord } from "@/services/project/projectService";
 import type { ProjectRecord } from "@/services/project/projectService";
 import type {
   ScheduleBoard,

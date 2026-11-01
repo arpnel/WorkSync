@@ -23,6 +23,22 @@ export interface ProjectRecord {
   milestones: unknown;
 }
 
+interface ProjectOrderRow {
+  order_id: string;
+  application_id: string | null;
+  service_id: string;
+  freelancer_id: string;
+  client_id: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  services: unknown;
+  freelancer_profiles: unknown;
+  client_profiles: unknown;
+  projects: unknown;
+  contracts: unknown;
+}
+
 const PROJECT_ORDERS_SELECT = `
   order_id, application_id, job_id, service_id, freelancer_id, client_id,
   status, created_at, updated_at,
@@ -82,10 +98,10 @@ export async function getProjects(): Promise<ProjectRecord[]> {
       : query.eq("freelancer_id", account.profileId);
     return query;
   };
-  let { data, error } = await readOrders(true);
-  if (isMissingProjectTypeColumn(error)) {
-    ({ data, error } = await readOrders(false));
-  }
+  const firstResult = await readOrders(true);
+  const { data, error } = isMissingProjectTypeColumn(firstResult.error)
+    ? await readOrders(false)
+    : firstResult;
 
   if (error) {
     console.error("Failed to fetch projects:", {
@@ -100,6 +116,7 @@ export async function getProjects(): Promise<ProjectRecord[]> {
     return [];
   }
 
+  const rows = data as unknown as ProjectOrderRow[];
   const related = (value: unknown): Record<string, unknown> => {
     const row = Array.isArray(value) ? value[0] : value;
     return row && typeof row === "object"
@@ -107,8 +124,8 @@ export async function getProjects(): Promise<ProjectRecord[]> {
       : {};
   };
   const identities = await getPublicIdentities({
-    clientIds: [...new Set(data.map((row) => row.client_id))],
-    freelancerIds: [...new Set(data.map((row) => row.freelancer_id))],
+    clientIds: [...new Set(rows.map((row) => row.client_id))],
+    freelancerIds: [...new Set(rows.map((row) => row.freelancer_id))],
   });
   const clients = new Map(
     identities.clients.map((row) => [row.client_id, row]),
@@ -119,7 +136,7 @@ export async function getProjects(): Promise<ProjectRecord[]> {
   const profiles = new Map(
     identities.profiles.map((row) => [row.user_id, row]),
   );
-  const owned = data.filter((order) =>
+  const owned = rows.filter((order) =>
     account.role === "client"
       ? order.client_id === account.profileId
       : order.freelancer_id === account.profileId,

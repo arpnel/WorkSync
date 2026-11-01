@@ -150,15 +150,19 @@ export async function getProjectRequests(): Promise<ProjectRequestData> {
   ];
 
   const readJobs = async () => {
-    let result = await supabase
+    const result = await supabase
       .from("jobs")
       .select("job_id, client_id, title, description, created_at, budget_min, budget_max, category_id, project_type")
       .in("job_id", jobIds);
     if (isMissingProjectTypeColumn(result.error)) {
-      result = await supabase
+      const legacyResult = await supabase
         .from("jobs")
         .select("job_id, client_id, title, description, created_at, budget_min, budget_max, category_id")
         .in("job_id", jobIds);
+      return {
+        ...legacyResult,
+        data: legacyResult.data?.map((job) => ({ ...job, project_type: null })) ?? null,
+      };
     }
     return result;
   };

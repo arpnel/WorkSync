@@ -15,7 +15,6 @@ import {
   markConversationRead,
   sendConversationMessage,
   subscribeToConversationMessages,
-  subscribeToUserConversations,
 } from "@/services/message/messageService";
 import type { ChatMessage, MessageConversation } from "@/types/message/message";
 import { useMessageAccountSettings } from "@/hooks/message/useMessageAccountSettings";
@@ -76,15 +75,6 @@ export function useMessaging() {
   }, []);
   useEffect(() => {
     void loadPreferences();
-    const refresh = () => {
-      if (document.visibilityState === "visible") void loadPreferences();
-    };
-    window.addEventListener("focus", refresh);
-    document.addEventListener("visibilitychange", refresh);
-    return () => {
-      window.removeEventListener("focus", refresh);
-      document.removeEventListener("visibilitychange", refresh);
-    };
   }, [loadPreferences]);
 
   const updatePreference = async (
@@ -219,12 +209,8 @@ export function useMessaging() {
 
   useEffect(() => {
     void loadConversations();
-    const unsubscribe = subscribeToUserConversations(() => {
-      void loadConversations();
-    });
     return () => {
       conversationRequest.current += 1;
-      unsubscribe();
     };
   }, [loadConversations]);
 

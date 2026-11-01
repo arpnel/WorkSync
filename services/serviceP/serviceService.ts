@@ -11,9 +11,10 @@ const SERVICE_MEDIA_BUCKET = "service-media";
 
 async function getAuthenticatedUser() {
   const {
-    data: { user },
+    data: { session },
     error,
-  } = await supabase.auth.getUser();
+  } = await supabase.auth.getSession();
+  const user = session?.user;
 
   if (error) {
     throw error;
@@ -373,6 +374,7 @@ async function createClientJob(
       pricing_type: payload.pricing_type ?? "fixed",
       deadline: payload.deadline || null,
       experience_level: payload.experience_level ?? "intermediate",
+      project_type: payload.project_type ?? "standard",
       status: "open",
     })
     .select("job_id")

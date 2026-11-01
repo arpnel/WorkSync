@@ -30,13 +30,26 @@ async function payoutAccountRequest(body?: unknown) {
     throw new Error(data.error || "Payout account unavailable.");
   return data;
 }
+async function requestPayoutWithdrawal(payoutId: string) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error("Sign in to request withdrawal.");
+  const response = await fetch("/api/payouts", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ payoutId }),
+    cache: "no-store",
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || "Withdrawal request could not be saved.");
+  return result;
+}
 type Earnings = {
   eligible?: boolean;
   available?: boolean;
   settlementEnabled?: boolean;
   mode?: string;
   summary?: { earned: number; ready: number; processing: number; paid: number; awaitingAccount: number; supportReview: number; withholding?: number };
-  payouts?: { id: string; transactionId: string; projectId: string; amount: number; grossAmount: number; transferReference: string | null; freelancerVatTaxableAmount: number; freelancerVatAmount: number; freelancerVatRate: number; freelancerVatRule: string; withholdingRule: string; withholdingDate: string | null; withholdingBasis: number; withholdingRate: number; withholdingAmount: number; withholdingExemptionStatus: string; withholdingDeclarationId: string | null; withholdingDocumentId: string | null; freelancerVatDocumentId: string | null; status: string; createdAt: string; paidAt: string | null }[];
+  payouts?: { id: string; transactionId: string; projectId: string; amount: number; grossAmount: number; transferReference: string | null; freelancerVatTaxableAmount: number; freelancerVatAmount: number; freelancerVatRate: number; freelancerVatRule: string; withholdingRule: string; withholdingDate: string | null; withholdingBasis: number; withholdingRate: number; withholdingAmount: number; withholdingExemptionStatus: string; withholdingDeclarationId: string | null; withholdingDocumentId: string | null; freelancerVatDocumentId: string | null; withdrawalRequestedAt: string | null; status: string; createdAt: string; paidAt: string | null }[];
 };
 async function payoutEarningsRequest(): Promise<Earnings> {
   const { data: { session } } = await supabase.auth.getSession();
@@ -74,6 +87,7 @@ export default function PayoutSettings() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [requestingPayout, setRequestingPayout] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [repeat, setRepeat] = useState("");
@@ -112,6 +126,20 @@ export default function PayoutSettings() {
   const pageSize = 10;
   const pageCount = Math.max(1, Math.ceil(matchingPayouts.length / pageSize));
   const visiblePayouts = paginatePayoutHistory(matchingPayouts, page, pageSize);
+  const requestWithdrawal = async (payoutId: string) => {
+    setError("");
+    setNotice("");
+    setRequestingPayout(payoutId);
+    try {
+      await requestPayoutWithdrawal(payoutId);
+      setEarnings(await payoutEarningsRequest());
+      setNotice("Withdrawal requested. Your payout will be sent after payment checks are complete.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Withdrawal request could not be saved.");
+    } finally {
+      setRequestingPayout(null);
+    }
+  };
   const downloadCsv = (format: PayoutCsvFormat) => {
     const rows = earnings?.payouts ?? [];
     if (!rows.length) return;
@@ -174,7 +202,7 @@ export default function PayoutSettings() {
                   <span>{php(earnings.summary.supportReview)} needs support review because its transfer failed or requires review.</span>
                 </p>
               )}
-              <p className="text-xs text-muted-foreground">{earnings.settlementEnabled ? "Ready payouts are sent automatically after project approval and payment checks. Keep your payout account up to date; you do not need to submit a separate withdrawal request." : "Payout tracking is currently in setup mode. Transfers will not be sent until the platform has completed its PayMongo and Supabase checks."}</p>
+              <p className="text-xs text-muted-foreground">{earnings.settlementEnabled ? "Ready earnings stay in your account until you request withdrawal. Transfers are sent after payment and payout checks." : "Payout tracking is in setup mode. You can request withdrawals, but transfers remain paused until payment setup is enabled."}</p>
             </>
           ) : (
             <p role="status" className="text-sm text-muted-foreground">Loading earnings...</p>
@@ -212,14 +240,14 @@ export default function PayoutSettings() {
             <>
               <div className="hidden overflow-hidden rounded-xl border md:block">
                 <table className="w-full text-left text-sm">
-                  <thead className="bg-muted/50 text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3 font-medium">Date created</th><th className="px-4 py-3 font-medium">Gross amount</th><th className="px-4 py-3 font-medium">Net transfer</th><th className="px-4 py-3 font-medium">Status</th><th className="px-4 py-3 text-right font-medium">Receipt</th></tr></thead>
+                  <thead className="bg-muted/50 text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3 font-medium">Date created</th><th className="px-4 py-3 font-medium">Gross amount</th><th className="px-4 py-3 font-medium">Net transfer</th><th className="px-4 py-3 font-medium">Status</th><th className="px-4 py-3 text-right font-medium">Actions</th></tr></thead>
                   <tbody className="divide-y">
                     {visiblePayouts.map((payout) => <tr key={payout.id} className="bg-card">
                       <td className="px-4 py-3"><p>{payoutDate(payout.createdAt)}</p><p className="mt-1 max-w-44 truncate text-xs text-muted-foreground" title={payout.transferReference ?? payout.id}>{payout.transferReference ? `Ref ${payout.transferReference}` : `Payout ${payout.id}`}</p></td>
                       <td className="px-4 py-3 font-medium tabular-nums">{php(payout.grossAmount)}</td>
                       <td className="px-4 py-3 font-medium tabular-nums">{php(payout.amount)}{payout.withholdingAmount > 0 && <p className="mt-1 text-xs font-normal text-muted-foreground">Withholding: {php(payout.withholdingAmount)}</p>}</td>
-                      <td className="px-4 py-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${statusStyle(payout.status)}`}>{payoutStatusLabel(payout.status)}</span></td>
-                      <td className="px-4 py-3 text-right"><Button variant="outline" size="sm" onClick={() => void openFreelancerPayoutStatement(payout.transactionId).catch((cause) => setError(cause instanceof Error ? cause.message : "Payout statement unavailable."))}>View receipt</Button></td>
+                      <td className="px-4 py-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${statusStyle(payout.status)}`}>{payoutStatusLabel(payout.status)}</span>{payout.status === "ready" && payout.withdrawalRequestedAt && <p className="mt-1 text-xs text-muted-foreground">Withdrawal requested</p>}</td>
+                      <td className="px-4 py-3"><div className="flex justify-end gap-2">{payout.status === "ready" && !payout.withdrawalRequestedAt && <Button size="sm" disabled={requestingPayout !== null} onClick={() => void requestWithdrawal(payout.id)}>{requestingPayout === payout.id ? <><Loader2 className="mr-2 size-4 animate-spin" />Requesting</> : "Request withdrawal"}</Button>}<Button variant="outline" size="sm" onClick={() => void openFreelancerPayoutStatement(payout.transactionId).catch((cause) => setError(cause instanceof Error ? cause.message : "Payout statement unavailable."))}>View receipt</Button></div></td>
                     </tr>)}
                   </tbody>
                 </table>
@@ -228,6 +256,8 @@ export default function PayoutSettings() {
                 {visiblePayouts.map((payout) => <article key={payout.id} className="space-y-3 rounded-xl border bg-card p-4">
                   <div className="flex items-start justify-between gap-3"><div><p className="font-medium">{payoutDate(payout.createdAt)}</p><p className="mt-1 max-w-52 truncate text-xs text-muted-foreground" title={payout.transferReference ?? payout.id}>{payout.transferReference ? `Ref ${payout.transferReference}` : `Payout ${payout.id}`}</p></div><span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium ${statusStyle(payout.status)}`}>{payoutStatusLabel(payout.status)}</span></div>
                   <div className="grid grid-cols-2 gap-3 border-t pt-3"><div><p className="text-xs text-muted-foreground">Gross amount</p><p className="mt-1 font-medium tabular-nums">{php(payout.grossAmount)}</p></div><div><p className="text-xs text-muted-foreground">Net transfer</p><p className="mt-1 font-medium tabular-nums">{php(payout.amount)}</p>{payout.withholdingAmount > 0 && <p className="mt-1 text-xs text-muted-foreground">Withholding: {php(payout.withholdingAmount)}</p>}</div></div>
+                  {payout.status === "ready" && !payout.withdrawalRequestedAt && <Button size="sm" disabled={requestingPayout !== null} onClick={() => void requestWithdrawal(payout.id)}>{requestingPayout === payout.id ? <><Loader2 className="mr-2 size-4 animate-spin" />Requesting</> : "Request withdrawal"}</Button>}
+                  {payout.status === "ready" && payout.withdrawalRequestedAt && <p className="text-sm text-muted-foreground">Withdrawal requested</p>}
                   <Button variant="outline" size="sm" onClick={() => void openFreelancerPayoutStatement(payout.transactionId).catch((cause) => setError(cause instanceof Error ? cause.message : "Payout statement unavailable."))}>View receipt</Button>
                 </article>)}
               </div>

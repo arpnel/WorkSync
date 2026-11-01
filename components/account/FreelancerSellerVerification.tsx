@@ -30,7 +30,8 @@ export const FreelancerSellerVerification = forwardRef<FreelancerSellerVerificat
   useEffect(() => {
     let alive = true;
     void (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) throw new Error("Sign in to manage seller verification.");
       const role = await supabase.from("Users").select("role").eq("user_id", user.id).maybeSingle();
       if (role.error) throw new Error("Unable to check account role.");

@@ -57,10 +57,11 @@ test("callRequest combines owner cancellation with its existing fetch deadline",
   assert.match(service, /signal\?\.throwIfAborted\(\)/);
 });
 
-test("provider cleanup aborts background refresh and join requests without overlapping refreshes", () => {
+test("provider keeps call state event-driven and cleans up requests and channels", () => {
   assert.match(provider, /if \(!id \|\| pending\.current\) return/);
   assert.match(provider, /if \(!userId \|\| !conversationIds\.length\) return/);
-  assert.match(provider, /const intervalMs = 60000;[\s\S]*?window\.setInterval/);
+  assert.doesNotMatch(provider, /window\.setInterval/);
+  assert.match(provider, /status === "SUBSCRIBED"\) void refresh\(\)/);
   assert.match(provider, /controller\.abort\(\);[\s\S]*?removeChannel\(channel\)/);
   assert.match(provider, /callRequest<CallResponse>\([\s\S]*?controller\.signal/);
   assert.match(provider, /if \(alive && !controller\.signal\.aborted\)/);

@@ -1,8 +1,22 @@
 ﻿import { supabase } from "@/lib/supabaseClient";
 import { invalidatePageReads } from "@/lib/pageReadCache";
 import { getActiveAccountContext } from "@/services/marketplace/AccountServices";
+import type { ServiceType } from "@/services/serviceP/service.types";
 
 export type ArchivedListing = { id: string; kind: "job" | "service"; title: string; description: string; createdAt: string; archivedAt: string | null; previousStatus: string; canRestore: boolean };
+export type ArchivedJobRepostDraft = {
+  title: string;
+  description: string;
+  categoryId: string;
+  categoryText: string;
+  budgetMin: number;
+  budgetMax: number;
+  pricingType: "fixed";
+  serviceType: ServiceType;
+  deadline: string;
+  experienceLevel: "beginner" | "intermediate" | "expert";
+  skillIds: string[];
+};
 export const ARCHIVED_LISTING_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 export function archivedListingCutoff(now = Date.now()) {
@@ -52,6 +66,48 @@ export async function restoreArchivedListing(item: ArchivedListing) {
   if (error) throw new Error(error.message);
   if (!data) throw new Error("This listing could not be restored. Check moderation and active listing limits.");
   invalidatePageReads();
+}
+
+export async function getArchivedJobRepostDraft(jobId: string): Promise<ArchivedJobRepostDraft> {
+  const { data: job, error } = await supabase
+    .from("jobs")
+    .select("job_id,category_id,title,description,budget_min,budget_max,experience_level,project_type")
+    .eq("job_id", jobId)
+    .eq("is_archived", true)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!job) throw new Error("This archived job is no longer available to repost.");
+
+  const [categoryResult, skillsResult] = await Promise.all([
+    supabase.from("job_categories").select("name").eq("id", job.category_id).maybeSingle(),
+    supabase.from("job_skills").select("skill_id").eq("job_id", jobId),
+  ]);
+  if (categoryResult.error) throw new Error(categoryResult.error.message);
+  if (skillsResult.error) throw new Error(skillsResult.error.message);
+
+  const nextWeek = new Date();
+  nextWeek.setDate(nextWeek.getDate() + 7);
+  const deadline = [
+    nextWeek.getFullYear(),
+    String(nextWeek.getMonth() + 1).padStart(2, "0"),
+    String(nextWeek.getDate()).padStart(2, "0"),
+  ].join("-");
+  const experienceLevel = ["beginner", "intermediate", "expert"].includes(job.experience_level)
+    ? job.experience_level as ArchivedJobRepostDraft["experienceLevel"]
+    : "intermediate";
+  return {
+    title: job.title,
+    description: job.description,
+    categoryId: job.category_id,
+    categoryText: categoryResult.data?.name ?? "",
+    budgetMin: Number(job.budget_min),
+    budgetMax: Number(job.budget_max),
+    pricingType: "fixed",
+    serviceType: job.project_type === "milestone" ? "milestone" : "standard",
+    deadline,
+    experienceLevel,
+    skillIds: (skillsResult.data ?? []).map((row) => String(row.skill_id)),
+  };
 }
 
 export async function removeArchivedListing(item: ArchivedListing) {

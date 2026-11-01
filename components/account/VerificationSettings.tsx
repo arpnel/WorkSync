@@ -50,12 +50,9 @@ export default function VerificationSettings() {
   useEffect(() => {
     alive.current = true;
     void refresh();
-    const focus = () => void refresh();
-    window.addEventListener("focus", focus);
     return () => {
       alive.current = false;
       closeVerification.current?.();
-      window.removeEventListener("focus", focus);
     };
   }, [refresh]);
   async function start() {
@@ -106,21 +103,6 @@ export default function VerificationSettings() {
     }
   }
   const status = verification?.status;
-  const verified = verification?.verified;
-  useEffect(() => {
-    if (
-      verified ||
-      !status ||
-      !["In Progress", "Approved", "Resubmitted"].includes(status)
-    )
-      return;
-    let tries = 0;
-    const timer = window.setInterval(() => {
-      if (++tries >= 6) window.clearInterval(timer);
-      void refresh();
-    }, 5000);
-    return () => window.clearInterval(timer);
-  }, [status, verified, refresh]);
   const waiting = status === "In Review" || status === "Approved";
   if (!verification && !error)
     return (

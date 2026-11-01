@@ -115,6 +115,10 @@ function getClientName(record: ProjectRecord): string {
 ========================================================== */
 
 function getProjectType(record: ProjectRecord): "Standard" | "Milestone" {
+  const project = getRelatedRecord(record.project) as Record<string, unknown> | null;
+  if (project?.project_type === "standard" || project?.project_type === "milestone") {
+    return project.project_type === "milestone" ? "Milestone" : "Standard";
+  }
   const service = getRelatedRecord(record.service);
 
   const serviceRecord = service as Record<string, unknown> | null;
@@ -415,22 +419,12 @@ export function useProjects() {
 
   React.useEffect(() => {
     void loadProjects(false, false);
-    const refresh = () => {
-      if (document.visibilityState === "visible")
-        void loadProjects(true, false);
-    };
-    const timer = window.setInterval(refresh, 60000);
-    window.addEventListener("focus", refresh);
-    document.addEventListener("visibilitychange", refresh);
     const onRoleChanged = () => {
       setProjects([]);
       void loadProjects(false, true);
     };
     window.addEventListener("account-role-changed", onRoleChanged);
     return () => {
-      window.clearInterval(timer);
-      window.removeEventListener("focus", refresh);
-      document.removeEventListener("visibilitychange", refresh);
       window.removeEventListener("account-role-changed", onRoleChanged);
     };
   }, [loadProjects]);

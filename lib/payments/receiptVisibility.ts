@@ -16,6 +16,7 @@ export function receiptSnapshotForAudience(snapshotValue: unknown, audience: Rec
       clientServiceVatBase: snapshot.clientServiceVatBase,
       clientServiceVatRate: snapshot.clientServiceVatRate,
       clientServiceVat: snapshot.clientServiceVat,
+      clientTransactionFee: snapshot.platformServiceFee,
       clientServiceVatClassification: snapshot.clientServiceVatClassification,
       clientServiceVatRule: snapshot.clientServiceVatRule,
       currency: snapshot.currency,

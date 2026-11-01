@@ -100,10 +100,10 @@ export function ProjectPlanProposalAttachment({
     setError("");
     try {
       const [auth, savedPlans] = await Promise.all([
-        supabase.auth.getUser(),
+        supabase.auth.getSession(),
         listProjectPlans(false),
       ]);
-      if (auth.error || !auth.data.user)
+      if (auth.error || !auth.data.session?.user)
         throw new Error("Sign in to choose a saved project plan.");
       setPlans(savedPlans);
     } catch (cause) {

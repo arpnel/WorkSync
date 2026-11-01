@@ -34,7 +34,8 @@ export async function assertFreelancerAvailable(id: string) {
 }
 
 export async function getOwnFreelancerId(): Promise<string | null> {
-  const { data: { user }, error } = await supabase.auth.getUser();
+  const { data: { session }, error } = await supabase.auth.getSession();
+  const user = session?.user;
   if (error) throw error;
   if (!user) return null;
   const result = await supabase.from("freelancer_profiles").select("freelancer_id").eq("user_id", user.id).maybeSingle();

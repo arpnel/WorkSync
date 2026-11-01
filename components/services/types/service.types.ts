@@ -24,6 +24,7 @@ export function mapFormValuesToCreatePayload(
       budget_min: values.budgetMin,
       budget_max: values.budgetMax,
       deadline: values.deadline,
+      project_type: values.serviceType,
     };
   }
 

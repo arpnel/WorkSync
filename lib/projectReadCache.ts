@@ -20,6 +20,10 @@ export function clearProjectReadCache() {
   cache.clear();
 }
 
+export function invalidateProjectReadCache(key: string) {
+  if (account) cache.invalidate(`${account}:${key}`);
+}
+
 export async function readProjectCache<T>(
   key: string,
   fetcher: () => Promise<T>,

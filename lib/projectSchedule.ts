@@ -1,4 +1,5 @@
 ﻿import type { ProjectRecord } from "@/services/project/projectService";
+import type { ProjectRecord } from "@/services/project/projectService";
 import type {
   ScheduleBoard,
   ScheduleCard,
@@ -9,7 +10,7 @@ export interface LinkedDeadline extends ScheduleCard {
   projectTitle: string;
   projectKey: string;
   stage: "To do" | "In progress" | "In review" | "Done";
-  kind: "milestone" | "project" | "meeting";
+  kind: "milestone" | "project" | "meeting" | "task";
 }
 const record = (value: unknown): Record<string, unknown> => {
   const row = Array.isArray(value) ? value[0] : value;
@@ -31,10 +32,20 @@ type Meeting = {
   title: string;
   starts_at: string;
 };
+export type ProjectTaskDeadline = {
+  task_id: string;
+  project_id: string;
+  title: string;
+  description: string;
+  priority: SchedulePriority;
+  deadline_at: string;
+  status: string;
+};
 export function buildProjectDeadlines(
   orders: ProjectRecord[],
   meetings: Meeting[] = [],
   now = new Date(),
+  tasks: ProjectTaskDeadline[] = [],
 ): LinkedDeadline[] {
   const result: LinkedDeadline[] = [];
   for (const order of orders) {
@@ -68,6 +79,7 @@ export function buildProjectDeadlines(
       due: unknown,
       stage: LinkedDeadline["stage"],
       kind: LinkedDeadline["kind"],
+      priorityOverride?: SchedulePriority,
     ) => {
       const raw = String(due ?? "");
       const date = raw
@@ -95,10 +107,10 @@ export function buildProjectDeadlines(
           kind !== "meeting" && projectStart <= dueDate ? projectStart : "",
         entryType: kind === "meeting" ? "deadline" : "plan",
         dueTime:
-          valid && kind === "meeting"
+          valid && (kind === "meeting" || kind === "task")
             ? `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`
             : "",
-        priority: stage === "Done" ? "low" : deadlinePriority(dueDate, now),
+        priority: priorityOverride ?? (stage === "Done" ? "low" : deadlinePriority(dueDate, now)),
         href,
         projectTitle,
         projectKey: order.order_id,
@@ -147,6 +159,20 @@ export function buildProjectDeadlines(
             : "To do",
         "project",
       );
+    }
+    if (!completed) {
+      for (const task of tasks.filter((item) => item.project_id === project.project_id)) {
+        const stage = task.status === "in_review" ? "In review" : "In progress";
+        add(
+          `task:${task.task_id}`,
+          task.title,
+          task.description || `Task for ${projectTitle}`,
+          task.deadline_at,
+          stage,
+          "task",
+          task.priority,
+        );
+      }
     }
     if (!completed)
       for (const meeting of meetings.filter(

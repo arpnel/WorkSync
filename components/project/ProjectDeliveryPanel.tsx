@@ -19,7 +19,7 @@ import { Plus } from "lucide-react";
 import { SubmissionInbox } from "./SubmissionInbox";
 import { SubmissionComments } from "./SubmissionComments";
 import { SubmissionImage } from "./SubmissionImage";
-import { supabase } from "@/lib/supabaseClient";
+import { notifyProjectActivityChanged } from "@/lib/projectRealtime";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FileUpload } from "@/components/uploads/FileUpload";
@@ -67,8 +67,6 @@ export function ProjectDeliveryPanel({
   project,
   onRefresh,
   paid = false,
-  autoReleaseEnabled = false,
-  finalMilestoneId,
   readOnly = false,
   actions,
 }: {
@@ -160,19 +158,10 @@ export function ProjectDeliveryPanel({
   );
   useEffect(() => {
     void load(false);
-    const refresh = () => {
-      if (document.visibilityState === "visible") void load(false);
-    };
-    window.addEventListener("focus", refresh);
-    const timer = window.setInterval(refresh, 60000);
-    document.addEventListener("visibilitychange", refresh);
     return () => {
-      // Invalidate the latest request, including one started by polling.
+      // Ignore any request that is still in flight after unmount.
       // eslint-disable-next-line react-hooks/exhaustive-deps
       ++loadVersion.current;
-      window.removeEventListener("focus", refresh);
-      document.removeEventListener("visibilitychange", refresh);
-      window.clearInterval(timer);
     };
   }, [load]);
   useEffect(() => {
@@ -219,31 +208,7 @@ export function ProjectDeliveryPanel({
     project.status,
   ]);
 
-  useEffect(() => {
-    if (!project.projectId) return;
-    const channel = supabase.channel("deliveries:" + project.projectId);
-    for (const table of [
-      "project_submissions",
-      "revision_requests",
-      "reviews",
-      "project_submission_comments",
-    ])
-      channel.on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table,
-          filter: "project_id=eq." + project.projectId,
-        },
-        () => void load(),
-      );
-    channel.subscribe();
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  }, [load, project.projectId]);
-  async function act(operation: () => Promise<void | string>, message: string) {
+  async function act(operation: () => Promise<void | string>, message: string, refreshWorkspace = false) {
     if (busy) return;
     setBusy(true);
     setError("");
@@ -253,7 +218,8 @@ export function ProjectDeliveryPanel({
       clearProjectReadCache();
       setNotice(typeof outcome === "string" ? outcome : message);
       await load();
-      await onRefresh();
+      notifyProjectActivityChanged(projectId);
+      if (refreshWorkspace) await onRefresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Action failed.");
     } finally {
@@ -659,17 +625,11 @@ export function ProjectDeliveryPanel({
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() =>
-                          void act(
-                            () =>
-                              openProjectAttachment(
-                                submission.attachment_path!,
-                                "submission",
-                                submission.submission_id,
-                              ),
-                            "",
-                          )
-                        }
+                        onClick={() => void openProjectAttachment(
+                          submission.attachment_path!,
+                          "submission",
+                          submission.submission_id,
+                        ).catch((cause) => setError(cause instanceof Error ? cause.message : "Unable to open attachment."))}
                       >
                         {submission.attachment_name ?? "Open attachment"}
                       </Button>
@@ -702,7 +662,7 @@ export function ProjectDeliveryPanel({
                         );
                         clearProjectReadCache();
                         await load();
-                        await onRefresh();
+                        notifyProjectActivityChanged(commentProjectId);
                       } catch (cause) {
                         setError(
                           cause instanceof Error
@@ -883,7 +843,7 @@ export function ProjectDeliveryPanel({
                         return settlementReviewNotice(
                           settlementReviewed ?? { status: "request_failed" },
                         );
-                    }, "Delivery updated.");
+                    }, "Delivery updated.", true);
                 }}
               >
                 {busy

@@ -28,6 +28,7 @@ export interface ProjectRequest {
   jobId: string;
   jobTitle: string;
   jobDescription: string;
+  projectType: "standard" | "milestone";
   jobPostedAt: string | null;
   categoryName: string | null;
   jobBudget: number | null;
@@ -76,6 +77,14 @@ type ApplicationQueryResult = {
   data: unknown[] | null;
   error: { code?: string; message: string } | null;
 };
+
+function isMissingProjectTypeColumn(error: { code?: string; message?: string } | null) {
+  return Boolean(
+    error &&
+      (error.code === "42703" || error.code === "PGRST204" ||
+        /project_type.*(does not exist|schema cache)|column .*project_type/i.test(error.message ?? "")),
+  );
+}
 
 async function readApplications(
   query: (fields: string) => PromiseLike<ApplicationQueryResult>,
@@ -140,6 +149,20 @@ export async function getProjectRequests(): Promise<ProjectRequestData> {
     ...new Set(allRows.map((row) => row.screening_id).filter(Boolean)),
   ];
 
+  const readJobs = async () => {
+    let result = await supabase
+      .from("jobs")
+      .select("job_id, client_id, title, description, created_at, budget_min, budget_max, category_id, project_type")
+      .in("job_id", jobIds);
+    if (isMissingProjectTypeColumn(result.error)) {
+      result = await supabase
+        .from("jobs")
+        .select("job_id, client_id, title, description, created_at, budget_min, budget_max, category_id")
+        .in("job_id", jobIds);
+    }
+    return result;
+  };
+
   const [
     jobsResult,
     freelancersResult,
@@ -149,10 +172,7 @@ export async function getProjectRequests(): Promise<ProjectRequestData> {
     reviewsResult,
     projectsResult,
   ] = await Promise.all([
-    supabase
-      .from("jobs")
-      .select("job_id, client_id, title, description, created_at, budget_min, budget_max, category_id")
-      .in("job_id", jobIds),
+    readJobs(),
     supabase
       .from("freelancer_profiles")
       .select("freelancer_id, user_id, headline, years_of_experience")
@@ -259,6 +279,7 @@ export async function getProjectRequests(): Promise<ProjectRequestData> {
       jobId: row.job_id,
       jobTitle: job?.title ?? "Untitled job",
       jobDescription: job?.description ?? "",
+      projectType: job?.project_type === "milestone" ? "milestone" : "standard",
       jobPostedAt: job?.created_at ?? null,
       categoryName: categories.get(job?.category_id)?.name ?? null,
       jobBudget: job?.budget_max ?? job?.budget_min ?? null,

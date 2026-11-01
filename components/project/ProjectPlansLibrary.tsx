@@ -156,11 +156,12 @@ export default function ProjectPlansLibrary() {
     try {
       const [
         {
-          data: { user },
+          data: { session },
           error: authError,
         },
         rows,
-      ] = await Promise.all([supabase.auth.getUser(), listProjectPlans(false)]);
+      ] = await Promise.all([supabase.auth.getSession(), listProjectPlans(false)]);
+      const user = session?.user;
       if (authError || !user)
         throw new Error("Sign in to open your project plans.");
       setUserId(user.id);

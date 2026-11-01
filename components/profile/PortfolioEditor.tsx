@@ -88,9 +88,10 @@ export default function PortfolioEditor({
       savedId.current = saved.portfolio_id;
       if (file) {
         const {
-          data: { user },
+          data: { session },
           error: authError,
-        } = await supabase.auth.getUser();
+        } = await supabase.auth.getSession();
+        const user = session?.user;
         if (authError || !user) throw new Error("Sign in to upload images.");
         const image_url = await uploadPortfolioImage(user.id, file);
         const image = await supabase

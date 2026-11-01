@@ -15,14 +15,16 @@ import ProjectMeetings from "./ProjectMeetings";
 export function ProjectMeetingsDialog({
   projectId,
   active,
+  buttonClassName,
 }: {
   projectId: string;
   active: boolean;
+  buttonClassName?: string;
 }) {
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
+        <Button variant="outline" size="sm" className={buttonClassName}>
           <CalendarDays className="h-4 w-4" />
           Meetings
         </Button>

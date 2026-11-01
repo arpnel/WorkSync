@@ -113,3 +113,36 @@ export function ServiceDeliverySection({
     </div>
   );
 }
+
+export function JobProjectTypeSection({
+  values,
+  onChange,
+}: Pick<Props, "values" | "onChange">) {
+  return (
+    <div className="space-y-3">
+      <Label>Project type</Label>
+      <div className="grid gap-3 sm:grid-cols-2" role="group" aria-label="Project type">
+        {serviceTypes.map((type) => (
+          <button
+            key={type.value}
+            type="button"
+            aria-pressed={values.serviceType === type.value}
+            onClick={() => onChange({ serviceType: type.value })}
+            className={cn(
+              "rounded-xl border p-4 text-left transition hover:bg-muted/40",
+              values.serviceType === type.value &&
+                "border-primary bg-primary/5 text-primary",
+            )}
+          >
+            <p className="text-sm font-medium">
+              {type.value === "standard" ? "Standard" : "Milestone"}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {type.description}
+            </p>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}

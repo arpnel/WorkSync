@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { projectProgress } from "@/lib/projectProgress";
 import { readProjectCache } from "@/lib/projectReadCache";
-import { supabase } from "@/lib/supabaseClient";
+import { subscribeToProjectActivityChanges } from "@/lib/projectRealtime";
 import { getDeliveryHistory } from "@/services/project/projectDeliveryService";
 import type { ProjectWorkspace } from "@/types/project/projectWorkspace";
 
@@ -15,7 +15,6 @@ export function ProjectProgressSummary({ project }: { project: ProjectWorkspace 
       const history = await readProjectCache(
         `delivery:${project.projectId}`,
         () => getDeliveryHistory(project.projectId!),
-        true,
       );
       setSubmissions(history.submissions);
     } catch {
@@ -26,26 +25,10 @@ export function ProjectProgressSummary({ project }: { project: ProjectWorkspace 
   useEffect(() => {
     if (!project.projectId) return;
     const initialLoad = window.setTimeout(() => void load(), 0);
-    const channel = supabase.channel(`project-progress:${project.projectId}`);
-    channel.on("postgres_changes", {
-      event: "*",
-      schema: "public",
-      table: "project_submissions",
-      filter: `project_id=eq.${project.projectId}`,
-    }, () => void load());
-    for (const table of ["milestones", "projects"])
-      channel.on("postgres_changes", {
-        event: "*",
-        schema: "public",
-        table,
-        filter: `project_id=eq.${project.projectId}`,
-      }, () => void load());
-    channel.subscribe();
-    window.addEventListener("focus", load);
+    const unsubscribe = subscribeToProjectActivityChanges(project.projectId, () => void load());
     return () => {
       window.clearTimeout(initialLoad);
-      window.removeEventListener("focus", load);
-      void supabase.removeChannel(channel);
+      unsubscribe();
     };
   }, [load, project.projectId]);
 

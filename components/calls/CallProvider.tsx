@@ -140,15 +140,6 @@ export default function CallProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!userId || !conversationIds.length) return;
-    // Keep recovery quick enough for a ringing call, but do not poll accounts
-    // that have no conversations to watch.
-    const intervalMs = 60000;
-    const interval = window.setInterval(() => void refresh(), intervalMs);
-    return () => window.clearInterval(interval);
-  }, [userId, conversationIds.length, refresh]);
-
-  useEffect(() => {
-    if (!userId || !conversationIds.length) return;
     let alive = true;
     const channel = supabase.channel(`video-calls:${userId}`);
     for (const conversationId of conversationIds) {
@@ -158,7 +149,7 @@ export default function CallProvider({ children }: { children: ReactNode }) {
           event: "*",
           schema: "public",
           table: "messages",
-          filter: `conversation_id=eq.${conversationId}`,
+          filter: `conversation_id=eq.${conversationId},message=like.${CALL_PREFIX}%`,
         },
         (payload) => {
           const row =

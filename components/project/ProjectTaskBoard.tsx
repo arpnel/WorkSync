@@ -8,7 +8,6 @@ import {
   FileText,
   GripVertical,
   MessageSquare,
-  Pencil,
   Plus,
   Paperclip,
 } from "lucide-react";
@@ -24,9 +23,9 @@ import {
 } from "@/components/ui/dialog";
 import { StyledSelect } from "@/components/ui/styled-select";
 import type { ProjectWorkspace } from "@/types/project/projectWorkspace";
-import { loadProjectTasks, type PersistedProjectTask } from "@/services/project/projectTaskService";
+import { completeProjectTask, ensureSubmittedPlanTasks, loadProjectTasks, startProjectTask, type PersistedProjectTask } from "@/services/project/projectTaskService";
 import { loadContractTaskPlanMode } from "@/services/project/projectTaskPlanMetadataService";
-import { TaskSubmissionPanel } from "./TaskSubmissionPanel";
+import { notifyProjectActivityChanged } from "@/lib/projectRealtime";
 
 type TaskStatus = "To Do" | "In Progress" | "Done";
 type Priority = "High" | "Medium" | "Low";
@@ -37,11 +36,15 @@ type Task = {
   description: string;
   status: TaskStatus;
   dueDate: string;
+  deadlineAt?: string;
   priority: Priority;
   comments: TaskComment[];
   attachments: File[];
   milestoneId: string | null;
   workScope: boolean;
+  sourceKey?: string;
+  sourceStageName?: string;
+  expectedDays?: number;
   persistedStatus?: PersistedProjectTask["status"];
   persistedStatusLabel?: string;
   persisted?: boolean;
@@ -65,6 +68,25 @@ function workspaceTaskKey(project: ProjectWorkspace): string {
 }
 
 function legacyTaskFallback(project: ProjectWorkspace): Task[] {
+  const submittedPlanTasks = project.proposedPlan?.content.columns.flatMap((column) =>
+    column.type === "done" ? [] : column.tasks.map((task) => ({
+      id: `submitted-${column.id}-${task.id}`,
+      title: task.title,
+      description: task.description,
+      status: "To Do" as TaskStatus,
+      dueDate: "",
+      priority: task.priority === "high" ? "High" as Priority : task.priority === "medium" ? "Medium" as Priority : "Low" as Priority,
+      comments: [],
+      attachments: [],
+      milestoneId: null,
+      workScope: true,
+      sourceStageName: column.name,
+      sourceKey: `${column.id}:${task.id}`,
+      expectedDays: task.expectedDays,
+    })),
+  ) ?? [];
+  if (submittedPlanTasks.length) return submittedPlanTasks;
+
   return project.type === "milestone" && project.milestones.length
     ? project.milestones.map((milestone) => ({
       id: `milestone-${milestone.id}`,
@@ -93,6 +115,9 @@ export function mapPersistedTasksToBoard(tasks: readonly PersistedProjectTask[])
     attachments: [],
     milestoneId: task.milestone_id,
     workScope: true,
+    sourceKey: task.source_key,
+    expectedDays: task.expected_days ?? undefined,
+    deadlineAt: task.deadline_at ?? undefined,
     persistedStatus: task.status,
     persistedStatusLabel: task.statusDisplay.label,
     persisted: true,
@@ -111,7 +136,13 @@ export function isCurrentTaskBoardResponse(
 export async function loadProjectTaskBoardData(project: ProjectWorkspace): Promise<Omit<TaskBoardLoadState, "key">> {
   try {
     const metadata = await loadContractTaskPlanMode(project.contractId, project.contractVersion);
-    if (metadata.mode === "legacy") return { status: "legacy", tasks: legacyTaskFallback(project) };
+    if (metadata.mode === "legacy") {
+      if (project.projectId) {
+        const existingTasks = await loadProjectTasks(project.projectId);
+        if (existingTasks.length) return { status: "versioned", tasks: mapPersistedTasksToBoard(existingTasks) };
+      }
+      return { status: "legacy", tasks: legacyTaskFallback(project) };
+    }
     if (metadata.mode !== "versioned" || metadata.stale) {
       return {
         status: "unknown",
@@ -139,30 +170,29 @@ export async function loadProjectTaskBoardData(project: ProjectWorkspace): Promi
 
 export function ProjectTaskBoard({
   project,
-  onRefresh,
-  paid,
   actions,
   compact = false,
 }: {
   project: ProjectWorkspace;
-  onRefresh: () => Promise<void>;
-  paid: boolean;
   actions?: ReactNode;
   compact?: boolean;
 }) {
   const [taskLoad, setTaskLoad] = useState<TaskBoardLoadState>(() => loadingTaskBoardState(""));
   const [selection, setSelection] = useState<{ key: string; id: string } | null>(null);
   const loadSequence = useRef(0);
+  const projectRef = useRef(project);
+  projectRef.current = project;
   const taskKey = workspaceTaskKey(project);
   const columns = completedColumns;
   const reloadTasks = useCallback(async () => {
     const sequence = ++loadSequence.current;
-    const key = workspaceTaskKey(project);
+    const currentProject = projectRef.current;
+    const key = workspaceTaskKey(currentProject);
     setTaskLoad(loadingTaskBoardState(key));
-    const result = await loadProjectTaskBoardData(project);
+    const result = await loadProjectTaskBoardData(currentProject);
     if (!isCurrentTaskBoardResponse(key, taskKey, sequence, loadSequence.current)) return;
     setTaskLoad({ key, ...result });
-  }, [project, taskKey]);
+  }, [taskKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -180,9 +210,10 @@ export function ProjectTaskBoard({
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newDescription, setNewDescription] = useState("");
-  const [editingDescription, setEditingDescription] = useState(false);
   const [comment, setComment] = useState("");
   const [attachmentError, setAttachmentError] = useState("");
+  const [taskActionError, setTaskActionError] = useState("");
+  const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
   const attachmentInput = useRef<HTMLInputElement>(null);
 
   function updateSelected(patch: Partial<Task>) {
@@ -192,11 +223,52 @@ export function ProjectTaskBoard({
       : current);
   }
 
-  function moveTask(taskId: string, status: TaskStatus) {
+  function canMoveTask(task: Task): boolean {
+    return task.persisted || (visibleLoad.status === "legacy" && Boolean(project.proposedPlan && project.projectId && task.sourceKey));
+  }
+
+  async function moveTask(taskId: string, status: TaskStatus) {
     if (project.currentParty !== "freelancer") return;
-    setTaskLoad((current) => current.key === taskKey
-      ? { ...current, tasks: current.tasks.map((task) => task.id === taskId ? { ...task, status } : task) }
-      : current);
+    const task = tasks.find((item) => item.id === taskId);
+    if (!task || task.status === status || savingTaskId) return;
+    const starting = task.status === "To Do" && status === "In Progress";
+    const completing = task.status === "In Progress" &&
+      task.persistedStatus === "in_progress" && status === "Done";
+    if (!starting && !completing) return;
+    setTaskActionError("");
+    setSavingTaskId(taskId);
+    try {
+      let taskDatabaseId = task.id;
+      let seededTasks: PersistedProjectTask[] | null = null;
+      if (starting && !task.persisted) {
+        if (!canMoveTask(task) || !project.projectId || !task.sourceKey) {
+          throw new Error("This task is not linked to a saved project plan.");
+        }
+        seededTasks = await ensureSubmittedPlanTasks(project.projectId);
+        const seededTarget = seededTasks.find((item) => item.source_key === task.sourceKey);
+        if (!seededTarget) throw new Error("Could not match this task to the freelancer’s saved application plan.");
+        taskDatabaseId = seededTarget.task_id;
+      }
+      const saved = completing
+        ? await completeProjectTask(taskDatabaseId)
+        : await startProjectTask(taskDatabaseId, Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+      if (project.projectId) notifyProjectActivityChanged(project.projectId);
+      if (seededTasks && selection?.id === taskId) setSelection({ key: taskKey, id: taskDatabaseId });
+      setTaskLoad((current) => current.key === taskKey
+        ? { ...current, status: "versioned", tasks: (seededTasks ? mapPersistedTasksToBoard(seededTasks) : current.tasks).map((item) => item.id === taskDatabaseId ? {
+          ...item,
+          status: saved.boardStatus,
+          persistedStatus: saved.status,
+          persistedStatusLabel: saved.statusDisplay.label,
+          deadlineAt: saved.deadline_at ?? undefined,
+          dueDate: saved.due_date ?? "",
+        } : item) }
+        : current);
+    } catch (cause) {
+      setTaskActionError(cause instanceof Error ? cause.message : "Task progress could not be saved. Refresh and try again.");
+    } finally {
+      setSavingTaskId(null);
+    }
   }
 
   function addTask(event: FormEvent<HTMLFormElement>) {
@@ -252,12 +324,13 @@ export function ProjectTaskBoard({
         <div className="flex flex-wrap items-center gap-2">{actions}{visibleLoad.status === "legacy" && <Button size="sm" onClick={() => setAdding((open) => !open)}><Plus className="mr-1.5 h-4 w-4" />Add task</Button>}</div>
       </div>
 
-      <p className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">{visibleLoad.status === "versioned" || visibleLoad.status === "empty" ? "Tasks are loaded from the accepted contract plan. Task edits, comments, and reference attachments are still a local preview. Existing submissions, feedback, and revisions continue to use the project or milestone delivery flow." : "Board cards and comments are a UI preview and are not saved yet. Existing submissions, feedback, and revisions remain saved at project or milestone level."}</p>
+      <p className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">{visibleLoad.status === "versioned" || visibleLoad.status === "empty" ? "Tasks are loaded from the accepted contract plan. Task progress is saved; task details, comments, and reference attachments remain a local preview. Existing submissions, feedback, and revisions continue to use the project or milestone delivery flow." : project.proposedPlan ? "Tasks are loaded from the freelancer’s submitted application plan. Moving a task to In Progress saves the plan’s task records to this active project." : "These board cards are a UI preview without saved task records. Existing submissions, feedback, and revisions remain saved at project or milestone level."}</p>
       </>}
 
       {visibleLoad.status === "loading" && <p role="status" className="rounded-md border px-3 py-4 text-sm text-muted-foreground">Loading the accepted task plan…</p>}
       {visibleLoad.status === "unknown" && <div role="alert" className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-4 text-sm">{visibleLoad.message}</div>}
       {visibleLoad.status === "error" && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/40 px-3 py-4 text-sm"><span>{visibleLoad.message ?? "Unable to load the task plan."}</span><Button size="sm" variant="outline" onClick={() => void reloadTasks()}>Retry</Button></div>}
+      {taskActionError && <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">{taskActionError}</p>}
       {visibleLoad.status === "empty" && <p role="status" className="rounded-md border border-dashed px-3 py-4 text-sm text-muted-foreground">The accepted plan is versioned, but no persisted tasks were returned.</p>}
 
       {visibleLoad.status === "legacy" && adding && <form onSubmit={addTask} className="grid gap-3 rounded-lg border bg-muted/20 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
@@ -298,16 +371,20 @@ export function ProjectTaskBoard({
                 >
                   <span className="flex items-start gap-1.5"><GripVertical aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"/><span className="min-w-0 flex-1 font-medium">{task.title}</span>{task.status === "Done" && <CheckCircle2 aria-label="Done" className="size-4 shrink-0 fill-emerald-600 text-emerald-600" />}</span>
                   <span className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    {task.sourceStageName && <span className="rounded-full border px-2 py-0.5">{task.sourceStageName}</span>}
                     <span className={`rounded-full border px-2 py-0.5 ${task.priority === "High" ? "border-rose-500/30 text-rose-700 dark:text-rose-300" : ""}`}>{task.priority}</span>
-                    {task.dueDate && <span className="inline-flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" />{new Date(`${task.dueDate}T12:00:00`).toLocaleDateString()}</span>}
+                    {task.deadlineAt
+                      ? <span className="inline-flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" />Deadline {new Date(task.deadlineAt).toLocaleString()}</span>
+                      : task.expectedDays && <span>Estimated {task.expectedDays} {task.expectedDays === 1 ? "day" : "days"}</span>}
+                    {!task.deadlineAt && task.dueDate && <span className="inline-flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" />{new Date(`${task.dueDate}T12:00:00`).toLocaleDateString()}</span>}
                     {task.attachments.length > 0 && <span className="inline-flex items-center gap-1"><Paperclip className="h-3.5 w-3.5" />{task.attachments.length}</span>}
                     {task.comments.length > 0 && <span className="inline-flex items-center gap-1"><MessageSquare className="h-3.5 w-3.5" />{task.comments.length}</span>}
                   </span>
                 </button>
                 {project.currentParty === "freelancer" && <label className="mt-2 flex items-center gap-2 border-t pt-2 text-xs text-muted-foreground">
                   Move to
-                  <StyledSelect aria-label={`Move ${task.title} to`} className="h-8 min-w-0 flex-1 rounded-md border border-border/80 bg-background px-2 text-xs text-foreground" value={task.status} onChange={(event) => moveTask(task.id, event.target.value as TaskStatus)}>
-                    {columns.map((status) => <option key={status} value={status}>{status}</option>)}
+                  <StyledSelect aria-label={`Move ${task.title} to`} className="h-8 min-w-0 flex-1 rounded-md border border-border/80 bg-background px-2 text-xs text-foreground" value={task.status} disabled={savingTaskId === task.id || !canMoveTask(task)} onChange={(event) => void moveTask(task.id, event.target.value as TaskStatus)}>
+                    {columns.map((status) => <option key={status} value={status} disabled={status !== task.status && !((task.status === "To Do" && status === "In Progress") || (task.status === "In Progress" && task.persistedStatus === "in_progress" && status === "Done"))}>{status}</option>)}
                   </StyledSelect>
                 </label>}
               </article>)}
@@ -317,13 +394,12 @@ export function ProjectTaskBoard({
         })}
       </div>}
 
-      <Dialog open={!!selected} onOpenChange={(open) => { if (!open) { setSelection(null); setEditingDescription(false); } }}>
+      <Dialog open={!!selected} onOpenChange={(open) => { if (!open) setSelection(null); }}>
         <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden border border-border/80 bg-popover p-0 shadow-2xl sm:max-w-5xl">
           {selected && <>
             <DialogHeader className="border-b px-5 py-4 pr-12 text-left">
-              <DialogTitle className="sr-only">Task details</DialogTitle>
-              <DialogDescription className="sr-only">Edit this task, view delivery activity, and discuss next steps.</DialogDescription>
-              <Input aria-label="Task title" className="h-auto border-0 px-0 text-lg font-semibold shadow-none focus-visible:ring-0" maxLength={120} value={selected.title} onChange={(event) => updateSelected({ title: event.target.value })} />
+              <DialogDescription className="sr-only">View this task, delivery activity, and discussion.</DialogDescription>
+              <DialogTitle className="text-lg font-semibold">{selected.title}</DialogTitle>
               <p className="text-xs text-muted-foreground">In project <span className="font-medium text-foreground">{project.title}</span></p>
             </DialogHeader>
 
@@ -331,8 +407,8 @@ export function ProjectTaskBoard({
               <div className="grid min-h-full lg:grid-cols-[minmax(0,1fr)_300px]">
                 <main className="min-w-0 space-y-4 bg-background/35 p-5">
                   <section aria-labelledby="task-description-heading" className="space-y-2 rounded-lg border border-border/60 bg-card/35 p-4">
-                    <div className="flex items-center justify-between gap-2"><h3 id="task-description-heading" className="text-sm font-semibold">Task details</h3><Button size="sm" variant="ghost" className="h-8 px-2 text-xs" onClick={() => setEditingDescription((editing) => !editing)}><Pencil className="mr-1.5 h-3.5 w-3.5" />{editingDescription ? "Done" : "Edit"}</Button></div>
-                    {editingDescription ? <Textarea autoFocus maxLength={1000} value={selected.description} onChange={(event) => updateSelected({ description: event.target.value })} placeholder="Add task requirements and notes" /> : <p className="whitespace-pre-wrap text-sm leading-6 text-foreground/90">{selected.description || "Add a description to outline the task requirements."}</p>}
+                    <h3 id="task-description-heading" className="text-sm font-semibold">Task details</h3>
+                    <p className="whitespace-pre-wrap text-sm leading-6 text-foreground/90">{selected.description || "No task description."}</p>
                   </section>
 
                   <section aria-labelledby="task-attachments-heading" className="space-y-3 rounded-lg border border-border/60 bg-card/45 p-4">
@@ -343,15 +419,15 @@ export function ProjectTaskBoard({
                     <p className="text-xs text-muted-foreground">Preview only: task attachments stay in this browser and are not saved. They are separate from work submissions.</p>
                   </section>
 
-                  {selected.workScope
-                    ? <TaskSubmissionPanel project={project} taskTitle={selected.title} milestoneId={selected.milestoneId} paid={paid} onRefresh={onRefresh} />
-                    : <section className="space-y-2 border-t pt-5"><h3 className="text-sm font-semibold">Work submission</h3><p className="text-sm text-muted-foreground">Formal submissions are not linked to this task yet. Project and milestone submissions remain on their existing delivery scope and are not copied here.</p></section>}
                 </main>
 
                 <aside className="space-y-5 border-t bg-muted/35 p-5 lg:border-l lg:border-t-0" aria-label="Task properties and comments">
-                  <section className="space-y-3"><h3 className="text-sm font-semibold">Task properties</h3><div className="space-y-2"><label htmlFor="task-status" className="text-xs font-medium text-muted-foreground">{project.currentParty === "freelancer" ? "Board column (preview)" : "Status"}</label>{project.currentParty === "freelancer" ? <StyledSelect id="task-status" className="h-10 w-full rounded-md border border-border/80 bg-background px-3 text-sm" value={selected.status} onChange={(event) => updateSelected({ status: event.target.value as TaskStatus })}>{columns.map((status) => <option key={status}>{status}</option>)}</StyledSelect> : <p id="task-status" className="rounded-md border border-border/80 bg-background px-3 py-2 text-sm" data-database-status={selected.persistedStatus}>{selected.persisted ? selected.persistedStatusLabel : selected.status}</p>}{project.currentParty === "freelancer" && <p className="text-xs text-muted-foreground">Moving a card changes its board position only. Delivery approval and project completion still follow the review process.</p>}</div>
-                  <div className="space-y-2"><label htmlFor="task-due-date" className="flex items-center gap-2 text-xs font-medium text-muted-foreground"><CalendarDays className="h-3.5 w-3.5"/>Due date</label><Input id="task-due-date" type="date" className="h-10 border-border/80 bg-background" value={selected.dueDate} onChange={(event) => updateSelected({ dueDate: event.target.value })}/></div>
-                  <div className="space-y-2"><label htmlFor="task-priority" className="text-xs font-medium text-muted-foreground">Priority</label><StyledSelect id="task-priority" className="h-10 w-full rounded-md border border-border/80 bg-background px-3 text-sm" value={selected.priority} onChange={(event) => updateSelected({ priority: event.target.value as Priority })}>{(["High", "Medium", "Low"] as Priority[]).map((priority) => <option key={priority}>{priority}</option>)}</StyledSelect></div></section>
+                  <section className="space-y-3"><h3 className="text-sm font-semibold">Task properties</h3>
+                    <div className="space-y-1.5"><p className="text-xs font-medium text-muted-foreground">Status</p><p id="task-status" className="rounded-md border border-border/80 bg-background px-3 py-2 text-sm" data-database-status={selected.persistedStatus}>{selected.persisted ? selected.persistedStatusLabel : selected.status}</p></div>
+                    {selected.deadlineAt && <div className="space-y-1.5"><p className="text-xs font-medium text-muted-foreground">Estimated deadline</p><p className="rounded-md border border-border/60 bg-background px-3 py-2 text-sm">{new Date(selected.deadlineAt).toLocaleString()}</p></div>}
+                    {selected.dueDate && <div className="space-y-1.5"><p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><CalendarDays className="h-3.5 w-3.5"/>Due date</p><p className="rounded-md border border-border/80 bg-background px-3 py-2 text-sm">{new Date(`${selected.dueDate}T12:00:00`).toLocaleDateString()}</p></div>}
+                    <div className="space-y-1.5"><p className="text-xs font-medium text-muted-foreground">Priority</p><p className="rounded-md border border-border/80 bg-background px-3 py-2 text-sm">{selected.priority}</p></div>
+                  </section>
                   <section className="space-y-3 border-t pt-4">
                     <div className="flex items-center gap-2"><MessageSquare className="h-4 w-4 text-muted-foreground"/><h3 className="text-sm font-semibold">Comments</h3></div>
                     <p className="text-xs text-muted-foreground">Preview only: comments are not saved.</p>

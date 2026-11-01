@@ -18,7 +18,6 @@ import {
 } from "@/services/project/projectWorkspaceService";
 import {
   subscribeToConversationMessages,
-  subscribeToUserConversations,
 } from "@/services/message/messageService";
 import { supabase } from "@/lib/supabaseClient";
 import { useMessageAccountSettings } from "@/hooks/message/useMessageAccountSettings";
@@ -199,12 +198,6 @@ export function useProjectWorkspace(serviceOrderId: string) {
   useEffect(() => {
     activeOrder.current = serviceOrderId;
     void load(true, false);
-    const refresh = () => {
-      if (document.visibilityState === "visible") void load(false, false);
-    };
-    const timer = window.setInterval(refresh, 60000);
-    window.addEventListener("focus", refresh);
-    document.addEventListener("visibilitychange", refresh);
     const onRoleChanged = () => {
       setWorkspace(null);
       void load(true, true);
@@ -212,9 +205,6 @@ export function useProjectWorkspace(serviceOrderId: string) {
     window.addEventListener("account-role-changed", onRoleChanged);
     return () => {
       activeOrder.current = "";
-      window.clearInterval(timer);
-      window.removeEventListener("focus", refresh);
-      document.removeEventListener("visibilitychange", refresh);
       window.removeEventListener("account-role-changed", onRoleChanged);
     };
   }, [load, serviceOrderId]);
@@ -226,52 +216,9 @@ export function useProjectWorkspace(serviceOrderId: string) {
           () => void refreshProjectMessages(),
           "INSERT",
         )
-      : subscribeToUserConversations(() => void load(false));
+      : undefined;
   }, [load, refreshProjectMessages, workspace?.conversationId]);
 
-  useEffect(() => {
-    if (!workspace?.contractId) return;
-
-    let channel = supabase
-      .channel(`project-contract:${workspace.contractId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "service_orders",
-          filter: `order_id=eq.${serviceOrderId}`,
-        },
-        () => void load(false),
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "contracts",
-          filter: `contract_id=eq.${workspace.contractId}`,
-        },
-        () => void load(false),
-      );
-    if (workspace.type === "milestone") {
-      channel = channel.on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "contract_item_approvals",
-          filter: `contract_id=eq.${workspace.contractId}`,
-        },
-        () => void load(false),
-      );
-    }
-    channel.subscribe();
-
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  }, [load, serviceOrderId, workspace?.contractId, workspace?.type]);
 
   useEffect(() => {
     if (
@@ -302,35 +249,6 @@ export function useProjectWorkspace(serviceOrderId: string) {
     messageSettings.settings.typingIndicators,
   ]);
 
-  useEffect(() => {
-    if (!workspace?.projectId) return;
-    const channel = supabase
-      .channel("workspace-state:" + workspace.projectId)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "projects",
-          filter: "project_id=eq." + workspace.projectId,
-        },
-        () => void load(false),
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "milestones",
-          filter: "project_id=eq." + workspace.projectId,
-        },
-        () => void load(false),
-      )
-      .subscribe();
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  }, [load, workspace?.projectId]);
 
   const sendTyping = useCallback(
     (isTyping: boolean) => sendTypingRef.current(isTyping),

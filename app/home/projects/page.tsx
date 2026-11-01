@@ -77,24 +77,33 @@ function ProjectsPage() {
   } = useProjectFilters(displayProjects);
 
   const linkedApplications = new Set(
-    displayProjects.map((project) => project.applicationId).filter(Boolean),
+    displayProjects
+      .map((project) => project.applicationId)
+      .filter((applicationId): applicationId is string => Boolean(applicationId)),
   );
-  const discussions = requestState.requests.discussions.filter(
-    (request) =>
-      !linkedApplications.has(request.applicationId) &&
+  const discussions = requestState.requests.discussions.filter((request) =>
+    !linkedApplications.has(request.applicationId) &&
       [request.jobTitle, request.clientName, request.freelancerName].some(
         (value) => value.toLowerCase().includes(search.trim().toLowerCase()),
       ),
   );
+  const visibleProjects =
+    activeFilter === "In Discussion"
+      ? filteredProjects.filter(
+          (project) =>
+            !project.applicationId ||
+            !acceptedApplicationIds.has(project.applicationId),
+        )
+      : filteredProjects;
 
-  if (error && requestState.error) {
+  if (error || requestState.error) {
     return (
       <div className="space-y-6">
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
           Projects
         </h1>
         <p className="text-sm text-destructive">
-          {error || requestState.error}
+          {error ?? requestState.error}
         </p>
         <Button
           onClick={() => {
@@ -270,10 +279,10 @@ function ProjectsPage() {
       {activeFilter !== "Request" &&
         !loading &&
         !error &&
-        (filteredProjects.length > 0 ||
+        (visibleProjects.length > 0 ||
           activeFilter !== "In Discussion" ||
           discussions.length === 0) && (
-          <ProjectList projects={filteredProjects} onChanged={refetch} />
+          <ProjectList projects={visibleProjects} onChanged={refetch} />
         )}
     </div>
   );

@@ -142,7 +142,7 @@ export default function MarketplaceCard({ listing, onClick, rating, available, f
                 {listing.category?.name ?? "Uncategorized"}
               </span>
               <span className="rounded-md bg-primary/10 px-2 py-1 text-xs text-primary">
-                {listing.pricing_type === "hourly" ? "Hourly" : "Fixed price"}
+                {listing.project_type === "milestone" ? "Milestone project" : "Standard project"}
               </span>
             </div>
 

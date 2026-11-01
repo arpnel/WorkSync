@@ -1,6 +1,9 @@
 import { submitPaidWork } from "./paidWorkService";
 import { containsProfanity } from "@/lib/ai/listingModerationPolicy";
-import { getProjectPayment } from "@/services/payments/paymentService";
+import {
+  getProjectPayment,
+  projectPaymentCoversAgreedAmount,
+} from "@/services/payments/paymentService";
 import { supabase } from "@/lib/supabaseClient";
 import { LARGE_FILE_MAX_BYTES, SUPABASE_MAX_FILE_BYTES, usesR2Storage } from "@/lib/storage/hybridStorage";
 import { deleteUnusedLargeFile, getLargeFileUrl, uploadLargeFile } from "@/services/storage/hybridStorageClient";
@@ -121,7 +124,12 @@ export async function submitProjectWork(
   if (file && file.size > LARGE_FILE_MAX_BYTES)
     throw new Error("Files must be 1 GB or smaller.");
   const payment = await getProjectPayment(projectId);
-  if (payment.status !== "paid")
+  if (
+    !projectPaymentCoversAgreedAmount(
+      payment,
+      payment.baseAmount ?? Number.NaN,
+    )
+  )
     throw new Error("The client must pay before work can be submitted.");
   const id = crypto.randomUUID();
   let path: string | null = null;

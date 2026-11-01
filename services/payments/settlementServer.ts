@@ -160,6 +160,7 @@ export async function settleProjects() {
     .select("payout_id,payment_id,amount,encrypted_destination")
     .eq("mode", mode)
     .eq("status", "ready")
+    .not("withdrawal_requested_at", "is", null)
     .order("updated_at")
     .limit(10);
   if (ready.error) throw new PaymentError("Payout queue unavailable.");

@@ -69,30 +69,6 @@ export default function FreelancerAssessments() {
     };
   }, [params]);
   useEffect(() => {
-    let alive = true;
-    const refresh = () =>
-      void listMyAssessments()
-        .then((rows) => {
-          if (!alive) return;
-          setItems(rows);
-          setSelected((current) =>
-            current
-              ? (rows.find((row) => row.id === current.id) ?? current)
-              : null,
-          );
-        })
-        .catch(() => {
-          /* Preserve saved selections; actions surface service errors. */
-        });
-    const timer = window.setInterval(refresh, 30000);
-    window.addEventListener("focus", refresh);
-    return () => {
-      alive = false;
-      window.clearInterval(timer);
-      window.removeEventListener("focus", refresh);
-    };
-  }, []);
-  useEffect(() => {
     if (!attempt?.deadlineAt || attempt.status !== "started") return;
     const update = () =>
       setRemaining(

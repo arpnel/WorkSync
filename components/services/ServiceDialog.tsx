@@ -51,7 +51,10 @@ import { useAuthUserId } from "@/hooks/auth/useAuthUserId";
 import { useProfile } from "@/hooks/profile/useProfile";
 import { useDuplicateSubmissionLock } from "./utils/duplicateSubmission";
 
-import { ServiceDeliverySection } from "./sections/AvailabilitySection";
+import {
+  JobProjectTypeSection,
+  ServiceDeliverySection,
+} from "./sections/AvailabilitySection";
 import { ServiceCategorySection } from "./sections/CategorySection";
 import { ServiceDetailsSection } from "./sections/DetailsSection";
 import { ServiceImageSection } from "./sections/ImageSection";
@@ -84,6 +87,7 @@ type ServiceDialogProps = {
   onOpenChange: (open: boolean) => void;
   onCreated?: (result: CreateListingResult) => void | Promise<void>;
   listing?: MarketplaceItem;
+  initialValues?: Partial<ServiceFormValues>;
 };
 
 function listingSubmissionErrorMessage(error: unknown, noun: string) {
@@ -103,6 +107,7 @@ export function ServiceDialog({
   onOpenChange,
   onCreated,
   listing,
+  initialValues,
 }: ServiceDialogProps) {
   const [values, setValues] = useState<ServiceFormValues>(defaultValues);
   const [errors, setErrors] = useState<
@@ -136,7 +141,7 @@ export function ServiceDialog({
   useEffect(() => {
     if (!open) return;
 
-    const initialValues: ServiceFormValues = listing
+    const initialFormValues: ServiceFormValues = listing
       ? {
           ...defaultValues,
           title: listing.title,
@@ -147,6 +152,7 @@ export function ServiceDialog({
             ? {
                 budgetMin: listing.budget_min,
                 budgetMax: listing.budget_max,
+                serviceType: listing.project_type === "milestone" ? "milestone" : "standard",
                 deadline: listing.deadline?.slice(0, 10) ?? "",
                 experienceLevel:
                   listing.experience_level === "beginner" ||
@@ -167,13 +173,15 @@ export function ServiceDialog({
                   : [],
               }),
         }
-      : defaultValues;
-    setValues(initialValues);
-    setOriginalMediaUrls(initialValues.mediaUrls);
+      : initialValues
+        ? { ...defaultValues, ...initialValues }
+        : defaultValues;
+    setValues(initialFormValues);
+    setOriginalMediaUrls(initialFormValues.mediaUrls);
     setErrors({});
     setDirty(false);
     setIsSubmitting(false);
-  }, [open, listing]);
+  }, [open, listing, initialValues]);
 
   useEffect(() => {
     if (!open) return;
@@ -342,6 +350,7 @@ export function ServiceDialog({
             budget_max: data.budgetMax,
             deadline: data.deadline,
             experience_level: data.experienceLevel,
+            project_type: data.serviceType,
           }
         : {
             price: data.price,
@@ -391,6 +400,7 @@ export function ServiceDialog({
               budget_max: data.budgetMax,
               deadline: data.deadline || null,
               experience_level: data.experienceLevel,
+              project_type: data.serviceType,
             }
           : {
               title: data.title,
@@ -529,6 +539,14 @@ export function ServiceDialog({
                     />
                   )}
                   {isJob && (
+                    <div className="md:col-span-2">
+                      <JobProjectTypeSection
+                        values={values}
+                        onChange={updateValues}
+                      />
+                    </div>
+                  )}
+                  {isJob && (
                     <JobExpertiseSection
                       values={values}
                       errors={errors}
@@ -653,7 +671,7 @@ export function ServiceDialog({
                   </span>
                   <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] text-primary">
                     {isJob
-                      ? "Fixed Budget"
+                      ? values.serviceType === "milestone" ? "Milestone project" : "Standard project"
                       : values.serviceType === "milestone"
                         ? "Milestone"
                         : "Standard"}

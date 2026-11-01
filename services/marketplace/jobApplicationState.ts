@@ -14,9 +14,10 @@ export async function getOwnJobApplication(
   jobId: string,
 ): Promise<OwnJobApplication | null> {
   const {
-    data: { user },
+    data: { session },
     error,
-  } = await supabase.auth.getUser();
+  } = await supabase.auth.getSession();
+  const user = session?.user;
   if (error) throw error;
   if (!user) return null;
   const profile = await supabase

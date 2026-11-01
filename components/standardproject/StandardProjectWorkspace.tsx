@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 
 import { CalendarDays, RotateCcw, Wallet } from "lucide-react";
@@ -18,7 +18,7 @@ import { CancelledProjectWorkspace } from "@/components/project/CancelledProject
 import { useProjectWorkspace } from "@/hooks/project/useProjectWorkspace";
 import { JobAgreementWizard } from "@/components/project/JobAgreementWizard";
 import { deleteContractCreationDraft } from "@/services/project/contractCreationDraftService";
-import { saveContractVersionForAgreement } from "@/services/project/projectWorkspaceService";
+import { activateConfirmedProjectAgreement, saveContractVersionForAgreement } from "@/services/project/projectWorkspaceService";
 import { sendConversationMessage } from "@/services/message/messageService";
 import {
   agreeToJobBasicTerms,
@@ -36,6 +36,8 @@ export function StandardProjectWorkspace({
 }) {
   const router = useRouter();
   const [showExistingAgreement, setShowExistingAgreement] = useState(initialAgreementView);
+  const [activationError, setActivationError] = useState("");
+  const activationAttemptedFor = useRef<string | null>(null);
   const [basicAgreementLoading, setBasicAgreementLoading] = useState(false);
   const [basicAgreement, setBasicAgreement] = useState<(JobBasicTermsAgreement & {
     currentParty: "client" | "freelancer";
@@ -59,6 +61,30 @@ export function StandardProjectWorkspace({
     respondToAgreementItem,
     saveAgreementItem,
   } = useProjectWorkspace(serviceOrderId);
+  useEffect(() => {
+    if (workspace?.type === "milestone") router.replace(`/home/projects/milestone/${serviceOrderId}`);
+  }, [router, serviceOrderId, workspace?.type]);
+  useEffect(() => {
+    const contractId = workspace?.contractId;
+    if (
+      !workspace ||
+      !contractId ||
+      !workspace.clientSignedAt ||
+      !workspace.freelancerSignedAt ||
+      ["active", "completed"].includes(workspace.contractStatus ?? "") ||
+      activationAttemptedFor.current === contractId
+    ) return;
+
+    activationAttemptedFor.current = contractId;
+    setActivationError("");
+    void activateConfirmedProjectAgreement(workspace.orderId)
+      .then((activated) => {
+        if (activated) return refresh();
+      })
+      .catch((cause) => {
+        setActivationError(cause instanceof Error ? cause.message : "The confirmed contract could not be activated.");
+      });
+  }, [workspace?.contractId, workspace?.orderId, workspace?.clientSignedAt, workspace?.freelancerSignedAt, workspace?.contractStatus, refresh]);
   const basicTermsApplicationId = workspace?.applicationId ?? null;
   const basicTermsCurrentParty = workspace?.currentParty;
 
@@ -93,14 +119,8 @@ export function StandardProjectWorkspace({
     };
     setBasicAgreementLoading(true);
     void refresh();
-    const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") void refresh();
-    }, 10000);
-    window.addEventListener("focus", refresh);
     return () => {
       active = false;
-      window.clearInterval(interval);
-      window.removeEventListener("focus", refresh);
     };
   }, [basicTermsApplicationId, basicTermsCurrentParty]);
 
@@ -250,6 +270,11 @@ export function StandardProjectWorkspace({
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}
+        </p>
+      )}
+      {activationError && (
+        <p role="alert" className="text-sm text-destructive">
+          Both parties confirmed the contract, but activation failed: {activationError}
         </p>
       )}
       <ProjectWorkspaceHeader

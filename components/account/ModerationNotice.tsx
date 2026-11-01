@@ -10,10 +10,9 @@ export default function ModerationNotice() {
   const [restriction, setRestriction] = useState<Restriction | null>(null);
   useEffect(() => {
     let alive = true;
-    let channel: ReturnType<typeof supabase.channel> | undefined;
-    void supabase.auth.getUser().then(({ data }) => {
-      if (!alive || !data.user) return;
-      const id = data.user.id;
+    void supabase.auth.getSession().then(({ data, error }) => {
+      if (!alive || error || !data.session?.user) return;
+      const id = data.session.user.id;
       const load = async () => {
         const result = await supabase
           .from("account_moderation")
@@ -29,23 +28,11 @@ export default function ModerationNotice() {
           );
       };
       void load();
-      channel = supabase
-        .channel("account-moderation:" + id)
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "account_moderation",
-            filter: "user_id=eq." + id,
-          },
-          () => void load(),
-        )
-        .subscribe();
+    }).catch(() => {
+      // The notice is optional UI; retry on a later page load if auth is offline.
     });
     return () => {
       alive = false;
-      if (channel) void supabase.removeChannel(channel);
     };
   }, []);
   if (restriction?.status !== "suspended") return null;

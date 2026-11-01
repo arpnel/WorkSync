@@ -18,10 +18,10 @@ export function databaseError(error: {
   return new Error(error.message);
 }
 export async function requireUser() {
-  const { data, error } = await supabase.auth.getUser();
+  const { data, error } = await supabase.auth.getSession();
   if (error) throw error;
-  if (!data.user) throw new Error("Please sign in to continue.");
-  return data.user;
+  if (!data.session?.user) throw new Error("Please sign in to continue.");
+  return data.session.user;
 }
 export async function platformAction(
   name: string,

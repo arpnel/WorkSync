@@ -19,8 +19,10 @@ const menuItems = [
 export const HeroHeader = () => {
   const [menuState, setMenuState] = React.useState(false);
   const [isScrolled, setIsScrolled] = React.useState(false);
+  const [mounted, setMounted] = React.useState(false);
 
   React.useEffect(() => {
+    setMounted(true);
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 50);
     };
@@ -96,26 +98,37 @@ export const HeroHeader = () => {
                 </ul>
               </div>
               <div className="flex w-full flex-col space-y-3 sm:flex-row sm:gap-3 sm:space-y-0 md:w-fit">
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button variant="ghost" size="sm">
+                {mounted ? (
+                  <>
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button variant="ghost" size="sm">
+                          Login
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-sm">
+                        <SigninDialog />
+                      </DialogContent>
+                    </Dialog>
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button size="sm">Sign Up</Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-sm">
+                        <SignupDialog />
+                      </DialogContent>
+                    </Dialog>
+                  </>
+                ) : (
+                  <>
+                    <Button variant="ghost" size="sm" type="button">
                       Login
                     </Button>
-                  </DialogTrigger>
-
-                  <DialogContent className="sm:max-w-sm">
-                    <SigninDialog />
-                  </DialogContent>
-                </Dialog>
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button size="sm">Sign Up</Button>
-                  </DialogTrigger>
-
-                  <DialogContent className="sm:max-w-sm">
-                    <SignupDialog />
-                  </DialogContent>
-                </Dialog>
+                    <Button size="sm" type="button">
+                      Sign Up
+                    </Button>
+                  </>
+                )}
 
                 <ModeToggle />
               </div>

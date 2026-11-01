@@ -20,11 +20,7 @@ export function useFreelancerAvailability(ids: string[]) {
       } finally { busy = false; }
     }
     void refresh();
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void refresh();
-    }, 30000);
-    window.addEventListener("focus", refresh);
-    return () => { alive = false; window.clearInterval(timer); window.removeEventListener("focus", refresh); };
+    return () => { alive = false; };
   }, [key]);
   return state.key === key ? state.values : new Map<string, boolean>();
 }

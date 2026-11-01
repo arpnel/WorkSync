@@ -13,9 +13,10 @@ function check(error: { message: string } | null, step: string) {
 }
 async function currentUser() {
   const {
-    data: { user },
+    data: { session },
     error,
-  } = await supabase.auth.getUser();
+  } = await supabase.auth.getSession();
+  const user = session?.user;
   if (error || !user)
     throw new Error("Sign in before setting up your account.");
   return user;

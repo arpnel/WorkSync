@@ -3,16 +3,18 @@ export interface ProjectPayment {
   status: "unpaid" | "pending" | "processing" | "paid";
   mode: "test" | "live";
   vatBreakdown?: {
-    status: "applicable" | "not_applicable" | "review_required" | "not_recorded" | "unavailable";
+    status: "applicable" | "not_applicable" | "not_recorded" | "unavailable";
     taxableAmount: number | null;
     amount: number | null;
     rate: number | null;
     total: number | null;
-    reviewNotice?: string | null;
   };
   amount?: number;
+  baseAmount?: number;
+  transactionFee?: number | null;
   checkoutAllowed?: boolean;
   checkoutMessage?: string;
+  sellerVerificationMessage?: string;
   paidAt?: string | null;
   paymentId?: string;
   paymentMethod?: string | null;
@@ -45,6 +47,36 @@ export interface ProjectPayment {
     refunded_at: string | null;
   }[];
   payout?: { status: string; paid_at?: string | null; amount?: number } | null;
+}
+export function projectPaymentCoversAgreedAmount(
+  payment:
+    | {
+        status: string;
+        amount?: number;
+        baseAmount?: number;
+        transactionFee?: number | null;
+        vatBreakdown?: {
+          taxableAmount: number | null;
+          amount: number | null;
+        };
+      }
+    | null
+    | undefined,
+  agreedBaseAmount: number,
+): boolean {
+  if (payment?.status !== "paid" || payment.amount == null) return false;
+  const base =
+    payment.vatBreakdown?.taxableAmount ?? payment.baseAmount ?? agreedBaseAmount;
+  const vat = payment.vatBreakdown?.amount ?? 0;
+  const fee = payment.transactionFee ?? 0;
+  const cents = (value: number) => Math.round(value * 100);
+  return (
+    Number.isFinite(base) &&
+    Number.isFinite(agreedBaseAmount) &&
+    cents(base) === cents(agreedBaseAmount) &&
+    (cents(payment.amount) === cents(base + vat) ||
+      cents(payment.amount) === cents(base + vat + fee))
+  );
 }
 async function requestPayment(projectId: string, checkout: boolean) {
   const {

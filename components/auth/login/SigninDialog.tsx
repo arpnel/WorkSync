@@ -36,6 +36,16 @@ export function SigninDialog() {
 
   const [formError, setFormError] = React.useState("");
   const showMessage = (message: string) => setFormError(message);
+  const getSigninErrorMessage = (cause: unknown) => {
+    const message = cause instanceof Error ? cause.message : "";
+    if (
+      cause instanceof TypeError ||
+      /failed to fetch|networkerror|load failed/i.test(message)
+    ) {
+      return "Unable to reach WorkSync sign-in. Check your connection and try again.";
+    }
+    return message || ERROR_MESSAGES.UNKNOWN;
+  };
   const adminSignin =
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("redirectTo") === "/admin";
@@ -94,10 +104,7 @@ export function SigninDialog() {
 
       if (error) throw error;
     } catch (error) {
-      console.error(error);
-      showMessage(
-        error instanceof Error ? error.message : ERROR_MESSAGES.UNKNOWN,
-      );
+      showMessage(getSigninErrorMessage(error));
       setSigningIn(false);
       setLoading(false);
     }
@@ -145,8 +152,6 @@ export function SigninDialog() {
       resetForm();
       router.replace(destination);
     } catch (error) {
-      console.log("Login error:", error);
-      console.log("Message:", error instanceof Error ? error.message : error);
       if (error instanceof Error) {
         switch (error.message) {
           case "INVALID_CREDENTIALS":
@@ -159,10 +164,10 @@ export function SigninDialog() {
             break;
 
           default:
-            showMessage(error.message);
+            showMessage(getSigninErrorMessage(error));
         }
       } else {
-        showMessage(ERROR_MESSAGES.UNKNOWN);
+        showMessage(getSigninErrorMessage(error));
       }
     } finally {
       setSigningIn(false);

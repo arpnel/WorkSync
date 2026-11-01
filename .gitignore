@@ -50,6 +50,7 @@ next-env.d.ts
 !/supabase/migrations/
 /supabase/migrations/*
 !/supabase/migrations/20261029021432_worksync_contract_creation_drafts_and_single_acceptance.sql
+!/supabase/migrations/20261101000100_worksync_persist_forward_task_progress.sql
 !/supabase/proposed_migrations/
 !/supabase/proposed_migrations/notifications_query_indexes.sql
 !/supabase/migrations/202610280001_project_plans.sql
@@ -65,3 +66,7 @@ next-env.d.ts
 !/supabase/migrations/20261029154101_encrypted_freelancer_tin.sql
 !/supabase/migrations/20261029154136_limit_freelancer_tin_service_role_privileges.sql
 !/FREELANCER_TIN_README.md
+!/supabase/migrations/20261101000200_worksync_project_transaction_fee.sql
+!/supabase/migrations/20261101000300_worksync_manual_payout_withdrawals.sql
+!/supabase/migrations/20261101000800_worksync_job_project_type.sql
+!/supabase/migrations/20261101000900_worksync_project_participant_read_access.sql

@@ -44,12 +44,13 @@ export function getNotificationHref(
 }
 
 export async function getApprovedApplicationHref(jobId: string) {
-  const auth = await supabase.auth.getUser();
+  const auth = await supabase.auth.getSession();
   if (auth.error) throw auth.error;
+  if (!auth.data.session?.user) throw new Error("Sign in to open this application.");
   const freelancer = await supabase
     .from("freelancer_profiles")
     .select("freelancer_id")
-    .eq("user_id", auth.data.user?.id ?? "")
+    .eq("user_id", auth.data.session.user.id)
     .maybeSingle();
   if (freelancer.error) throw freelancer.error;
   if (!freelancer.data) return null;

@@ -5,7 +5,7 @@ import { WorkspacePageHeader } from "@/components/shared/WorkspacePageHeader";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Archive, Loader2, RotateCcw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getArchivedListings, restoreArchivedListing, removeArchivedListing, type ArchivedListing } from "@/services/marketplace/archiveService";
+import { getArchivedJobRepostDraft, getArchivedListings, restoreArchivedListing, removeArchivedListing, type ArchivedJobRepostDraft, type ArchivedListing } from "@/services/marketplace/archiveService";
 import { toast } from "sonner";
 
 import {
@@ -16,6 +16,7 @@ import {
 } from "@/services/marketplace/MarketplaceServices";
 
 import { ListingEditDialog } from "@/components/listings/ListingEditDialog";
+import { ServiceDialog } from "@/components/services/ServiceDialog";
 import { ListingCard } from "@/components/listings/ListingsGrid";
 import { ListingsToolbar } from "@/components/listings/ListingsToolbar";
 import {
@@ -44,6 +45,8 @@ export default function Page() {
   const [archiving, setArchiving] = useState(false);
   const [pendingRemoval, setPendingRemoval] = useState<ArchivedListing | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [repostDraft, setRepostDraft] = useState<ArchivedJobRepostDraft | null>(null);
+  const [repostingId, setRepostingId] = useState<string | null>(null);
   const loadVersion = useRef(0);
 
   /* ==========================================================
@@ -170,6 +173,18 @@ export default function Page() {
     }
   };
 
+  const prepareRepost = async (item: ArchivedListing) => {
+    if (repostingId) return;
+    setRepostingId(item.id);
+    try {
+      setRepostDraft(await getArchivedJobRepostDraft(item.id));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to prepare this job for reposting.");
+    } finally {
+      setRepostingId(null);
+    }
+  };
+
   /* ==========================================================
      LOADING SKELETON
   ========================================================== */
@@ -250,6 +265,20 @@ export default function Page() {
             onSaved={loadListings}
           />
         )}
+        {repostDraft && (
+          <ServiceDialog
+            key="archived-job-repost"
+            open
+            initialValues={repostDraft}
+            onOpenChange={(open) => {
+              if (!open) setRepostDraft(null);
+            }}
+            onCreated={async () => {
+              setRepostDraft(null);
+              await loadListings();
+            }}
+          />
+        )}
       </div>
 
       {/* ==================================================
@@ -306,10 +335,16 @@ export default function Page() {
                       <RotateCcw className="mr-2 size-4" />Restore
                     </Button>
                   ) : (
-                    <span className="self-center rounded-full bg-muted px-3 py-1.5 text-xs text-muted-foreground">Accepted; closed</span>
+                    <span className="inline-flex h-9 items-center self-center rounded-full bg-muted px-3 text-xs text-muted-foreground">Accepted; closed</span>
                   )}
-                  <Button variant="outline" onClick={() => setPendingRemoval(item)}>
-                    <Trash2 className="mr-2 size-4" />Remove from My Listings
+                  {item.kind === "job" && !item.canRestore && (
+                    <Button variant="outline" size="sm" disabled={repostingId === item.id} onClick={() => void prepareRepost(item)}>
+                      {repostingId === item.id ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+                      Repost
+                    </Button>
+                  )}
+                  <Button variant="destructive" size="sm" onClick={() => setPendingRemoval(item)}>
+                    Remove
                   </Button>
                 </div>
               </div>
@@ -382,14 +417,15 @@ export default function Page() {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={removing}>Keep listing</AlertDialogCancel>
             <AlertDialogAction
+              variant="destructive"
               disabled={removing}
               onClick={(event) => {
                 event.preventDefault();
                 void confirmRemoval();
               }}
             >
-              {removing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-              Remove from My Listings
+              {removing && <Loader2 className="h-4 w-4 animate-spin" />}
+              Remove
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

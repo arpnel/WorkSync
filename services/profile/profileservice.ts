@@ -49,14 +49,15 @@ async function fetchCurrentProfile(
   includeDetails: boolean,
 ): Promise<Profile | null> {
   const {
-    data: { user },
+    data: { session },
     error: authError,
-  } = await supabase.auth.getUser();
+  } = await supabase.auth.getSession();
 
   if (authError) {
     throw authError;
   }
 
+  const user = session?.user;
   if (!user) {
     throw new Error("User not authenticated.");
   }
@@ -661,9 +662,10 @@ export async function addPortfolioProject(
   >,
 ): Promise<PortfolioProject> {
   const {
-    data: { user },
+    data: { session },
     error: authError,
-  } = await supabase.auth.getUser();
+  } = await supabase.auth.getSession();
+  const user = session?.user;
 
   if (authError) {
     throw authError;

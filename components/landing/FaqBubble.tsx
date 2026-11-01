@@ -49,8 +49,8 @@ export function FaqBubble({
       article.title.toLowerCase().includes(query.trim().toLowerCase()),
   );
   async function startTicket() {
-    const { data } = await supabase.auth.getUser();
-    setSignedIn(!!data.user);
+    const { data } = await supabase.auth.getSession();
+    setSignedIn(!!data.session?.user);
     setTicketOpen(true);
     setError("");
   }

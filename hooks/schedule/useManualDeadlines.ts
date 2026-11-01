@@ -32,12 +32,16 @@ export function useManualDeadlines() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (alive) initialize(session?.user.id ?? null);
     });
-    void supabase.auth.getUser().then(({ data, error: authError }) => {
+    void supabase.auth.getSession().then(({ data, error: authError }) => {
       if (!alive) return;
       if (authError) {
         setError("Unable to load personal deadlines.");
         setLoading(false);
-      } else if (owner.current === null) initialize(data.user?.id ?? null);
+      } else if (owner.current === null) initialize(data.session?.user.id ?? null);
+    }).catch(() => {
+      if (!alive) return;
+      setError("Unable to load personal deadlines.");
+      setLoading(false);
     });
     const refresh = () => {
       const id = owner.current;

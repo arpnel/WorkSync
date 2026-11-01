@@ -9,6 +9,7 @@ import {
 } from "@/services/payments/paymentServer";
 import { PaymentError } from "@/lib/payments/paymongo";
 import { notifyProjectWorkSubmitted } from "@/services/email/projectReviewEmails";
+import { projectPaymentCoversAgreedAmount } from "@/services/payments/paymentService";
 export const runtime = "nodejs";
 const input = z
   .object({
@@ -60,7 +61,7 @@ export async function POST(request: Request) {
       );
     if (
       !["active", "in_progress", "revision"].includes(project.status) ||
-      Number(payment.amount) !== Number(project.budget)
+      !projectPaymentCoversAgreedAmount(payment, Number(project.budget))
     )
       throw new PaymentError(
         "The full agreed payment is required for this active project.",

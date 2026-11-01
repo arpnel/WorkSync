@@ -27,14 +27,15 @@ export default function SubscriptionSettings() {
     setLoading(true);
     setError("");
     try {
-      const { data: auth, error: authError } = await supabase.auth.getUser();
-      if (authError || !auth.user)
+      const { data: auth, error: authError } = await supabase.auth.getSession();
+      const user = auth.session?.user;
+      if (authError || !user)
         throw new Error("Sign in to view your subscription.");
       const [assignment, plan] = await Promise.all([
         supabase
           .from("user_subscriptions")
           .select("plan_code,period_ends_at,access_type,trial_claimed_at")
-          .eq("user_id", auth.user.id)
+          .eq("user_id", user.id)
           .maybeSingle(),
         supabase
           .from("subscription_plans")

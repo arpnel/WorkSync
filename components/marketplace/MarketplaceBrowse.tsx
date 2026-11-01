@@ -1,7 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { WorkspacePageHeader } from "@/components/shared/WorkspacePageHeader";
-import { invalidatePageReads } from "@/lib/pageReadCache";
 import { supabase } from "@/lib/supabaseClient";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import MarketplaceHeader from "@/components/marketplace/MarketplaceHeader";
@@ -102,7 +101,7 @@ export default function MarketplaceBrowse({
               ? ["highestRated"]
               : current.sort,
         });
-  });
+  }, [requestedListingType]);
   const marketplaceTitle = filters.listingType === "job"
     ? "Find Jobs"
     : filters.listingType === "freelancer"
@@ -309,33 +308,6 @@ export default function MarketplaceBrowse({
       alive = false;
     };
   }, [guest]);
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const refresh = () => {
-      if (document.visibilityState === "visible") void load(true);
-    };
-    const changed = () => {
-      invalidatePageReads();
-      clearTimeout(timer);
-      timer = setTimeout(refresh, 150);
-    };
-    const channel = supabase.channel("marketplace:" + crypto.randomUUID());
-    for (const table of ["services", "jobs", "reviews", "job_applications"])
-      channel.on(
-        "postgres_changes",
-        { event: "*", schema: "public", table },
-        changed,
-      );
-    channel.subscribe();
-    window.addEventListener("focus", refresh);
-    const interval = window.setInterval(refresh, 30000);
-    return () => {
-      clearTimeout(timer);
-      window.clearInterval(interval);
-      window.removeEventListener("focus", refresh);
-      void supabase.removeChannel(channel);
-    };
-  }, [load]);
   async function toggle(listing: MarketplaceItem) {
     if (guest) {
       setSignup(true);

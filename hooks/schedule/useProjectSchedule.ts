@@ -33,38 +33,18 @@ export function useProjectSchedule() {
       }
     };
     void refresh();
-    const channel = supabase.channel("project-schedule:" + crypto.randomUUID());
-    for (const table of [
-      "projects",
-      "milestones",
-      "contracts",
-      "service_orders",
-      "project_meetings",
-    ])
-      channel.on(
-        "postgres_changes",
-        { event: "*", schema: "public", table },
-        () => {
-          clearProjectReadCache();
-          void refresh();
-        },
-      );
-    channel.subscribe();
-    const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") void refresh();
-    }, 60000);
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event) => {
       if (event === "SIGNED_OUT" || event === "SIGNED_IN") {
         version++;
         setDeadlines([]);
+        clearProjectReadCache();
         window.setTimeout(() => {
           if (alive) void refresh();
         }, 0);
       }
     });
-    window.addEventListener("focus", refresh);
     const onRoleChanged = () => {
       version++;
       clearProjectReadCache();
@@ -77,11 +57,8 @@ export function useProjectSchedule() {
     window.addEventListener("account-role-changed", onRoleChanged);
     return () => {
       alive = false;
-      window.clearInterval(interval);
-      window.removeEventListener("focus", refresh);
       window.removeEventListener("account-role-changed", onRoleChanged);
       subscription.unsubscribe();
-      void supabase.removeChannel(channel);
     };
   }, []);
   return { deadlines, error, loading };

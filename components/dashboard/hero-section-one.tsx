@@ -12,6 +12,9 @@ import {
 import { SignupDialog } from "@/components/auth/signup/SignupDialog";
 
 export default function HeroSection() {
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => setMounted(true), []);
+
   return (
     <>
       <HeroHeader />
@@ -30,20 +33,27 @@ export default function HeroSection() {
                   </p>
 
                   <div className="flex flex-wrap items-center gap-3">
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button size="lg" className="pr-4.5">
-                          <span className="text-nowrap">Get Started</span>
-                          <ChevronRight className="opacity-50" />
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-sm">
-                        <DialogTitle className="sr-only">
-                          Create your account
-                        </DialogTitle>
-                        <SignupDialog />
-                      </DialogContent>
-                    </Dialog>
+                    {mounted ? (
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button size="lg" className="pr-4.5">
+                            <span className="text-nowrap">Get Started</span>
+                            <ChevronRight className="opacity-50" />
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-sm">
+                          <DialogTitle className="sr-only">
+                            Create your account
+                          </DialogTitle>
+                          <SignupDialog />
+                        </DialogContent>
+                      </Dialog>
+                    ) : (
+                      <Button size="lg" className="pr-4.5" type="button">
+                        <span className="text-nowrap">Get Started</span>
+                        <ChevronRight className="opacity-50" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               </div>

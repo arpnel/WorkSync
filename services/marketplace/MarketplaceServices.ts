@@ -166,6 +166,7 @@ export interface MarketplaceJob {
   budget_max: number;
 
   pricing_type: string;
+  project_type: "standard" | "milestone";
 
   experience_level?: string;
 
@@ -251,6 +252,7 @@ interface JobRow {
   budget_max: number;
 
   pricing_type: string;
+  project_type?: "standard" | "milestone";
 
   experience_level?: string;
 
@@ -423,6 +425,7 @@ async function buildMarketplaceJob(
     budget_max: Number(job.budget_max),
 
     pricing_type: job.pricing_type,
+    project_type: job.project_type === "milestone" ? "milestone" : "standard",
 
     experience_level: job.experience_level,
 
@@ -551,9 +554,10 @@ async function hideUnavailableJobsForCurrentFreelancer(
   guest: boolean | undefined,
 ): Promise<JobRow[]> {
   if (guest) return rows;
-  const { data: auth, error: authError } = await supabase.auth.getUser();
+  const { data: auth, error: authError } = await supabase.auth.getSession();
   if (authError) throw authError;
-  if (!auth.user) return rows;
+  const user = auth.session?.user;
+  if (!user) return rows;
   const [
     { data: account, error: accountError },
     { data: profile, error: profileError },
@@ -561,12 +565,12 @@ async function hideUnavailableJobsForCurrentFreelancer(
     supabase
       .from(USERS_TABLE)
       .select("role")
-      .eq("user_id", auth.user.id)
+      .eq("user_id", user.id)
       .maybeSingle(),
     supabase
       .from(FREELANCER_TABLE)
       .select("freelancer_id")
-      .eq("user_id", auth.user.id)
+      .eq("user_id", user.id)
       .maybeSingle(),
   ]);
   if (accountError) throw accountError;
@@ -591,7 +595,7 @@ async function hideUnavailableJobsForCurrentFreelancer(
   return rows.filter((row) => !unavailable.has(row.job_id));
 }
 async function getJobs(query: MarketplaceQuery): Promise<MarketplaceJob[]> {
-  const columns = `job_id,client_id,category_id,title,description,budget_min,budget_max,pricing_type,experience_level,deadline,status,created_at,updated_at${query.skillId ? ",job_skills!inner(skill_id)" : ""}`;
+  const columns = `job_id,client_id,category_id,title,description,budget_min,budget_max,pricing_type,project_type,experience_level,deadline,status,created_at,updated_at${query.skillId ? ",job_skills!inner(skill_id)" : ""}`;
   let request = supabase
     .from(JOBS_TABLE)
     .select(columns)
@@ -721,9 +725,10 @@ export function getMyMarketplaceListings(): Promise<MarketplaceItem[]> {
 }
 async function fetchMyMarketplaceListings(): Promise<MarketplaceItem[]> {
   const {
-    data: { user },
+    data: { session },
     error: authError,
-  } = await supabase.auth.getUser();
+  } = await supabase.auth.getSession();
+  const user = session?.user;
 
   if (authError) {
     throw authError;
@@ -1049,6 +1054,7 @@ export async function getMarketplaceJob(
       budget_min,
       budget_max,
       pricing_type,
+      project_type,
       deadline,
       status,
       created_at,
@@ -1313,9 +1319,10 @@ export async function createMarketplaceOrder(
   }
 
   const {
-    data: { user },
+    data: { session },
     error: authError,
-  } = await supabase.auth.getUser();
+  } = await supabase.auth.getSession();
+  const user = session?.user;
 
   if (authError) {
     throw new Error(authError.message);
@@ -1382,9 +1389,10 @@ export async function createMarketplaceOrder(
 
 export async function getCurrentClientProfileId(): Promise<string> {
   const {
-    data: { user },
+    data: { session },
     error: authError,
-  } = await supabase.auth.getUser();
+  } = await supabase.auth.getSession();
+  const user = session?.user;
 
   if (authError) {
     throw new Error(authError.message);

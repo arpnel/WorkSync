@@ -31,6 +31,8 @@ export interface PersistedProjectTask {
   priority: ProjectTaskPriority;
   milestone_id: string | null;
   due_date: string | null;
+  expected_days: number | null;
+  deadline_at: string | null;
   status: PersistedProjectTaskStatus;
   statusDisplay: ProjectTaskStatusDisplay;
   display_order: number;
@@ -41,6 +43,17 @@ export interface PersistedProjectTask {
   boardPriority: ProjectTaskBoardPriority;
 }
 
+export interface ProjectTaskHistoryEntry {
+  history_id: string;
+  task_id: string;
+  task_title: string;
+  actor_id: string | null;
+  from_status: string | null;
+  to_status: string;
+  note: string | null;
+  created_at: string;
+}
+
 export class ProjectTaskDataError extends Error {
   constructor(message: string) {
     super(`Invalid project task data: ${message}`);
@@ -49,7 +62,7 @@ export class ProjectTaskDataError extends Error {
 }
 
 const TASK_SELECT =
-  "task_id,project_id,source_version,source_key,stage_id,stage_name,stage_order,title,description,priority,milestone_id,due_date,status,display_order,completed_at,created_at,updated_at";
+  "task_id,project_id,source_version,source_key,stage_id,stage_name,stage_order,title,description,priority,milestone_id,due_date,expected_days,deadline_at,status,display_order,completed_at,created_at,updated_at";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TASK_STATUS_DISPLAY: Record<PersistedProjectTaskStatus, ProjectTaskStatusDisplay> = {
   todo: { label: "To Do", boardColumn: "To Do" },
@@ -128,6 +141,12 @@ function mapTaskRow(value: unknown, index: number, requestedProjectId: string): 
   if (row.due_date !== null && !isDate(row.due_date)) {
     throw new ProjectTaskDataError(`${prefix}.due_date must be null or a valid date.`);
   }
+  if (row.expected_days !== null && (!Number.isInteger(row.expected_days) || (row.expected_days as number) < 1 || (row.expected_days as number) > 3650)) {
+    throw new ProjectTaskDataError(`${prefix}.expected_days must be null or a whole number from 1 to 3650.`);
+  }
+  if (row.deadline_at !== null && !isTimestamp(row.deadline_at)) {
+    throw new ProjectTaskDataError(`${prefix}.deadline_at must be null or a valid timestamp.`);
+  }
   if (row.completed_at !== null && !isTimestamp(row.completed_at)) {
     throw new ProjectTaskDataError(`${prefix}.completed_at must be null or a valid timestamp.`);
   }
@@ -150,6 +169,8 @@ function mapTaskRow(value: unknown, index: number, requestedProjectId: string): 
     priority,
     milestone_id: row.milestone_id as string | null,
     due_date: row.due_date as string | null,
+    expected_days: row.expected_days as number | null,
+    deadline_at: row.deadline_at as string | null,
     status,
     statusDisplay,
     display_order: row.display_order as number,
@@ -159,6 +180,46 @@ function mapTaskRow(value: unknown, index: number, requestedProjectId: string): 
     boardStatus: statusDisplay.boardColumn,
     boardPriority: taskBoardPriority(priority),
   };
+}
+
+async function saveProjectTaskStatus(
+  taskId: string,
+  status: "in_progress" | "completed",
+  timeZone = "UTC",
+): Promise<PersistedProjectTask> {
+  if (!UUID_PATTERN.test(taskId)) throw new ProjectTaskDataError("taskId must be a UUID.");
+  const { data, error } = await supabase.rpc("worksync_set_project_task_status", {
+    p_task_id: taskId,
+    p_status: status,
+    p_note: null,
+    p_timezone: timeZone || "UTC",
+  });
+  if (error) throw databaseError(error);
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!isRecord(row) || typeof row.project_id !== "string" || !UUID_PATTERN.test(row.project_id)) {
+    throw new ProjectTaskDataError("The progress update returned an invalid task row.");
+  }
+  return mapProjectTaskRows([row], row.project_id)[0];
+}
+
+/** Persists a freelancer's one-way transition to In Progress through the authorized RPC. */
+export function startProjectTask(taskId: string, timeZone: string): Promise<PersistedProjectTask> {
+  return saveProjectTaskStatus(taskId, "in_progress", timeZone);
+}
+
+/** Marks an in-progress task Done without approving project work or releasing payment. */
+export function completeProjectTask(taskId: string): Promise<PersistedProjectTask> {
+  return saveProjectTaskStatus(taskId, "completed");
+}
+
+/** Creates missing task rows from the active project's saved application plan. */
+export async function ensureSubmittedPlanTasks(projectId: string): Promise<PersistedProjectTask[]> {
+  if (!UUID_PATTERN.test(projectId)) throw new ProjectTaskDataError("projectId must be a UUID.");
+  const { data, error } = await supabase.rpc("worksync_seed_submitted_plan_tasks", {
+    p_project_id: projectId,
+  });
+  if (error) throw databaseError(error);
+  return mapProjectTaskRows(data, projectId);
 }
 
 /** Strictly maps and deterministically orders rows; malformed rows fail the whole read. */
@@ -190,4 +251,42 @@ export async function loadProjectTasks(projectId: string): Promise<PersistedProj
     .order("task_id", { ascending: true });
   if (error) throw databaseError(error);
   return mapProjectTaskRows(data, projectId);
+}
+
+/** Loads the status audit entries for one project's saved tasks. */
+export async function loadProjectTaskHistory(
+  projectId: string,
+): Promise<ProjectTaskHistoryEntry[]> {
+  const tasks = await loadProjectTasks(projectId);
+  if (!tasks.length) return [];
+  const titleById = new Map(tasks.map((task) => [task.task_id, task.title]));
+  const { data, error } = await supabase
+    .from("project_task_history")
+    .select("history_id,task_id,actor_id,from_status,to_status,note,created_at")
+    .in("task_id", tasks.map((task) => task.task_id))
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (error) throw databaseError(error);
+  if (!Array.isArray(data)) throw new ProjectTaskDataError("Task history query result must be an array.");
+  return data.map((value, index) => {
+    if (!isRecord(value) || typeof value.history_id !== "string" || typeof value.task_id !== "string" ||
+      typeof value.to_status !== "string" || !isTimestamp(value.created_at) ||
+      (value.actor_id !== null && typeof value.actor_id !== "string") ||
+      (value.from_status !== null && typeof value.from_status !== "string") ||
+      (value.note !== null && typeof value.note !== "string")) {
+      throw new ProjectTaskDataError(`Task history row ${index} is malformed.`);
+    }
+    const taskTitle = titleById.get(value.task_id);
+    if (!taskTitle) throw new ProjectTaskDataError(`Task history row ${index} references a task outside the project.`);
+    return {
+      history_id: value.history_id,
+      task_id: value.task_id,
+      task_title: taskTitle,
+      actor_id: value.actor_id,
+      from_status: value.from_status,
+      to_status: value.to_status,
+      note: value.note,
+      created_at: value.created_at,
+    };
+  });
 }

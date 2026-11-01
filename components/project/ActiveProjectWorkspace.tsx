@@ -2,12 +2,13 @@
 import { useState, useEffect } from "react";
 import { projectIsOverdue } from "@/lib/projectSettlement";
 import { CheckCircle2, ClipboardList, KanbanSquare, LockKeyhole, Shield, CalendarDays } from "lucide-react";
-import type { ProjectPayment } from "@/services/payments/paymentService";
+import { projectPaymentCoversAgreedAmount, type ProjectPayment } from "@/services/payments/paymentService";
 import type { ProjectWorkspace } from "@/types/project/projectWorkspace";
 import { ProjectWorkspaceHeader } from "./ProjectWorkspaceHeader";
 import { ProjectMeetingsDialog } from "./ProjectMeetingsDialog";
 import { ProjectTaskBoard } from "./ProjectTaskBoard";
 import { ProjectProgressSummary } from "./ProjectProgressSummary";
+import { TaskSubmissionPanel } from "./TaskSubmissionPanel";
 import { RecentProjectActivity } from "./RecentProjectActivity";
 import { ProjectPaymentPanel } from "./ProjectPaymentPanel";
 import { ProjectContractDialog } from "./ProjectContractDialog";
@@ -38,7 +39,7 @@ export function ActiveProjectWorkspace({
   const [view, setView] = useState<"overview" | "kanban">("overview");
   const [payment, setPayment] = useState<ProjectPayment | null>(null);
   const [resolutionOpen, setResolutionOpen] = useState(false);
-  const paid = payment?.status === "paid" && Number(payment.amount) === project.budget;
+  const paid = projectPaymentCoversAgreedAmount(payment, project.budget);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 30000);
@@ -72,7 +73,7 @@ export function ActiveProjectWorkspace({
           </div>
         </header>
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-        <ProjectTaskBoard key={project.projectId} compact project={project} onRefresh={onRefresh} paid={paid} />
+        <ProjectTaskBoard key={project.projectId} compact project={project} />
       </div>
     );
   }
@@ -123,6 +124,9 @@ export function ActiveProjectWorkspace({
               </CardContent>
             </Card>
             <ProjectProgressSummary project={project} />
+            {project.type === "standard"
+              ? <TaskSubmissionPanel project={project} taskTitle={project.title} milestoneId={null} paid={paid} onRefresh={onRefresh} />
+              : project.milestones.map((milestone) => <TaskSubmissionPanel key={milestone.id} project={project} taskTitle={milestone.title} milestoneId={milestone.id} paid={paid} onRefresh={onRefresh} />)}
             {project.type === "milestone" && <Card>
               <CardHeader className="pb-3"><CardTitle className="text-base">Milestone summary</CardTitle></CardHeader>
               <CardContent className="grid gap-3 md:grid-cols-2">
@@ -138,7 +142,7 @@ export function ActiveProjectWorkspace({
             {!paid && !completed && <section className="flex items-start gap-3 rounded-xl border bg-muted/20 p-4 text-sm">
               <LockKeyhole className="mt-0.5 size-4 shrink-0 text-muted-foreground"/><div className="space-y-1"><h2 className="font-medium">Payment required to upload work</h2><p className="text-muted-foreground">{project.currentParty === "client" ? "Complete the agreed payment to start work." : "Uploads unlock when the client completes payment."}</p></div>
             </section>}
-            <ProjectTaskBoard key={project.projectId} project={project} onRefresh={onRefresh} paid={paid} actions={<>
+            <ProjectTaskBoard key={project.projectId} project={project} actions={<>
               {project.projectId && <ProjectMeetingsDialog projectId={project.projectId} active={!completed} />}
               <Dialog open={resolutionOpen} onOpenChange={setResolutionOpen}>
                 <DialogTrigger asChild><Button variant="outline" size="sm">Project resolution</Button></DialogTrigger>
@@ -154,9 +158,9 @@ export function ActiveProjectWorkspace({
           {project.projectId && <Card>
             <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><CalendarDays className="size-4 text-muted-foreground" />Project actions</CardTitle></CardHeader>
             <CardContent className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-              <ProjectMeetingsDialog projectId={project.projectId} active={!completed} />
+              <ProjectMeetingsDialog projectId={project.projectId} active={!completed} buttonClassName="w-full" />
               <Dialog open={resolutionOpen} onOpenChange={setResolutionOpen}>
-                <DialogTrigger asChild><Button variant="outline" className="w-full justify-start gap-2"><Shield className="size-4" />Project resolution</Button></DialogTrigger>
+                <DialogTrigger asChild><Button variant="outline" size="sm" className="w-full justify-center gap-2"><Shield className="size-4" />Project resolution</Button></DialogTrigger>
                 <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-3xl"><DialogHeader><DialogTitle>Project resolution</DialogTitle><DialogDescription>Manage cancellation requests, disputes, and their history.</DialogDescription></DialogHeader><ProjectResolutionPanel orderStatus={project.orderStatus} orderId={project.orderId} projectId={project.projectId} status={project.status} userId={project.currentUserId} milestones={project.milestones} onRefresh={onRefresh} /></DialogContent>
               </Dialog>
             </CardContent>

@@ -109,20 +109,17 @@ function subscribe(listener: () => void) {
     let unsubscribe: (() => void) | undefined;
     let account: string | null | undefined;
     let connection = 0;
-    const connect = async () => {
+    const connect = async (userId: string) => {
       const attempt = ++connection;
       unsubscribe?.();
       unsubscribe = undefined;
       try {
-        const cleanup = await subscribeToNotifications(() => void load());
+        const cleanup = await subscribeToNotifications(userId, () => void load());
         if (version !== generation || attempt !== connection) cleanup();
         else unsubscribe = cleanup;
       } catch {
         /* Reads still work if realtime is unavailable. */
       }
-    };
-    const refresh = () => {
-      if (document.visibilityState === "visible") void load();
     };
     const preferences = () => {
       invalidatePageReads();
@@ -140,7 +137,7 @@ function subscribe(listener: () => void) {
       window.setTimeout(() => {
         if (version !== generation || next !== account) return;
         if (next) {
-          void connect();
+          void connect(next);
           void load();
         } else {
           unsubscribe?.();
@@ -149,8 +146,6 @@ function subscribe(listener: () => void) {
       }, 0);
     });
     void load();
-    const timer = window.setInterval(refresh, 120000);
-    window.addEventListener("focus", refresh);
     window.addEventListener("notification-preferences-changed", preferences);
     stop = () => {
       ++generation;
@@ -164,8 +159,6 @@ function subscribe(listener: () => void) {
       state = initial;
       unsubscribe?.();
       auth.data.subscription.unsubscribe();
-      window.clearInterval(timer);
-      window.removeEventListener("focus", refresh);
       window.removeEventListener(
         "notification-preferences-changed",
         preferences,

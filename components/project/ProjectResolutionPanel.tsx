@@ -18,7 +18,6 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { supabase } from "@/lib/supabaseClient";
 import { openProjectAttachment } from "@/services/project/projectDeliveryService";
 import {
   getResolutionHistory,
@@ -74,31 +73,6 @@ export function ProjectResolutionPanel({
   }, [orderId, projectId]);
   useEffect(() => {
     void load();
-    const channel = supabase.channel("resolution:" + orderId).on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "project_cancellations",
-        filter: "order_id=eq." + orderId,
-      },
-      () => void load(),
-    );
-    if (projectId)
-      channel.on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "project_disputes",
-          filter: "project_id=eq." + projectId,
-        },
-        () => void load(),
-      );
-    channel.subscribe();
-    return () => {
-      void supabase.removeChannel(channel);
-    };
   }, [load, orderId, projectId]);
   const pending = data?.cancellations.find((r) => r.status === "requested");
   const held = !!pending || data?.disputes.some((d) => d.status !== "resolved");

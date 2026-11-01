@@ -19,6 +19,7 @@ import {
 } from "@/services/storage/hybridStorageClient";
 import { createSignedUrlMap } from "@/services/storage/signedUrlBatch";
 import { projectPlanSnapshotSchema } from "@/services/project/projectPlanSnapshot";
+import { getPublicIdentities } from "@/services/profile/publicIdentityService";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type {
   ProjectWorkspace,
@@ -62,6 +63,7 @@ export interface ContractVersionAgreementInput {
   startDate: string;
   deadline: string;
   plan: ContractVersionPlanInput;
+  milestones?: readonly ContractVersionMilestoneInput[];
 }
 
 export interface SaveContractVersionInput extends ContractVersionAgreementInput {
@@ -361,23 +363,25 @@ export function mapContractVersionPayload(input: ContractVersionPayloadInput): C
 export async function saveContractVersionForAgreement(
   input: SaveContractVersionInput,
 ): Promise<number> {
-  const { data: milestoneRows, error: milestoneError } = await supabase
-    .from("contract_milestones")
-    .select("contract_milestone_id,title,description,amount,due_date,display_order")
-    .eq("contract_id", input.contractId)
-    .order("display_order", { ascending: true });
-  if (milestoneError) {
-    throw new Error(`Unable to load the complete contract milestone set: ${milestoneError.message}`);
+  let milestones = input.milestones;
+  if (!milestones) {
+    const { data: milestoneRows, error: milestoneError } = await supabase
+      .from("contract_milestones")
+      .select("contract_milestone_id,title,description,amount,due_date,display_order")
+      .eq("contract_id", input.contractId)
+      .order("display_order", { ascending: true });
+    if (milestoneError) {
+      throw new Error(`Unable to load the complete contract milestone set: ${milestoneError.message}`);
+    }
+    milestones = (milestoneRows ?? []).map((row) => ({
+      id: text(row.contract_milestone_id),
+      title: text(row.title),
+      description: text(row.description),
+      amount: numeric(row.amount),
+      dueDate: text(row.due_date) || null,
+      displayOrder: numeric(row.display_order),
+    }));
   }
-
-  const milestones: ContractVersionMilestoneInput[] = (milestoneRows ?? []).map((row) => ({
-    id: text(row.contract_milestone_id),
-    title: text(row.title),
-    description: text(row.description),
-    amount: numeric(row.amount),
-    dueDate: text(row.due_date) || null,
-    displayOrder: numeric(row.display_order),
-  }));
   const payload = mapContractVersionPayload({
     ...input,
     completeSnapshot: true,
@@ -426,9 +430,10 @@ function displayName(
 }
 async function currentUserId(): Promise<string> {
   const {
-    data: { user },
+    data: { session },
     error,
-  } = await supabase.auth.getUser();
+  } = await supabase.auth.getSession();
+  const user = session?.user;
   if (error) throw error;
   if (!user) throw new Error("You must be signed in to open a project.");
   return user.id;
@@ -498,7 +503,7 @@ async function attachmentUrl(
 }
 
 const WORKSPACE_SELECT =
-  "order_id, application_id, service_id, freelancer_id, client_id, status, created_at, services(title, description, price, service_type, delivery_time_days, revisions_count, category_id), client_profiles(user_id), freelancer_profiles(user_id), projects(project_id, title, description, budget, status, start_date, due_date, milestones(milestone_id, title, description, amount, due_date, status, display_order)), contracts(contract_id, current_version, final_price, delivery_time_days, revisions_count, terms, status, client_signed_at, freelancer_signed_at)";
+  "order_id, application_id, job_id, service_id, freelancer_id, client_id, status, created_at, services(title, description, price, service_type, delivery_time_days, revisions_count, category_id), client_profiles(user_id), freelancer_profiles(user_id), projects(project_id, title, description, budget, status, start_date, due_date, project_type, milestones(milestone_id, title, description, amount, due_date, status, display_order)), contracts(contract_id, current_version, final_price, delivery_time_days, revisions_count, terms, status, client_signed_at, freelancer_signed_at)";
 
 export async function getProjectWorkspace(
   serviceOrderId: string,
@@ -528,7 +533,13 @@ export async function getProjectWorkspace(
   const service = record(row.services);
   const project = record(row.projects);
   const contract = record(row.contracts);
+  let projectType = text(project?.project_type) === "milestone" || text(service?.service_type) === "milestone" ? "milestone" : "standard";
   const applicationId = text(row.application_id) || null;
+  if (!project && applicationId) {
+    const job = await supabase.from("jobs").select("project_type").eq("job_id", row.job_id).maybeSingle();
+    if (job.error) throw new Error(job.error.message);
+    projectType = job.data?.project_type === "milestone" ? "milestone" : "standard";
+  }
   let proposedPlan: ProjectWorkspace["proposedPlan"] = null;
   if (applicationId) {
     const application = await supabase
@@ -572,7 +583,7 @@ export async function getProjectWorkspace(
     throw new Error("This project is not part of your active account role.");
   const categoryId = requestCategoryId || text(service?.category_id);
   const participantIds = [clientUserId, freelancerUserId].filter(Boolean);
-  const [categoryResult, profilesResult, conversationResult] =
+  const [categoryResult, identities, conversationResult] =
     await Promise.all([
       categoryId
         ? supabase
@@ -581,12 +592,7 @@ export async function getProjectWorkspace(
             .eq("id", categoryId)
             .maybeSingle()
         : Promise.resolve({ data: null, error: null }),
-      participantIds.length
-        ? supabase
-            .from("profiles")
-            .select("user_id, display_name, first_name, last_name, avatar_url")
-            .in("user_id", participantIds)
-        : Promise.resolve({ data: [], error: null }),
+      getPublicIdentities({ userIds: participantIds }),
       supabase
         .from("conversations")
         .select("conversation_id")
@@ -600,11 +606,10 @@ export async function getProjectWorkspace(
     );
   }
 
-  if (profilesResult.error) throw new Error(profilesResult.error.message);
   const profileMap = new Map(
-    (profilesResult.data ?? []).map((item) => [
+    identities.profiles.map((item) => [
       item.user_id,
-      item as Record<string, unknown>,
+      item as unknown as Record<string, unknown>,
     ]),
   );
 
@@ -652,7 +657,7 @@ export async function getProjectWorkspace(
 
   let agreementItems: WorkspaceAgreementItem[] = [];
   const contractId = text(contract?.contract_id);
-  if (contractId && text(service?.service_type) === "milestone") {
+  if (contractId && projectType === "milestone") {
     const approvals = await supabase
       .from("contract_item_approvals")
       .select("approval_id,item_key,client_approved_at,freelancer_approved_at")
@@ -669,7 +674,7 @@ export async function getProjectWorkspace(
 
   let milestoneRows = records(project?.milestones);
   const draftMilestones =
-    text(service?.service_type) === "milestone" &&
+    projectType === "milestone" &&
     !!contractId &&
     !["active", "completed"].includes(text(contract?.status)) &&
     (!project || ["", "pending"].includes(text(project.status)));
@@ -718,7 +723,7 @@ export async function getProjectWorkspace(
         : null,
     projectId: text(project?.project_id) || null,
     conversationId: conversation?.conversation_id ?? null,
-    type: service?.service_type === "milestone" ? "milestone" : "standard",
+    type: projectType,
     title:
       text(project?.title) ||
       requestTitle ||
@@ -1095,6 +1100,15 @@ export async function respondToProjectAgreement(
   accepted: boolean,
 ): Promise<void> {
   const { contractId, party } = await getAgreementContext(orderId);
+  if (accepted) {
+    const { error } = await supabase.rpc("confirm_contract_agreement", {
+      p_contract_id: contractId,
+    });
+    if (error) throw new Error(error.message);
+    await activateContractIfConfirmed(contractId);
+    return;
+  }
+
   const signatureColumn =
     party === "client" ? "client_signed_at" : "freelancer_signed_at";
   const update = {
@@ -1113,6 +1127,30 @@ export async function respondToProjectAgreement(
       "The agreement was not updated. Check the contracts update policy.",
     );
   }
+}
+
+async function activateContractIfConfirmed(contractId: string): Promise<boolean> {
+  const { data: contract, error: readError } = await supabase
+    .from("contracts")
+    .select("status,client_signed_at,freelancer_signed_at")
+    .eq("contract_id", contractId)
+    .maybeSingle();
+  if (readError) throw new Error(readError.message);
+  if (!contract) throw new Error("The confirmed contract could not be reloaded.");
+  if (!contract.client_signed_at || !contract.freelancer_signed_at) return false;
+  if (contract.status === "active" || contract.status === "completed") return true;
+
+  const { error: activationError } = await supabase.rpc(
+    "worksync_activate_contract",
+    { p_contract_id: contractId },
+  );
+  if (activationError) throw new Error(activationError.message);
+  return true;
+}
+
+export async function activateConfirmedProjectAgreement(orderId: string): Promise<boolean> {
+  const { contractId } = await getAgreementContext(orderId);
+  return activateContractIfConfirmed(contractId);
 }
 
 export async function updateProjectAgreementTerms(

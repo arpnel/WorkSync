@@ -37,6 +37,7 @@ export type ReceiptDetails = {
   clientServiceVatRate?: number | null;
   clientServiceVat?: number | null;
   clientServiceVatRule?: string | null;
+  clientTransactionFee?: number | null;
   paidAt: string | null;
   paymentMethod: string;
   paymentReference?: string | null;
@@ -101,6 +102,7 @@ export function receiptDetailsFromSnapshot(receipt: { receipt_number: string; is
     clientServiceVatRate: optionalNumeric("clientServiceVatRate"),
     clientServiceVat: optionalNumeric("clientServiceVat"),
     clientServiceVatRule: typeof snapshot.clientServiceVatRule === "string" ? snapshot.clientServiceVatRule : null,
+    clientTransactionFee: optionalNumeric("clientTransactionFee"),
     paymentMethod: String(snapshot.paymentMethod ?? "Not recorded"),
     paymentReference: typeof snapshot.paymentReference === "string" ? snapshot.paymentReference : null,
     checkoutReference: typeof snapshot.checkoutReference === "string" ? snapshot.checkoutReference : null,
@@ -123,9 +125,10 @@ export function createReceiptPdf(details: ReceiptDetails) {
   const put = (value: string, x: number, baseline: number, size = 10, bold = false, color = "0.16 0.20 0.25") => {
     page.push("BT /" + (bold ? "F2" : "F1") + " " + size + " Tf " + color + " rg " + x + " " + baseline + " Td (" + pdfText(value) + ") Tj ET");
   };
-  const putRight = (value: string, baseline: number, size = 10, bold = false, color = "0.16 0.20 0.25") => {
-    wrap(value, 40).forEach((line, index) => put(line, 558 - pdfTextWidth(line, size), baseline - index * (size + 4), size, bold, color));
-    return wrap(value, 40).length;
+  const putRight = (value: string, baseline: number, size = 10, bold = false, color = "0.16 0.20 0.25", maxWidth = 40) => {
+    const lines = wrap(value, maxWidth);
+    lines.forEach((line, index) => put(line, 558 - pdfTextWidth(line, size), baseline - index * (size + 4), size, bold, color));
+    return lines.length;
   };
   const putLeftLines = (value: string, x: number, baseline: number, size = 9, bold = false, color = "0.39 0.43 0.48", width = 74) => {
     const lines = wrap(value, width); lines.forEach((line, index) => put(line, x, baseline - index * (size + 4), size, bold, color)); return lines.length;
@@ -143,13 +146,11 @@ export function createReceiptPdf(details: ReceiptDetails) {
   if (isClient) {
     putRight("Paid", 729, 9, true, "0.12 0.48 0.28");
     putRight(details.paidAt ? new Date(details.paidAt).toLocaleDateString("en-PH", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric" }) : "Date not recorded", 715, 8, false, "0.39 0.43 0.48");
-    put("Receipt No.", 54, 729, 8, false, "0.39 0.43 0.48");
-    const receiptLines = wrap(details.receiptNumber, 32);
-    receiptLines.forEach((value, index) => put(value, 54, 715 - index * 12, 8, true, "0.13 0.16 0.20"));
-    const totalLabelY = Math.min(672, 703 - (receiptLines.length - 1) * 12 - 20);
-    put("Total paid", 54, totalLabelY, 9, false, "0.39 0.43 0.48");
-    put(headlineAmount == null ? "Not recorded" : php(headlineAmount), 54, totalLabelY - 24, 18, true, "0.08 0.11 0.16");
-    y = totalLabelY - 57;
+    put("Receipt No.", 54, 698, 8, false, "0.39 0.43 0.48");
+    const receiptLines = putLeftLines(details.receiptNumber, 54, 684, 8, true, "0.13 0.16 0.20", 74);
+    put("Total paid", 54, 650 - Math.max(0, receiptLines - 1) * 11, 9, false, "0.39 0.43 0.48");
+    put(headlineAmount == null ? "Not recorded" : php(headlineAmount), 54, 626 - Math.max(0, receiptLines - 1) * 11, 18, true, "0.08 0.11 0.16");
+    y = 586 - Math.max(0, receiptLines - 1) * 11;
   }
   if (!isClient) {
     box(54, 636, 504, 76, "0.97 0.99 0.98", "0.87 0.91 0.89");
@@ -206,28 +207,34 @@ export function createReceiptPdf(details: ReceiptDetails) {
     if (divider) line(y + 1, "0.90 0.92 0.94");
   };
   if (isClient) {
-    const savedPayoutVatBase = details.taxLines.reduce((total, row) => total + row.freelancerVatBase, 0);
-    const savedPayoutVat = details.taxLines.reduce((total, row) => total + row.freelancerVat, 0);
-    const feeBase = details.clientServiceVatBase ?? (details.taxLines.length ? savedPayoutVatBase : null);
-    const vatAmount = details.clientServiceVat ?? (details.taxLines.length ? savedPayoutVat : null);
-    const vatRate = details.clientServiceVatRate ?? details.taxLines[0]?.freelancerVatRate ?? (feeBase && vatAmount != null ? vatAmount / feeBase : null);
-    if (feeBase != null) {
-      const vatLabel = vatRate == null
-        ? "VAT"
-        : `VAT (${(vatRate * 100).toFixed(0)}%)`;
-      breakdownRow(details.transactionType === "service" ? "Service Fee" : "Project Fee", "", php(feeBase), 25);
-      if (vatAmount != null) breakdownRow(vatLabel, "", php(vatAmount), 25);
-    } else {
-      breakdownRow(details.transactionType === "service" ? "Service Fee" : "Project Fee", "", php(details.amount), 25);
-    }
-    y -= 8;
+    const base = details.clientServiceVatBase;
+    const vatAmount = details.clientServiceVat;
+    const fee = details.clientTransactionFee;
+    const vatRate = details.clientServiceVatRate;
+    const knownClientTotal = base != null && vatAmount != null ? base + vatAmount : null;
+    const clientBreakdownRow = (label: string, value: string, strong = false, divider = true) => {
+      put(label, 54, y, 9, strong, strong ? "0.13 0.16 0.20" : "0.34 0.39 0.44");
+      putRight(value, y, 9, strong, "0.13 0.16 0.20", 48);
+      y -= 22;
+      if (divider) { line(y + 7); y -= 3; }
+    };
+    section("Payment breakdown");
+    clientBreakdownRow("Subtotal", base == null ? "Not recorded" : php(base));
+    clientBreakdownRow(vatRate == null ? "VAT" : `VAT (${(vatRate * 100).toFixed(0)}%)`, vatAmount == null ? "Not recorded" : php(vatAmount));
+    clientBreakdownRow("Transaction fee", fee == null ? "Not recorded" : php(fee));
+    clientBreakdownRow("Client total (base + VAT)", knownClientTotal == null ? "Not recorded" : php(knownClientTotal), true);
+    clientBreakdownRow("Total due (including transaction fee)", php(details.amount), true);
+    clientBreakdownRow("Amount paid", php(details.amount), false, false);
+    y -= 5;
     line(y);
-    y -= 22;
+    y -= 20;
     section("Transaction Details");
     const clientDetail = (label: string, value: string) => {
+      const lines = wrap(value, 56);
       put(label, 54, y, 8, false, "0.39 0.43 0.48");
-      putRight(value, y, 9, false, "0.13 0.16 0.20");
-      y -= 22;
+      lines.forEach((lineText, index) => putRight(lineText, y - index * 12, 9, false, "0.13 0.16 0.20", 56));
+      y -= Math.max(20, lines.length * 12 + 4);
+      if (y < 125) { nextPage(); section("Transaction Details (continued)"); }
     };
     clientDetail("Project / Service", details.project);
     clientDetail("Client", details.clientName);
@@ -240,6 +247,7 @@ export function createReceiptPdf(details: ReceiptDetails) {
     section("Transaction Reference");
     const reference = (label: string, value?: string | null) => {
       if (!value) return;
+      if (y < 145) { nextPage(); section("Transaction Reference (continued)"); }
       put(label, 54, y, 8, false, "0.39 0.43 0.48");
       y -= 13;
       const lines = putLeftLines(value, 54, y, 8, false, "0.13 0.16 0.20", 86);
@@ -283,9 +291,10 @@ export function createReceiptPdf(details: ReceiptDetails) {
     else breakdownRow("Payout tax breakdown", "Detailed payout tax breakdown follows", "", 39);
   }
   if (details.refunds?.length) {
-    y -= 4;
-    section("Refunds and adjustments");
+    if (isClient && y < 160) { nextPage(); section("Refunds and adjustments"); }
+    else { y -= 4; section("Refunds and adjustments"); }
     for (const refund of details.refunds) {
+      if (isClient && y < 125) { nextPage(); section("Refunds and adjustments (continued)"); }
       const metadata = [
         refund.refundedAt ? "confirmed " + new Date(refund.refundedAt).toLocaleDateString("en-PH", { timeZone: "Asia/Manila" }) : "",
         refund.providerReference ? "reference " + refund.providerReference : "",

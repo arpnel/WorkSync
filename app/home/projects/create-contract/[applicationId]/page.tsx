@@ -20,6 +20,11 @@ import {
   type JobBasicTermsAgreement,
 } from "@/services/project/jobBasicTermsAgreementService";
 import {
+  agreeToJobMilestonePlan,
+  getJobMilestonePlanAgreement,
+  type JobMilestonePlanAgreement,
+} from "@/services/project/jobMilestonePlanAgreementService";
+import {
   saveContractVersionForAgreement,
   createProjectTypingChannel,
   getProjectConversationMessages,
@@ -45,6 +50,11 @@ export default function CreateContractPage() {
     currentParty: "client" | "freelancer";
     updating: boolean;
   }) | null>(null);
+  const [milestoneAgreement, setMilestoneAgreement] = useState<(JobMilestonePlanAgreement & {
+    currentParty: "client" | "freelancer";
+    updating: boolean;
+    error?: string;
+  }) | null>(null);
   const [sending, setSending] = useState(false);
   const [isOtherParticipantTyping, setIsOtherParticipantTyping] = useState(false);
   const sendTypingRef = useRef<(isTyping: boolean) => void>(() => undefined);
@@ -61,6 +71,7 @@ export default function CreateContractPage() {
     setConversationError("");
     setCanCreateAgreement(false);
     setBasicAgreement(null);
+    setMilestoneAgreement(null);
     void (async () => {
       try {
         const data = await getProjectRequests();
@@ -88,6 +99,14 @@ export default function CreateContractPage() {
             setError(cause instanceof Error
               ? `Basic terms agreement could not be loaded: ${cause.message}`
               : "Basic terms agreement could not be loaded.");
+          }
+        }
+        if (found.projectType === "milestone") {
+          try {
+            const savedPlan = await getJobMilestonePlanAgreement(applicationId);
+            if (current) setMilestoneAgreement({ ...savedPlan, currentParty: found.currentParty, updating: false });
+          } catch (cause) {
+            if (current) setMilestoneAgreement({ milestones: [], clientAgreed: false, freelancerAgreed: false, currentParty: found.currentParty, updating: false, error: cause instanceof Error ? cause.message : "Milestone agreement could not be loaded." });
           }
         }
         const existingOrder = await supabase
@@ -131,29 +150,6 @@ export default function CreateContractPage() {
     })();
     return () => { current = false; };
   }, [applicationId]);
-
-  useEffect(() => {
-    if (!basicAgreement) return;
-    const refresh = () => {
-      if (document.visibilityState !== "visible") return;
-      void getJobBasicTermsAgreement(applicationId)
-        .then((saved) => setBasicAgreement((current) => current ? {
-          ...saved,
-          currentParty: current.currentParty,
-          updating: current.updating,
-        } : current))
-        .catch((cause) => console.warn(
-          "Unable to refresh basic terms agreement status:",
-          cause instanceof Error ? cause.message : cause,
-        ));
-    };
-    const interval = window.setInterval(refresh, 10000);
-    window.addEventListener("focus", refresh);
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("focus", refresh);
-    };
-  }, [applicationId, basicAgreement]);
 
   const refreshConversationMessages = useCallback(async () => {
     if (!conversationId || !conversationUserId) return;
@@ -204,6 +200,19 @@ export default function CreateContractPage() {
       return saved;
     } catch (cause) {
       setBasicAgreement((current) => current ? { ...current, updating: false } : current);
+      throw cause;
+    }
+  }, [applicationId, request]);
+
+  const agreeToMilestonePlan = useCallback(async (milestones: Parameters<typeof agreeToJobMilestonePlan>[1]) => {
+    if (!request) throw new Error("Application details are unavailable.");
+    setMilestoneAgreement((current) => current ? { ...current, updating: true, error: undefined } : current);
+    try {
+      const saved = await agreeToJobMilestonePlan(applicationId, milestones);
+      setMilestoneAgreement({ ...saved, currentParty: request.currentParty, updating: false });
+      return saved;
+    } catch (cause) {
+      setMilestoneAgreement((current) => current ? { ...current, updating: false, error: cause instanceof Error ? cause.message : "Unable to record milestone agreement." } : current);
       throw cause;
     }
   }, [applicationId, request]);
@@ -307,7 +316,8 @@ export default function CreateContractPage() {
         `worksync:contract-draft:${draftOwnerId}:${applicationId}`,
         draftOwnerId,
       ).catch((draftError) => console.warn("Saved contract draft could not be cleared:", draftError));
-      router.push(`/home/projects/standard/${serviceOrderId}?view=agreement#contract`);
+      const projectRoute = activeRequest.projectType === "milestone" ? "milestone" : "standard";
+      router.push(`/home/projects/${projectRoute}/${serviceOrderId}?view=agreement#contract`);
       return true;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to open agreement.");
@@ -332,6 +342,7 @@ export default function CreateContractPage() {
       deadline: basicAgreement?.terms?.deadline ?? null,
       plan: request.proposedPlan,
       planSource: request.proposedPlan ? "Submitted application plan" : "No plan selected",
+      projectType: request.projectType,
     }} draftKey={`worksync:contract-draft:${request.currentParty === "client" ? request.clientUserId : request.freelancerUserId}:${applicationId}`} draftUserId={request.currentParty === "client" ? request.clientUserId : request.freelancerUserId} busy={busy} conversationError={conversationError} agreementStatus={canCreateAgreement ? {
       currentParty: "client",
       clientAgreed: false,
@@ -339,7 +350,7 @@ export default function CreateContractPage() {
       isNew: true,
       hasPastMilestoneDate: false,
       updating: busy,
-    } : undefined} basicAgreementStatus={basicAgreement ?? undefined} onAgreeBasics={agreeToBasics} onAgree={canCreateAgreement ? async (proposal, requestId, file) => openExistingAgreement(proposal, requestId, file, true) : undefined} conversation={conversationId ? {
+    } : undefined} basicAgreementStatus={basicAgreement ?? undefined} onAgreeBasics={agreeToBasics} milestoneAgreementStatus={milestoneAgreement ?? undefined} onAgreeMilestonePlan={agreeToMilestonePlan} onAgree={canCreateAgreement ? async (proposal, requestId, file) => proposal && requestId ? openExistingAgreement(proposal, requestId, file, true) : false : undefined} conversation={conversationId ? {
       conversationId,
       messages: conversationMessages,
       sending,

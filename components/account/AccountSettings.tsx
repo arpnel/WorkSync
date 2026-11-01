@@ -42,19 +42,20 @@ export default function AccountSettings() {
     let alive = true;
     void (async () => {
       try {
-        const { data, error: sessionError } = await supabase.auth.getUser();
+        const { data, error: sessionError } = await supabase.auth.getSession();
         if (!alive) return;
-        if (sessionError || !data.user) {
+        const user = data.session?.user;
+        if (sessionError || !user) {
           setError(
             sessionError?.message ?? "Please sign in to manage your account.",
           );
           return;
         }
-        setEmail(data.user.email ?? "");
+        setEmail(user.email ?? "");
         const providers = new Set([
-          ...(data.user.identities ?? []).map((identity) => identity.provider),
-          ...(Array.isArray(data.user.app_metadata?.providers)
-            ? (data.user.app_metadata.providers as string[])
+          ...(user.identities ?? []).map((identity) => identity.provider),
+          ...(Array.isArray(user.app_metadata?.providers)
+            ? (user.app_metadata.providers as string[])
             : []),
         ]);
         setHasPasswordCredential(providers.has("email"));

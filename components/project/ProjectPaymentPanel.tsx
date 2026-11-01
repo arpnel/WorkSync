@@ -6,7 +6,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { RefreshCw } from "lucide-react";
 import { openSavedTaxReceipt } from "@/lib/payments/receiptClient";
 import { Badge } from "@/components/ui/badge";
 import { ProjectContractDialog } from "./ProjectContractDialog";
@@ -89,17 +88,20 @@ export function PaymentPanel({
   useEffect(() => {
     void refresh();
     const onFocus = () => {
-      if (document.visibilityState === "visible") void refresh();
+      if (
+        document.visibilityState === "visible" &&
+        (!paymentStatus || ["pending", "processing"].includes(paymentStatus))
+      ) void refresh();
     };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, [refresh]);
+  }, [paymentStatus, refresh]);
   useEffect(() => {
     if (!paymentStatus || !["pending", "processing"].includes(paymentStatus))
       return;
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") void refresh();
-    }, 30000);
+    }, 60000);
     return () => window.clearInterval(timer);
   }, [paymentStatus, refresh]);
   async function pay() {
@@ -115,7 +117,8 @@ export function PaymentPanel({
       setBusy(false);
     }
   }
-  const total = payment?.amount ?? budget;
+  const total = payment?.amount ?? (budget == null ? undefined : Math.round(budget * 1.1 * 100) / 100);
+  const baseAmount = payment?.baseAmount ?? budget;
   const paidAmount =
     payment?.status === "paid" ? payment.amount : payment ? 0 : undefined;
   const balance =
@@ -161,68 +164,6 @@ export function PaymentPanel({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-{payment?.status === "paid" && (
-          <div className="rounded-xl border bg-muted/20 p-3 text-sm">
-            <p className="font-medium">Freelancer payout</p>
-            <p className="mt-1 text-muted-foreground">
-              {(
-                {
-                  awaiting_account:
-                    "Add a payout account in Settings to receive this payment.",
-                  ready: "Approved payment is queued for transfer.",
-                  processing:
-                    "Transfer is being submitted. Do not send another payment.",
-                  pending: "PayMongo is processing the transfer.",
-                  paid: "PayMongo confirmed the transfer to the freelancer.",
-                  failed: "Transfer failed. Contact support before retrying.",
-                  needs_review:
-                    "Transfer needs support review. No duplicate transfer will be sent automatically.",
-                  unavailable: "Payout tracking is not available yet.",
-                } as Record<string, string>
-              )[payment.payout?.status ?? ""] ??
-                (payment.autoReleaseEnabled
-                  ? "Client payment received. Each approved milestone can be paid separately after transfer checks."
-                  : "Client payment received. Automatic payout is not enabled; contact support about release.")}
-            </p>
-            {payment.payouts?.map((row) => (
-              <div
-                key={row.payout_id}
-                className="mt-3 flex flex-wrap justify-between gap-2 border-t pt-2"
-              >
-                <span>{row.title}</span>
-                <span>
-                  {money(Number(row.amount))} {"\u00b7"}{" "}
-                  {row.status.replaceAll("_", " ")}
-                </span>
-              </div>
-            ))}
-            {payment.refunds?.map((row) => (
-              <div key={row.refund_id} className="mt-3 border-t pt-2">
-                <p>
-                  Cancellation refund: {money(Number(row.amount))} {"\u00b7"}{" "}
-                  {row.status.replaceAll("_", " ")}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  A confirmed refund can take additional time to appear with the
-                  original payment method. Failed or uncertain refunds need
-                  support review.
-                </p>
-              </div>
-            ))}
-            {(payment.payout?.status === "awaiting_account" ||
-              payment.payouts?.some(
-                (row) => row.status === "awaiting_account",
-              )) &&
-              !client && (
-                <a
-                  href="/home/settings"
-                  className="mt-2 inline-block text-primary underline"
-                >
-                  Set up payout account
-                </a>
-              )}
-          </div>
-        )}
         <dl className="space-y-3 text-sm" aria-label="Payment breakdown">
           {payment?.vatBreakdown?.status !== "applicable" && (
             <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
@@ -231,36 +172,52 @@ export function PaymentPanel({
                   ? "Saved payment amount"
                   : "Agreed base price"}
               </dt>
-              <dd className="font-medium tabular-nums">{money(total)}</dd>
+              <dd className="font-medium tabular-nums">
+                {money(payment?.vatBreakdown?.status === "not_recorded" ? total : baseAmount)}
+              </dd>
             </div>
           )}
-          {(payment?.vatBreakdown?.status === "applicable" || payment?.vatBreakdown?.status === "not_applicable") && (
+          {payment?.vatBreakdown?.status === "applicable" && (
             <>
               <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
                 <dt className="text-muted-foreground">Subtotal</dt>
                 <dd className="tabular-nums">{money(payment.vatBreakdown.taxableAmount ?? undefined)}</dd>
               </div>
-              {payment.vatBreakdown.status === "applicable" && (
               <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
                 <dt className="text-muted-foreground">
                   VAT ({((payment.vatBreakdown.rate ?? 0) * 100).toFixed(0)}%)
                 </dt>
                 <dd className="tabular-nums">{money(payment.vatBreakdown.amount ?? undefined)}</dd>
               </div>
-              )}
-              {payment.vatBreakdown.status === "not_applicable" && (
-                <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-xs">
-                  <dt className="text-muted-foreground">Freelancer service VAT</dt>
-                  <dd className="text-muted-foreground">Not applicable (reviewed non-VAT status)</dd>
-                </div>
-              )}
             </>
           )}
-          {payment?.vatBreakdown?.status === "applicable" && (
-            <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
-              <dt className="text-muted-foreground">Client total (base + VAT)</dt>
-              <dd className="font-medium tabular-nums">{money(total)}</dd>
+          {payment?.vatBreakdown?.status === "not_applicable" && (
+            <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-xs">
+              <dt className="text-muted-foreground">Freelancer service VAT</dt>
+              <dd className="text-muted-foreground">Not applicable (reviewed non-VAT status)</dd>
             </div>
+          )}
+          {payment?.transactionFee != null && (
+            <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
+              <dt className="text-muted-foreground">Transaction fee</dt>
+              <dd className="tabular-nums">{money(payment.transactionFee)}</dd>
+            </div>
+          )}
+          {payment?.vatBreakdown?.status === "applicable" && (
+            <>
+              <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
+                <dt className="text-muted-foreground">Client total (base + VAT)</dt>
+                <dd className="font-medium tabular-nums">{money(payment.vatBreakdown.total ?? undefined)}</dd>
+              </div>
+              <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-t pt-3">
+                <dt className="font-medium">
+                  {payment.transactionFee == null
+                    ? "Total due"
+                    : "Total due (including transaction fee)"}
+                </dt>
+                <dd className="font-semibold tabular-nums">{money(total)}</dd>
+              </div>
+            </>
           )}
           {payment?.vatBreakdown?.status === "not_recorded" && (
             <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-xs">
@@ -268,21 +225,11 @@ export function PaymentPanel({
               <dd className="text-muted-foreground">Not recorded</dd>
             </div>
           )}
-          {payment?.vatBreakdown?.status === "review_required" && (
-            <p className="text-xs text-amber-600">
-              {payment.checkoutMessage ?? "The freelancer's required Form 2303 seller verification must be approved before checkout."}
-            </p>
-          )}
           {payment?.vatBreakdown?.status === "unavailable" && (
             <p className="text-xs text-muted-foreground">
               {payment.checkoutMessage ?? "VAT breakdown is unavailable. Contact support before checkout."}
             </p>
           )}
-          {payment?.checkoutAllowed === false && payment.checkoutMessage &&
-            payment.vatBreakdown?.status !== "review_required" &&
-            payment.vatBreakdown?.status !== "unavailable" && (
-              <p className="text-xs text-amber-600">{payment.checkoutMessage}</p>
-            )}
           <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
             <dt className="text-muted-foreground">Amount paid</dt>
             <dd className="font-medium tabular-nums">{money(paidAmount)}</dd>
@@ -330,21 +277,17 @@ export function PaymentPanel({
                     : "Pay now"}
               </Button>
             )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void refresh()}
-            disabled={refreshing || busy}
-            aria-label="Refresh payment status"
-          >
-            <RefreshCw
-              className={
-                refreshing ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"
-              }
-            />
-            Refresh
-          </Button>
         </div>
+        {!client && payment?.sellerVerificationMessage && (
+          <p className="text-center text-xs text-amber-600">
+            {payment.sellerVerificationMessage}
+          </p>
+        )}
+        {payment?.checkoutAllowed === false && payment.checkoutMessage && (
+          <p className="text-center text-xs text-amber-600">
+            {payment.checkoutMessage}
+          </p>
+        )}
         {contractDetails && (
           <div className="border-t pt-4">{contractDetails}</div>
         )}

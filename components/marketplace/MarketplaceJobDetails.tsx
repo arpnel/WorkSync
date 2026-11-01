@@ -253,10 +253,12 @@ export default function MarketplaceJobDetails({
                   <Clock3 className="size-4 text-primary" /> Project type
                 </p>
                 <p className="mt-2 font-semibold">
-                  {job.pricing_type === "hourly" ? "Hourly" : "Fixed price"}
+                  {job.project_type === "milestone" ? "Milestone project" : "Standard project"}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Propose your delivery time
+                  {job.project_type === "milestone"
+                    ? "Work and payments are tracked by milestone"
+                    : "Work and delivery are tracked as one project"}
                 </p>
               </div>
             </div>

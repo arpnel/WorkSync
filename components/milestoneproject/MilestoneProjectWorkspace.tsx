@@ -1,4 +1,5 @@
 "use client";
+import { useEffect } from "react";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 
 import { MilestonePlanningForm } from "@/components/project/MilestonePlanningForm";
@@ -34,6 +35,10 @@ export function MilestoneProjectWorkspace({
     respondToAgreementItem,
     saveAgreementItem,
   } = useProjectWorkspace(serviceOrderId);
+
+  useEffect(() => {
+    if (workspace?.type === "standard") router.replace(`/home/projects/standard/${serviceOrderId}`);
+  }, [router, serviceOrderId, workspace?.type]);
 
   if (loading)
     return <ContentSkeleton label="Loading project" variant="workspace" />;

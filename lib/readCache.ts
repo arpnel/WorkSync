@@ -16,6 +16,11 @@ export class ReadCache {
     this.pending.clear();
   }
 
+  invalidate(key: string) {
+    this.entries.delete(key);
+    this.pending.delete(key);
+  }
+
   read<T>(key: string, fetcher: () => Promise<T>, force = false): Promise<T> {
     if (force) this.entries.delete(key);
     const cached = this.entries.get(key);

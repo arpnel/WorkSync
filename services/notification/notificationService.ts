@@ -27,13 +27,18 @@ export interface NotificationBatch {
 const NOTIFICATION_PAGE_SIZE = 10;
 
 async function currentUser() {
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-  if (error) throw new Error(error.message);
-  if (!user) throw new Error("User not authenticated.");
-  return user;
+  try {
+    const {
+      data: { session },
+      error,
+    } = await supabase.auth.getSession();
+    if (error) throw new Error(error.message);
+    if (!session?.user) throw new Error("User not authenticated.");
+    return session.user;
+  } catch (cause) {
+    if (cause instanceof Error && cause.message !== "Failed to fetch") throw cause;
+    throw new Error("Could not connect to WorkSync to load notifications. Check your connection and try again.");
+  }
 }
 
 export function getNotifications(): Promise<NotificationBatch> {
@@ -274,8 +279,10 @@ export async function markAllNotificationsRead() {
   invalidatePageReads();
 }
 
-export async function subscribeToNotifications(onChange: () => void) {
-  const userId = (await currentUser()).id;
+export async function subscribeToNotifications(
+  userId: string,
+  onChange: () => void,
+) {
   const channel = supabase
     .channel(`notifications:${userId}`)
     .on(

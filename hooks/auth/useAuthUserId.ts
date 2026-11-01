@@ -13,11 +13,15 @@ export function useAuthUserId(): string | null {
   useEffect(() => {
     let mounted = true;
 
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (mounted) setUserId(session?.user.id ?? null);
+    });
+
     supabase.auth
-      .getUser()
+      .getSession()
       .then(({ data }) => {
         if (!mounted) return;
-        setUserId(data.user?.id ?? null);
+        setUserId(data.session?.user.id ?? null);
       })
       .catch(() => {
         if (!mounted) return;
@@ -26,6 +30,7 @@ export function useAuthUserId(): string | null {
 
     return () => {
       mounted = false;
+      subscription.unsubscribe();
     };
   }, []);
 

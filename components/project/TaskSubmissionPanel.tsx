@@ -1,12 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { ChevronDown, FileCheck2, Paperclip, Send, Upload } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
+import { ChevronDown, FileCheck2, Loader2, Paperclip, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { StyledSelect } from "@/components/ui/styled-select";
-import { FileUpload } from "@/components/uploads/FileUpload";
 import { SubmissionComments } from "./SubmissionComments";
 import { SubmissionImage } from "./SubmissionImage";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -23,7 +21,7 @@ import {
   submitProjectWork,
   type WorkSubmission,
 } from "@/services/project/projectDeliveryService";
-import { supabase } from "@/lib/supabaseClient";
+import { notifyProjectActivityChanged, subscribeToProjectActivityChanges } from "@/lib/projectRealtime";
 
 export function TaskSubmissionPanel({
   project,
@@ -43,22 +41,19 @@ export function TaskSubmissionPanel({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
-  const [kind, setKind] = useState<"delivery" | "progress">("delivery");
-  const [body, setBody] = useState("");
-  const [link, setLink] = useState("");
-  const [file, setFile] = useState<File | null>(null);
   const [reviewing, setReviewing] = useState<{ submission: WorkSubmission; action: "approve" | "revision" } | null>(null);
   const [instructions, setInstructions] = useState("");
   const [rating, setRating] = useState("5");
   const [projectReviewComment, setProjectReviewComment] = useState("");
-  const [composerOpen, setComposerOpen] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
   const automaticRefresh = useRef("");
   const settlementRefresh = useRef("");
 
   const load = useCallback(async () => {
     if (!project.projectId) return;
     try {
-      const result = await readProjectCache(`delivery:${project.projectId}`, () => getDeliveryHistory(project.projectId!), true);
+      const result = await readProjectCache(`delivery:${project.projectId}`, () => getDeliveryHistory(project.projectId!));
       setHistory(result);
       setError("");
     } catch (cause) {
@@ -69,18 +64,10 @@ export function TaskSubmissionPanel({
   }, [project.projectId]);
 
   useEffect(() => {
-    void load();
     if (!project.projectId) return;
-    const channel = supabase.channel(`task-deliveries:${project.projectId}:${milestoneId ?? "project"}`);
-    for (const table of ["project_submissions", "revision_requests", "project_submission_comments"])
-      channel.on("postgres_changes", { event: "*", schema: "public", table, filter: `project_id=eq.${project.projectId}` }, () => void load());
-    channel.subscribe();
-    window.addEventListener("focus", load);
-    return () => {
-      window.removeEventListener("focus", load);
-      void supabase.removeChannel(channel);
-    };
-  }, [load, milestoneId, project.projectId]);
+    void load();
+    return subscribeToProjectActivityChanges(project.projectId, () => void load());
+  }, [load, project.projectId]);
 
   useEffect(() => {
     const latest = (history?.submissions ?? [])
@@ -131,27 +118,28 @@ export function TaskSubmissionPanel({
   const ownReview = history?.reviews.some((review) => review.reviewer_role === project.currentParty) ?? false;
   const projectReviewScope = project.type === "standard" || project.milestones.at(-1)?.id === milestoneId;
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function submitFile(selectedFile: File) {
     if (!project.projectId || busy || !paid) return;
     setBusy(true);
     setError("");
     setNotice("");
     try {
-      await submitProjectWork(project.projectId, milestoneId, body, link, kind, file ?? undefined);
-      setBody("");
-      setLink("");
-      setFile(null);
-      setComposerOpen(false);
-      setNotice(kind === "delivery" ? "Work submitted for client review." : "Progress update shared.");
+      await submitProjectWork(project.projectId, milestoneId, "", "", "delivery", selectedFile);
+      setNotice("Work submitted for client review.");
       clearProjectReadCache();
-      await load();
-      await onRefresh();
+      notifyProjectActivityChanged(project.projectId);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to submit work.");
     } finally {
       setBusy(false);
     }
+  }
+
+  function onFileDrop(event: DragEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    setDragging(false);
+    const selectedFile = event.dataTransfer.files[0];
+    if (selectedFile) void submitFile(selectedFile);
   }
 
   async function decide() {
@@ -181,8 +169,8 @@ export function TaskSubmissionPanel({
                 ? `Delivery approved. Settlement review needs attention${outcome.detail ? `: ${outcome.detail}` : "."}`
                 : "Delivery approved. Project settlement review is processing.");
       clearProjectReadCache();
-      await load();
-      await onRefresh();
+      notifyProjectActivityChanged(project.projectId);
+      if (reviewing.action === "approve") await onRefresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to save the review.");
     } finally {
@@ -194,32 +182,61 @@ export function TaskSubmissionPanel({
     if (!project.projectId) throw new Error("Project not found.");
     await addProjectSubmissionComment(project.projectId, submissionId, commentBody);
     clearProjectReadCache();
-    await load();
-    await onRefresh();
+    notifyProjectActivityChanged(project.projectId);
   }
 
   if (!project.projectId) return null;
   return (
-    <section aria-label={`Deliveries for ${taskTitle}`} className="space-y-3 rounded-lg border border-primary/20 bg-primary/[0.035] p-4">
+    <section aria-label={`Work submissions for ${taskTitle}`} className="space-y-3 rounded-xl border bg-card p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0 space-y-1"><h3 className="text-base font-semibold">Task submissions</h3><p className="text-sm text-foreground/80">Submit completed work for “{taskTitle}” and review feedback.</p><p className="text-xs text-muted-foreground">{milestoneId ? "Existing submissions are milestone-level, not tagged with a task ID." : "Existing submissions are project-level, not tagged with a task ID."}</p>{project.currentParty === "freelancer" && active && <p className="text-xs font-medium text-muted-foreground">{remaining == null ? "Revision allowance unavailable" : `${remaining} project revisions remaining`}</p>}</div>
-        {canSubmit && <Button type="button" onClick={() => setComposerOpen((open) => !open)} aria-expanded={composerOpen} className="shrink-0 shadow-sm"><Send className="mr-1.5 h-4 w-4"/>{composerOpen ? "Close form" : "Submit work"}</Button>}
+        <div className="min-w-0 space-y-1"><h3 className="text-base font-semibold">Work submissions</h3><p className="text-sm text-foreground/80">Submit completed work for “{taskTitle}” and review feedback.</p><p className="text-xs text-muted-foreground">{milestoneId ? "Existing submissions are milestone-level, not tagged with a task ID." : "Existing submissions are project-level, not tagged with a task ID."}</p>{project.currentParty === "freelancer" && active && <p className="text-xs font-medium text-muted-foreground">{remaining == null ? "Revision allowance unavailable" : `${remaining} project revisions remaining`}</p>}</div>
       </div>
       {error && <p role="alert" className="rounded-md border border-destructive/30 p-3 text-sm text-destructive">{error}</p>}
       {notice && <p role="status" className="rounded-md border p-3 text-sm">{notice}</p>}
       {loading && <p role="status" className="text-sm text-muted-foreground">Loading task deliveries…</p>}
 
-      {canSubmit && composerOpen && <form onSubmit={(event) => void submit(event)} className="space-y-3 rounded-md border border-border/60 bg-background/70 p-3">
-        <h4 className="text-sm font-medium">Submit work for “{taskTitle}”</h4>
-        <label className="block text-sm">Submission type<StyledSelect className="mt-1 w-full rounded-md border bg-background p-2" value={kind} onChange={(event) => setKind(event.target.value as "delivery" | "progress")}><option value="delivery">Deliver work for approval</option><option value="progress">Progress update</option></StyledSelect></label>
-        <label className="block text-sm">Submission note<Textarea maxLength={10000} value={body} onChange={(event) => setBody(event.target.value)} placeholder="Describe the work or progress for the client." /></label>
-        <label className="block text-sm">Link (optional)<Input type="url" value={link} onChange={(event) => setLink(event.target.value)} /></label>
-        <div className="space-y-1 text-sm"><p>Attachment (up to 1 GB)</p><FileUpload file={file} onFileSelect={setFile} onFileRemove={() => setFile(null)} onFileError={setError} accept="*/*" maxSizeBytes={1024 * 1024 * 1024} placeholder="Choose work to submit" className="[&>button]:!min-h-10 [&>button]:!flex-row [&>button]:!justify-start [&>button]:!gap-2 [&>button]:!p-3 [&>button>svg]:!size-4" /></div>
-        {kind === "delivery" && pending && <p className="rounded-md border border-border/70 bg-muted/35 p-3 text-sm text-foreground/80">A delivery is awaiting review for this scope. Wait for approval or a revision request.</p>}
-        <div className="flex flex-wrap items-center gap-2"><Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => setComposerOpen(false)}>Cancel</Button><Button disabled={busy || loading || !paid || (kind === "delivery" && pending) || (!body.trim() && !link.trim() && !file)}><Send className="mr-1.5 h-4 w-4" />{busy ? "Submitting..." : kind === "delivery" ? "Submit for review" : "Share progress update"}</Button></div>
-      </form>}
 
-      {!scoped.length && !loading && <div className="flex items-start gap-3 rounded-md border border-dashed border-border/70 bg-background/45 px-3 py-3"><span className="rounded-md bg-primary/10 p-2 text-primary"><Upload className="h-4 w-4"/></span><div className="min-w-0"><p className="text-sm font-medium">No submissions yet</p><p className="mt-0.5 text-xs text-muted-foreground">{canSubmit ? "Add your completed work and send it to the client for review." : `No submissions are recorded for this ${milestoneId ? "milestone" : "project"} scope yet.`}</p></div></div>}
+      {!loading && canSubmit && (
+          <div>
+            <input
+              ref={fileInput}
+              type="file"
+              className="hidden"
+              onChange={(event) => {
+                const selectedFile = event.currentTarget.files?.[0];
+                event.currentTarget.value = "";
+                if (selectedFile) void submitFile(selectedFile);
+              }}
+            />
+            <button
+              type="button"
+              disabled={busy || pending}
+              onClick={() => fileInput.current?.click()}
+              onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
+              onDragOver={(event) => event.preventDefault()}
+              onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false); }}
+              onDrop={onFileDrop}
+              className={`flex w-full items-center gap-3 rounded-lg border border-dashed px-3 py-4 text-left transition-colors ${dragging ? "border-primary bg-primary/10" : "bg-muted/20 hover:bg-muted/40"} disabled:cursor-not-allowed disabled:opacity-60`}
+            >
+              <span className="rounded-md bg-primary/10 p-2 text-primary">
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-medium">{busy ? "Uploading and submitting work…" : pending ? "Delivery awaiting client review" : scoped.length ? "Submit work for review" : "No submissions yet"}</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">{busy ? "Your file is being sent to the client for review." : pending ? "Wait for the client to approve this delivery or request a revision." : "Drop your completed work here or click to choose a file. It will be sent to the client for review."}</span>
+              </span>
+            </button>
+          </div>
+      )}
+      {!scoped.length && !loading && !canSubmit && (
+          <div className="flex items-start gap-3 rounded-lg border border-dashed bg-muted/20 px-3 py-3">
+            <span className="rounded-md bg-primary/10 p-2 text-primary"><Upload className="h-4 w-4" /></span>
+            <div className="min-w-0">
+              <p className="text-sm font-medium">No submissions yet</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">No submissions are recorded for this {milestoneId ? "milestone" : "project"} scope yet.</p>
+            </div>
+          </div>
+      )}
       <ol className="divide-y divide-border/60">
         {[...scoped].sort((a, b) => b.created_at.localeCompare(a.created_at)).map((submission) => {
           const submissionTitle = submission.attachment_name || submission.body.split("\n")[0]?.trim() || (submission.kind === "delivery" ? "Work delivery" : "Progress update");
@@ -271,6 +288,11 @@ export function TaskSubmissionPanel({
           <Button disabled={busy || (reviewing?.action === "revision" && (!instructions.trim() || !remaining))} onClick={() => void decide()}>{busy ? "Saving…" : reviewing?.action === "approve" ? "Confirm approval" : "Send revision request"}</Button>
         </DialogContent>
       </Dialog>
+      {project.currentParty === "freelancer" && active && !paid && (
+        <p className="border-t pt-3 text-center text-sm font-medium text-amber-600">
+          Client payment is required before you can submit work.
+        </p>
+      )}
     </section>
   );
 }

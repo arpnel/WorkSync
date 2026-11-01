@@ -18,6 +18,7 @@ export interface CreateListingPayload {
 
   price?: number;
   service_type?: ServiceType;
+  project_type?: ServiceType;
   delivery_time_days?: number;
   revisions_count?: number;
   media_files?: File[];

@@ -59,16 +59,26 @@ export function useMessageAccountSettings() {
   useEffect(() => {
     let alive = true;
     const load = async () => {
-      const { data, error: authError } = await supabase.auth.getUser();
-      if (!alive) return;
-      if (authError || !data.user) {
-        setError(authError?.message ?? "Sign in to manage message settings.");
-      } else {
-        setSettings(
-          parseSettings(data.user.user_metadata?.message_preferences),
+      try {
+        const { data, error: authError } = await supabase.auth.getSession();
+        if (!alive) return;
+        if (authError || !data.session?.user) {
+          setError(authError?.message ?? "Sign in to manage message settings.");
+        } else {
+          setSettings(
+            parseSettings(data.session.user.user_metadata?.message_preferences),
+          );
+        }
+      } catch (cause) {
+        if (!alive) return;
+        setError(
+          cause instanceof Error && cause.message !== "Failed to fetch"
+            ? cause.message
+            : "Could not connect to WorkSync to load message settings. Check your connection and try again.",
         );
+      } finally {
+        if (alive) setReady(true);
       }
-      setReady(true);
     };
     void load();
 
@@ -88,17 +98,27 @@ export function useMessageAccountSettings() {
       const next = { ...settings, ...patch };
       setSaving(true);
       setError("");
-      const { error: updateError } = await supabase.auth.updateUser({
-        data: { message_preferences: next },
-      });
-      setSaving(false);
-      if (updateError) {
-        setError(updateError.message);
+      try {
+        const { error: updateError } = await supabase.auth.updateUser({
+          data: { message_preferences: next },
+        });
+        if (updateError) {
+          setError(updateError.message);
+          return false;
+        }
+        setSettings(next);
+        window.dispatchEvent(new CustomEvent(eventName, { detail: next }));
+        return true;
+      } catch (cause) {
+        setError(
+          cause instanceof Error && cause.message !== "Failed to fetch"
+            ? cause.message
+            : "Could not connect to WorkSync to save message settings. Check your connection and try again.",
+        );
         return false;
+      } finally {
+        setSaving(false);
       }
-      setSettings(next);
-      window.dispatchEvent(new CustomEvent(eventName, { detail: next }));
-      return true;
     },
     [settings],
   );

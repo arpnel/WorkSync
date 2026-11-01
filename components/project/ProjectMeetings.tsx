@@ -50,22 +50,6 @@ export default function ProjectMeetings({
   }, [projectId]);
   useEffect(() => {
     void load();
-    const ch = supabase
-      .channel("meetings:" + projectId)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "project_meetings",
-          filter: "project_id=eq." + projectId,
-        },
-        () => void load(),
-      )
-      .subscribe();
-    return () => {
-      void supabase.removeChannel(ch);
-    };
   }, [load, projectId]);
   const local = (v: string) => {
     const d = new Date(v);

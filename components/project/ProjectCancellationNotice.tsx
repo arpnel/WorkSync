@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { BellRing, Clock3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/lib/supabaseClient";
 import { getCancellationHistory, type Cancellation } from "@/services/project/resolutionService";
 import type { ProjectWorkspace } from "@/types/project/projectWorkspace";
 
@@ -22,10 +21,7 @@ export function ProjectCancellationNotice({ project, onReview }: { project: Proj
 
   useEffect(() => {
     const initialLoad = window.setTimeout(() => void load(), 0);
-    const channel = supabase.channel(`project-cancellation-notice:${project.orderId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "project_cancellations", filter: `order_id=eq.${project.orderId}` }, () => void load())
-      .subscribe();
-    return () => { window.clearTimeout(initialLoad); void supabase.removeChannel(channel); };
+    return () => window.clearTimeout(initialLoad);
   }, [load, project.orderId]);
 
   if (!pending && !error) return null;

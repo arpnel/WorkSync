@@ -45,10 +45,11 @@ export default function SubscriptionPage() {
     setLoading(true);
     setError("");
     try {
-      const { data: auth, error: authError } = await supabase.auth.getUser();
-      if (authError || !auth.user)
+      const { data: auth, error: authError } = await supabase.auth.getSession();
+      const user = auth.session?.user;
+      if (authError || !user)
         throw new Error("Sign in to view your subscription.");
-      const userId = auth.user.id;
+      const userId = user.id;
       const [planResult, assignmentResult] = await Promise.all([
         supabase
           .from("subscription_plans")

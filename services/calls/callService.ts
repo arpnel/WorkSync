@@ -59,28 +59,33 @@ export async function callRequest<T>(body?: {
     code: "NON_JSON_RESPONSE",
   }));
   if (!response.ok) {
-    console.error(
-      "[WorkSync API] " +
-        JSON.stringify({
-          endpoint: "/api/calls",
-          method: body ? "POST" : "GET",
-          status: response.status,
-          code:
-            typeof data?.code === "string" && /^[A-Z_]{1,80}$/.test(data.code)
-              ? data.code
-              : "UNCLASSIFIED_ERROR",
-          elapsedMs: Date.now() - started,
-          upstreamStatus:
-            typeof data?.upstreamStatus === "number"
-              ? data.upstreamStatus
-              : null,
-          databaseCode:
-            typeof data?.databaseCode === "string" &&
-            /^(?:[0-9A-Z]{5}|PGRST\d{3})$/.test(data.databaseCode)
-              ? data.databaseCode
-              : null,
-        }),
-    );
+    // GET requests are background call-list refreshes whose failures are
+    // already logged by /api/calls. Avoid duplicating transient outages in
+    // the browser console; keep client diagnostics for explicit call actions.
+    if (body) {
+      console.error(
+        "[WorkSync API] " +
+          JSON.stringify({
+            endpoint: "/api/calls",
+            method: "POST",
+            status: response.status,
+            code:
+              typeof data?.code === "string" && /^[A-Z_]{1,80}$/.test(data.code)
+                ? data.code
+                : "UNCLASSIFIED_ERROR",
+            elapsedMs: Date.now() - started,
+            upstreamStatus:
+              typeof data?.upstreamStatus === "number"
+                ? data.upstreamStatus
+                : null,
+            databaseCode:
+              typeof data?.databaseCode === "string" &&
+              /^(?:[0-9A-Z]{5}|PGRST\d{3})$/.test(data.databaseCode)
+                ? data.databaseCode
+                : null,
+          }),
+      );
+    }
     throw new Error(data.error || "Unable to connect the call.");
   }
   return data as T;

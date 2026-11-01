@@ -226,13 +226,14 @@ export function NotificationDetailDialog({
             action: "Open discussion",
           };
         }
-        const auth = await supabase.auth.getUser();
+        const auth = await supabase.auth.getSession();
         if (auth.error) throw auth.error;
+        if (!auth.data.session?.user) throw new Error("Sign in to open this item.");
         const [freelancer, client] = await Promise.all([
           supabase
             .from("freelancer_profiles")
             .select("freelancer_id")
-            .eq("user_id", auth.data.user?.id ?? "")
+            .eq("user_id", auth.data.session.user.id)
             .maybeSingle(),
           getPublicIdentities({ clientIds: [job.data.client_id] }),
         ]);

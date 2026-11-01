@@ -11,9 +11,10 @@ import type {
 
 async function getCurrentUserId(): Promise<string> {
   const {
-    data: { user },
+    data: { session },
     error,
-  } = await supabase.auth.getUser();
+  } = await supabase.auth.getSession();
+  const user = session?.user;
 
   if (error) {
     throw error;
@@ -721,21 +722,6 @@ export function subscribeToConversationMessages(
         table: "messages",
         filter: `conversation_id=eq.${conversationId}`,
       },
-      onChange,
-    )
-    .subscribe();
-
-  return () => {
-    void supabase.removeChannel(channel);
-  };
-}
-
-export function subscribeToUserConversations(onChange: () => void) {
-  const channel = supabase
-    .channel("message-conversations")
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "messages" },
       onChange,
     )
     .subscribe();

@@ -23,6 +23,44 @@ export interface ProjectRecord {
   milestones: unknown;
 }
 
+const PROJECT_ORDERS_SELECT = `
+  order_id, application_id, job_id, service_id, freelancer_id, client_id,
+  status, created_at, updated_at,
+  services (
+    service_id, freelancer_id, category_id, title, description, price,
+    pricing_mode, delivery_time_days, revisions_count, service_type, status,
+    slug, cover_image_url, created_at, updated_at
+  ),
+  freelancer_profiles (
+    freelancer_id, user_id, headline, created_at, verification_status,
+    years_of_experience, employment_preference, portfolio_website,
+    linkedin_url, github_url, resume_url
+  ),
+  client_profiles (client_id, user_id, created_at, updated_at),
+  projects (
+    project_id, freelancer_id, client_id, order_id, title, description,
+    budget, status, start_date, due_date, project_type, completed_at,
+    created_at, updated_at,
+    project_submissions (kind, attachment_path),
+    milestones (
+      milestone_id, project_id, title, description, amount, due_date,
+      status, created_at, display_order
+    )
+  ),
+  contracts (
+    contract_id, order_id, final_price, delivery_time_days, revisions_count,
+    terms, status, client_signed_at, freelancer_signed_at, created_at, updated_at
+  )
+`;
+
+function isMissingProjectTypeColumn(error: { code?: string; message?: string } | null) {
+  return Boolean(
+    error &&
+      (error.code === "42703" || error.code === "PGRST204" ||
+        /project_type.*(does not exist|schema cache)|column .*project_type/i.test(error.message ?? "")),
+  );
+}
+
 /* ==========================================================
    GET PROJECTS
 ========================================================== */
@@ -30,109 +68,24 @@ export interface ProjectRecord {
 export async function getProjects(): Promise<ProjectRecord[]> {
   const account = await getActiveAccountContext();
   if (!account.profileId) return [];
-  let ordersQuery = supabase
-    .from("service_orders")
-    .select(
-      `
-      order_id,
-      application_id,
-      service_id,
-      freelancer_id,
-      client_id,
-      status,
-      created_at,
-      updated_at,
-
-      services (
-        service_id,
-        freelancer_id,
-        category_id,
-        title,
-        description,
-        price,
-        pricing_mode,
-        delivery_time_days,
-        revisions_count,
-        service_type,
-        status,
-        slug,
-        cover_image_url,
-        created_at,
-        updated_at
-      ),
-
-      freelancer_profiles (
-        freelancer_id,
-        user_id,
-        headline,
-        created_at,
-        verification_status,
-        years_of_experience,
-        employment_preference,
-        portfolio_website,
-        linkedin_url,
-        github_url,
-        resume_url
-      ),
-
-      client_profiles (
-        client_id,
-        user_id,
-        created_at,
-        updated_at
-      ),
-
-      projects (
-        project_id,
-        freelancer_id,
-        client_id,
-        order_id,
-        title,
-        description,
-        budget,
-        status,
-        start_date,
-        due_date,
-        completed_at,
-        created_at,
-        updated_at,
-
-        project_submissions (kind, attachment_path),
-        milestones (
-          milestone_id,
-          project_id,
-          title,
-          description,
-          amount,
-          due_date,
-          status,
-          created_at,
-          display_order
-        )
-      ),
-
-      contracts (
-        contract_id,
-        order_id,
-        final_price,
-        delivery_time_days,
-        revisions_count,
-        terms,
-        status,
-        client_signed_at,
-        freelancer_signed_at,
-        created_at,
-        updated_at
+  const readOrders = (withProjectType: boolean) => {
+    let query = supabase
+      .from("service_orders")
+      .select(
+        withProjectType
+          ? PROJECT_ORDERS_SELECT
+          : PROJECT_ORDERS_SELECT.replace(/\s+project_type,/, ""),
       )
-    `,
-    )
-    .order("created_at", {
-      ascending: false,
-    });
-  ordersQuery = account.role === "client"
-    ? ordersQuery.eq("client_id", account.profileId)
-    : ordersQuery.eq("freelancer_id", account.profileId);
-  const { data, error } = await ordersQuery;
+      .order("created_at", { ascending: false });
+    query = account.role === "client"
+      ? query.eq("client_id", account.profileId)
+      : query.eq("freelancer_id", account.profileId);
+    return query;
+  };
+  let { data, error } = await readOrders(true);
+  if (isMissingProjectTypeColumn(error)) {
+    ({ data, error } = await readOrders(false));
+  }
 
   if (error) {
     console.error("Failed to fetch projects:", {

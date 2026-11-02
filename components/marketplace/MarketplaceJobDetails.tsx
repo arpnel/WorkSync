@@ -131,7 +131,7 @@ export default function MarketplaceJobDetails({
             setProposedPlan(own.proposed_plan);
             setPrice(String(own.proposed_price ?? ""));
             const savedDays = Number(own.estimated_days ?? 0);
-            const savedMaximum = getMaximumProposalDeliveryDays(data.deadline);
+            const savedMaximum = getMaximumProposalDeliveryDays(data?.deadline ?? null);
             if (savedMaximum !== null && savedDays > savedMaximum) {
               setDays(String(own.estimated_days ?? ""));
               setDeliveryDaysExceeded(true);

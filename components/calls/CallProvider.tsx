@@ -12,7 +12,6 @@ import { PhoneIncoming, PhoneOff, Video } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabaseClient";
 import {
-  CALL_PREFIX,
   callState,
   type VideoCall,
 } from "@/lib/calls/callMessage";
@@ -42,7 +41,6 @@ export function useCalls() {
 export default function CallProvider({ children }: { children: ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null);
   const [calls, setCalls] = useState<VideoCall[]>([]);
-  const [conversationIds, setConversationIds] = useState<string[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [locallyLeft, setLocallyLeft] = useState<string | null>(null);
@@ -55,6 +53,7 @@ export default function CallProvider({ children }: { children: ReactNode }) {
   const [joinAttempt, setJoinAttempt] = useState(0);
   const identity = useRef<string | null>(null);
   const pending = useRef(false);
+  const refreshAgain = useRef(false);
   const revision = useRef(0);
   useEffect(() => {
     let alive = true;
@@ -63,7 +62,6 @@ export default function CallProvider({ children }: { children: ReactNode }) {
       identity.current = id;
       setUserId(id);
       setCalls([]);
-      setConversationIds([]);
       setSelectedId(null);
       setCredentials(null);
     };
@@ -83,7 +81,11 @@ export default function CallProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async (signal?: AbortSignal) => {
     const id = identity.current;
     const version = revision.current;
-    if (!id || pending.current) return;
+    if (!id) return;
+    if (pending.current) {
+      refreshAgain.current = true;
+      return;
+    }
     pending.current = true;
     try {
       const result = await callRequest<CallListResponse>(undefined, signal);
@@ -93,83 +95,53 @@ export default function CallProvider({ children }: { children: ReactNode }) {
         revision.current === version
       ) {
         setCalls(result.calls);
-        setConversationIds((current) =>
-          current.length === result.conversationIds.length &&
-          current.every(
-            (conversationId, index) =>
-              conversationId === result.conversationIds[index],
-          )
-            ? current
-            : result.conversationIds,
-        );
       }
     } catch {
       /* Starting or answering surfaces errors; background checks stay unobtrusive. */
     } finally {
       pending.current = false;
+      if (refreshAgain.current) {
+        refreshAgain.current = false;
+        window.setTimeout(() => void refresh(signal), 200);
+      }
     }
   }, []);
   useEffect(() => {
     if (!userId) return;
     const controller = new AbortController();
-    const timeout = window.setTimeout(() => void refresh(controller.signal), 0);
-    const focus = () => void refresh(controller.signal);
+    let timer: number | null = null;
+    const scheduleRefresh = () => {
+      if (document.visibilityState !== "visible") return;
+      if (timer !== null) window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        timer = null;
+        void refresh(controller.signal);
+      }, 200);
+    };
+    scheduleRefresh();
+    const focus = () => scheduleRefresh();
     window.addEventListener("focus", focus);
-    window.addEventListener("visibilitychange", focus);
-    const membershipChannel = supabase
-      .channel(`video-call-memberships:${userId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "conversation_participants",
-          filter: `user_id=eq.${userId}`,
-        },
-        focus,
-      )
-      .subscribe();
+    document.addEventListener("visibilitychange", focus);
+    const callChannel = supabase
+      .channel(`user:${userId}:calls`, { config: { private: true } })
+      .on("broadcast", { event: "call-changed" }, ({ payload }) => {
+        if (
+          typeof payload?.messageId === "string" &&
+          typeof payload?.conversationId === "string"
+        ) scheduleRefresh();
+      })
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") scheduleRefresh();
+      });
+    scheduleRefresh();
     return () => {
-      clearTimeout(timeout);
+      if (timer !== null) window.clearTimeout(timer);
       window.removeEventListener("focus", focus);
-      window.removeEventListener("visibilitychange", focus);
+      document.removeEventListener("visibilitychange", focus);
       controller.abort();
-      void supabase.removeChannel(membershipChannel);
+      void supabase.removeChannel(callChannel);
     };
   }, [userId, refresh]);
-
-  useEffect(() => {
-    if (!userId || !conversationIds.length) return;
-    let alive = true;
-    const channel = supabase.channel(`video-calls:${userId}`);
-    for (const conversationId of conversationIds) {
-      channel.on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "messages",
-          filter: `conversation_id=eq.${conversationId},message=like.${CALL_PREFIX}%`,
-        },
-        (payload) => {
-          const row =
-            payload.eventType === "DELETE" ? payload.old : payload.new;
-          if (
-            typeof row.message === "string" &&
-            row.message.startsWith(CALL_PREFIX)
-          )
-            void refresh();
-        },
-      );
-    }
-    channel.subscribe((status) => {
-      if (alive && status === "SUBSCRIBED") void refresh();
-    });
-    return () => {
-      alive = false;
-      void supabase.removeChannel(channel);
-    };
-  }, [userId, conversationIds, refresh]);
   const selected = calls.find((call) => call.id === selectedId);
   const incoming = calls.find(
     (call) => call.recipientId === userId && callState(call) === "ringing",

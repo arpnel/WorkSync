@@ -1,6 +1,7 @@
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { FileText } from "lucide-react";
 
 import type { FreelancerSetupValues } from "@/types/account-setup.types";
 import type { Category, Skill } from "@/services/serviceP/categoryService";
@@ -205,42 +206,44 @@ export function FreelancerInformationSection({
         <div className="space-y-2">
           <Label htmlFor="resume">Resume / CV</Label>
 
-          <AccountSetupFileDropzone
-            accept="application/pdf,.pdf"
-            supportedTypes="PDF (up to 5 MB)"
-            invalid={!!errors.resume}
-            onFiles={(files) => {
-              if (files[0]) onFileSelect("resume", files[0]);
-            }}
-          />
-          <div className="flex flex-wrap items-center gap-2">
-            {values.resume && (
-              <>
-                <span className="break-all text-sm text-muted-foreground">
+          {!values.resume && !values.existingResumeUrl && (
+            <AccountSetupFileDropzone
+              accept="application/pdf,.pdf"
+              supportedTypes="PDF (up to 5 MB)"
+              invalid={!!errors.resume}
+              onFiles={(files) => {
+                if (files[0]) onFileSelect("resume", files[0]);
+              }}
+            />
+          )}
+          {values.resume && (
+            <div className="flex min-w-0 items-center gap-3 rounded-xl border bg-muted/30 p-3">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <FileText className="size-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="break-all text-sm font-medium text-foreground">
                   {values.resume.name}
-                </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => onChange("resume", null)}
-                >
-                  Remove
-                </Button>
-              </>
-            )}
-          </div>
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">PDF document</p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => onChange("resume", null)}
+              >
+                Remove
+              </Button>
+            </div>
+          )}
 
           {values.existingResumeUrl && !values.resume && (
             <p className="text-sm text-muted-foreground">
-              Your saved resume will be kept. Choose a PDF to replace it.
+              A resume / CV has already been submitted and can’t be replaced here.
             </p>
           )}
-          {values.resume && (
-            <p className="text-xs text-muted-foreground">
-              {values.resume.name}
-            </p>
-          )}
-
           {errors.resume && (
             <p className="text-xs text-destructive">{errors.resume}</p>
           )}

@@ -22,6 +22,7 @@ import type {
   AttemptResponse,
 } from "@/lib/assessments/types";
 import { QuizQuestions } from "./QuizQuestions";
+import { openSubscriptionLimitDialog } from "@/services/subscriptions/subscriptionLimitDialog";
 const date = (s: string) => new Date(s).toLocaleString();
 export default function FreelancerAssessments() {
   const params = useSearchParams();
@@ -100,9 +101,10 @@ export default function FreelancerAssessments() {
       } else setSaved("Answers saved.");
       await reload();
     } catch (e) {
-      setError(
-        e instanceof Error ? e.message : "Assessment could not be updated.",
-      );
+      if (!openSubscriptionLimitDialog(e))
+        setError(
+          e instanceof Error ? e.message : "Assessment could not be updated.",
+        );
     } finally {
       setBusy(false);
     }

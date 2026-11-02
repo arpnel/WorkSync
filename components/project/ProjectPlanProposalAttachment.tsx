@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -56,6 +58,8 @@ export function ProjectPlanProposalAttachment({
   const [selectedId, setSelectedId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [editingAttached, setEditingAttached] = useState(false);
+  const [draft, setDraft] = useState<ProjectPlanSnapshot | null>(null);
   const selectedPlan = useMemo(
     () => plans.find((plan) => plan.plan_id === selectedId) ?? null,
     [plans, selectedId],
@@ -138,7 +142,7 @@ export function ProjectPlanProposalAttachment({
   }
 
   const previewPlan: ProjectPlanSnapshot | null =
-    mode === "attached" ? value : selectedPlan;
+    mode === "attached" ? (editingAttached ? draft : value) : selectedPlan;
   const attachedTaskCount = value ? taskCount(value) : 0;
 
   return (
@@ -173,6 +177,19 @@ export function ProjectPlanProposalAttachment({
               }}
             >
               <Eye /> View plan
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setDraft(structuredClone(value));
+                setEditingAttached(true);
+                setMode("attached");
+                setOpen(true);
+              }}
+            >
+              Edit plan board
             </Button>
             <Button
               type="button"
@@ -225,7 +242,12 @@ export function ProjectPlanProposalAttachment({
                 </h1>
               </header>
               <main className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
-                {previewPlan.description && (
+                {editingAttached && draft ? (
+                  <div className="mb-5 grid gap-3 sm:grid-cols-2">
+                    <label className="text-sm">Plan name<Input maxLength={120} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })}/></label>
+                    <label className="text-sm">Description<Textarea maxLength={2000} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })}/></label>
+                  </div>
+                ) : previewPlan.description && (
                   <p className="mb-6 whitespace-pre-wrap text-sm text-muted-foreground">
                     {previewPlan.description}
                   </p>
@@ -248,9 +270,9 @@ export function ProjectPlanProposalAttachment({
                         className={`min-h-48 min-w-[17rem] max-w-[28rem] flex-[1_1_19rem] rounded-xl border-t-2 bg-muted/25 p-3 ${stageAccents[index % stageAccents.length]}`}
                       >
                         <div className="mb-3 flex items-center justify-between gap-2">
-                          <h3 className="truncate text-sm font-semibold">
+                          {editingAttached && draft ? <Input aria-label="Stage name" maxLength={80} value={column.name} onChange={(event) => setDraft({ ...draft, content: { columns: draft.content.columns.map((item) => item.id === column.id ? { ...item, name: event.target.value } : item) } })}/> : <h3 className="truncate text-sm font-semibold">
                             {column.name}
-                          </h3>
+                          </h3>}
                           <Badge variant="secondary">
                             {column.tasks.length}
                           </Badge>
@@ -262,10 +284,10 @@ export function ProjectPlanProposalAttachment({
                                 key={task.id}
                                 className="rounded-lg border border-border/60 bg-card p-3 shadow-sm"
                               >
-                                <h4 className="break-words text-sm font-medium">
+                                {editingAttached && draft ? <div className="space-y-2"><Input aria-label="Task title" maxLength={160} value={task.title} onChange={(event) => setDraft({ ...draft, content: { columns: draft.content.columns.map((item) => item.id === column.id ? { ...item, tasks: item.tasks.map((entry) => entry.id === task.id ? { ...entry, title: event.target.value } : entry) } : item) } })}/><Textarea aria-label="Task description" maxLength={1000} value={task.description} onChange={(event) => setDraft({ ...draft, content: { columns: draft.content.columns.map((item) => item.id === column.id ? { ...item, tasks: item.tasks.map((entry) => entry.id === task.id ? { ...entry, description: event.target.value } : entry) } : item) } })}/></div> : <h4 className="break-words text-sm font-medium">
                                   {task.title || "Untitled task"}
-                                </h4>
-                                {task.description && (
+                                </h4>}
+                                {!editingAttached && task.description && (
                                   <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
                                     {task.description}
                                   </p>
@@ -310,6 +332,9 @@ export function ProjectPlanProposalAttachment({
                   <Button type="button" onClick={attachSelected}>
                     <Paperclip /> Attach selected plan
                   </Button>
+                )}
+                {mode === "attached" && editingAttached && draft && (
+                  <Button type="button" onClick={() => { onChange(draft); setEditingAttached(false); setDraft(null); setOpen(false); }}>Use edited plan</Button>
                 )}
               </DialogFooter>
             </>

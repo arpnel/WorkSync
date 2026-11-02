@@ -4,6 +4,7 @@ import { useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import { UploadCloud } from "lucide-react";
 
 type Props = {
+  id?: string;
   accept: string;
   supportedTypes: string;
   onFiles: (files: File[]) => void;
@@ -14,6 +15,7 @@ type Props = {
 };
 
 export function AccountSetupFileDropzone({
+  id,
   accept,
   supportedTypes,
   onFiles,
@@ -44,6 +46,7 @@ export function AccountSetupFileDropzone({
     <>
       <input
         ref={inputRef}
+        id={id}
         type="file"
         accept={accept}
         multiple={multiple}

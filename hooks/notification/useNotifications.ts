@@ -5,6 +5,7 @@ import { invalidatePageReads } from "@/lib/pageReadCache";
 import {
   getNotifications,
   getOlderNotifications,
+  getNotificationUnreadCount,
   markAllNotificationsRead,
   markNotificationRead,
   subscribeToNotifications,
@@ -41,6 +42,7 @@ let loading = false;
 let loadingRequest = 0;
 let loadAgain = false;
 let loadingMoreRequest: number | null = null;
+let unreadCountTimer: number | null = null;
 function publish(next: State) {
   state = next;
   listeners.forEach((listener) => listener());
@@ -114,7 +116,34 @@ function subscribe(listener: () => void) {
       unsubscribe?.();
       unsubscribe = undefined;
       try {
-        const cleanup = await subscribeToNotifications(userId, () => void load());
+        const cleanup = await subscribeToNotifications(userId, (event, row) => {
+          if (event === "INSERT") {
+            void load();
+            return;
+          }
+          const id = row.notification_id;
+          const isRead = row.is_read;
+          if (typeof id !== "string" || typeof isRead !== "boolean") {
+            void load();
+            return;
+          }
+          publish({
+            ...state,
+            items: state.items.map((item) =>
+              item.id === id ? { ...item, unread: !isRead } : item,
+            ),
+          });
+          if (unreadCountTimer !== null) window.clearTimeout(unreadCountTimer);
+          const epoch = identityEpoch;
+          unreadCountTimer = window.setTimeout(() => {
+            unreadCountTimer = null;
+            void getNotificationUnreadCount()
+              .then((unreadCount) => {
+                if (epoch === identityEpoch) publish({ ...state, unreadCount });
+              })
+              .catch(() => undefined);
+          }, 200);
+        });
         if (version !== generation || attempt !== connection) cleanup();
         else unsubscribe = cleanup;
       } catch {
@@ -155,6 +184,8 @@ function subscribe(listener: () => void) {
       loadingRequest = request;
       loadAgain = false;
       loadingMoreRequest = null;
+      if (unreadCountTimer !== null) window.clearTimeout(unreadCountTimer);
+      unreadCountTimer = null;
       ++connection;
       state = initial;
       unsubscribe?.();

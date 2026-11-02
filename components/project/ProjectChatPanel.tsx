@@ -3,7 +3,7 @@
 import Image from "next/image";
 import CallButton from "@/components/calls/CallButton";
 import CallMessage from "@/components/calls/CallMessage";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   FileText,
   Loader2,
@@ -110,6 +110,12 @@ export function ProjectChatPanel({
   const messagesViewportRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const typingActiveRef = useRef(false);
+  const setTypingState = useCallback((active: boolean) => {
+    if (typingActiveRef.current === active) return;
+    typingActiveRef.current = active;
+    onTypingChange(active);
+  }, [onTypingChange]);
   const preserveScrollRef = useRef<{ height: number; top: number } | null>(
     null,
   );
@@ -131,23 +137,23 @@ export function ProjectChatPanel({
   useEffect(
     () => () => {
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-      onTypingChange(false);
+      setTypingState(false);
     },
-    [onTypingChange],
+    [setTypingState],
   );
 
   const updateDraft = (value: string) => {
     setDraft(value);
-    onTypingChange(Boolean(value.trim()));
+    setTypingState(Boolean(value.trim()));
 
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-    typingTimeoutRef.current = setTimeout(() => onTypingChange(false), 1200);
+    typingTimeoutRef.current = setTimeout(() => setTypingState(false), 1200);
   };
 
   const submit = async () => {
     const content = draft.trim();
     if ((!content && !attachment) || sending) return;
-    onTypingChange(false);
+    setTypingState(false);
     const largeUpload = Boolean(
       attachment && attachment.size > 50 * 1024 * 1024,
     );

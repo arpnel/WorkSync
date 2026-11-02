@@ -10,6 +10,7 @@ import {
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { cn } from "@/lib/utils";
+import { SubscriptionLimitDialogHost } from "@/components/subscription/SubscriptionLimitDialogHost";
 
 const siteDescription =
   "WorkSync is a Philippine freelance marketplace connecting clients with skilled freelancers.";
@@ -86,6 +87,7 @@ export default function RootLayout({
         >
           <TooltipProvider>
             {children}
+            <SubscriptionLimitDialogHost />
             <Toaster />
           </TooltipProvider>
         </ThemeProvider>

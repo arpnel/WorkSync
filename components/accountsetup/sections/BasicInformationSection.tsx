@@ -12,7 +12,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-import { listProvinces, listMuncities } from "@jobuntux/psgc";
+import {
+  getAccountSetupMunicipalities,
+  getAccountSetupProvinces,
+} from "@/lib/location/account-setup-address";
 
 import { ENGLISH_PROFICIENCY } from "@/constants/account-setup.constants";
 
@@ -35,14 +38,14 @@ export function BasicInformationSection({
   const [cityFocused, setCityFocused] = useState(false);
 
   // Load all Philippine provinces once
-  const provinces = useMemo(() => listProvinces(), []);
+  const provinces = useMemo(() => getAccountSetupProvinces(), []);
 
   // Find the selected province
   const selectedProvince = useMemo(
     () =>
       provinces.find(
         (province) =>
-          province.provName.toLowerCase() === values.province.toLowerCase(),
+          province.name.toLowerCase() === values.province.toLowerCase(),
       ),
     [provinces, values.province],
   );
@@ -53,7 +56,7 @@ export function BasicInformationSection({
       return [];
     }
 
-    return listMuncities(selectedProvince.provCode);
+    return getAccountSetupMunicipalities(selectedProvince.psgcCode);
   }, [selectedProvince]);
 
   // Filter provinces based on what the user types
@@ -65,7 +68,7 @@ export function BasicInformationSection({
     }
 
     return provinces.filter((province) =>
-      province.provName.toLowerCase().includes(search),
+      province.name.toLowerCase().includes(search),
     );
   }, [provinces, values.province]);
 
@@ -78,7 +81,7 @@ export function BasicInformationSection({
     }
 
     return cities.filter((city) =>
-      city.munCityName.toLowerCase().includes(search),
+      city.name.toLowerCase().includes(search),
     );
   }, [cities, values.city]);
 
@@ -186,13 +189,13 @@ export function BasicInformationSection({
                 {filteredProvinces.length > 0 ? (
                   filteredProvinces.map((province) => (
                     <button
-                      key={province.provCode}
+                      key={province.psgcCode}
                       type="button"
                       className="w-full rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
                       onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => handleProvinceSelect(province.provName)}
+                      onClick={() => handleProvinceSelect(province.name)}
                     >
-                      {province.provName}
+                      {province.name}
                     </button>
                   ))
                 ) : (
@@ -239,13 +242,13 @@ export function BasicInformationSection({
                 {filteredCities.length > 0 ? (
                   filteredCities.map((city) => (
                     <button
-                      key={city.munCityCode}
+                      key={city.psgcCode}
                       type="button"
                       className="w-full rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
                       onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => handleCitySelect(city.munCityName)}
+                      onClick={() => handleCitySelect(city.name)}
                     >
-                      {city.munCityName}
+                      {city.name}
                     </button>
                   ))
                 ) : (

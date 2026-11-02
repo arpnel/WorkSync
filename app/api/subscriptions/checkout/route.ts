@@ -11,6 +11,7 @@ import {
 } from "@/services/subscriptions/subscriptionServer";
 export const runtime = "nodejs";
 const input = z.object({ orderId: z.string().uuid() }).strict();
+const checkoutInput = z.object({ billingPeriod: z.enum(["monthly", "yearly"]).default("monthly") }).strict();
 const json = (value: unknown) =>
   Response.json(value, { headers: { "Cache-Control": "no-store" } });
 
@@ -33,8 +34,10 @@ function checkoutOrigin(request: Request) {
 export async function POST(request: Request) {
   try {
     const { db, user } = await paymentUser(request);
+    const parsed = checkoutInput.safeParse(await request.json().catch(() => ({})));
+    if (!parsed.success) throw new PaymentError("Invalid Premium billing period.", 400);
     return json(
-      await createSubscriptionCheckout(db, user.id, checkoutOrigin(request)),
+      await createSubscriptionCheckout(db, user.id, checkoutOrigin(request), parsed.data.billingPeriod),
     );
   } catch (error) {
     return paymentResponse(error);

@@ -129,6 +129,11 @@ export function useSetupForm(role: "client" | "freelancer") {
     }
     handleChange("bannerImage", file);
   }
+  function handleBannerRemove() {
+    handleChange("bannerImage", null);
+    handleChange("existingBannerUrl", "");
+    setBannerPreview("");
+  }
   function handleFileSelect(
     field: keyof FreelancerSetupValues,
     file: File,
@@ -236,6 +241,7 @@ export function useSetupForm(role: "client" | "freelancer") {
     handlePhotoSelect,
     handlePhotoRemove,
     handleBannerSelect,
+    handleBannerRemove,
     handleFileSelect,
     handleMultiFileSelect,
     handleRemoveFile: (

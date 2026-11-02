@@ -21,6 +21,7 @@ export function ClientSetupForm() {
   const {
     values,
     photoPreview,
+    bannerPreview,
     errors,
     isSubmitting,
     isLoadingProfile,
@@ -29,6 +30,8 @@ export function ClientSetupForm() {
     handleChange,
     handlePhotoSelect,
     handlePhotoRemove,
+    handleBannerSelect,
+    handleBannerRemove,
     handleSubmit,
   } = useClientSetup();
   const [step, setStep] = useState(0);
@@ -104,10 +107,13 @@ export function ClientSetupForm() {
       <ProfileSection
         values={values}
         photoPreview={photoPreview}
+        bannerPreview={bannerPreview}
         errors={{ ...errors, ...stageErrors }}
         onChange={handleChange}
         onPhotoSelect={handlePhotoSelect}
         onPhotoRemove={handlePhotoRemove}
+        onBannerSelect={(file) => { handleBannerSelect(file); setStageErrors((current) => ({ ...current, bannerImage: undefined })); }}
+        onBannerRemove={handleBannerRemove}
         profilePhotoRequired={false}
       />
 

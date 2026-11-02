@@ -246,6 +246,17 @@ async function getUnreadCount(
   ).length;
 }
 
+export async function getNotificationUnreadCount() {
+  const user = await currentUser();
+  const hidden: unknown[] = Array.isArray(user.user_metadata?.hidden_notification_groups)
+    ? user.user_metadata.hidden_notification_groups
+    : [];
+  const hiddenMessageGroups: unknown[] = Array.isArray(user.user_metadata?.hidden_message_notification_groups)
+    ? user.user_metadata.hidden_message_notification_groups
+    : [];
+  return getUnreadCount(user.id, hidden, hiddenMessageGroups);
+}
+
 export async function markNotificationRead(notificationId: string) {
   const userId = (await currentUser()).id;
   const { error } = await supabase
@@ -281,21 +292,34 @@ export async function markAllNotificationsRead() {
 
 export async function subscribeToNotifications(
   userId: string,
-  onChange: () => void,
+  onChange: (event: "INSERT" | "UPDATE", row: Record<string, unknown>) => void,
 ) {
   const channel = supabase
     .channel(`notifications:${userId}`)
     .on(
       "postgres_changes",
       {
-        event: "*",
+        event: "INSERT",
         schema: "public",
         table: "notifications",
         filter: `user_id=eq.${userId}`,
       },
-      () => {
+      (payload) => {
         invalidatePageReads();
-        onChange();
+        onChange(payload.eventType, payload.new as Record<string, unknown>);
+      },
+    )
+    .on(
+      "postgres_changes",
+      {
+        event: "UPDATE",
+        schema: "public",
+        table: "notifications",
+        filter: `user_id=eq.${userId}`,
+      },
+      (payload) => {
+        invalidatePageReads();
+        onChange(payload.eventType, payload.new as Record<string, unknown>);
       },
     )
     .subscribe();

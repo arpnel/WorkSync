@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 
 import { CalendarDays, RotateCcw, Wallet } from "lucide-react";
@@ -20,6 +21,7 @@ import { JobAgreementWizard } from "@/components/project/JobAgreementWizard";
 import { deleteContractCreationDraft } from "@/services/project/contractCreationDraftService";
 import { activateConfirmedProjectAgreement, saveContractVersionForAgreement } from "@/services/project/projectWorkspaceService";
 import { sendConversationMessage } from "@/services/message/messageService";
+import { openSubscriptionLimitDialog } from "@/services/subscriptions/subscriptionLimitDialog";
 import {
   agreeToJobBasicTerms,
   getJobBasicTermsAgreement,
@@ -44,6 +46,7 @@ export function StandardProjectWorkspace({
     updating: boolean;
     error?: string;
   }) | null>(null);
+  const agreementUpdates = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const {
     workspace,
     refresh,
@@ -82,7 +85,8 @@ export function StandardProjectWorkspace({
         if (activated) return refresh();
       })
       .catch((cause) => {
-        setActivationError(cause instanceof Error ? cause.message : "The confirmed contract could not be activated.");
+        if (openSubscriptionLimitDialog(cause)) setActivationError("");
+        else setActivationError(cause instanceof Error ? cause.message : "The confirmed contract could not be activated.");
       });
   }, [workspace?.contractId, workspace?.orderId, workspace?.clientSignedAt, workspace?.freelancerSignedAt, workspace?.contractStatus, refresh]);
   const basicTermsApplicationId = workspace?.applicationId ?? null;
@@ -107,6 +111,9 @@ export function StandardProjectWorkspace({
       } catch (cause) {
         if (active) setBasicAgreement({
           terms: null,
+          previousTerms: null,
+          changedFields: [],
+          changedBy: null,
           clientAgreed: false,
           freelancerAgreed: false,
           currentParty: basicTermsCurrentParty,
@@ -117,10 +124,17 @@ export function StandardProjectWorkspace({
         if (active) setBasicAgreementLoading(false);
       }
     };
+    const channel = supabase
+      .channel(`job-agreement-updates:${applicationId}`)
+      .on("broadcast", { event: "agreement-updated" }, () => void refresh())
+      .subscribe();
+    agreementUpdates.current = channel;
     setBasicAgreementLoading(true);
     void refresh();
     return () => {
       active = false;
+      if (agreementUpdates.current === channel) agreementUpdates.current = null;
+      void supabase.removeChannel(channel);
     };
   }, [basicTermsApplicationId, basicTermsCurrentParty]);
 
@@ -130,6 +144,11 @@ export function StandardProjectWorkspace({
     try {
       const saved = await agreeToJobBasicTerms(workspace.applicationId, terms);
       setBasicAgreement({ ...saved, currentParty: workspace.currentParty, updating: false });
+      void agreementUpdates.current?.send({
+        type: "broadcast",
+        event: "agreement-updated",
+        payload: { kind: "basic-terms" },
+      });
       return saved;
     } catch (cause) {
       setBasicAgreement((current) => current ? { ...current, updating: false } : current);
@@ -194,6 +213,8 @@ export function StandardProjectWorkspace({
   );
   if (isPendingAgreement && (!showExistingAgreement || (workspace.applicationId && !bothBasicPartiesAgreed))) {
     return <JobAgreementWizard
+      clientName={workspace.clientName}
+      freelancerName={workspace.freelancerName}
       draftKey={`worksync:contract-draft:${workspace.currentUserId}:${workspace.applicationId ?? workspace.contractId ?? workspace.orderId}`}
       draftUserId={workspace.currentUserId}
       initial={{
@@ -221,6 +242,9 @@ export function StandardProjectWorkspace({
         clientAgreed: false,
         freelancerAgreed: false,
         terms: null,
+        previousTerms: null,
+        changedFields: [],
+        changedBy: null,
         updating: basicAgreementLoading,
         error: "Refresh the project to load agreement status.",
       } : undefined}

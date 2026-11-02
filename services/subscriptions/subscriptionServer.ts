@@ -1,5 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { calculateVat } from "@/lib/payments/philippineTax";
 import {
   centavos,
   checkoutUrl,
@@ -19,6 +20,7 @@ type OpenSubscriptionOrder = {
   transaction_reference: string | null;
   checkout_url: string | null;
   livemode: boolean;
+  billing_period: "monthly" | "yearly";
 };
 
 async function resumeSubscriptionCheckout(
@@ -26,7 +28,10 @@ async function resumeSubscriptionCheckout(
   userId: string,
   order: OpenSubscriptionOrder,
   mode: "test" | "live",
+  billingPeriod: "monthly" | "yearly",
 ) {
+  if (order.billing_period !== billingPeriod)
+    throw new PaymentError(`A ${order.billing_period} Premium checkout is already pending. Finish it before starting a ${billingPeriod} checkout.`, 409);
   if (order.status === "needs_review")
     throw new PaymentError(
       "Your previous Premium checkout needs support review before another can be started.",
@@ -92,27 +97,36 @@ export async function createSubscriptionCheckout(
   db: Database,
   userId: string,
   origin: string,
+  billingPeriod: "monthly" | "yearly" = "monthly",
 ) {
   const mode = paymentMode();
   const { data: plan, error: planError } = await db
     .from("subscription_plans")
-    .select("provisional_monthly_price")
+    .select("provisional_monthly_price,provisional_annual_price")
     .eq("plan_code", "pro")
     .single();
-  if (planError || plan?.provisional_monthly_price == null)
+  const configuredPrice = billingPeriod === "monthly"
+    ? plan?.provisional_monthly_price
+    : plan?.provisional_annual_price;
+  if (planError || configuredPrice == null)
     throw new PaymentError("Premium billing is not configured yet.", 503);
-  const amount = centavos(plan.provisional_monthly_price);
+  // The advertised subscription price is the VAT-inclusive total. Split it
+  // into receipt line items without increasing what the customer pays.
+  const vat = calculateVat(configuredPrice, "inclusive", true);
+  const amount = centavos(vat.total);
+  const baseAmount = centavos(vat.taxableAmount);
+  const vatAmount = centavos(vat.vatAmount);
 
   const { data: pending, error: pendingError } = await db
     .from("subscription_orders")
-    .select("order_id,amount,status,transaction_reference,checkout_url,livemode")
+    .select("order_id,amount,status,transaction_reference,checkout_url,livemode,billing_period")
     .eq("user_id", userId)
     .in("status", ["pending", "needs_review"])
     .maybeSingle();
   if (pendingError)
     throw new PaymentError("Unable to check for an existing Premium checkout.");
   if (pending) {
-    const resumed = await resumeSubscriptionCheckout(db, userId, pending, mode);
+    const resumed = await resumeSubscriptionCheckout(db, userId, pending, mode, billingPeriod);
     if (resumed) return resumed;
   }
 
@@ -121,20 +135,25 @@ export async function createSubscriptionCheckout(
     order_id: orderId,
     user_id: userId,
     amount: amount / 100,
+    taxable_amount: baseAmount / 100,
+    vat_amount: vatAmount / 100,
+    vat_rate: 0.12,
+    vat_itemized: true,
+    billing_period: billingPeriod,
     status: "pending",
     livemode: mode === "live",
   });
   if (reserveError?.code === "23505") {
     const { data: winner, error } = await db
       .from("subscription_orders")
-      .select("order_id,amount,status,transaction_reference,checkout_url,livemode")
+      .select("order_id,amount,status,transaction_reference,checkout_url,livemode,billing_period")
       .eq("user_id", userId)
       .in("status", ["pending", "needs_review"])
       .maybeSingle();
     if (error)
       throw new PaymentError("Unable to check the existing Premium checkout.");
     if (winner) {
-      const resumed = await resumeSubscriptionCheckout(db, userId, winner, mode);
+      const resumed = await resumeSubscriptionCheckout(db, userId, winner, mode, billingPeriod);
       if (resumed) return resumed;
     }
   }
@@ -149,12 +168,19 @@ export async function createSubscriptionCheckout(
     const session = await paymongo("/v2/checkout_sessions", {
       line_items: [
         {
-          name: "WorkSync Premium - 1 month",
-          amount,
+          name: `WorkSync Premium - 1 ${billingPeriod === "monthly" ? "month" : "year"} (VAT-exclusive)`,
+          amount: baseAmount,
+          currency: "PHP",
+          quantity: 1,
+        },
+        {
+          name: "12% VAT",
+          amount: vatAmount,
           currency: "PHP",
           quantity: 1,
         },
       ],
+      show_line_items: true,
       payment_method_types: (process.env.PAYMONGO_PAYMENT_METHODS || "gcash,card,qrph")
         .split(",")
         .map((value) => value.trim())
@@ -162,7 +188,7 @@ export async function createSubscriptionCheckout(
       success_url: returnUrl,
       cancel_url: `${returnUrl}&cancelled=1`,
       reference_number: orderId,
-      metadata: { kind: "subscription", order_id: orderId, user_id: userId },
+      metadata: { kind: "subscription", order_id: orderId, user_id: userId, billing_period: billingPeriod },
       send_email_receipt: true,
     });
     if (
@@ -207,7 +233,7 @@ export async function processSubscriptionPaymentSession(
     throw new PaymentError("Invalid Premium checkout metadata.", 409);
   const { data: order, error } = await db
     .from("subscription_orders")
-    .select("order_id,user_id,amount,status,transaction_reference,livemode,provider_payment_id")
+    .select("order_id,user_id,amount,taxable_amount,vat_amount,vat_rate,vat_itemized,status,transaction_reference,livemode,provider_payment_id,billing_period,legacy_price")
     .eq("order_id", orderId)
     .maybeSingle();
   if (error || !order)
@@ -217,6 +243,8 @@ export async function processSubscriptionPaymentSession(
     attributes.reference_number !== order.order_id ||
     (order.transaction_reference && order.transaction_reference !== session.id) ||
     metadata.order_id !== order.order_id ||
+    (metadata.billing_period !== order.billing_period &&
+      !(order.legacy_price && order.billing_period === "monthly" && metadata.billing_period == null)) ||
     attributes.livemode !== order.livemode ||
     order.livemode !== (paymentMode() === "live")
   )
@@ -232,6 +260,9 @@ export async function processSubscriptionPaymentSession(
   if (
     !/^pay_[a-zA-Z0-9]+$/.test(paid.id) ||
     (order.provider_payment_id && order.provider_payment_id !== paid.id) ||
+    (order.vat_itemized &&
+      (centavos(order.taxable_amount) + centavos(order.vat_amount) !== centavos(order.amount) ||
+        order.vat_rate !== 0.12)) ||
     paid.attributes.amount !== centavos(order.amount) ||
     paid.attributes.currency !== "PHP" ||
     (paid.attributes.livemode !== undefined &&

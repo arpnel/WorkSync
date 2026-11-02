@@ -17,6 +17,8 @@ type Subscription = {
 export default function SubscriptionSettings() {
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [price, setPrice] = useState<number | null>(null);
+  const [annualPrice, setAnnualPrice] = useState<number | null>(null);
+  const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">("monthly");
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(false);
   const [error, setError] = useState("");
@@ -39,7 +41,7 @@ export default function SubscriptionSettings() {
           .maybeSingle(),
         supabase
           .from("subscription_plans")
-          .select("provisional_monthly_price")
+          .select("provisional_monthly_price,provisional_annual_price")
           .eq("plan_code", "pro")
           .maybeSingle(),
       ]);
@@ -50,6 +52,7 @@ export default function SubscriptionSettings() {
       }
       setSubscription(assignment.data as Subscription | null);
       setPrice(plan.data?.provisional_monthly_price ?? null);
+      setAnnualPrice(plan.data?.provisional_annual_price ?? null);
       setClockNow(Date.now());
     } catch (cause) {
       setError(
@@ -77,17 +80,6 @@ export default function SubscriptionSettings() {
     setError("");
     setNotice("");
     try {
-      if (!trialClaimed && !active) {
-        const { error: trialError } = await supabase.rpc(
-          "worksync_claim_premium_trial",
-        );
-        if (trialError) throw new Error(trialError.message);
-        await load();
-        window.dispatchEvent(new Event("worksync:subscription-updated"));
-        setNotice("Your three-month Premium trial is active.");
-        return;
-      }
-
       const { data } = await supabase.auth.getSession();
       if (!data.session) throw new Error("Sign in to renew Premium.");
       const response = await fetch("/api/subscriptions/checkout", {
@@ -96,7 +88,7 @@ export default function SubscriptionSettings() {
           Authorization: `Bearer ${data.session.access_token}`,
           "Content-Type": "application/json",
         },
-        body: "{}",
+        body: JSON.stringify({ billingPeriod }),
         cache: "no-store",
       });
       const result = await response.json();
@@ -112,10 +104,11 @@ export default function SubscriptionSettings() {
     }
   }
 
+  const selectedPrice = billingPeriod === "monthly" ? price : annualPrice;
   const priceLabel =
-    price == null
+    selectedPrice == null
       ? "Price unavailable"
-      : `${new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(price)} / month`;
+      : `${new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(selectedPrice)} / ${billingPeriod === "monthly" ? "month" : "year"}`;
 
   return (
     <Card className="gap-4 p-5 sm:p-6">
@@ -143,8 +136,8 @@ export default function SubscriptionSettings() {
                 : active
                   ? "Your Premium access is active. Renewals are manual; you will not be charged automatically."
                   : trialClaimed
-                    ? "Your one-time trial has been used. Choose a manual monthly renewal to activate Premium."
-                    : "Claim your one-time three-month Premium trial, or choose a manual monthly renewal."}
+                    ? "Your previous trial has ended. Choose a manual renewal to activate Premium."
+                    : "Choose a monthly or yearly Premium plan. Renewals are manual."}
             </p>
           </div>
         </div>
@@ -169,12 +162,14 @@ export default function SubscriptionSettings() {
       <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
         <div>
           <p className="text-sm font-medium">Premium</p>
-          <p className="text-sm text-muted-foreground">
-            {priceLabel} · one-time payment
-          </p>
+          <div className="mt-2 inline-flex rounded-lg bg-muted p-1 text-xs">
+            <button type="button" onClick={() => setBillingPeriod("monthly")} className={`rounded-md px-3 py-1.5 ${billingPeriod === "monthly" ? "bg-background shadow-sm" : "text-muted-foreground"}`}>Monthly</button>
+            <button type="button" onClick={() => setBillingPeriod("yearly")} className={`rounded-md px-3 py-1.5 ${billingPeriod === "yearly" ? "bg-background shadow-sm" : "text-muted-foreground"}`}>Yearly · 2 months free</button>
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">{priceLabel} · one-time payment</p>
         </div>
         <Button
-          disabled={loading || acting || price == null}
+          disabled={loading || acting || selectedPrice == null}
           onClick={() => void managePremium()}
         >
           {acting ? (
@@ -185,15 +180,15 @@ export default function SubscriptionSettings() {
           {acting
             ? "Please wait…"
             : active
-              ? "Pay early · add one month"
+              ? `Pay early · add one ${billingPeriod === "monthly" ? "month" : "year"}`
               : trialClaimed
                 ? "Renew Premium"
-                : "Start 3-month free trial"}
+                : "Get Premium"}
         </Button>
       </div>
       {active && (
         <p className="text-xs text-muted-foreground">
-          Pay early to add one month after your current end date. Renewals are
+          Pay early to add one {billingPeriod === "monthly" ? "month" : "year"} after your current end date. Renewals are
           manual.
         </p>
       )}

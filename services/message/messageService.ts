@@ -444,6 +444,107 @@ export async function getMessageConversations(): Promise<{
   return { currentUserId, conversations };
 }
 
+export async function getUnreadMessageCount(): Promise<number> {
+  const data = await getUnreadMessageSummaries();
+  return data.reduce(
+    (total, row) => total + Math.max(0, Number(row.unread_count) || 0),
+    0,
+  );
+}
+
+async function getUnreadMessageSummaries(): Promise<{
+  conversation_id: string;
+  unread_count: number | string;
+}[]> {
+  const { data, error } = await supabase.rpc(
+    "worksync_get_message_conversation_summaries",
+  );
+  if (error) throw error;
+  return (data ?? []) as {
+    conversation_id: string;
+    unread_count: number | string;
+  }[];
+}
+
+export type MessageChangePayload = {
+  eventType: "INSERT" | "UPDATE";
+  row: Record<string, unknown>;
+  old: Record<string, unknown>;
+};
+
+export function subscribeToUnreadMessageChanges(
+  onChange: (change?: MessageChangePayload) => void,
+) {
+  let active = true;
+  let channel: ReturnType<typeof supabase.channel> | null = null;
+  let generation = 0;
+  const connect = async () => {
+    const attempt = ++generation;
+    try {
+      const [userId, summaries] = await Promise.all([
+        getCurrentUserId(),
+        getUnreadMessageSummaries(),
+      ]);
+      if (!active || attempt !== generation) return;
+      if (channel) void supabase.removeChannel(channel);
+      const ids = [...new Set(summaries.map((row) => row.conversation_id))];
+      const next = supabase.channel(`header-unread-message-count:${userId}`);
+      // Realtime's `in` filter accepts a bounded list. Group IDs so a user with
+      // many conversations still needs one channel instead of one per chat.
+      for (let offset = 0; offset < ids.length; offset += 100) {
+        const batch = ids.slice(offset, offset + 100);
+        const conversationFilter = `conversation_id=in.(${batch.join(",")})`;
+        next
+          .on(
+            "postgres_changes",
+            {
+              event: "INSERT",
+              schema: "public",
+              table: "messages",
+              filter: `${conversationFilter},sender_id=neq.${userId}`,
+            },
+            (payload) => onChange({ eventType: "INSERT", row: payload.new as Record<string, unknown>, old: {} }),
+          )
+          .on(
+            "postgres_changes",
+            {
+              event: "UPDATE",
+              schema: "public",
+              table: "messages",
+              filter: `${conversationFilter},read_at=not.is.null`,
+            },
+            (payload) => onChange({ eventType: "UPDATE", row: payload.new as Record<string, unknown>, old: payload.old as Record<string, unknown> }),
+          );
+      }
+      next.on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "conversation_participants",
+          filter: `user_id=eq.${userId}`,
+        },
+        () => {
+          onChange();
+          void connect();
+        },
+      );
+      channel = next;
+      next.subscribe((status) => {
+        if (active && attempt === generation && status === "SUBSCRIBED") onChange();
+      });
+    } catch {
+      // Counts remain available from the authoritative summary RPC.
+    }
+  };
+  void connect();
+  return () => {
+    active = false;
+    generation += 1;
+    if (channel) void supabase.removeChannel(channel);
+  };
+}
+
 export async function getConversationMessages(
   conversationId: string,
 ): Promise<ChatMessage[]> {
@@ -542,10 +643,10 @@ export async function sendConversationMessage(
   attachment?: File,
   onProgress?: (percent: number) => void,
   signal?: AbortSignal,
-): Promise<void> {
+): Promise<ChatMessage | null> {
   const senderId = await getCurrentUserId();
   const cleanMessage = message.trim();
-  if (!cleanMessage && !attachment) return;
+  if (!cleanMessage && !attachment) return null;
   if (cleanMessage.length > 10000)
     throw new Error("Messages must be 10,000 characters or shorter.");
   let path: string | null = null;
@@ -568,7 +669,7 @@ export async function sendConversationMessage(
         throw new Error("Unable to upload the file. Please try again or contact support.");
     }
   }
-  const { error } = await supabase.from("messages").insert({
+  const { data, error } = await supabase.from("messages").insert({
     message_id: messageId,
     conversation_id: conversationId,
     sender_id: senderId,
@@ -577,12 +678,13 @@ export async function sendConversationMessage(
     attachment_type: attachment
       ? attachment.type || "application/octet-stream"
       : null,
-  });
+  }).select("message_id, conversation_id, sender_id, message, attachment_url, attachment_type, created_at, read_at").single();
   if (error) {
     if (r2UploadId) await deleteUnusedLargeFile(r2UploadId).catch(() => undefined);
     else if (path) await supabase.storage.from("message-attachments").remove([path]);
     throw new Error(error.message);
   }
+  return mapRealtimeConversationMessage(data as Record<string, unknown>, senderId);
 }
 
 export function isMessagingSetupMissing(error: unknown): boolean {
@@ -709,24 +811,61 @@ export function createMessageTypingChannel(
 }
 export function subscribeToConversationMessages(
   conversationId: string,
-  onChange: () => void,
-  event: "*" | "INSERT" = "*",
+  onChange: (payload: {
+    eventType: "INSERT" | "UPDATE" | "DELETE";
+    new: Record<string, unknown>;
+    old: Record<string, unknown>;
+  }) => void,
+  event: "*" | "INSERT" | "UPDATE" | "UPDATE_DELETE" = "*",
 ) {
-  const channel = supabase
-    .channel(`conversation:${conversationId}`)
-    .on(
-      "postgres_changes",
-      {
-        event,
-        schema: "public",
-        table: "messages",
-        filter: `conversation_id=eq.${conversationId}`,
-      },
-      onChange,
-    )
-    .subscribe();
+  const channel = supabase.channel(`conversation:${conversationId}`);
+  const config = {
+    schema: "public",
+    table: "messages",
+    filter: `conversation_id=eq.${conversationId}`,
+  } as const;
+  if (event === "*") {
+    channel
+      .on("postgres_changes", { ...config, event: "INSERT" }, onChange)
+      .on("postgres_changes", { ...config, event: "UPDATE" }, onChange)
+      .on("postgres_changes", { ...config, event: "DELETE" }, onChange);
+  } else if (event === "UPDATE_DELETE") {
+    channel
+      .on("postgres_changes", { ...config, event: "UPDATE" }, onChange)
+      .on("postgres_changes", { ...config, event: "DELETE" }, onChange);
+  } else {
+    channel.on("postgres_changes", { ...config, event }, onChange);
+  }
+  channel.subscribe();
 
   return () => {
     void supabase.removeChannel(channel);
+  };
+}
+
+export async function mapRealtimeConversationMessage(
+  row: Record<string, unknown>,
+  currentUserId: string,
+): Promise<ChatMessage | null> {
+  if (
+    typeof row.message_id !== "string" ||
+    typeof row.conversation_id !== "string" ||
+    typeof row.sender_id !== "string" ||
+    typeof row.created_at !== "string"
+  ) return null;
+  const sender = row.sender_id === currentUserId
+    ? undefined
+    : (await getParticipants([row.sender_id])).get(row.sender_id);
+  return {
+    messageId: row.message_id,
+    conversationId: row.conversation_id,
+    senderId: row.sender_id,
+    senderName: row.sender_id === currentUserId ? "You" : sender?.name ?? "User",
+    senderAvatarUrl: sender?.avatarUrl ?? null,
+    message: typeof row.message === "string" ? row.message : "",
+    attachmentUrl: typeof row.attachment_url === "string" ? row.attachment_url : null,
+    attachmentType: typeof row.attachment_type === "string" ? row.attachment_type : null,
+    createdAt: row.created_at,
+    readAt: typeof row.read_at === "string" ? row.read_at : null,
   };
 }

@@ -1,16 +1,26 @@
+-- PREPARED, NOT APPLIED.
 -- Require both application participants to approve the same basic terms before
--- either participant can continue to the work planner. Full contract signatures
--- remain separate and continue to control project activation.
+-- either participant can continue to the work planner. Editing saved terms
+-- clears both approvals and retains a field-level diff for the other party.
+-- Full contract signatures remain separate and continue to control activation.
 
 create table if not exists public.job_basic_terms_agreements (
   application_id uuid primary key
     references public.job_applications(application_id) on delete cascade,
   terms jsonb not null,
+  previous_terms jsonb,
+  changed_fields text[] not null default '{}',
+  changed_by text,
   client_agreed_at timestamptz,
   freelancer_agreed_at timestamptz,
   created_at timestamptz not null default clock_timestamp(),
   updated_at timestamptz not null default clock_timestamp()
 );
+
+alter table public.job_basic_terms_agreements
+  add column if not exists previous_terms jsonb,
+  add column if not exists changed_fields text[] not null default '{}',
+  add column if not exists changed_by text;
 
 alter table public.job_basic_terms_agreements enable row level security;
 revoke all on public.job_basic_terms_agreements from public, anon, authenticated, service_role;
@@ -53,6 +63,9 @@ begin
 
   return jsonb_build_object(
     'terms', agreement_row.terms,
+    'previousTerms', agreement_row.previous_terms,
+    'changedFields', to_jsonb(agreement_row.changed_fields),
+    'changedBy', agreement_row.changed_by,
     'clientAgreed', agreement_row.client_agreed_at is not null,
     'freelancerAgreed', agreement_row.freelancer_agreed_at is not null
   );
@@ -79,6 +92,7 @@ declare
   requested_revisions integer;
   requested_start date;
   requested_deadline date;
+  changed_field_names text[];
 begin
   if requesting_user is null then
     raise exception 'Sign in required' using errcode = '42501';
@@ -157,10 +171,21 @@ begin
       case when current_party = 'freelancer' then pg_catalog.clock_timestamp() end
     );
   elsif agreement_row.terms is distinct from p_terms then
+    changed_field_names := array_remove(array[
+      case when agreement_row.terms->'projectTitle' is distinct from p_terms->'projectTitle' then 'projectTitle' end,
+      case when agreement_row.terms->'description' is distinct from p_terms->'description' then 'description' end,
+      case when agreement_row.terms->'budget' is distinct from p_terms->'budget' then 'budget' end,
+      case when agreement_row.terms->'revisionsCount' is distinct from p_terms->'revisionsCount' then 'revisionsCount' end,
+      case when agreement_row.terms->'startDate' is distinct from p_terms->'startDate' then 'startDate' end,
+      case when agreement_row.terms->'deadline' is distinct from p_terms->'deadline' then 'deadline' end
+    ], null);
     update public.job_basic_terms_agreements
     set terms = p_terms,
-        client_agreed_at = case when current_party = 'client' then pg_catalog.clock_timestamp() end,
-        freelancer_agreed_at = case when current_party = 'freelancer' then pg_catalog.clock_timestamp() end,
+        previous_terms = agreement_row.terms,
+        changed_fields = changed_field_names,
+        changed_by = current_party,
+        client_agreed_at = null,
+        freelancer_agreed_at = null,
         updated_at = pg_catalog.clock_timestamp()
     where application_id = p_application;
   else

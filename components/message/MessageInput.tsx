@@ -41,20 +41,26 @@ export default function MessageInput({
   const fileInput = useRef<HTMLInputElement>(null);
   const busy = useRef(false);
   const typingTimer = useRef<number | null>(null);
+  const typingActive = useRef(false);
+  const setTyping = useCallback((active: boolean) => {
+    if (typingActive.current === active) return;
+    typingActive.current = active;
+    onTypingChange?.(active);
+  }, [onTypingChange]);
   const stopTyping = useCallback(() => {
     if (typingTimer.current !== null) window.clearTimeout(typingTimer.current);
     typingTimer.current = null;
-    onTypingChange?.(false);
-  }, [onTypingChange]);
+    setTyping(false);
+  }, [setTyping]);
   const handleDraftChange = (value: string) => {
     setMessage(value);
     if (!onTypingChange) return;
-    onTypingChange(Boolean(value.trim()));
+    setTyping(Boolean(value.trim()));
     if (typingTimer.current !== null) window.clearTimeout(typingTimer.current);
     typingTimer.current = value.trim()
       ? window.setTimeout(() => {
           typingTimer.current = null;
-          onTypingChange(false);
+          setTyping(false);
         }, 1800)
       : null;
   };

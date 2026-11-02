@@ -218,7 +218,7 @@ export default function Page() {
           variant={view === "pending" ? "default" : "ghost"}
           onClick={() => setView("pending")}
         >
-          Pending ({pendingListings.length})
+          Pending for approval ({pendingListings.length})
         </Button>
         <Button
           variant={view === "rejected" ? "default" : "ghost"}

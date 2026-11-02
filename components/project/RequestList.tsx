@@ -42,6 +42,7 @@ import {
 } from "@/services/project/applicantScreeningService";
 import { clearProjectReadCache } from "@/lib/projectReadCache";
 import { ProjectPlanSnapshotPreview } from "./ProjectPlanSnapshotPreview";
+import { usePremiumStatus } from "@/hooks/usePremiumStatus";
 
 interface Props {
   received: ProjectRequest[];
@@ -82,6 +83,7 @@ export function RequestList({
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const premium = usePremiumStatus();
   const [selectedRequest, setSelected] = React.useState<ProjectRequest | null>(
     null,
   );
@@ -175,10 +177,6 @@ export function RequestList({
             resetAt: error.resetAt,
           });
           setScreeningLimitOpen(true);
-          setScreeningErrors((current) => ({
-            ...current,
-            [applicationId]: "Free AI screening limit reached.",
-          }));
           return;
         }
         setScreeningErrors((current) => ({
@@ -594,7 +592,9 @@ export function RequestList({
                 <p className="mt-1 text-xs text-muted-foreground">
                   {assessmentState === "expired"
                     ? "Expired assessment — review current evidence"
-                    : selected.screening?.result ||
+                    : !premium.active && selected.screening
+                      ? "Score rating shown on the Free plan. Premium includes the full ranking explanation."
+                      : selected.screening?.result ||
                       (screeningPreparing
                         ? "Preparing AI match..."
                         : "Assessment unavailable or delayed")}
@@ -641,7 +641,11 @@ export function RequestList({
                     : " · Saved assessment"}
                 </p>
               )}
-              {selected.screening ? (
+              {selected.screening && !premium.active ? (
+                <p className="rounded-md bg-muted/40 p-3 text-sm text-muted-foreground">
+                  Upgrade to Premium to see the full applicant ranking explanation.
+                </p>
+              ) : selected.screening ? (
                 <>
                   <div>
                     <p className="text-xs font-medium uppercase text-muted-foreground">
@@ -689,20 +693,11 @@ export function RequestList({
                 {responseErrors[selected.applicationId]}
               </p>
             )}
-            <div className="flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-between">
-              {sent.some(
-                (item) => item.applicationId === selected.applicationId,
-              ) && (
-                <Button asChild variant="outline">
-                  <Link href={`/home/marketplace/jobs/${selected.jobId}`}>
-                    View job / manage application
-                  </Link>
-                </Button>
-              )}
+            <div className="flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-end">
               {selectedUserId && (
                 <Button asChild variant="outline">
                   <Link href={`/home/profile/${selectedUserId}`}>
-                    View full profile
+                    View profile
                   </Link>
                 </Button>
               )}
@@ -789,9 +784,9 @@ export function RequestList({
             </DialogDescription>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Premium includes unlimited AI applicant screening, up to 20 active
-            marketplace postings across jobs and services, and 30 monthly
-            listing submissions.
+            Premium includes unlimited AI skills gap assessments, complete
+            applicant rankings with explanations, unlimited job postings, and
+            a 5% transaction fee.
           </p>
           <DialogFooter>
             <Button

@@ -45,6 +45,7 @@ import { NotificationOverview } from "@/components/notifications/NotificationOve
 import { logout } from "@/services/auth/signinService";
 import { toast } from "sonner";
 import { usePremiumStatus } from "@/hooks/usePremiumStatus";
+import { useUnreadMessageCount } from "@/hooks/message/useUnreadMessageCount";
 
 const subscribeToClient = () => () => {};
 
@@ -78,6 +79,7 @@ export function DashboardHeader() {
   );
   const router = useRouter();
   const premium = usePremiumStatus();
+  const unreadMessages = useUnreadMessageCount();
   const { resolvedTheme, setTheme } = useTheme();
 
   /* ==========================================================
@@ -431,15 +433,21 @@ export function DashboardHeader() {
           <Link
             href="/home/messages"
             className="
-              hidden md:flex h-9 w-9 shrink-0
+              relative hidden md:flex h-9 w-9 shrink-0
               items-center justify-center
               rounded-md transition
               hover:bg-accent
               hover:text-accent-foreground
             "
-            aria-label="Messages"
+            aria-label={`Messages${unreadMessages > 0 ? `, ${unreadMessages} unread` : ""}`}
+            title={unreadMessages > 0 ? `${unreadMessages} unread message${unreadMessages === 1 ? "" : "s"}` : "Messages"}
           >
-            <MessageCircle className="h-5 w-5" />
+            <span className="relative inline-flex">
+              <MessageCircle className="h-5 w-5" />
+              {unreadMessages > 0 && (
+                <span className="absolute -right-1 -top-1 size-2 rounded-full bg-destructive ring-2 ring-background" />
+              )}
+            </span>
           </Link>
 
           {/* =================================================

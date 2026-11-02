@@ -49,6 +49,29 @@ export async function POST(request: Request) {
         401,
       );
     const { jobId, proposal, price, days } = input.data;
+    const { data: job, error: jobError } = await db
+      .from("jobs")
+      .select("client_id,status")
+      .eq("job_id", jobId)
+      .maybeSingle();
+    if (jobError)
+      return json({ error: "Unable to verify the project deadline." }, 503);
+    if (!job) return json({ error: "This project is unavailable." }, 404);
+    const { data: ownClientProfile, error: ownerError } = await db
+      .from("client_profiles")
+      .select("client_id")
+      .eq("client_id", job.client_id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (ownerError)
+      return json({ error: "Unable to verify the job owner." }, 503);
+    if (ownClientProfile)
+      return json(
+        { error: "You cannot apply to your own job." },
+        403,
+      );
+    if (job.status !== "open")
+      return json({ error: "This job is no longer accepting applications." }, 409);
     let applicationId: string | null = null;
     let error;
     if (input.data.proposedPlan) {
@@ -96,6 +119,10 @@ export async function POST(request: Request) {
         error = legacy.error;
       }
     }
+    if (error?.code === "P0001" && /five job applications per month/i.test(error.message))
+      return json({ error: error.message }, 429);
+    if (error?.code === "P0001")
+      return json({ error: "You need a freelancer account to send a proposal for this job." }, 403);
     if (error)
       return json(
         {

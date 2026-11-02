@@ -2,6 +2,8 @@
 export interface ProjectPayment {
   status: "unpaid" | "pending" | "processing" | "paid";
   mode: "test" | "live";
+  isClient?: boolean;
+  projectHref?: string;
   vatBreakdown?: {
     status: "applicable" | "not_applicable" | "not_recorded" | "unavailable";
     taxableAmount: number | null;

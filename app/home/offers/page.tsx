@@ -1,35 +1,75 @@
 "use client";
 
-import { Check, Crown } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Check, Crown, Headphones, Infinity, Percent, Sparkles, X, Zap } from "lucide-react";
 import Link from "next/link";
 import { usePremiumStatus } from "@/hooks/usePremiumStatus";
+import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 
-const advantages = [
-  "Submit up to 30 listings each month",
-  "Keep up to 20 active marketplace postings across jobs and services",
-  "Unlimited AI applicant screening",
+const freeFeatures = [
+  { icon: Check, label: "1 saved draft" },
+  { icon: Check, label: "5 job applications per month" },
+  { icon: Check, label: "1 active project at a time" },
+  { icon: Check, label: "1 active job posting" },
+  { icon: X, label: "Boosted job postings not included" },
+  { icon: Sparkles, label: "1 AI skills gap assessment every 6 months" },
+  { icon: Check, label: "Top 5 applicant rankings with score ratings" },
+  { icon: Percent, label: "10% transaction fee per transaction" },
+  { icon: Headphones, label: "Standard support" },
+];
+
+const premiumFeatures = [
+  { icon: Infinity, label: "Unlimited project drafts" },
+  { icon: Infinity, label: "Unlimited job applications" },
+  { icon: Check, label: "Up to 20 active projects at a time" },
+  { icon: Infinity, label: "Unlimited active job postings" },
+  { icon: Zap, label: "Boosted job postings included" },
+  { icon: Sparkles, label: "Unlimited AI skills gap assessments" },
+  { icon: Sparkles, label: "Full applicant rankings with detailed explanations" },
+  { icon: Percent, label: "5% transaction fee per transaction" },
+  { icon: Headphones, label: "Top priority support" },
 ];
 
 export default function OffersPage() {
   const premium = usePremiumStatus();
-  const endDate = premium.periodEndsAt
-    ? new Date(premium.periodEndsAt).toLocaleString("en-PH", {
-        dateStyle: "medium",
-        timeStyle: "short",
-        timeZone: "Asia/Manila",
-      })
-    : null;
+  const [monthlyPrice, setMonthlyPrice] = useState<number | null>(null);
+  const [yearlyPrice, setYearlyPrice] = useState<number | null>(null);
+  const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">("monthly");
+
+  useEffect(() => {
+    let active = true;
+    void supabase
+      .from("subscription_plans")
+      .select("provisional_monthly_price,provisional_annual_price")
+      .eq("plan_code", "pro")
+      .maybeSingle()
+      .then(({ data }) => {
+        if (active && data?.provisional_monthly_price != null) {
+          setMonthlyPrice(Number(data.provisional_monthly_price));
+        }
+        if (active && data?.provisional_annual_price != null) {
+          setYearlyPrice(Number(data.provisional_annual_price));
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const price = billingPeriod === "monthly" ? monthlyPrice : yearlyPrice;
+  const priceLabel = price == null
+    ? "Price unavailable"
+    : new Intl.NumberFormat("en-PH", {
+        style: "currency",
+        currency: "PHP",
+        maximumFractionDigits: 2,
+      }).format(price);
+  const eligibleForTrial =
+    billingPeriod === "monthly" && !premium.active && !premium.claimed;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-10 py-4 sm:py-8">
+    <main className="mx-auto w-full max-w-6xl space-y-10 px-4 py-8 sm:px-6 sm:py-12">
       <header className="mx-auto max-w-2xl text-center">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
           Pricing
@@ -38,74 +78,98 @@ export default function OffersPage() {
           Level up
         </h1>
         <p className="mx-auto mt-3 max-w-xl text-sm text-muted-foreground sm:text-base">
-          Unlock more room to grow with higher listing capacity and useful tools
-          for your business.
+          Unlock more room to grow with higher listing capacity and useful tools for your business.
         </p>
+        <div className="mx-auto mt-6 inline-flex rounded-xl bg-muted p-1 text-xs font-medium">
+          <button type="button" onClick={() => setBillingPeriod("monthly")} className={`rounded-lg px-4 py-2 ${billingPeriod === "monthly" ? "bg-background shadow-sm" : "text-muted-foreground"}`}>Monthly</button>
+          <button type="button" onClick={() => setBillingPeriod("yearly")} className={`rounded-lg px-4 py-2 ${billingPeriod === "yearly" ? "bg-background shadow-sm" : "text-muted-foreground"}`}>Yearly</button>
+        </div>
       </header>
 
-      <section aria-label="WorkSync Premium plan" className="mx-auto max-w-2xl">
-        <Card className="gap-0 overflow-hidden border-primary/30 py-0 shadow-lg shadow-primary/5">
-          <CardHeader className="border-b bg-primary/[0.04] p-6 sm:p-8">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <CardTitle className="flex items-center gap-2 text-2xl">
-                <Crown className="size-5 text-primary" aria-hidden="true" />
+      <section aria-label="WorkSync plans" className="grid gap-5 md:grid-cols-2">
+        <article className={`flex flex-col rounded-2xl border bg-card p-6 shadow-sm sm:p-7 ${!premium.active ? "border-emerald-600/30" : ""}`}>
+          <div>
+            <h2 className="font-semibold">Free</h2>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              Essential tools to kickstart your project draft and land initial gigs.
+            </p>
+          </div>
+          <p className="mt-6 text-3xl font-bold tracking-tight">
+            ₱0<span className="ml-1 text-xs font-normal text-muted-foreground">/ month</span>
+          </p>
+          <ul className="my-6 flex-1 space-y-3 border-t pt-5">
+            {freeFeatures.map(({ icon: Icon, label }) => (
+              <li key={label} className="flex items-center gap-3 text-xs">
+                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[#e5e2d2] text-[#68706b]">
+                  <Icon className="size-3.5" aria-hidden="true" />
+                </span>
+                {label}
+              </li>
+            ))}
+          </ul>
+          {!premium.active ? (
+            <Button
+              className="w-full bg-[#aac5f7] text-white opacity-100 hover:bg-[#aac5f7] disabled:pointer-events-none disabled:opacity-100"
+              disabled
+            >
+              Current Active Plan
+            </Button>
+          ) : (
+            <Button asChild variant="outline" className="w-full">
+              <Link href="/home/subscription">View subscription</Link>
+            </Button>
+          )}
+        </article>
+
+        <article className={`flex flex-col rounded-2xl border border-primary/60 bg-card p-6 shadow-sm sm:p-7 ${premium.active ? "ring-1 ring-primary/20" : ""}`}>
+          <div>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="flex items-center gap-2 font-semibold">
+                <Crown className="size-4 text-primary" aria-hidden="true" />
                 Premium
-              </CardTitle>
-              <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-                {premium.active
-                  ? "Premium active"
-                  : premium.claimed
-                    ? "Trial already used"
-                    : "3 months free"}
+              </h2>
+              <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary">
+                2 months free
               </span>
             </div>
-            <CardDescription className="max-w-prose text-sm leading-relaxed">
-              More listing capacity and review tools to help grow your WorkSync
-              business.
-            </CardDescription>
-          </CardHeader>
-
-          <CardContent className="space-y-6 p-6 sm:p-8">
-            <ul className="space-y-4">
-              {advantages.map((advantage) => (
-                <li key={advantage} className="flex items-start gap-3 text-sm">
-                  <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600">
-                    <Check className="size-3.5" aria-hidden="true" />
-                  </span>
-                  <span>{advantage}</span>
-                </li>
-              ))}
-            </ul>
-
-            <div className="flex flex-col gap-4 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground">
-                  Premium
-                </p>
-                <p className="mt-1 font-semibold">PHP 999.99 / month</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  One-time manual renewal. No automatic charges.
-                </p>
-              </div>
-              <Button asChild className="sm:min-w-40">
-                <Link href="/home/subscription">
-                  {premium.active
-                    ? "Manage subscription"
-                    : premium.claimed
-                      ? "Renew Premium"
-                      : "Start free trial"}
-                </Link>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              More room to grow, with expanded listings and powerful AI tools.
+            </p>
+          </div>
+          <p className="mt-6 text-3xl font-bold tracking-tight">
+            {priceLabel}
+            <span className="ml-1 text-xs font-normal text-muted-foreground">/ {billingPeriod === "monthly" ? "month" : "year"}</span>
+          </p>
+          <ul className="my-6 flex-1 space-y-3 border-t pt-5">
+            {premiumFeatures.map(({ icon: Icon, label }) => (
+              <li key={label} className="flex items-center gap-3 text-xs">
+                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <Icon className="size-3.5" aria-hidden="true" />
+                </span>
+                {label}
+              </li>
+            ))}
+          </ul>
+          <Button
+            className="w-full"
+            disabled={price == null}
+            onClick={() => window.location.assign(
+              eligibleForTrial
+                ? "/home/subscription?billing=monthly&startTrial=1"
+                : `/home/subscription?billing=${billingPeriod}`,
+            )}
+          >
+              {premium.active
+                ? "Manage subscription"
+                : premium.claimed
+                  ? "Renew Premium"
+                  : eligibleForTrial
+                    ? "Start free 3 months trial"
+                    : "Get Started"}
+              <span aria-hidden="true">→</span>
+          </Button>
+        </article>
       </section>
-
-      <p className="mx-auto max-w-2xl text-center text-xs text-muted-foreground sm:text-sm">
-        {premium.active
-          ? `Premium is active${endDate ? ` through ${endDate} Philippine Time` : ""}. Manage your plan or pay early to add one month; access will not renew automatically.`
-          : "The trial is available once per account. When Premium access ends, Free limits apply unless you choose a one-time monthly renewal. Manage your plan and listing usage in Settings."}
-      </p>
-    </div>
+    </main>
   );
 }

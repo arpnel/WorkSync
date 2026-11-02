@@ -1,4 +1,7 @@
-import { listProvinces, listMuncities } from "@jobuntux/psgc";
+import {
+  getAccountSetupMunicipalities,
+  getAccountSetupProvinces,
+} from "@/lib/location/account-setup-address";
 import {
   ENGLISH_PROFICIENCY,
 } from "@/constants/account-setup.constants";
@@ -48,15 +51,15 @@ export function validateClientSetup(
   }
   if (!values.display_name.trim() || values.display_name.trim().length > 20)
     errors.display_name = "Enter a display name of up to 20 characters.";
-  const province = listProvinces().find(
-    (p) => p.provName.toLowerCase() === values.province.trim().toLowerCase(),
+  const province = getAccountSetupProvinces().find(
+    (p) => p.name.toLowerCase() === values.province.trim().toLowerCase(),
   );
   if (!province) errors.province = "Choose a province from the list.";
   if (!province) {
     errors.city = "Choose a province first.";
   } else if (
-    !listMuncities(province.provCode).some(
-      (c) => c.munCityName.toLowerCase() === values.city.trim().toLowerCase(),
+    !getAccountSetupMunicipalities(province.psgcCode).some(
+      (c) => c.name.toLowerCase() === values.city.trim().toLowerCase(),
     )
   ) {
     errors.city = "Choose a city or municipality in your selected province.";

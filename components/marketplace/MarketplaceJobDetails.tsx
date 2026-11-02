@@ -2,7 +2,7 @@
 import GuestSignup from "@/components/marketplace/GuestSignup";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import { ListingActions } from "@/components/marketplace/ListingActions";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { useFreelancerAvailability } from "@/hooks/useFreelancerAvailability";
 import { getOwnFreelancerId } from "@/services/marketplace/freelancerAvailability";
 import { useParams } from "next/navigation";
@@ -23,6 +23,8 @@ import {
   type PublicJobHiringStats,
 } from "@/services/marketplace/jobPublicStats";
 import { applyForJob } from "@/services/marketplace/listingActions";
+import { getMaximumProposalDeliveryDays } from "@/services/marketplace/proposalDeliveryLimit";
+import { openSubscriptionLimitDialog } from "@/services/subscriptions/subscriptionLimitDialog";
 import {
   getOwnJobApplication,
   canReapply,
@@ -38,6 +40,9 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ProjectPlanProposalAttachment } from "@/components/project/ProjectPlanProposalAttachment";
 import type { ProjectPlanSnapshot } from "@/services/project/projectPlans";
+
+const MAX_PROPOSED_PRICE = 100_000;
+
 export default function MarketplaceJobDetails({
   guest = false,
 }: {
@@ -70,7 +75,37 @@ export default function MarketplaceJobDetails({
     null,
   );
   const [price, setPrice] = useState("");
+  const handlePriceChange = (value: string) => {
+    if (value.includes("+")) return;
+    if (value && Number(value) < 0) {
+      setPrice("0.01");
+      return;
+    }
+    if (value && Number(value) > MAX_PROPOSED_PRICE) {
+      setPrice(String(MAX_PROPOSED_PRICE));
+      return;
+    }
+    setPrice(value);
+  };
+  const preventNegativePriceInput = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (["-", "+", "Subtract", "Add"].includes(event.key)) event.preventDefault();
+  };
+  const preventNegativePricePaste = (event: ClipboardEvent<HTMLInputElement>) => {
+    if (/[+-]/.test(event.clipboardData.getData("text"))) event.preventDefault();
+  };
   const [days, setDays] = useState("");
+  const [deliveryDaysExceeded, setDeliveryDaysExceeded] = useState(false);
+  const maximumDeliveryDays = getMaximumProposalDeliveryDays(job?.deadline ?? null);
+  const handleDeliveryDaysChange = (value: string) => {
+    if (!value) {
+      setDays("");
+      setDeliveryDaysExceeded(false);
+      return;
+    }
+    setDays(value);
+    if (maximumDeliveryDays !== null && Number(value) > maximumDeliveryDays)
+      setDeliveryDaysExceeded(true);
+  };
   const [busy, setBusy] = useState(false);
   const [editingApplication, setEditingApplication] = useState(false);
   const [sent, setSent] = useState(false);
@@ -93,8 +128,17 @@ export default function MarketplaceJobDetails({
           setApplication(own);
           if (own) {
             setProposal(own.proposal ?? "");
+            setProposedPlan(own.proposed_plan);
             setPrice(String(own.proposed_price ?? ""));
-            setDays(String(own.estimated_days ?? ""));
+            const savedDays = Number(own.estimated_days ?? 0);
+            const savedMaximum = getMaximumProposalDeliveryDays(data.deadline);
+            if (savedMaximum !== null && savedDays > savedMaximum) {
+              setDays(String(own.estimated_days ?? ""));
+              setDeliveryDaysExceeded(true);
+            } else {
+              setDays(String(own.estimated_days ?? ""));
+              setDeliveryDaysExceeded(false);
+            }
           }
           setApplicationReady(true);
         }
@@ -414,7 +458,7 @@ export default function MarketplaceJobDetails({
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setEditingApplication(true)}
+                  onClick={() => { setProposedPlan(application.proposed_plan); setEditingApplication(true); }}
                 >
                   Edit proposal
                 </Button>
@@ -438,12 +482,14 @@ export default function MarketplaceJobDetails({
                         proposal,
                         Number(price),
                         Number(days),
+                        proposedPlan,
                       );
                       setApplication({
                         ...application,
                         proposal: proposal.trim(),
                         proposed_price: Number(price),
                         estimated_days: Number(days),
+                        proposed_plan: proposedPlan,
                       });
                       setEditingApplication(false);
                     } catch (cause) {
@@ -467,17 +513,23 @@ export default function MarketplaceJobDetails({
                       onChange={(event) => setProposal(event.target.value)}
                     />
                   </label>
+                  <ProjectPlanProposalAttachment
+                    value={proposedPlan}
+                    onChange={setProposedPlan}
+                  />
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="text-sm">
                       Proposed price (PHP)
                       <Input
                         type="number"
                         min="0.01"
-                        max="100000"
+                        max={MAX_PROPOSED_PRICE}
                         step="0.01"
                         required
                         value={price}
-                        onChange={(event) => setPrice(event.target.value)}
+                        onChange={(event) => handlePriceChange(event.target.value)}
+                        onKeyDown={preventNegativePriceInput}
+                        onPaste={preventNegativePricePaste}
                       />
                       <span className="text-xs text-muted-foreground">
                         Maximum: PHP 100,000
@@ -491,8 +543,13 @@ export default function MarketplaceJobDetails({
                         step="1"
                         required
                         value={days}
-                        onChange={(event) => setDays(event.target.value)}
+                        onChange={(event) => handleDeliveryDaysChange(event.target.value)}
                       />
+                      {deliveryDaysExceeded && (
+                        <span role="alert" className="text-xs text-destructive">
+                          Your proposed delivery time is way past the deadline.
+                        </span>
+                      )}
                     </label>
                   </div>
                   <div className="flex gap-2">
@@ -507,6 +564,8 @@ export default function MarketplaceJobDetails({
                         setProposal(application.proposal ?? "");
                         setPrice(String(application.proposed_price ?? ""));
                         setDays(String(application.estimated_days ?? ""));
+                        setProposedPlan(application.proposed_plan);
+                        setDeliveryDaysExceeded(false);
                         setEditingApplication(false);
                         setError("");
                       }}
@@ -591,11 +650,12 @@ export default function MarketplaceJobDetails({
                     estimated_days: Number(days),
                   });
                 } catch (cause) {
-                  setError(
-                    cause instanceof Error
-                      ? cause.message
-                      : "Unable to submit application.",
-                  );
+                  if (!openSubscriptionLimitDialog(cause))
+                    setError(
+                      cause instanceof Error
+                        ? cause.message
+                        : "Unable to submit application.",
+                    );
                   try {
                     setApplication(await getOwnJobApplication(jobId));
                   } catch {
@@ -633,11 +693,13 @@ export default function MarketplaceJobDetails({
                   <Input
                     type="number"
                     min="0.01"
-                    max="100000"
+                    max={MAX_PROPOSED_PRICE}
                     step="0.01"
                     required
                     value={price}
-                    onChange={(e) => setPrice(e.target.value)}
+                    onChange={(e) => handlePriceChange(e.target.value)}
+                    onKeyDown={preventNegativePriceInput}
+                    onPaste={preventNegativePricePaste}
                   />
                   <span className="text-xs text-muted-foreground">
                     Maximum: PHP 100,000
@@ -651,15 +713,15 @@ export default function MarketplaceJobDetails({
                     step="1"
                     required
                     value={days}
-                    onChange={(e) => setDays(e.target.value)}
+                    onChange={(e) => handleDeliveryDaysChange(e.target.value)}
                   />
+                  {deliveryDaysExceeded && (
+                    <span role="alert" className="text-xs text-destructive">
+                      Your proposed delivery time is way past the deadline.
+                    </span>
+                  )}
                 </label>
               </div>
-              {error && (
-                <p role="alert" className="text-sm text-destructive">
-                  {error}
-                </p>
-              )}
               <Button
                 className="w-full"
                 disabled={
@@ -672,6 +734,11 @@ export default function MarketplaceJobDetails({
               >
                 {busy ? "Submitting..." : "Submit application"}
               </Button>
+              {error && (
+                <p role="alert" className="text-center text-sm text-destructive">
+                  {error}
+                </p>
+              )}
             </form>
           )}
         </CardContent>

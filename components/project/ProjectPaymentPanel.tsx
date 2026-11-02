@@ -6,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import Link from "next/link";
 import { openSavedTaxReceipt } from "@/lib/payments/receiptClient";
 import { Badge } from "@/components/ui/badge";
 import { ProjectContractDialog } from "./ProjectContractDialog";
@@ -47,20 +48,23 @@ export function ProjectPaymentPanel({
 }
 export function PaymentPanel({
   projectId,
-  client = false,
+  client,
   budget,
   payable = true,
   onPayment,
   contractDetails,
+  showProjectLink = false,
 }: {
   projectId: string;
   contractDetails?: ReactNode;
+  showProjectLink?: boolean;
   client?: boolean;
   budget?: number;
   payable?: boolean;
   onPayment?: (payment: ProjectPayment | null) => void;
 }) {
   const [payment, setPayment] = useState<ProjectPayment | null>(null);
+  const isClient = client ?? payment?.isClient ?? false;
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -255,12 +259,12 @@ export function PaymentPanel({
         <div className="flex flex-wrap items-center gap-2">
           {payment?.status === "paid" && (
             <>
-              <Button variant="outline" size="sm" onClick={() => void receipt()}>
+              <Button variant="outline" size="sm" className="ml-auto" onClick={() => void receipt()}>
                 View receipt
               </Button>
             </>
           )}
-            {client &&
+            {isClient &&
             payable &&
             payment &&
             payment.status !== "paid" &&
@@ -278,8 +282,8 @@ export function PaymentPanel({
               </Button>
             )}
         </div>
-        {!client && payment?.sellerVerificationMessage && (
-          <p className="text-center text-xs text-amber-600">
+        {!isClient && payment?.sellerVerificationMessage && (
+          <p role="status" className="text-center text-xs text-amber-600">
             {payment.sellerVerificationMessage}
           </p>
         )}
@@ -290,6 +294,13 @@ export function PaymentPanel({
         )}
         {contractDetails && (
           <div className="border-t pt-4">{contractDetails}</div>
+        )}
+        {showProjectLink && payment?.projectHref && (
+          <div className="border-t pt-4">
+            <Link className="text-sm underline underline-offset-4" href={payment.projectHref}>
+              View project
+            </Link>
+          </div>
         )}
       </CardContent>
     </Card>

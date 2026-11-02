@@ -58,6 +58,7 @@ export default function MarketplaceGrid({
               listing.listing_type === "service"
                 ? listing.service_id
                 : listing.job_id;
+            const isSaved = saved.has(listingKey(listing.listing_type, id));
 
             return (
               <div
@@ -76,23 +77,15 @@ export default function MarketplaceGrid({
                     type="button"
                     variant="outline"
                     size="icon"
-                    className={`absolute right-2.5 top-2.5 rounded-full shadow-sm transition-colors ${listing.listing_type === "service" && saved.has(listingKey(listing.listing_type, id)) ? "border-emerald-600 bg-emerald-600 text-white hover:border-emerald-700 hover:bg-emerald-700 hover:text-white dark:border-emerald-800 dark:bg-emerald-900 dark:text-white dark:hover:border-emerald-700 dark:hover:bg-emerald-800" : "bg-background/95 hover:border-emerald-600 hover:text-emerald-700"}`}
-                    aria-label={
-                      saved.has(listingKey(listing.listing_type, id))
-                        ? "Remove from saved listings"
-                        : "Save listing"
-                    }
-                    aria-pressed={saved.has(
-                      listingKey(listing.listing_type, id),
-                    )}
+                    className={`absolute right-2.5 top-2.5 size-11 rounded-full shadow-sm transition-colors ${isSaved
+                      ? "border-emerald-600 bg-emerald-600 text-white hover:border-emerald-700 hover:bg-emerald-700 hover:text-white dark:border-emerald-400 dark:bg-emerald-700 dark:text-white dark:hover:border-emerald-300 dark:hover:bg-emerald-600"
+                      : "border-emerald-600 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:border-emerald-500 dark:bg-emerald-950/70 dark:text-emerald-300 dark:hover:bg-emerald-900 dark:hover:text-emerald-200"}`}
+                    aria-label={isSaved ? "Remove from saved listings" : "Save listing"}
+                    aria-pressed={isSaved}
                     disabled={!!saving}
                     onClick={() => onSave(listing)}
                   >
-                    {saved.has(listingKey(listing.listing_type, id)) ? (
-                      listing.listing_type === "service" ? <Bookmark className="text-white" /> : <BookmarkCheck className="text-primary" />
-                    ) : (
-                      <Bookmark />
-                    )}
+                    {isSaved ? <BookmarkCheck /> : <Bookmark />}
                   </Button>
                 )}
               </div>

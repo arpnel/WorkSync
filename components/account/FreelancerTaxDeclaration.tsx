@@ -1,10 +1,11 @@
 ﻿"use client";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from "react";
+import { FileText } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { StyledSelect } from "@/components/ui/styled-select";
+import { AccountSetupFileDropzone } from "@/components/accountsetup/sections/AccountSetupFileDropzone";
 import { currentTaxYear, hasBlockingDeclaration, isSupportedTaxYear, supportedTaxYears } from "@/lib/tax/taxDeclaration";
 
 type Declaration = { declaration_id: string; tax_year: number; reported_threshold_status: string; status: string; submitted_at: string; reviewed_at: string | null; review_notes: string; document_url: string | null };
@@ -67,8 +68,6 @@ const FreelancerTaxDeclaration = forwardRef<FreelancerTaxDeclarationHandle, { em
       if (uploaded.error) throw new Error("Document upload failed. Please try again.");
       await request("POST", { taxYear: selectedYear, documentPath: path, thresholdStatus });
       setFile(null);
-      const input = document.getElementById("tax-declaration-file") as HTMLInputElement | null;
-      if (input) input.value = "";
       const fresh = await request("GET");
       setRows(fresh.declarations ?? []);
       setNotice("Document submitted for manual review. WorkSync does not automatically verify BIR authenticity.");
@@ -95,7 +94,29 @@ const FreelancerTaxDeclaration = forwardRef<FreelancerTaxDeclarationHandle, { em
     <div className="space-y-4">
       <div className="space-y-2"><Label htmlFor="tax-declaration-year">Tax year covered by this declaration</Label><StyledSelect id="tax-declaration-year" value={year} disabled={busy} aria-invalid={year !== "" && !isSupportedTaxYear(year)} onChange={(event) => { setYear(event.target.value); setError(""); }}><option value="">Choose tax year</option>{supportedTaxYears().map((supportedYear) => <option key={supportedYear} value={supportedYear}>{supportedYear}{supportedYear === currentTaxYear() ? " (current year)" : ""}</option>)}</StyledSelect>{year === "" && <p className="text-xs text-destructive">Choose the tax year covered by your declaration.</p>}{year !== "" && !isSupportedTaxYear(year) && <p className="text-xs text-destructive">Choose a tax year from 2024 through {currentTaxYear() + 1}.</p>}</div>
       <div className="space-y-2"><Label htmlFor="tax-declaration-threshold">Expected annual marketplace remittances</Label><StyledSelect id="tax-declaration-threshold" className="h-10 w-full rounded-lg border bg-background px-3 text-sm" value={thresholdStatus} onChange={(event) => setThresholdStatus(event.target.value)}><option value="not_exceeding">Up to PHP 500,000</option><option value="exceeded">Over PHP 500,000</option></StyledSelect></div>
-      <div className="space-y-2"><Label htmlFor="tax-declaration-file">BIR-signed sworn declaration for {selectedYear ?? "the selected tax year"}</Label><Input id="tax-declaration-file" type="file" disabled={!selectedYear || busy || hasBlockingRecord} accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /><p className="text-xs text-muted-foreground">PDF, JPG, or PNG up to 5 MB.</p></div>
+      <div className="space-y-2"><Label htmlFor="tax-declaration-file">BIR-signed sworn declaration for {selectedYear ?? "the selected tax year"}</Label>
+        {file ? <div className="flex min-w-0 items-center gap-3 rounded-xl border bg-muted/30 p-3">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><FileText className="size-5" /></span>
+          <div className="min-w-0 flex-1"><p className="break-all text-sm font-medium text-foreground">{file.name}</p><p className="mt-0.5 text-xs text-muted-foreground">{file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf") ? "PDF document" : "Image document"}</p></div>
+          <Button type="button" variant="ghost" size="sm" className="shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => setFile(null)} disabled={busy}>Remove</Button>
+        </div> : <AccountSetupFileDropzone
+          id="tax-declaration-file"
+          accept="application/pdf,.pdf,image/png,.png,image/jpeg,.jpg,.jpeg"
+          supportedTypes="PDF, JPG, or PNG (up to 5 MB)"
+          disabled={!selectedYear || busy || hasBlockingRecord}
+          onFiles={(files) => {
+            const next = files[0];
+            if (!next) return;
+            if (next.size > 5 * 1024 * 1024) {
+              setFile(null);
+              setError("Choose a file up to 5 MB.");
+              return;
+            }
+            setFile(next);
+            setError("");
+          }}
+        />}
+      </div>
       {(!hideSubmitButton || hasBlockingRecord) && <div className="flex flex-col gap-2 sm:flex-row sm:items-center">{!hideSubmitButton && <Button type="button" disabled={!canSubmit} onClick={() => void submit().catch(() => undefined)}>{busy ? "Submitting…" : "Submit for review"}</Button>}{!setupMode && !hideSubmitButton && <p className="text-xs text-muted-foreground">The declaration must cover the selected tax year; its signing date may be earlier.</p>}{hasBlockingRecord && <p className="text-sm text-muted-foreground">A {selectedYear} declaration is already pending or accepted. You can submit again if it is rejected or revoked.</p>}</div>}
     </div>
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}{notice && <p role="status" className="text-sm text-primary">{notice}</p>}

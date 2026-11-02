@@ -15,9 +15,11 @@ import {
   markConversationRead,
   sendConversationMessage,
   subscribeToConversationMessages,
+  mapRealtimeConversationMessage,
 } from "@/services/message/messageService";
 import type { ChatMessage, MessageConversation } from "@/types/message/message";
 import { useMessageAccountSettings } from "@/hooks/message/useMessageAccountSettings";
+import { callPreview } from "@/lib/calls/callMessage";
 
 export function useMessaging() {
   const messageAccountSettings = useMessageAccountSettings();
@@ -33,6 +35,7 @@ export function useMessaging() {
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const messageRequest = useRef(0);
+  const realtimeMessageIds = useRef(new Set<string>());
   const [sending, setSending] = useState(false);
   const [isOtherParticipantTyping, setIsOtherParticipantTyping] =
     useState(false);
@@ -208,6 +211,68 @@ export function useMessaging() {
   );
 
   useEffect(() => {
+    const onMessageChange = (event: Event) => {
+      const change = (event as CustomEvent<{
+        eventType: "INSERT" | "UPDATE";
+        row: Record<string, unknown>;
+        old: Record<string, unknown>;
+      }>).detail;
+      if (!change || typeof change.row.conversation_id !== "string") return;
+      const conversationId = change.row.conversation_id;
+      if (change.eventType === "UPDATE") {
+        if (
+          change.row.sender_id !== currentUserId &&
+          change.row.read_at != null
+        ) {
+          setConversations((current) => current.map((conversation) =>
+            conversation.conversationId === conversationId && selectedRef.current !== conversationId
+              ? { ...conversation, unreadCount: Math.max(0, conversation.unreadCount - 1) }
+              : conversation,
+          ));
+        }
+        return;
+      }
+      const messageId = change.row.message_id;
+      const senderId = change.row.sender_id;
+      const createdAt = change.row.created_at;
+      if (typeof messageId !== "string" || typeof senderId !== "string" || typeof createdAt !== "string") return;
+      if (realtimeMessageIds.current.has(messageId)) return;
+      realtimeMessageIds.current.add(messageId);
+      if (realtimeMessageIds.current.size > 500)
+        realtimeMessageIds.current.delete(realtimeMessageIds.current.values().next().value!);
+      const messageText = callPreview(typeof change.row.message === "string" ? change.row.message : "");
+      const unread = senderId !== currentUserId && change.row.read_at == null && selectedRef.current !== conversationId;
+      setConversations((current) => current.map((conversation) => {
+        if (conversation.conversationId !== conversationId) return conversation;
+        const isNewer = createdAt > conversation.lastMessageAt;
+        return {
+          ...conversation,
+          ...(isNewer ? { lastMessage: messageText, lastMessageAt: createdAt } : {}),
+          unreadCount: isNewer && unread ? conversation.unreadCount + 1 : conversation.unreadCount,
+        };
+      }).sort((left, right) => right.lastMessageAt.localeCompare(left.lastMessageAt)));
+      if (selectedRef.current === conversationId && currentUserId) {
+        void mapRealtimeConversationMessage(change.row, currentUserId).then((message) => {
+          if (!message || selectedRef.current !== conversationId) return;
+          setMessageState((current) => {
+            if (current.conversationId !== conversationId) return current;
+            const byId = new Map(current.messages.map((item) => [item.messageId, item]));
+            byId.set(message.messageId, message);
+            return {
+              conversationId,
+              messages: [...byId.values()].sort((left, right) =>
+                left.createdAt.localeCompare(right.createdAt) || left.messageId.localeCompare(right.messageId),
+              ),
+            };
+          });
+        }).catch(() => void loadMessages(conversationId, true));
+      }
+    };
+    window.addEventListener("worksync-message-change", onMessageChange);
+    return () => window.removeEventListener("worksync-message-change", onMessageChange);
+  }, [currentUserId, loadMessages]);
+
+  useEffect(() => {
     void loadConversations();
     return () => {
       conversationRequest.current += 1;
@@ -253,10 +318,22 @@ export function useMessaging() {
 
     const unsubscribe = subscribeToConversationMessages(
       selectedConversationId,
-      () => {
-        void loadMessages(selectedConversationId, true);
-        void loadConversations();
+      (payload) => {
+        if (payload.eventType === "DELETE") {
+          void loadMessages(selectedConversationId, true);
+          void loadConversations();
+          return;
+        }
+        if (payload.eventType !== "UPDATE") return;
+        const row = payload.new;
+        const messageId = row.message_id;
+        const readAt = typeof row.read_at === "string" ? row.read_at : null;
+        if (typeof messageId !== "string") return;
+        setMessageState((current) => current.conversationId === selectedConversationId
+          ? { ...current, messages: current.messages.map((message) => message.messageId === messageId ? { ...message, readAt } : message) }
+          : current);
       },
+      "UPDATE_DELETE",
     );
     return () => {
       messageRequest.current += 1;
@@ -369,19 +446,31 @@ export function useMessaging() {
       setSending(true);
 
       try {
-        await sendConversationMessage(
+        const sentMessage = await sendConversationMessage(
           selectedConversationId,
           message,
           attachment,
           onProgress,
           signal,
         );
-        await Promise.all([
-          selectedRef.current === selectedConversationId
-            ? loadMessages(selectedConversationId, true)
-            : Promise.resolve(),
-          loadConversations(),
-        ]);
+        if (sentMessage && selectedRef.current === selectedConversationId) {
+          setMessageState((current) => {
+            if (current.conversationId !== selectedConversationId) return current;
+            const byId = new Map(current.messages.map((item) => [item.messageId, item]));
+            byId.set(sentMessage.messageId, sentMessage);
+            return {
+              conversationId: selectedConversationId,
+              messages: [...byId.values()].sort((left, right) =>
+                left.createdAt.localeCompare(right.createdAt) || left.messageId.localeCompare(right.messageId),
+              ),
+            };
+          });
+          setConversations((current) => current.map((conversation) =>
+            conversation.conversationId === selectedConversationId
+              ? { ...conversation, lastMessage: sentMessage.message, lastMessageAt: sentMessage.createdAt }
+              : conversation,
+          ).sort((left, right) => right.lastMessageAt.localeCompare(left.lastMessageAt)));
+        }
         return true;
       } catch (sendError) {
         console.error("Failed to send message:", sendError);
@@ -396,7 +485,7 @@ export function useMessaging() {
         setSending(false);
       }
     },
-    [loadConversations, loadMessages, selectedConversationId],
+    [selectedConversationId],
   );
 
   return {

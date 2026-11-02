@@ -9,6 +9,7 @@ import { StyledSelect } from "@/components/ui/styled-select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import FreelancerTaxDeclaration from "@/components/account/FreelancerTaxDeclaration";
 import { FreelancerSellerVerification } from "@/components/account/FreelancerSellerVerification";
+import { AccountSetupFileDropzone } from "@/components/accountsetup/sections/AccountSetupFileDropzone";
 
 type Party = "freelancer" | "client";
 type Category = "vat" | "withholding";
@@ -101,7 +102,6 @@ const TaxDocuments = forwardRef<TaxDocumentsSetupHandle, TaxDocumentsProps>(func
   const [tinError, setTinError] = useState("");
   const [tinNotice, setTinNotice] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
-  const birFileInput = useRef<HTMLInputElement>(null);
 
   const request = useCallback(async (method: "GET" | "POST", body?: unknown) => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -232,6 +232,17 @@ const TaxDocuments = forwardRef<TaxDocumentsSetupHandle, TaxDocumentsProps>(func
     setError("");
   }
 
+  function selectBirCorFile(next: File | undefined) {
+    if (!next) return;
+    if (next.size > 5 * 1024 * 1024) {
+      setFile(null);
+      setError("Choose a file up to 5 MB.");
+      return;
+    }
+    setFile(next);
+    setError("");
+  }
+
   async function submit() {
     if (!file || !selected || busy || activePurpose) return;
     setBusy(true);
@@ -298,7 +309,6 @@ const TaxDocuments = forwardRef<TaxDocumentsSetupHandle, TaxDocumentsProps>(func
       await request("POST", { partyType: "freelancer", documentType: "bir_cor", documentPath: ticket.path, registeredName: registeredName.trim(), claimedTaxTreatment: "", legalBasis: "" });
       setFile(null);
       setRegisteredName("");
-      if (birFileInput.current) birFileInput.current.value = "";
       await load();
       setNotice("Form 2303 submitted for review. Seller approval and relevant tax checks will use this same reviewed record.");
     } catch (cause) {
@@ -351,8 +361,19 @@ const TaxDocuments = forwardRef<TaxDocumentsSetupHandle, TaxDocumentsProps>(func
     {canonicalBirCor.document?.status === "rejected" && <p className="text-sm text-destructive">Review the administrator’s feedback, then submit a corrected Form 2303.</p>}
     {canonicalBirCor.document?.status !== "pending" && <div className="space-y-4">
       <div className="space-y-2"><Label htmlFor="canonical-bir-registered-name">Registered name on Form 2303 <span className="text-destructive">*</span></Label><Input id="canonical-bir-registered-name" placeholder="Enter registered name" value={registeredName} maxLength={200} onChange={event => setRegisteredName(event.target.value)} disabled={busy} /></div>
-      <div className="space-y-2"><Label htmlFor="canonical-bir-file">Form 2303 document <span className="text-destructive">*</span></Label>
-        {settingsMode ? <Input ref={birFileInput} id="canonical-bir-file" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={busy} onChange={event => { const next = event.target.files?.[0] ?? null; if (next && next.size > 5 * 1024 * 1024) { setFile(null); setError("Choose a file up to 5 MB."); event.target.value = ""; return; } setFile(next); setError(""); }} /> : <><input ref={birFileInput} id="canonical-bir-file" className="sr-only" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={busy} onChange={event => { const next = event.target.files?.[0] ?? null; if (next && next.size > 5 * 1024 * 1024) { setFile(null); setError("Choose a file up to 5 MB."); event.target.value = ""; return; } setFile(next); setError(""); }} /><button type="button" onClick={() => birFileInput.current?.click()} onDragOver={event => event.preventDefault()} onDrop={handleFileDrop} disabled={busy} className="flex min-h-[76px] w-full flex-col items-center justify-center gap-1 rounded-lg border border-dashed px-3 py-3 text-center hover:bg-muted/40 disabled:opacity-50"><span className="flex items-center gap-2 text-sm font-medium"><UploadCloud className="size-4 shrink-0 text-emerald-500" />{file?.name ?? "Drag & drop your file or click to browse"}</span><span className="text-xs text-muted-foreground">Supported: PDF, JPG, or PNG (up to 5 MB)</span></button></>}
+      <div className="space-y-2"><Label htmlFor={settingsMode ? "canonical-bir-file" : "setup-bir-file"}>Form 2303 document <span className="text-destructive">*</span></Label>
+        {file ? <div className="flex min-w-0 items-center gap-3 rounded-xl border bg-muted/30 p-3">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><FileText className="size-5" /></span>
+          <div className="min-w-0 flex-1"><p className="break-all text-sm font-medium text-foreground">{file.name}</p><p className="mt-0.5 text-xs text-muted-foreground">{file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf") ? "PDF document" : "Image document"}</p></div>
+          <Button type="button" variant="ghost" size="sm" className="shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => setFile(null)} disabled={busy}>Remove</Button>
+        </div> : <AccountSetupFileDropzone
+          id={settingsMode ? "canonical-bir-file" : "setup-bir-file"}
+          accept="application/pdf,.pdf,image/png,.png,image/jpeg,.jpg,.jpeg"
+          supportedTypes="PDF, JPG, or PNG (up to 5 MB)"
+          disabled={busy}
+          invalid={Boolean(error)}
+          onFiles={(files) => selectBirCorFile(files[0])}
+        />}
       </div>
       {!settingsMode && !setupMode && <div className="flex justify-end border-t pt-4"><Button type="button" className="bg-emerald-700 text-white hover:bg-emerald-600" onClick={() => void submitBirCor().catch(() => undefined)} disabled={!file || !registeredName.trim() || busy || canonicalBirCor.needsReview}>{busy && <LoaderCircle className="mr-2 size-4 animate-spin" />}{busy ? "Submitting…" : canonicalBirCor.document?.status === "rejected" ? "Submit correction" : "Submit for review"}</Button></div>}
     </div>}
@@ -428,13 +449,18 @@ const TaxDocuments = forwardRef<TaxDocumentsSetupHandle, TaxDocumentsProps>(func
           </div>
           <div className="space-y-2">
             <Label htmlFor="setup-bir-file">Form 2303 document</Label>
-            <input ref={birFileInput} id="setup-bir-file" className="sr-only" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={event => { const next = event.target.files?.[0] ?? null; if (next && next.size > 5 * 1024 * 1024) { setFile(null); setError("Choose a file up to 5 MB."); event.target.value = ""; return; } setFile(next); setError(""); }} />
-            <button type="button" onClick={() => birFileInput.current?.click()} onDragOver={event => event.preventDefault()} onDrop={handleFileDrop} className="flex min-h-[76px] w-full flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed px-3 py-4 text-center transition-colors hover:border-emerald-500/50 hover:bg-muted/30">
-              <span className="flex items-center gap-2 text-sm font-medium"><UploadCloud className="size-4 shrink-0 text-emerald-500" />{file?.name ?? "Drag & drop your file here or browse"}</span>
-              <span className="text-xs text-muted-foreground">PDF, JPG, or PNG (up to 5 MB)</span>
-            </button>
+            {file ? <div className="flex min-w-0 items-center gap-3 rounded-xl border bg-muted/30 p-3">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><FileText className="size-5" /></span>
+              <div className="min-w-0 flex-1"><p className="break-all text-sm font-medium text-foreground">{file.name}</p><p className="mt-0.5 text-xs text-muted-foreground">{file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf") ? "PDF document" : "Image document"}</p></div>
+              <Button type="button" variant="ghost" size="sm" className="shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => setFile(null)}>Remove</Button>
+            </div> : <AccountSetupFileDropzone
+              id="setup-bir-file"
+              accept="application/pdf,.pdf,image/png,.png,image/jpeg,.jpg,.jpeg"
+              supportedTypes="PDF, JPG, or PNG (up to 5 MB)"
+              invalid={Boolean(error)}
+              onFiles={(files) => selectBirCorFile(files[0])}
+            />}
           </div>
-          {file && <Button type="button" size="sm" variant="ghost" onClick={() => { setFile(null); if (birFileInput.current) birFileInput.current.value = ""; }}>Remove selected file</Button>}
         </div>
       </details>}
       {!settingsMode && !loading && !setupRequired && <>

@@ -6,6 +6,8 @@ begin;
 
 alter table public.job_basic_terms_agreements
   add column if not exists milestone_plan jsonb,
+  add column if not exists previous_milestone_plan jsonb,
+  add column if not exists milestone_changed_by text,
   add column if not exists client_milestone_agreed_at timestamptz,
   add column if not exists freelancer_milestone_agreed_at timestamptz;
 
@@ -13,6 +15,8 @@ create or replace function public.worksync_reset_milestone_plan_on_terms_change(
 returns trigger language plpgsql set search_path = '' as $$
 begin
   if new.terms is distinct from old.terms then
+    new.previous_milestone_plan := old.milestone_plan;
+    new.milestone_changed_by := new.changed_by;
     new.milestone_plan := null;
     new.client_milestone_agreed_at := null;
     new.freelancer_milestone_agreed_at := null;
@@ -50,6 +54,8 @@ begin
   select * into agreement_row from public.job_basic_terms_agreements where application_id = p_application;
   return jsonb_build_object(
     'milestones', coalesce(agreement_row.milestone_plan, '[]'::jsonb),
+    'previousMilestones', coalesce(agreement_row.previous_milestone_plan, '[]'::jsonb),
+    'changedBy', agreement_row.milestone_changed_by,
     'clientAgreed', agreement_row.client_milestone_agreed_at is not null,
     'freelancerAgreed', agreement_row.freelancer_milestone_agreed_at is not null
   );
@@ -180,9 +186,15 @@ begin
   current_party := case when requester = client_user then 'client' else 'freelancer' end;
   if agreement_row.milestone_plan is distinct from normalized_plan then
     update public.job_basic_terms_agreements
-    set milestone_plan = normalized_plan,
-        client_milestone_agreed_at = case when current_party = 'client' then pg_catalog.clock_timestamp() end,
-        freelancer_milestone_agreed_at = case when current_party = 'freelancer' then pg_catalog.clock_timestamp() end,
+    set previous_milestone_plan = agreement_row.milestone_plan,
+        milestone_plan = normalized_plan,
+        milestone_changed_by = current_party,
+        client_milestone_agreed_at = case
+          when agreement_row.milestone_plan is null and current_party = 'client' then pg_catalog.clock_timestamp()
+          else null end,
+        freelancer_milestone_agreed_at = case
+          when agreement_row.milestone_plan is null and current_party = 'freelancer' then pg_catalog.clock_timestamp()
+          else null end,
         updated_at = pg_catalog.clock_timestamp()
     where application_id = p_application;
   else

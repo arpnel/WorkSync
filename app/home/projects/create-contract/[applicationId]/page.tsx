@@ -33,6 +33,7 @@ import {
   type ContractVersionAgreementInput,
   type ContractVersionMilestoneInput,
 } from "@/services/project/projectWorkspaceService";
+import { getSubscriptionLimitMessage, openSubscriptionLimitDialog } from "@/services/subscriptions/subscriptionLimitDialog";
 import type { WorkspaceMessage } from "@/types/project/projectWorkspace";
 
 type FinalContractAgreementStatus = {
@@ -96,6 +97,7 @@ export default function CreateContractPage() {
   const [sending, setSending] = useState(false);
   const [isOtherParticipantTyping, setIsOtherParticipantTyping] = useState(false);
   const sendTypingRef = useRef<(isTyping: boolean) => void>(() => undefined);
+  const agreementUpdateChannel = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   useEffect(() => {
     let current = true;
@@ -131,6 +133,9 @@ export default function CreateContractPage() {
           if (current) {
             setBasicAgreement({
               terms: null,
+              previousTerms: null,
+              changedFields: [],
+              changedBy: null,
               clientAgreed: false,
               freelancerAgreed: false,
               currentParty: found.currentParty,
@@ -146,7 +151,7 @@ export default function CreateContractPage() {
             const savedPlan = await getJobMilestonePlanAgreement(applicationId);
             if (current) setMilestoneAgreement({ ...savedPlan, milestones: restoreMilestoneTaskIds(savedPlan.milestones, found.proposedPlan), currentParty: found.currentParty, updating: false });
           } catch (cause) {
-            if (current) setMilestoneAgreement({ milestones: [], clientAgreed: false, freelancerAgreed: false, currentParty: found.currentParty, updating: false, error: cause instanceof Error ? cause.message : "Milestone agreement could not be loaded." });
+            if (current) setMilestoneAgreement({ milestones: [], previousMilestones: [], changedBy: null, clientAgreed: false, freelancerAgreed: false, currentParty: found.currentParty, updating: false, error: cause instanceof Error ? cause.message : "Milestone agreement could not be loaded." });
           }
         }
         const existingOrder = await supabase
@@ -179,7 +184,8 @@ export default function CreateContractPage() {
                 try {
                   await activateConfirmedProjectAgreement(existingOrder.data.order_id);
                 } catch (cause) {
-                  if (current) setError(`Both parties agreed, but project activation failed: ${cause instanceof Error ? cause.message : "Unknown activation error."}`);
+                  if (current && !openSubscriptionLimitDialog(cause))
+                    setError(`Both parties agreed, but project activation failed: ${cause instanceof Error ? cause.message : "Unknown activation error."}`);
                 }
               }
             }
@@ -262,6 +268,53 @@ export default function CreateContractPage() {
     sendTypingRef.current(isTyping);
   }, []);
 
+  const refreshAgreementState = useCallback(async () => {
+    if (!request) return;
+    try {
+      const saved = await getJobBasicTermsAgreement(applicationId);
+      setBasicAgreement({ ...saved, currentParty: request.currentParty, updating: false });
+    } catch (cause) {
+      setBasicAgreement((current) => current ? {
+        ...current,
+        error: cause instanceof Error ? cause.message : "Basic terms agreement could not be refreshed.",
+      } : current);
+    }
+    if (request.projectType === "milestone") {
+      try {
+        const saved = await getJobMilestonePlanAgreement(applicationId);
+        setMilestoneAgreement({ ...saved, milestones: restoreMilestoneTaskIds(saved.milestones, request.proposedPlan), currentParty: request.currentParty, updating: false });
+      } catch (cause) {
+        setMilestoneAgreement((current) => current ? {
+          ...current,
+          error: cause instanceof Error ? cause.message : "Milestone agreement could not be refreshed.",
+        } : current);
+      }
+    }
+  }, [applicationId, request]);
+
+  useEffect(() => {
+    if (!request) return;
+    const channel = supabase
+      .channel(`job-agreement-updates:${applicationId}`)
+      .on("broadcast", { event: "agreement-updated" }, () => {
+        void refreshAgreementState();
+      })
+      .subscribe();
+    agreementUpdateChannel.current = channel;
+    return () => {
+      if (agreementUpdateChannel.current === channel) agreementUpdateChannel.current = null;
+      void supabase.removeChannel(channel);
+    };
+  }, [applicationId, refreshAgreementState, request]);
+
+  const broadcastAgreementUpdate = useCallback((kind: "basic-terms" | "milestone-plan") => {
+    void agreementUpdateChannel.current?.send({
+      type: "broadcast",
+      event: "agreement-updated",
+      payload: { kind },
+    });
+  }, []);
+
   const agreeToBasics = useCallback(async (terms: JobBasicTerms) => {
     if (!request) throw new Error("Application details are unavailable.");
     setBasicAgreement((current) => current ? { ...current, updating: true } : current);
@@ -273,12 +326,13 @@ export default function CreateContractPage() {
         updating: false,
       } as const;
       setBasicAgreement(next);
+      broadcastAgreementUpdate("basic-terms");
       return saved;
     } catch (cause) {
       setBasicAgreement((current) => current ? { ...current, updating: false } : current);
       throw cause;
     }
-  }, [applicationId, request]);
+  }, [applicationId, broadcastAgreementUpdate, request]);
 
   const agreeToMilestonePlan = useCallback(async (milestones: Parameters<typeof agreeToJobMilestonePlan>[1]) => {
     if (!request) throw new Error("Application details are unavailable.");
@@ -298,12 +352,13 @@ export default function CreateContractPage() {
         }),
       };
       setMilestoneAgreement({ ...savedWithTaskIds, currentParty: request.currentParty, updating: false });
+      broadcastAgreementUpdate("milestone-plan");
       return savedWithTaskIds;
     } catch (cause) {
       setMilestoneAgreement((current) => current ? { ...current, updating: false, error: cause instanceof Error ? cause.message : "Unable to record milestone agreement." } : current);
       throw cause;
     }
-  }, [applicationId, request]);
+  }, [applicationId, broadcastAgreementUpdate, request]);
 
   const sendMessage = useCallback(async (
     message: string,
@@ -417,7 +472,12 @@ export default function CreateContractPage() {
       router.push(`/home/projects/${projectRoute}/${serviceOrderId}?view=agreement#contract`);
       return true;
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to open agreement.");
+      if (getSubscriptionLimitMessage(cause)) {
+        setBusy(false);
+        throw cause;
+      }
+      if (!openSubscriptionLimitDialog(cause))
+        setError(cause instanceof Error ? cause.message : "Unable to open agreement.");
       setBusy(false);
       return false;
     }
@@ -461,7 +521,7 @@ export default function CreateContractPage() {
       plan: request.proposedPlan,
       planSource: request.proposedPlan ? "Submitted application plan" : "No plan selected",
       projectType: request.projectType,
-    }} draftKey={`worksync:contract-draft:${request.currentParty === "client" ? request.clientUserId : request.freelancerUserId}:${applicationId}`} draftUserId={request.currentParty === "client" ? request.clientUserId : request.freelancerUserId} busy={busy} conversationError={conversationError} agreementStatus={finalContractStatus ?? (canCreateAgreement ? {
+    }} clientName={request.clientName} freelancerName={request.freelancerName} draftKey={`worksync:contract-draft:${request.currentParty === "client" ? request.clientUserId : request.freelancerUserId}:${applicationId}`} draftUserId={request.currentParty === "client" ? request.clientUserId : request.freelancerUserId} busy={busy} conversationError={conversationError} agreementStatus={finalContractStatus ?? (canCreateAgreement ? {
       currentParty: request.currentParty,
       clientAgreed: false,
       freelancerAgreed: false,

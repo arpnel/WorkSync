@@ -54,6 +54,8 @@ export interface MarketplaceQuery {
   page?: number;
   pageSize?: number;
   includeVatClassification?: boolean;
+  matchedServiceIds?: string[];
+  matchedJobIds?: string[];
 }
 
 /* ==========================================================
@@ -461,7 +463,10 @@ async function getServices(
 
   const searchValue = query.search?.trim() ?? "";
 
-  if (searchValue) {
+  if (query.matchedServiceIds) {
+    if (!query.matchedServiceIds.length) return [];
+    request = request.in("service_id", query.matchedServiceIds);
+  } else if (searchValue) {
     request = request.or(
       [
         `title.ilike.%${searchValue}%`,
@@ -604,7 +609,10 @@ async function getJobs(query: MarketplaceQuery): Promise<MarketplaceJob[]> {
 
   const searchValue = query.search?.trim() ?? "";
 
-  if (searchValue) {
+  if (query.matchedJobIds) {
+    if (!query.matchedJobIds.length) return [];
+    request = request.in("job_id", query.matchedJobIds);
+  } else if (searchValue) {
     request = request.or(
       [
         `title.ilike.%${searchValue}%`,
@@ -692,9 +700,170 @@ export function getMarketplaceServices(
     fetchMarketplaceServices(query),
   );
 }
+
+function escapeLikePattern(value: string) {
+  return value.replace(/[\\%_]/g, "\\$&");
+}
+
+function quotedOrLike(value: string) {
+  const escaped = escapeLikePattern(value).replace(/"/g, '\\"');
+  return `"%${escaped}%"`;
+}
+
+async function findMarketplaceSearchIds(
+  search: string,
+  query: MarketplaceQuery,
+): Promise<{ serviceIds?: string[]; jobIds?: string[] }> {
+  const term = search.trim();
+  const pattern = `%${escapeLikePattern(term)}%`;
+  const nameTerms = [...new Set(term.split(/\s+/).filter(Boolean))].slice(0, 8);
+  const profileFilters = nameTerms.flatMap((word) =>
+    ["display_name", "first_name", "last_name"].map(
+      (field) => `${field}.ilike.${quotedOrLike(word)}`,
+    ),
+  );
+  const [categoriesResult, skillsResult, profilesResult] = await Promise.all([
+    supabase.from(CATEGORY_TABLE).select("id").ilike("name", pattern).limit(1000),
+    supabase.from("skills").select("id").ilike("name", pattern).limit(1000),
+    supabase
+      .from(PROFILES_TABLE)
+      .select("user_id,display_name,first_name,last_name")
+      .or(profileFilters.join(","))
+      .limit(1000),
+  ]);
+  if (categoriesResult.error) throw categoriesResult.error;
+  if (skillsResult.error) throw skillsResult.error;
+  if (profilesResult.error && !query.guest) throw profilesResult.error;
+
+  const categoryIds = (categoriesResult.data ?? []).map((row) => row.id);
+  const skillIds = (skillsResult.data ?? []).map((row) => row.id);
+  const normalizedTerms = nameTerms.map((word) => word.toLowerCase());
+  const matchingUserIds = (profilesResult.data ?? [])
+    .filter((profile) => {
+      const fullName = [profile.display_name, profile.first_name, profile.last_name]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return normalizedTerms.every((word) => fullName.includes(word));
+    })
+    .map((profile) => profile.user_id);
+  const uniqueUserIds = [...new Set(matchingUserIds)];
+
+  const [freelancersResult, clientsResult] = await Promise.all([
+    uniqueUserIds.length
+      ? supabase
+          .from(FREELANCER_TABLE)
+          .select("freelancer_id")
+          .in("user_id", uniqueUserIds)
+          .limit(1000)
+      : Promise.resolve({ data: [], error: null }),
+    uniqueUserIds.length
+      ? supabase
+          .from(CLIENT_TABLE)
+          .select("client_id")
+          .in("user_id", uniqueUserIds)
+          .limit(1000)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (freelancersResult.error) throw freelancersResult.error;
+  if (clientsResult.error) throw clientsResult.error;
+
+  const freelancerIds = (freelancersResult.data ?? []).map(
+    (row) => row.freelancer_id,
+  );
+  const clientIds = (clientsResult.data ?? []).map((row) => row.client_id);
+  const wantsServices = !query.listingType || query.listingType === "service";
+  const wantsJobs = !query.listingType || query.listingType === "job";
+  const [serviceSkillsResult, jobSkillsResult] = await Promise.all([
+    wantsServices && skillIds.length
+      ? supabase
+          .from("service_skills")
+          .select("service_id")
+          .in("skill_id", skillIds)
+          .limit(5000)
+      : Promise.resolve({ data: [], error: null }),
+    wantsJobs && skillIds.length
+      ? supabase
+          .from("job_skills")
+          .select("job_id")
+          .in("skill_id", skillIds)
+          .limit(5000)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (serviceSkillsResult.error) throw serviceSkillsResult.error;
+  if (jobSkillsResult.error) throw jobSkillsResult.error;
+
+  const serviceFilters = [
+    `title.ilike.${quotedOrLike(term)}`,
+    `description.ilike.${quotedOrLike(term)}`,
+  ];
+  if (categoryIds.length)
+    serviceFilters.push(`category_id.in.(${categoryIds.join(",")})`);
+  if (freelancerIds.length)
+    serviceFilters.push(`freelancer_id.in.(${freelancerIds.join(",")})`);
+  const serviceSkillListingIds = [...new Set(
+    (serviceSkillsResult.data ?? []).map((row) => row.service_id),
+  )];
+  if (serviceSkillListingIds.length)
+    serviceFilters.push(`service_id.in.(${serviceSkillListingIds.join(",")})`);
+
+  const jobFilters = [
+    `title.ilike.${quotedOrLike(term)}`,
+    `description.ilike.${quotedOrLike(term)}`,
+  ];
+  if (categoryIds.length)
+    jobFilters.push(`category_id.in.(${categoryIds.join(",")})`);
+  if (clientIds.length) jobFilters.push(`client_id.in.(${clientIds.join(",")})`);
+  const jobSkillListingIds = [...new Set(
+    (jobSkillsResult.data ?? []).map((row) => row.job_id),
+  )];
+  if (jobSkillListingIds.length)
+    jobFilters.push(`job_id.in.(${jobSkillListingIds.join(",")})`);
+
+  const [serviceRows, jobRows] = await Promise.all([
+    wantsServices
+      ? supabase
+          .from(SERVICES_TABLE)
+          .select("service_id")
+          .eq("status", "Active")
+          .eq("is_archived", false)
+          .or(serviceFilters.join(","))
+          .limit(5000)
+      : Promise.resolve({ data: [], error: null }),
+    wantsJobs
+      ? supabase
+          .from(JOBS_TABLE)
+          .select("job_id")
+          .eq("status", "open")
+          .eq("is_archived", false)
+          .or(jobFilters.join(","))
+          .limit(5000)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (serviceRows.error) throw serviceRows.error;
+  if (jobRows.error) throw jobRows.error;
+  return {
+    ...(wantsServices
+      ? { serviceIds: (serviceRows.data ?? []).map((row) => row.service_id) }
+      : {}),
+    ...(wantsJobs
+      ? { jobIds: (jobRows.data ?? []).map((row) => row.job_id) }
+      : {}),
+  };
+}
+
 async function fetchMarketplaceServices(
   query: MarketplaceQuery,
 ): Promise<MarketplaceItem[]> {
+  if (query.search?.trim()) {
+    const matches = await findMarketplaceSearchIds(query.search, query);
+    query = {
+      ...query,
+      search: "",
+      matchedServiceIds: matches.serviceIds,
+      matchedJobIds: matches.jobIds,
+    };
+  }
   const listingType = query.listingType ?? null;
 
   if (listingType === "service") {

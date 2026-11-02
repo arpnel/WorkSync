@@ -21,6 +21,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { openSubscriptionLimitDialog } from "@/services/subscriptions/subscriptionLimitDialog";
 import { supabase } from "@/lib/supabaseClient";
 import {
   listProjectPlans,
@@ -101,7 +102,7 @@ const cleanPlanContent = (content: PlanContent): PlanContent => ({
 const stageAccents = [
   "border-t-primary/60",
   "border-t-ring/50",
-  "border-t-muted-foreground/30",
+  "border-t-primary/60",
 ];
 
 export default function ProjectPlansLibrary() {
@@ -144,6 +145,7 @@ export default function ProjectPlansLibrary() {
     taskId?: string;
   } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ProjectPlan | null>(null);
+  const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
   const [shareTarget, setShareTarget] = useState<ProjectPlan | null>(null);
   const [recipient, setRecipient] = useState("");
   const createRequested = useRef(false);
@@ -273,12 +275,7 @@ export default function ProjectPlansLibrary() {
     );
     open(plan, true);
   }, [loading, open, plans, userId]);
-  const close = () => {
-    if (
-      dirty &&
-      !window.confirm("Discard unsaved changes and leave this plan?")
-    )
-      return;
+  const leavePlan = () => {
     if (
       returnToProposal.current &&
       window.opener &&
@@ -293,6 +290,13 @@ export default function ProjectPlansLibrary() {
     setPreviewing(false);
     setTaskDialog(null);
     setEditorDelete(null);
+  };
+  const close = () => {
+    if (dirty) {
+      setDiscardDialogOpen(true);
+      return;
+    }
+    leavePlan();
   };
   const mutateColumn = (
     columnId: string,
@@ -557,7 +561,8 @@ export default function ProjectPlansLibrary() {
         window.close();
       }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not save this plan.");
+      if (!openSubscriptionLimitDialog(e))
+        toast.error(e instanceof Error ? e.message : "Could not save this plan.");
     } finally {
       setBusy(false);
     }
@@ -576,7 +581,8 @@ export default function ProjectPlansLibrary() {
       toast.success("Independent copy created.");
       await refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Copy failed.");
+      if (!openSubscriptionLimitDialog(e))
+        toast.error(e instanceof Error ? e.message : "Copy failed.");
     }
   }
   async function doShare() {
@@ -608,21 +614,7 @@ export default function ProjectPlansLibrary() {
           </Button>
           <div className="min-w-0 flex-1">
             {editing && !previewing ? (
-              <div className="flex max-w-xl items-center gap-1">
-                <Input
-                  aria-label="Plan name"
-                  maxLength={120}
-                  value={draft.name}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      name: event.target.value,
-                    }))
-                  }
-                  placeholder="Untitled plan"
-                  className="h-9 border-transparent px-2 text-lg font-semibold shadow-none focus-visible:border-input sm:text-xl"
-                />
-              </div>
+              <h1 className="px-2 text-lg font-semibold sm:text-xl">Project planner</h1>
             ) : (
               <h1 className="truncate px-2 text-lg font-semibold sm:text-xl">
                 {draft.name || "Untitled plan"}
@@ -650,7 +642,50 @@ export default function ProjectPlansLibrary() {
           )}
         </header>
 
-        {editing && !previewing ? (
+        {!(editing && !previewing) && draft.description ? (
+          <p className="px-1 text-sm text-muted-foreground">
+            {draft.description}
+          </p>
+        ) : null}
+
+        {editing && !previewing && showPlanningHint && (
+          <div className="flex items-center gap-2 rounded-lg bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+            <Info className="size-4 shrink-0 text-primary" aria-hidden="true" />
+            <p className="min-w-0 flex-1">
+              Create your task structure here. You can set actual deadlines and
+              assignments when you use this plan for a project.
+            </p>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Dismiss planning guidance"
+              onClick={() => setShowPlanningHint(false)}
+            >
+              <X className="size-4" />
+            </Button>
+          </div>
+        )}
+
+        {editing && !previewing && (
+          <div className="rounded-xl bg-muted/25 px-4 py-3">
+            <label className="block text-sm font-medium" htmlFor="project-plan-name">
+              Project plan name
+            </label>
+            <Input
+              id="project-plan-name"
+              aria-label="Plan name"
+              maxLength={120}
+              value={draft.name}
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, name: event.target.value }))
+              }
+              placeholder="Untitled plan"
+              className="mt-2 bg-background"
+            />
+          </div>
+        )}
+
+        {editing && !previewing && (
           <section className="rounded-xl bg-muted/25 px-4 py-3">
             <button
               type="button"
@@ -686,28 +721,6 @@ export default function ProjectPlansLibrary() {
               />
             )}
           </section>
-        ) : draft.description ? (
-          <p className="px-1 text-sm text-muted-foreground">
-            {draft.description}
-          </p>
-        ) : null}
-
-        {editing && !previewing && showPlanningHint && (
-          <div className="flex items-center gap-2 rounded-lg bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
-            <Info className="size-4 shrink-0 text-primary" aria-hidden="true" />
-            <p className="min-w-0 flex-1">
-              Create your task structure here. You can set actual deadlines and
-              assignments when you use this plan for a project.
-            </p>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Dismiss planning guidance"
-              onClick={() => setShowPlanningHint(false)}
-            >
-              <X className="size-4" />
-            </Button>
-          </div>
         )}
 
         <div className="flex flex-wrap items-end justify-between gap-3 px-1">
@@ -792,7 +805,7 @@ export default function ProjectPlansLibrary() {
                           name: event.target.value,
                         }))
                       }
-                      className="h-9 border-transparent bg-transparent px-2 font-semibold shadow-none focus-visible:border-input"
+                      className="h-9 border border-input bg-background px-2 font-semibold shadow-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30"
                     />
                   ) : (
                     <h2 className="min-w-0 flex-1 truncate px-2 font-semibold">
@@ -912,17 +925,6 @@ export default function ProjectPlansLibrary() {
                           </DropdownMenuSubContent>
                         </DropdownMenuSub>
                         <DropdownMenuSeparator />
-                        <DropdownMenuCheckboxItem
-                          checked={Boolean(column.pinned)}
-                          onCheckedChange={(pinned) =>
-                            mutateColumn(column.id, (current) => ({
-                              ...current,
-                              pinned,
-                            }))
-                          }
-                        >
-                          <Pin /> Pin stage
-                        </DropdownMenuCheckboxItem>
                         {column.type !== "done" && (
                           <DropdownMenuItem
                             className="text-destructive"
@@ -1257,6 +1259,25 @@ export default function ProjectPlansLibrary() {
                 }}
               >
                 Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+        <AlertDialog
+          open={discardDialogOpen}
+          onOpenChange={setDiscardDialogOpen}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Your changes to this project plan haven’t been saved. Leave and discard them?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Keep editing</AlertDialogCancel>
+              <AlertDialogAction onClick={leavePlan}>
+                Discard changes
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

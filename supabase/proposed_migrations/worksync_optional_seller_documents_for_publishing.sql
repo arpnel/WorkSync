@@ -1,6 +1,6 @@
 -- PREPARED, NOT APPLIED.
 -- Allow freelancers to create and publish services without seller documents.
--- Seller eligibility remains enforced for checkout and payout withdrawal.
+-- Seller eligibility is enforced for withdrawal, not for client checkout.
 -- Apply after worksync_manual_payout_withdrawals.sql.
 begin;
 

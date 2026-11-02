@@ -67,6 +67,7 @@ export default function MarketplaceBrowse({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saveError, setSaveError] = useState("");
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const initialListingType = requestedListingType === "job" || requestedListingType === "freelancer"
     ? requestedListingType
@@ -365,9 +366,9 @@ export default function MarketplaceBrowse({
           description={marketplaceDescription}
         />
         <MarketplaceHeader
-          search={search}
-          onSearchChange={setSearch}
-          onSearch={() => void load()}
+          search={searchInput}
+          onSearchChange={setSearchInput}
+          onSearch={() => setSearch(searchInput.trim())}
           onFilterClick={() => setFilterOpen(true)}
           onCreateClick={() =>
             guest ? setSignup(true) : router.push("/home/my-listings")
@@ -426,17 +427,21 @@ export default function MarketplaceBrowse({
                 }));
               }}
             >
-              <SelectTrigger className="!h-11 min-w-0 flex-1 rounded-lg border bg-card px-3 text-foreground shadow-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/30 sm:flex-none">
-                <SelectValue placeholder="Choose sorting" />
-              </SelectTrigger>
-              <SelectContent
-                position="popper"
-                side="bottom"
-                sideOffset={4}
-                avoidCollisions={false}
-                align="end"
-                className="rounded-lg border bg-card p-1 shadow-md"
-              >
+            <SelectTrigger
+              aria-controls="marketplace-sort-options"
+              className="!h-11 min-w-0 flex-1 rounded-lg border bg-card px-3 text-foreground shadow-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/30 sm:flex-none"
+            >
+              <SelectValue placeholder="Choose sorting" />
+            </SelectTrigger>
+            <SelectContent
+              id="marketplace-sort-options"
+              position="popper"
+              side="bottom"
+              sideOffset={4}
+              avoidCollisions={false}
+              align="end"
+              className="rounded-lg border bg-card p-1 shadow-md"
+            >
                 <SelectItem className="rounded-lg py-2.5" value="latest">
                   Latest
                 </SelectItem>
@@ -488,7 +493,7 @@ export default function MarketplaceBrowse({
             loading={loading}
             saved={saved}
             saving={saving}
-            onSave={filters.listingType === "freelancer" ? undefined : toggle}
+            onSave={toggle}
             onCardClick={(listing) =>
               router.push(
                 filters.listingType === "freelancer" && listing.freelancer?.user_id

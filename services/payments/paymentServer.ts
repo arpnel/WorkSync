@@ -90,7 +90,7 @@ async function projectForUser(db: DB, projectId: string, userId: string) {
   const { data: project, error } = await db
     .from("projects")
     .select(
-      "project_id,order_id,application_id,client_id,freelancer_id,title,budget,status",
+      "project_id,order_id,application_id,client_id,freelancer_id,title,budget,status,project_type",
     )
     .eq("project_id", projectId)
     .maybeSingle();
@@ -114,11 +114,29 @@ async function projectForUser(db: DB, projectId: string, userId: string) {
       "Only project participants can view this payment.",
       403,
     );
+  const projectHref = project.order_id
+    ? `/home/projects/${project.project_type === "milestone" ? "milestone" : "standard"}/${project.order_id}`
+    : undefined;
   return {
     project,
+    projectHref,
     isClient: userId === client.data.user_id,
+    clientUserId: client.data.user_id,
     freelancerUserId: freelancer.data.user_id,
   };
+}
+
+async function clientTransactionFeeRate(db: DB, clientUserId: string) {
+  const { data, error } = await db
+    .from("user_subscriptions")
+    .select("plan_code,period_ends_at")
+    .eq("user_id", clientUserId)
+    .maybeSingle();
+  if (error)
+    throw new PaymentError("The client subscription could not be verified before checkout.");
+  return data?.plan_code === "pro" && Date.parse(data.period_ends_at) > Date.now()
+    ? 0.05
+    : 0.10;
 }
 
 async function agreedProjectBasePrice(
@@ -162,7 +180,7 @@ type ProjectVatBreakdown = {
 
 function getProjectVatBreakdown(baseAmount: number): ProjectVatBreakdown {
   // Product pricing currently applies the same 12% amount to every seller.
-  // Seller eligibility remains a separate checkout gate.
+  // Seller eligibility is checked separately before withdrawal.
   const parts = calculateVat(baseAmount, "exclusive", true);
   return {
     status: "applicable",
@@ -266,7 +284,7 @@ export async function getProjectPayment(
   projectId: string,
   userId: string,
 ) {
-  const { project, freelancerUserId, isClient } = await projectForUser(
+  const { project, freelancerUserId, isClient, clientUserId } = await projectForUser(
     db,
     projectId,
     userId,
@@ -309,21 +327,25 @@ export async function getProjectPayment(
   });
   const sellerEligible = !sellerEligibility.error && sellerEligibility.data === true;
   const sellerVerificationMessage = sellerEligibility.error
-    ? "Freelancer document eligibility could not be checked. Try again before checkout or withdrawal."
+    ? "Freelancer document eligibility could not be checked. Approval is required before withdrawal."
     : sellerEligible
       ? undefined
-      : "The freelancer must submit the required seller documents and receive approval before checkout or withdrawal.";
+      : "The freelancer must submit the required seller documents and receive approval before requesting withdrawal.";
   if (!row) {
+    const feeRate = await clientTransactionFeeRate(db, clientUserId);
+    const transactionFee = Math.round(basePrice * feeRate * 100) / 100;
     return {
       status: "unpaid",
       mode: paymentMode(),
+      isClient,
+      projectHref,
       vatBreakdown,
-      amount: (vatBreakdown.total ?? basePrice) + Math.round(basePrice * 0.1 * 100) / 100,
+      amount: (vatBreakdown.total ?? basePrice) + transactionFee,
       baseAmount: basePrice,
-      transactionFee: Math.round(basePrice * 0.1 * 100) / 100,
-      checkoutAllowed: vatBreakdown.status === "applicable" && sellerEligible,
-      checkoutMessage: !sellerEligible ? sellerVerificationMessage : undefined,
-      sellerVerificationMessage: isClient ? undefined : sellerVerificationMessage,
+      transactionFee,
+      transactionFeeRate: feeRate,
+      checkoutAllowed: vatBreakdown.status === "applicable",
+      sellerVerificationMessage,
     };
   }
   let paid = row.status === "paid";
@@ -378,9 +400,11 @@ export async function getProjectPayment(
     amount: row.amount,
     baseAmount: basePrice,
     transactionFee: row.platform_service_fee == null ? null : Number(row.platform_service_fee),
-    checkoutAllowed: sellerEligible,
-    checkoutMessage: !sellerEligible ? sellerVerificationMessage : undefined,
-    sellerVerificationMessage: isClient ? undefined : sellerVerificationMessage,
+    transactionFeeRate: row.platform_service_fee == null || basePrice <= 0
+      ? null
+      : Number(row.platform_service_fee) / basePrice,
+    checkoutAllowed: true,
+    sellerVerificationMessage,
     paymentId: row.payment_id,
     paymentMethod: row.payment_method,
     vatBreakdown,
@@ -399,6 +423,8 @@ export async function getProjectPayment(
       !payout.error,
     paidAt,
     mode: paymentMode(),
+    isClient,
+    projectHref,
   };
 }
 export async function createProjectCheckout(
@@ -407,20 +433,13 @@ export async function createProjectCheckout(
   userId: string,
   origin: string,
 ) {
-  const { project, isClient, freelancerUserId } = await projectForUser(
+  const { project, isClient, clientUserId } = await projectForUser(
     db,
     projectId,
     userId,
   );
   if (!isClient)
     throw new PaymentError("Only the project client can pay.", 403);
-  const sellerEligibility = await db.rpc("worksync_freelancer_seller_eligible", {
-    p_user: freelancerUserId,
-  });
-  if (sellerEligibility.error)
-    throw new PaymentError("Freelancer document eligibility could not be checked. Try again before checkout or withdrawal.", 503);
-  if (sellerEligibility.data !== true)
-    throw new PaymentError("The freelancer must submit the required seller documents and receive approval before checkout or withdrawal.", 409);
   await storageReady(db);
   if (!["active", "revision", "completed"].includes(project.status))
     throw new PaymentError(
@@ -519,7 +538,8 @@ export async function createProjectCheckout(
       409,
     );
   const vat = getProjectVatBreakdown(contract.final_price);
-  const transactionFee = Math.round(baseAmount * 0.1) / 100;
+  const feeRate = await clientTransactionFeeRate(db, clientUserId);
+  const transactionFee = Math.round(baseAmount * feeRate) / 100;
   const amount = centavos((vat.total ?? contract.final_price) + transactionFee);
   // The primary key is a durable, cross-process reservation for one full-project payment per mode.
   const { error: insertError } = await db.from("payments").insert({

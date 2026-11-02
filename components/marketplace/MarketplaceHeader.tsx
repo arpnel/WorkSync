@@ -106,7 +106,7 @@ export default function MarketplaceHeader({
                 aria-label="Search marketplace"
                 value={search}
                 onChange={(event) => onSearchChange(event.target.value)}
-                placeholder="Search services, jobs, or skills..."
+                placeholder="Search listings, user names, categories, or skills..."
                 className="h-12 rounded-xl pl-11 pr-14 lg:pr-3"
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
@@ -162,6 +162,7 @@ export default function MarketplaceHeader({
         <label className="block min-w-0 space-y-2 md:hidden">
           <span className="text-sm font-medium">Browse categories</span>
           <StyledSelect
+            id="marketplace-category-select"
             aria-label="Browse marketplace categories"
             value={hasExternalFilter ? "__external__" : (selectedService ?? "")}
             onChange={(event) => onServiceChange(event.target.value || null)}

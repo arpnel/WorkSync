@@ -20,6 +20,7 @@ type Plan = {
   display_name: string;
   active_listing_limit: number;
   provisional_monthly_price: number | null;
+  provisional_annual_price: number | null;
 };
 type Assignment = {
   plan_code: string;
@@ -40,6 +41,12 @@ export default function SubscriptionPage() {
   const [acting, setActing] = useState(false);
   const [checkoutStatus, setCheckoutStatus] = useState("");
   const [clockNow, setClockNow] = useState<number | null>(null);
+  const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">("monthly");
+
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get("billing");
+    if (requested === "yearly" || requested === "monthly") setBillingPeriod(requested);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -53,7 +60,7 @@ export default function SubscriptionPage() {
       const [planResult, assignmentResult] = await Promise.all([
         supabase
           .from("subscription_plans")
-          .select("plan_code,display_name,active_listing_limit,provisional_monthly_price")
+          .select("plan_code,display_name,active_listing_limit,provisional_monthly_price,provisional_annual_price")
           .order("active_listing_limit"),
         supabase
           .from("user_subscriptions")
@@ -104,7 +111,36 @@ export default function SubscriptionPage() {
     let live = true;
     void (async () => {
       await load();
-      const orderId = new URLSearchParams(window.location.search).get("order");
+      const params = new URLSearchParams(window.location.search);
+      const requestedTrial = params.get("startTrial") === "1";
+      if (live && requestedTrial && params.get("billing") === "monthly") {
+        params.delete("startTrial");
+        window.history.replaceState(
+          null,
+          "",
+          `${window.location.pathname}?${params.toString()}${window.location.hash}`,
+        );
+        setActing(true);
+        try {
+          const { error: trialError } = await supabase.rpc(
+            "worksync_claim_premium_trial",
+          );
+          if (trialError) throw new Error(trialError.message);
+          await load();
+          if (live) setCheckoutStatus("Your three-month Premium trial is active.");
+        } catch (cause) {
+          if (live)
+            setCheckoutStatus(
+              cause instanceof Error
+                ? cause.message
+                : "Unable to start your Premium trial.",
+            );
+        } finally {
+          if (live) setActing(false);
+        }
+        return;
+      }
+      const orderId = params.get("order");
       if (!live || !orderId || !uuid.test(orderId)) return;
       const { data } = await supabase.auth.getSession();
       if (!data.session) return;
@@ -147,27 +183,6 @@ export default function SubscriptionPage() {
     return () => window.removeEventListener("account-role-changed", onRoleChanged);
   }, [load]);
 
-  async function startTrial() {
-    if (acting) return;
-    setActing(true);
-    setError("");
-    try {
-      const { error: trialError } = await supabase.rpc(
-        "worksync_claim_premium_trial",
-      );
-      if (trialError) throw new Error(trialError.message);
-      await load();
-    } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "Unable to start your Premium trial.",
-      );
-    } finally {
-      setActing(false);
-    }
-  }
-
   async function renew() {
     if (acting) return;
     setActing(true);
@@ -181,7 +196,7 @@ export default function SubscriptionPage() {
           Authorization: `Bearer ${data.session.access_token}`,
           "Content-Type": "application/json",
         },
-        body: "{}",
+        body: JSON.stringify({ billingPeriod }),
         cache: "no-store",
       });
       const result = await response.json();
@@ -241,7 +256,9 @@ export default function SubscriptionPage() {
     name?.replace(/\bpro\b/gi, "Premium");
   const activeLimit = current?.active_listing_limit;
   const hasActivePremium = plan === "pro" && assignment;
-  const price = offer?.provisional_monthly_price;
+  const price = billingPeriod === "monthly"
+    ? offer?.provisional_monthly_price
+    : offer?.provisional_annual_price;
   const priceLabel =
     price == null
       ? "Unavailable"
@@ -357,7 +374,7 @@ export default function SubscriptionPage() {
                     </h2>
                     <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
                       {hasActivePremium
-                        ? `Your Premium ${assignment.access_type === "trial" ? "trial" : "access"} is active. Renewals are manual.`
+                        ? `Your Premium ${assignment.access_type === "trial" ? "trial" : "access"} is active. Monthly and yearly renewals are manual.`
                         : "Your Free plan is active. Upgrade when you need more marketplace capacity or AI screening."}
                     </p>
                   </div>
@@ -370,16 +387,13 @@ export default function SubscriptionPage() {
                   <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted-foreground">
                     <span className="inline-flex items-center gap-2">
                       <Check className="size-4 text-primary" />
-                    </span>
-                    <span className="inline-flex items-center gap-2">
-                      <Check className="size-4 text-primary" />
                       {activeLimit ?? "—"} active{" "}
                       listings across jobs and services
                     </span>
                     <span className="inline-flex items-center gap-2">
                       <Sparkles className="size-4 text-primary" />
-                      {plan === "pro" ? "Unlimited" : "5 per six months"} AI
-                      screenings
+                      {plan === "pro" ? "Unlimited" : "1 every six months"} AI
+                      skills gap assessments
                     </span>
                   </div>
                 </div>
@@ -388,29 +402,27 @@ export default function SubscriptionPage() {
                   <div className="rounded-xl border bg-background p-4">
                     <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                       {plan === "pro"
-                        ? "Manual monthly renewal"
+                        ? `Manual ${billingPeriod} renewal`
                         : "Upgrade to Premium"}
                     </p>
                     <p className="mt-1 text-2xl font-semibold tracking-tight">
                       {priceLabel}
                       <span className="text-sm font-normal text-muted-foreground">
                         {" "}
-                        / month
+                        / {billingPeriod === "monthly" ? "month" : "year"}
                       </span>
                     </p>
+                    <div className="mt-3 inline-flex rounded-lg bg-muted p-1 text-xs">
+                      <button type="button" onClick={() => setBillingPeriod("monthly")} className={`rounded-md px-3 py-1.5 ${billingPeriod === "monthly" ? "bg-background shadow-sm" : "text-muted-foreground"}`}>Monthly</button>
+                      <button type="button" onClick={() => setBillingPeriod("yearly")} className={`rounded-md px-3 py-1.5 ${billingPeriod === "yearly" ? "bg-background shadow-sm" : "text-muted-foreground"}`}>Yearly · 2 months free</button>
+                    </div>
                     <Button
                       className="mt-4 w-full"
                       variant={plan === "pro" ? "outline" : "default"}
                       disabled={
-                        acting ||
-                        (price == null &&
-                          (plan === "pro" || !!assignment?.trial_claimed_at))
+                        acting || price == null
                       }
-                      onClick={() =>
-                        void (!assignment?.trial_claimed_at && plan === "free"
-                          ? startTrial()
-                          : renew())
-                      }
+                      onClick={() => void renew()}
                     >
                       {acting ? (
                         <LoaderCircle className="size-4 animate-spin" />
@@ -418,21 +430,19 @@ export default function SubscriptionPage() {
                         <Crown className="size-4" />
                       )}
                       {acting
-                        ? assignment?.trial_claimed_at
-                          ? "Opening checkout…"
-                          : "Starting trial…"
+                        ? "Opening checkout…"
                         : !assignment?.trial_claimed_at && plan === "free"
-                          ? "Start 3-month free trial"
+                          ? `Get Premium · ${priceLabel}/${billingPeriod === "monthly" ? "month" : "year"}`
                           : plan === "pro"
-                            ? `Add one month · ${priceLabel}`
-                            : `Get Premium · ${priceLabel}/month`}
+                            ? `Add ${billingPeriod === "monthly" ? "one month" : "one year"} · ${priceLabel}`
+                            : `Get Premium · ${priceLabel}/${billingPeriod === "monthly" ? "month" : "year"}`}
                     </Button>
                     <p className="mt-3 text-xs leading-5 text-muted-foreground">
                       {plan === "pro"
-                        ? "One-time checkout. Pay early to add one month after your current end date. No automatic charge."
+                        ? `One-time checkout. Pay early to add ${billingPeriod === "monthly" ? "one month" : "one year"} after your current end date. No automatic charge.`
                         : assignment?.trial_claimed_at
-                          ? "Your one-time trial has been used. Premium renews only when you choose to pay."
-                          : "One trial per account. No payment details or automatic charges; choose a monthly renewal after the trial."}
+                          ? "Renewals are manual. You will not be charged automatically."
+                          : "One-time checkout. No automatic charges."}
                     </p>
                   </div>
                 )}
@@ -454,7 +464,7 @@ export default function SubscriptionPage() {
                 Approved jobs and services count together. Pending listings need an available slot before approval.
               </p>
             </div>
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               <UsageCard
                 title="Active listings"
                 value={`${usage.active} of ${activeLimit ?? "—"}`}
@@ -462,13 +472,26 @@ export default function SubscriptionPage() {
                 progress={activePercent}
               />
               <Card className="gap-0 p-5 sm:p-6">
+                <p className="text-sm font-medium text-muted-foreground">
+                  Active projects
+                </p>
+                <p className="mt-3 text-2xl font-semibold tracking-tight">
+                  {plan === "pro" ? "Up to 20" : "1 at a time"}
+                </p>
+                <p className="mt-3 text-xs text-muted-foreground">
+                  {plan === "pro"
+                    ? "Keep up to 20 projects active at once."
+                    : "Complete or close your active project before starting another."}
+                </p>
+              </Card>
+              <Card className="gap-0 p-5 sm:p-6">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">
-                      AI applicant screening
+                      AI skills gap assessment
                     </p>
                     <p className="mt-3 text-2xl font-semibold">
-                      {plan === "pro" ? "Unlimited" : "5 screenings"}
+                      {plan === "pro" ? "Unlimited" : "1 assessment"}
                     </p>
                   </div>
                   <span className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -477,8 +500,8 @@ export default function SubscriptionPage() {
                 </div>
                 <p className="mt-3 text-xs text-muted-foreground">
                   {plan === "pro"
-                    ? "Included with Premium access."
-                    : "Available every rolling six months on the Free plan."}
+                    ? "Unlimited assessments with Premium access."
+                    : "Available once every six months on the Free plan."}
                 </p>
               </Card>
             </div>
@@ -496,8 +519,9 @@ export default function SubscriptionPage() {
                     Premium plan
                   </p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    {offer.active_listing_limit} active listings across jobs and
-                    services, and unlimited AI screening.
+                    Up to 20 active projects at a time, unlimited job applications
+                    and active job postings, boosted postings, and full applicant
+                    rankings with detailed explanations.
                   </p>
                 </div>
                 <p className="shrink-0 text-sm font-medium">

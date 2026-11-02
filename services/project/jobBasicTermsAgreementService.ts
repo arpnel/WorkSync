@@ -11,6 +11,9 @@ export interface JobBasicTerms {
 
 export interface JobBasicTermsAgreement {
   terms: JobBasicTerms | null;
+  previousTerms: JobBasicTerms | null;
+  changedFields: (keyof JobBasicTerms)[];
+  changedBy: "client" | "freelancer" | null;
   clientAgreed: boolean;
   freelancerAgreed: boolean;
 }
@@ -29,10 +32,11 @@ function parseAgreement(value: unknown): JobBasicTermsAgreement {
     throw new Error("The basic terms agreement response was invalid.");
   }
   const result = value as Record<string, unknown>;
-  const rawTerms = result.terms;
-  let terms: JobBasicTerms | null = null;
-  if (rawTerms && typeof rawTerms === "object" && !Array.isArray(rawTerms)) {
-    const raw = rawTerms as Record<string, unknown>;
+  const parseTerms = (value: unknown): JobBasicTerms | null => {
+    if (value == null) return null;
+    if (typeof value !== "object" || Array.isArray(value))
+      throw new Error("The saved basic terms could not be read.");
+    const raw = value as Record<string, unknown>;
     if (
       typeof raw.projectTitle !== "string" ||
       typeof raw.description !== "string" ||
@@ -40,10 +44,8 @@ function parseAgreement(value: unknown): JobBasicTermsAgreement {
       typeof raw.revisionsCount !== "number" ||
       typeof raw.startDate !== "string" ||
       typeof raw.deadline !== "string"
-    ) {
-      throw new Error("The saved basic terms could not be read.");
-    }
-    terms = {
+    ) throw new Error("The saved basic terms could not be read.");
+    return {
       projectTitle: raw.projectTitle,
       description: raw.description,
       budget: raw.budget,
@@ -51,9 +53,17 @@ function parseAgreement(value: unknown): JobBasicTermsAgreement {
       startDate: raw.startDate,
       deadline: raw.deadline,
     };
-  }
+  };
+  const changedFields = Array.isArray(result.changedFields)
+    ? result.changedFields.filter((field): field is keyof JobBasicTerms =>
+        ["projectTitle", "description", "budget", "revisionsCount", "startDate", "deadline"].includes(field as keyof JobBasicTerms),
+      )
+    : [];
   return {
-    terms,
+    terms: parseTerms(result.terms),
+    previousTerms: parseTerms(result.previousTerms),
+    changedFields,
+    changedBy: result.changedBy === "client" || result.changedBy === "freelancer" ? result.changedBy : null,
     clientAgreed: result.clientAgreed === true,
     freelancerAgreed: result.freelancerAgreed === true,
   };

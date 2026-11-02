@@ -58,6 +58,7 @@ export function FreelancerSetupForm() {
     handlePhotoSelect,
     handlePhotoRemove,
     handleBannerSelect,
+    handleBannerRemove,
     handleFileSelect,
     handleMultiFileSelect,
     handleRemoveFile,
@@ -230,6 +231,7 @@ export function FreelancerSetupForm() {
         onPhotoSelect={(file) => { handlePhotoSelect(file); setLocalErrors((current) => ({ ...current, profilePhoto: undefined })); }}
         onPhotoRemove={() => { handlePhotoRemove(); setLocalErrors((current) => ({ ...current, profilePhoto: undefined })); }}
         onBannerSelect={(file) => { handleBannerSelect(file); setLocalErrors((current) => ({ ...current, bannerImage: undefined })); }}
+        onBannerRemove={handleBannerRemove}
         profilePhotoRequired={false}
       />
 
@@ -295,8 +297,8 @@ export function FreelancerSetupForm() {
           {tinSaved && !tin && <p className="text-xs text-muted-foreground">A TIN is securely saved to your account.</p>}
           {tinError && <p role="alert" className="text-xs text-destructive">{tinError}</p>}
         </div>
-        <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
-          <span className="font-semibold">BIR reminder:</span> Submit your BIR Form 2303 and wait for approval before checkout or withdrawing your earnings.
+        <p className="rounded-xl border border-amber-400 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+          <span className="font-semibold">BIR reminder:</span> You can’t withdraw your earnings until your seller account is verified. Submit your BIR Form 2303 for review.
         </p>
         <div className="space-y-4">
           <div className="space-y-1">

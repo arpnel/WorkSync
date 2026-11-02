@@ -65,6 +65,7 @@ function parseOptions(children: React.ReactNode): OptionEntry[] {
 type SelectAttributes = Pick<React.ComponentProps<"select">, "children" | "className" | "value" | "defaultValue" | "disabled" | "required" | "name" | "id" | "form" | "aria-label" | "aria-labelledby" | "aria-describedby" | "aria-invalid" | "title" | "style" | "tabIndex" | "onBlur" | "onFocus" | "onKeyDown" | "onKeyUp" | "onPointerDown" | "onPointerUp">;
 export type StyledSelectProps = SelectAttributes & {
   onChange?: React.ChangeEventHandler<HTMLSelectElement>;
+  contentId?: string;
 };
 
 export function StyledSelect({
@@ -77,6 +78,7 @@ export function StyledSelect({
   required,
   name,
   id,
+  contentId,
   form,
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledBy,
@@ -97,6 +99,7 @@ export function StyledSelect({
   const internalValue = selectedValue === "" ? EMPTY_VALUE : selectedValue;
   const nativeValue = selectedValue;
   const heightToken = className?.split(/\s+/).find((token) => /^!?h-\d+(?:\.\d+)?$/.test(token));
+  const resolvedContentId = contentId ?? (id ? `${id}-options` : undefined);
   const triggerStyle = {
     ...style,
     height: style?.height ?? `${Number(heightToken?.replace(/^!?h-/, "") ?? 10) * 4}px`,
@@ -117,6 +120,7 @@ export function StyledSelect({
       <Select value={internalValue} onValueChange={handleValueChange} disabled={disabled}>
         <SelectTrigger
           id={id}
+          {...(resolvedContentId ? { "aria-controls": resolvedContentId } : {})}
           className={cn("h-10 w-full rounded-md border-input bg-background px-3 text-sm", className)}
           style={triggerStyle}
           title={title}
@@ -134,7 +138,14 @@ export function StyledSelect({
         >
           <SelectValue />
         </SelectTrigger>
-        <SelectContent position="popper" side="bottom" sideOffset={4} avoidCollisions={false} className="rounded-lg border bg-popover p-1 shadow-md">
+        <SelectContent
+          {...(resolvedContentId ? { id: resolvedContentId } : {})}
+          position="popper"
+          side="bottom"
+          sideOffset={4}
+          avoidCollisions={false}
+          className="rounded-lg border bg-popover p-1 shadow-md"
+        >
           {options.map((entry, index) => "options" in entry ? (
             <SelectGroup key={`group-${index}`}>
               {entry.label && <SelectLabel>{entry.label}</SelectLabel>}

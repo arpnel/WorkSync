@@ -19,13 +19,15 @@ export default async function PaymentReturnPage({
         does not by itself mean payment succeeded.
       </p>
       {projectId ? (
-        <PaymentPanel projectId={projectId} />
+        <PaymentPanel projectId={projectId} showProjectLink />
       ) : (
         <p>Open your project to check its payment.</p>
       )}
-      <Link className="text-sm underline" href="/home/projects">
-        Back to projects
-      </Link>
+      {!projectId && (
+        <Link className="text-sm underline" href="/home/projects">
+          Back to projects
+        </Link>
+      )}
     </div>
   );
 }

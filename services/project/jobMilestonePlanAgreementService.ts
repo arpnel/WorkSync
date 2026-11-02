@@ -3,6 +3,8 @@ import type { ContractVersionMilestoneInput } from "@/services/project/projectWo
 
 export interface JobMilestonePlanAgreement {
   milestones: ContractVersionMilestoneInput[];
+  previousMilestones: ContractVersionMilestoneInput[];
+  changedBy: "client" | "freelancer" | null;
   clientAgreed: boolean;
   freelancerAgreed: boolean;
 }
@@ -19,8 +21,9 @@ function parse(value: unknown): JobMilestonePlanAgreement {
     throw new Error("The milestone plan agreement response was invalid.");
   }
   const result = value as Record<string, unknown>;
-  if (!Array.isArray(result.milestones)) throw new Error("The agreed milestone plan could not be read.");
-  const milestones = result.milestones.map((item, index) => {
+  const parseMilestones = (value: unknown) => {
+    if (!Array.isArray(value)) throw new Error("The agreed milestone plan could not be read.");
+    return value.map((item, index) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error(`Milestone ${index + 1} is invalid.`);
     const row = item as Record<string, unknown>;
     if (typeof row.id !== "string" || typeof row.title !== "string" || typeof row.description !== "string" || typeof row.amount !== "number" || !(typeof row.dueDate === "string" || row.dueDate === null) || typeof row.displayOrder !== "number") {
@@ -31,8 +34,15 @@ function parse(value: unknown): JobMilestonePlanAgreement {
       throw new Error(`Milestone ${index + 1} task assignments are invalid.`);
     }
     return { id: row.id, title: row.title, description: row.description, amount: row.amount, dueDate: row.dueDate, displayOrder: row.displayOrder, taskIds };
-  });
-  return { milestones, clientAgreed: result.clientAgreed === true, freelancerAgreed: result.freelancerAgreed === true };
+    });
+  };
+  return {
+    milestones: parseMilestones(result.milestones),
+    previousMilestones: Array.isArray(result.previousMilestones) ? parseMilestones(result.previousMilestones) : [],
+    changedBy: result.changedBy === "client" || result.changedBy === "freelancer" ? result.changedBy : null,
+    clientAgreed: result.clientAgreed === true,
+    freelancerAgreed: result.freelancerAgreed === true,
+  };
 }
 
 export async function getJobMilestonePlanAgreement(applicationId: string): Promise<JobMilestonePlanAgreement> {

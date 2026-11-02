@@ -151,6 +151,7 @@ async function saveProfile(
       location: [values.city, values.province].filter(Boolean).join(", "),
       english_proficiency: values.englishProficiency,
       bio: values.shortBio,
+      ...(values.existingBannerUrl === "" ? { banner_url: null } : {}),
       ...(avatar
         ? { avatar_url: avatar }
         : useDefaultAvatar && !values.existingAvatarUrl
@@ -236,6 +237,7 @@ export async function submitClientSetup(
   if (!result.ok) throw new Error(Object.values(result.errors)[0]);
   const user = await currentUser();
   await saveProfile(user.id, result.data);
+  if (result.data.bannerImage) await uploadBanner(user.id, result.data.bannerImage);
   const { data, error } = await supabase
     .from("client_profiles")
     .select("client_id")
@@ -257,14 +259,16 @@ export async function submitFreelancerSetup(
   if (!result.ok) throw new Error(Object.values(result.errors)[0]);
   const values = result.data;
   const user = await currentUser();
-  await saveProfile(user.id, values, true);
-  if (values.bannerImage) await uploadBanner(user.id, values.bannerImage);
   const { data: existing, error } = await supabase
     .from("freelancer_profiles")
-    .select("freelancer_id,portfolio_sample_urls,certification_urls")
+    .select("freelancer_id,resume_url,portfolio_sample_urls,certification_urls")
     .eq("user_id", user.id)
     .maybeSingle();
   check(error, "Find freelancer profile");
+  if (values.resume && existing?.resume_url)
+    throw new Error("A resume / CV has already been submitted.");
+  await saveProfile(user.id, values, true);
+  if (values.bannerImage) await uploadBanner(user.id, values.bannerImage);
   const resume = values.resume
     ? await upload("verification-documents", `${user.id}/resume`, values.resume)
     : undefined;

@@ -27,6 +27,7 @@ type Props = {
 
   onPhotoRemove: () => void;
   onBannerSelect?: (file: File) => void;
+  onBannerRemove?: () => void;
   profilePhotoRequired?: boolean;
 };
 
@@ -39,6 +40,7 @@ export function ProfileSection({
   onPhotoSelect,
   onPhotoRemove,
   onBannerSelect,
+  onBannerRemove,
   profilePhotoRequired = true,
 }: Props) {
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -48,7 +50,10 @@ export function ProfileSection({
       <div className="relative h-32 w-full overflow-hidden bg-gradient-to-r from-emerald-500 via-cyan-500 to-blue-600 sm:h-40 lg:h-44">
         {bannerPreview && <Image fill unoptimized sizes="100vw" src={bannerPreview} alt="Banner preview" className="object-cover object-center" />}
         {onBannerSelect && <>
-          <Button type="button" size="sm" aria-invalid={!!errors.bannerImage} className={`absolute right-4 top-4 rounded-xl border-0 bg-white/20 text-white shadow-none backdrop-blur-sm hover:bg-white/30 hover:text-white ${errors.bannerImage ? "ring-2 ring-destructive" : ""}`} onClick={() => bannerInputRef.current?.click()}><ImagePlus className="size-4" />Edit cover</Button>
+          <div className="absolute right-4 top-4 flex flex-col items-end gap-2">
+            <Button type="button" size="sm" aria-invalid={!!errors.bannerImage} className={`rounded-xl border-0 bg-white/20 text-white shadow-none backdrop-blur-sm hover:bg-white/30 hover:text-white ${errors.bannerImage ? "ring-2 ring-destructive" : ""}`} onClick={() => bannerInputRef.current?.click()}><ImagePlus className="size-4" />Edit cover</Button>
+            {bannerPreview && onBannerRemove && <Button type="button" size="sm" variant="destructive" className="rounded-xl" onClick={onBannerRemove}>Remove cover</Button>}
+          </div>
           <input ref={bannerInputRef} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) onBannerSelect(file); }} />
         </>}
       </div>
@@ -60,11 +65,8 @@ export function ProfileSection({
           </Avatar>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pb-1">
             <input ref={photoInputRef} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) onPhotoSelect(file); }} />
-            <div className="space-y-1">
-              <Button type="button" variant="link" size="sm" aria-invalid={!!errors.profilePhoto} className={`-ml-3 inline-flex cursor-pointer items-center px-3 font-semibold text-foreground no-underline hover:text-foreground hover:no-underline ${errors.profilePhoto ? "rounded border border-destructive" : ""}`} onClick={() => photoInputRef.current?.click()}><span className="inline-flex items-center gap-2 leading-none"><Camera className="size-4 shrink-0" /><span>Edit profile photo</span></span></Button>
-              <p className="text-xs text-muted-foreground">JPG, PNG or WebP</p>
-            </div>
-            {values.profilePhoto && <Button type="button" variant="ghost" size="sm" onClick={onPhotoRemove} className="text-destructive">Remove selected photo</Button>}
+            <Button type="button" variant="outline" size="sm" aria-invalid={!!errors.profilePhoto} className={errors.profilePhoto ? "border-destructive" : ""} onClick={() => photoInputRef.current?.click()}><Camera className="size-4" />Add profile photo</Button>
+            {values.profilePhoto && <Button type="button" variant="outline" size="sm" onClick={onPhotoRemove} className="text-destructive">Remove photo</Button>}
             {profilePhotoRequired && <span className="text-xs text-muted-foreground">Required</span>}
           </div>
         </div>

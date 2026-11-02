@@ -676,7 +676,7 @@ export default function SubscriptionPage() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Review your Premium checkout</DialogTitle>
-            <DialogDescription>Review who is buying, the extension date, and the full amount before continuing to PayMongo.</DialogDescription>
+            <DialogDescription>This payment extends your Premium access for the selected period.</DialogDescription>
           </DialogHeader>
           {checkoutBreakdown && (
             <div className="space-y-4">

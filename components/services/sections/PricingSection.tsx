@@ -3,7 +3,10 @@ import type { ListingRole } from "@/services/serviceP/service.types";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { MAX_JOB_BUDGET_PHP } from "@/lib/validation/service.creation.validation";
+import {
+  MAX_JOB_BUDGET_PHP,
+  MAX_SERVICE_PRICE_PHP,
+} from "@/lib/validation/service.creation.validation";
 
 type Props = {
   values: ServiceFormValues;
@@ -66,15 +69,25 @@ export function ServicePricingSection({
         type="number"
         inputMode="numeric"
         min={1}
+        max={MAX_SERVICE_PRICE_PHP}
         step={1}
         placeholder="e.g. 5000"
         value={values.price ?? ""}
-        onChange={(event) =>
+        onChange={(event) => {
+          const amount = event.target.value ? Number(event.target.value) : undefined;
           onChange({
-            price: event.target.value ? Number(event.target.value) : undefined,
-          })
-        }
+            price:
+              amount === undefined
+                ? undefined
+                : Number.isFinite(amount)
+                  ? Math.min(amount, MAX_SERVICE_PRICE_PHP)
+                  : MAX_SERVICE_PRICE_PHP,
+          });
+        }}
       />
+      <p className="text-xs text-muted-foreground">
+        Maximum service price: PHP 100,000.
+      </p>
       {errors.price && (
         <p className="text-xs text-destructive">{errors.price}</p>
       )}

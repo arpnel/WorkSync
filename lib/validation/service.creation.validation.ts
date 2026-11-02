@@ -2,6 +2,7 @@ import type { ServiceFormValues } from "@/components/services/types/service-form
 import type { ListingRole } from "@/services/serviceP/service.types";
 
 export const MAX_JOB_BUDGET_PHP = 100_000;
+export const MAX_SERVICE_PRICE_PHP = 100_000;
 
 type ValidationResult<T> =
   | { ok: true; data: T }
@@ -48,9 +49,10 @@ export function validateListingCreationValues(
     if (
       values.price === undefined ||
       !Number.isFinite(values.price) ||
-      values.price <= 0
+      values.price <= 0 ||
+      values.price > MAX_SERVICE_PRICE_PHP
     ) {
-      errors.price = "Price must be greater than 0.";
+      errors.price = "Price must be greater than 0 and no more than PHP 100,000.";
     }
 
     if (

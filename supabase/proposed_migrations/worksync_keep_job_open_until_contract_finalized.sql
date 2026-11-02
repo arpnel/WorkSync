@@ -34,7 +34,7 @@ begin
 
   if tg_table_name = 'jobs'
     and old.status is distinct from new.status
-    and new.status = 'closed'
+    and new.status::text = 'closed'
     and (to_jsonb(new) - 'status' - 'updated_at')
         = (to_jsonb(old) - 'status' - 'updated_at')
     and exists (

@@ -1,6 +1,9 @@
 ﻿import { invalidatePageReads } from "@/lib/pageReadCache";
 import { supabase } from "@/lib/supabaseClient";
-import { MAX_JOB_BUDGET_PHP } from "@/lib/validation/service.creation.validation";
+import {
+  MAX_JOB_BUDGET_PHP,
+  MAX_SERVICE_PRICE_PHP,
+} from "@/lib/validation/service.creation.validation";
 import type {
   CreateListingPayload,
   CreateListingResult,
@@ -189,6 +192,15 @@ async function createFreelancerService(
   userId: string,
   payload: CreateListingPayload,
 ): Promise<CreateListingResult> {
+  if (
+    payload.price === undefined ||
+    !Number.isFinite(payload.price) ||
+    payload.price <= 0 ||
+    payload.price > MAX_SERVICE_PRICE_PHP
+  ) {
+    throw new Error("Service price must be no more than PHP 100,000.");
+  }
+
   const { data: freelancer, error: freelancerError } = await supabase
     .from("freelancer_profiles")
     .select("freelancer_id")

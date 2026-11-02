@@ -21,6 +21,7 @@ import {
 import { useWorkAnalytics } from "@/hooks/dashboard/useWorkAnalytics";
 import {
   dateKey,
+  freelancerEarningsAmount,
   growth,
   inPeriod,
   monthlyAnalytics,
@@ -138,7 +139,15 @@ export default function WorkAnalytics({
     const payment = payments[p.id];
     return payment?.status === "paid" && !payment.paidAt;
   }).length;
-  const financialReady = !paymentLoading && !unavailable && !undated;
+  const missingAmounts = projects.filter((project) => {
+    const payment = payments[project.id];
+    return payment?.status === "paid" && (
+      payment.amount == null || !Number.isFinite(Number(payment.amount)) ||
+      (project.party === "freelancer" &&
+        freelancerEarningsAmount(payment) === null)
+    );
+  }).length;
+  const financialReady = !paymentLoading && !unavailable && !undated && !missingAmounts;
   const hasPaymentValues =
     selectedParty === "all"
       ? months.some((month) => month.earnings > 0 || month.spending > 0)
@@ -258,10 +267,10 @@ export default function WorkAnalytics({
               <p className="text-muted-foreground">
                 Compared with {previous.from} to {previous.to}, an equally long
                 period. {selectedParty === "all"
-                  ? "Gross earnings and client spending use confirmed payments in the configured payment mode."
+                  ? "Freelancer earnings exclude VAT and client transaction fees. Test-mode payments are included. Client spending uses the full checkout total."
                   : showEarnings
-                    ? "Gross earnings include confirmed payments for freelance work in the configured payment mode, before fees and expenses; they are not net profit or a payout balance."
-                    : "Client spending includes confirmed payments for work you commissioned in the configured payment mode."}
+                    ? "Gross earnings use the taxable service amount, excluding VAT and client transaction fees. Only test-mode payments are included; this is not net profit or a payout balance."
+                    : "Client spending uses the full checkout total, including VAT and transaction fees. Test-mode payments are included."}
               </p>
             </>
           )}

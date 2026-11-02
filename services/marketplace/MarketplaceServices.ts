@@ -592,9 +592,7 @@ async function hideUnavailableJobsForCurrentFreelancer(
   if (error) throw error;
   const unavailable = new Set(
     (applications ?? [])
-      .filter((application) =>
-        ["accepted", "rejected"].includes(application.status),
-      )
+      .filter((application) => application.status === "rejected")
       .map((application) => application.job_id),
   );
   return rows.filter((row) => !unavailable.has(row.job_id));

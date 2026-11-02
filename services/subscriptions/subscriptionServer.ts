@@ -23,37 +23,52 @@ type OpenSubscriptionOrder = {
   billing_period: "monthly" | "yearly";
 };
 
+function hasCurrentPremiumLineItem(
+  session: CheckoutSession,
+  order: Pick<OpenSubscriptionOrder, "amount" | "billing_period">,
+) {
+  const [item] = session.attributes.line_items ?? [];
+  const planName = `WorkSync Premium - 1 ${order.billing_period === "monthly" ? "month" : "year"}`;
+  return (
+    session.attributes.line_items?.length === 1 &&
+    item?.name === planName &&
+    item.amount === centavos(order.amount) &&
+    item.currency === "PHP" &&
+    item.quantity === 1
+  );
+}
+
 async function resumeSubscriptionCheckout(
   db: Database,
-  userId: string,
   order: OpenSubscriptionOrder,
   mode: "test" | "live",
   billingPeriod: "monthly" | "yearly",
 ) {
-  if (order.billing_period !== billingPeriod)
-    throw new PaymentError(`A ${order.billing_period} Premium checkout is already pending. Finish it before starting a ${billingPeriod} checkout.`, 409);
-  if (order.status === "needs_review")
-    throw new PaymentError(
-      "Your previous Premium checkout needs support review before another can be started.",
-      409,
-    );
-  if (!order.transaction_reference)
+  if (!order.transaction_reference) {
+    if (order.status === "needs_review" && mode === "test" && !order.livemode) {
+      const { error: closeError } = await db
+        .from("subscription_orders")
+        .update({ status: "failed" })
+        .eq("order_id", order.order_id)
+        .eq("status", "needs_review")
+        .eq("livemode", false)
+        .is("transaction_reference", null);
+      if (closeError)
+        throw new PaymentError("The previous test checkout could not be closed safely.");
+      return null;
+    }
     throw new PaymentError(
       "Your Premium checkout is still being confirmed. Retry shortly; do not start another payment.",
       409,
     );
+  }
 
   const existing = await paymongo(
     `/v1/checkout_sessions/${encodeURIComponent(order.transaction_reference)}`,
   );
-  if (
-    existing.id !== order.transaction_reference ||
-    existing.attributes.reference_number !== order.order_id ||
-    existing.attributes.metadata?.kind !== "subscription" ||
-    existing.attributes.metadata?.user_id !== userId ||
+  if (existing.id !== order.transaction_reference ||
     existing.attributes.livemode !== order.livemode ||
-    order.livemode !== (mode === "live")
-  )
+    order.livemode !== (mode === "live"))
     throw new PaymentError("The existing Premium checkout needs support review.", 409);
 
   await processSubscriptionPaymentSession(db, existing);
@@ -68,29 +83,53 @@ async function resumeSubscriptionCheckout(
     throw new PaymentError("Premium was renewed. Refresh your subscription status.", 409);
 
   if (existing.attributes.status === "expired") {
-    const { error } = await db
+    const { error: closeError } = await db
       .from("subscription_orders")
       .update({ status: "failed" })
       .eq("order_id", order.order_id)
-      .eq("status", "pending");
-    if (error)
+      .eq("transaction_reference", existing.id)
+      .eq("status", order.status);
+    if (closeError)
       throw new PaymentError("Expired Premium checkout could not be closed safely.");
     return null;
   }
 
-  const url = checkoutUrl(existing);
-  if (order.checkout_url && order.checkout_url !== url)
-    throw new PaymentError("The existing Premium checkout needs support review.", 409);
-  if (!order.checkout_url) {
-    const { error } = await db
-      .from("subscription_orders")
-      .update({ checkout_url: url })
-      .eq("order_id", order.order_id)
-      .eq("status", "pending");
-    if (error)
-      throw new PaymentError("Checkout URL could not be saved safely.");
+  if (order.billing_period === billingPeriod && hasCurrentPremiumLineItem(existing, order)) {
+    const url = checkoutUrl(existing);
+    if (order.status === "needs_review") {
+      const { error } = await db
+        .from("subscription_orders")
+        .update({ status: "pending", checkout_url: url })
+        .eq("order_id", order.order_id)
+        .eq("transaction_reference", existing.id)
+        .eq("status", "needs_review");
+      if (error)
+        throw new PaymentError("The existing Premium checkout could not be restored safely.");
+    } else if (order.checkout_url && order.checkout_url !== url) {
+      throw new PaymentError("The existing Premium checkout needs support review.", 409);
+    }
+    return { checkoutUrl: url, orderId: order.order_id };
   }
-  return { checkoutUrl: url, orderId: order.order_id };
+
+  // Checkout line items cannot be edited after creation. Expire an older
+  // session before issuing a replacement so the customer cannot pay twice.
+  if (existing.attributes.status !== "expired") {
+    const expired = await paymongo(
+      `/v1/checkout_sessions/${encodeURIComponent(existing.id)}/expire`,
+      {},
+    );
+    if (expired.id !== existing.id || expired.attributes.status !== "expired")
+      throw new PaymentError("The previous Premium checkout could not be safely replaced.", 409);
+  }
+  const { error: closeError } = await db
+    .from("subscription_orders")
+    .update({ status: "failed" })
+    .eq("order_id", order.order_id)
+    .eq("transaction_reference", existing.id)
+    .eq("status", order.status);
+  if (closeError)
+    throw new PaymentError("The previous Premium checkout could not be closed safely.");
+  return null;
 }
 
 export async function createSubscriptionCheckout(
@@ -110,9 +149,9 @@ export async function createSubscriptionCheckout(
     : plan?.provisional_annual_price;
   if (planError || configuredPrice == null)
     throw new PaymentError("Premium billing is not configured yet.", 503);
-  // The advertised subscription price is the VAT-inclusive total. Split it
-  // into receipt line items without increasing what the customer pays.
-  const vat = calculateVat(configuredPrice, "inclusive", true);
+  // The displayed subscription price is VAT-exclusive. Add VAT on top and
+  // use that same total for the checkout and receipt line items.
+  const vat = calculateVat(configuredPrice, "exclusive", true);
   const amount = centavos(vat.total);
   const baseAmount = centavos(vat.taxableAmount);
   const vatAmount = centavos(vat.vatAmount);
@@ -126,7 +165,7 @@ export async function createSubscriptionCheckout(
   if (pendingError)
     throw new PaymentError("Unable to check for an existing Premium checkout.");
   if (pending) {
-    const resumed = await resumeSubscriptionCheckout(db, userId, pending, mode, billingPeriod);
+    const resumed = await resumeSubscriptionCheckout(db, pending, mode, billingPeriod);
     if (resumed) return resumed;
   }
 
@@ -153,7 +192,7 @@ export async function createSubscriptionCheckout(
     if (error)
       throw new PaymentError("Unable to check the existing Premium checkout.");
     if (winner) {
-      const resumed = await resumeSubscriptionCheckout(db, userId, winner, mode, billingPeriod);
+      const resumed = await resumeSubscriptionCheckout(db, winner, mode, billingPeriod);
       if (resumed) return resumed;
     }
   }
@@ -164,18 +203,13 @@ export async function createSubscriptionCheckout(
     );
 
   const returnUrl = `${origin}/home/subscription?order=${encodeURIComponent(orderId)}`;
+  let sessionBoundToOrder = false;
   try {
     const session = await paymongo("/v2/checkout_sessions", {
       line_items: [
         {
-          name: `WorkSync Premium - 1 ${billingPeriod === "monthly" ? "month" : "year"} (VAT-exclusive)`,
-          amount: baseAmount,
-          currency: "PHP",
-          quantity: 1,
-        },
-        {
-          name: "12% VAT",
-          amount: vatAmount,
+          name: `WorkSync Premium - 1 ${billingPeriod === "monthly" ? "month" : "year"}`,
+          amount,
           currency: "PHP",
           quantity: 1,
         },
@@ -191,25 +225,34 @@ export async function createSubscriptionCheckout(
       metadata: { kind: "subscription", order_id: orderId, user_id: userId, billing_period: billingPeriod },
       send_email_receipt: true,
     });
-    if (
-      session.attributes.reference_number !== orderId ||
-      session.attributes.livemode !== (mode === "live")
-    )
-      throw new PaymentError("PayMongo returned a mismatched checkout session.");
-    const url = checkoutUrl(session);
+    if (!/^cs_[a-zA-Z0-9]+$/.test(session.id))
+      throw new PaymentError("PayMongo returned an invalid checkout session ID.");
     const { error: saveError } = await db
       .from("subscription_orders")
-      .update({ transaction_reference: session.id, checkout_url: url })
+      .update({ transaction_reference: session.id })
       .eq("order_id", orderId)
       .eq("status", "pending");
     if (saveError)
       throw new PaymentError(
         "Checkout was created but its reference could not be saved. Contact support before retrying.",
       );
+    sessionBoundToOrder = true;
+    if (session.attributes.livemode !== (mode === "live"))
+      throw new PaymentError("PayMongo returned a checkout session in the wrong payment mode.");
+    const url = checkoutUrl(session);
+    const { error: urlSaveError } = await db
+      .from("subscription_orders")
+      .update({ checkout_url: url })
+      .eq("order_id", orderId)
+      .eq("transaction_reference", session.id)
+      .eq("status", "pending");
+    if (urlSaveError)
+      throw new PaymentError("Checkout was created but its link could not be saved. Retry shortly.");
     return { checkoutUrl: url, orderId };
   } catch (error) {
-    // An ambiguous provider timeout must not create another payable session on retry.
-    if (error instanceof PaymentError && error.message.includes("mismatched"))
+    // If PayMongo returned a session, retain the order binding and do not
+    // create a second payable session when validation or link saving fails.
+    if (sessionBoundToOrder)
       await db
         .from("subscription_orders")
         .update({ status: "needs_review" })
@@ -225,26 +268,21 @@ export async function processSubscriptionPaymentSession(
   requirePaid = false,
 ): Promise<boolean> {
   const attributes = session.attributes;
-  const metadata = attributes.metadata;
-  if (metadata?.kind !== "subscription") return false;
-  const orderId = metadata.order_id;
-  const userId = metadata.user_id;
-  if (!orderIdPattern.test(orderId ?? "") || !userId)
-    throw new PaymentError("Invalid Premium checkout metadata.", 409);
   const { data: order, error } = await db
     .from("subscription_orders")
     .select("order_id,user_id,amount,taxable_amount,vat_amount,vat_rate,vat_itemized,status,transaction_reference,livemode,provider_payment_id,billing_period,legacy_price")
-    .eq("order_id", orderId)
+    .eq("transaction_reference", session.id)
     .maybeSingle();
-  if (error || !order)
+  if (error)
+    throw new PaymentError("Unable to verify the Premium checkout record.");
+  if (!order) {
+    // Other checkout types also reach this processor. Only claim an unbound
+    // session as a subscription when its metadata explicitly says so.
+    if (attributes.metadata?.kind !== "subscription") return false;
     throw new PaymentError("Premium checkout record was not found.", 404);
+  }
   if (
-    order.user_id !== userId ||
-    attributes.reference_number !== order.order_id ||
-    (order.transaction_reference && order.transaction_reference !== session.id) ||
-    metadata.order_id !== order.order_id ||
-    (metadata.billing_period !== order.billing_period &&
-      !(order.legacy_price && order.billing_period === "monthly" && metadata.billing_period == null)) ||
+    !orderIdPattern.test(order.order_id) ||
     attributes.livemode !== order.livemode ||
     order.livemode !== (paymentMode() === "live")
   )
@@ -318,4 +356,17 @@ export async function getSubscriptionCheckoutStatus(
     return { orderId, status: latest?.status ?? order.status };
   }
   return { orderId, status: order.status };
+}
+
+export async function getSubscriptionPaymentHistory(db: Database, userId: string) {
+  const { data, error } = await db
+    .from("subscription_orders")
+    .select("order_id,amount,billing_period,paid_at,created_at")
+    .eq("user_id", userId)
+    .eq("status", "paid")
+    .order("paid_at", { ascending: false, nullsFirst: false })
+    .limit(50);
+  if (error)
+    throw new PaymentError("Unable to load Premium payment history.");
+  return data ?? [];
 }

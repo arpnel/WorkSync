@@ -8,8 +8,8 @@ import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 
 const freeFeatures = [
-  { icon: Check, label: "1 saved draft" },
-  { icon: Check, label: "5 job applications per month" },
+  { icon: Check, label: "1 saved Kanban board project plan" },
+  { icon: Check, label: "1 job application per month" },
   { icon: Check, label: "1 active project at a time" },
   { icon: Check, label: "1 active job posting" },
   { icon: X, label: "Boosted job postings not included" },
@@ -20,7 +20,7 @@ const freeFeatures = [
 ];
 
 const premiumFeatures = [
-  { icon: Infinity, label: "Unlimited project drafts" },
+  { icon: Infinity, label: "Unlimited Kanban board project plans" },
   { icon: Infinity, label: "Unlimited job applications" },
   { icon: Check, label: "Up to 20 active projects at a time" },
   { icon: Infinity, label: "Unlimited active job postings" },
@@ -91,7 +91,7 @@ export default function OffersPage() {
           <div>
             <h2 className="font-semibold">Free</h2>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-              Essential tools to kickstart your project draft and land initial gigs.
+              Essential tools to start your Kanban board project plan and land initial gigs.
             </p>
           </div>
           <p className="mt-6 text-3xl font-bold tracking-tight">

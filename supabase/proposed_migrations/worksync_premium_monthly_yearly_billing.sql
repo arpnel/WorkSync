@@ -30,7 +30,7 @@ alter table public.subscription_orders
 alter table public.subscription_orders
   add column if not exists legacy_price boolean not null default false;
 -- Existing pending/paid orders keep their original one-line checkout semantics.
--- New checkouts save a VAT-inclusive total split for the provider receipt.
+-- New checkout prices are VAT-exclusive; the 12% VAT is added on top.
 alter table public.subscription_orders
   add column if not exists taxable_amount numeric(10,2);
 alter table public.subscription_orders
@@ -56,7 +56,7 @@ alter table public.subscription_orders
     and (not vat_itemized or (
       vat_rate = 0.12
       and round(taxable_amount + vat_amount, 2) = amount
-      and vat_amount = round(amount * 12 / 112, 2)
+      and vat_amount = round(taxable_amount * 0.12, 2)
     ))
   );
 update public.subscription_orders
@@ -109,16 +109,22 @@ begin
   from public.subscription_plans
   where plan_code = 'pro';
   if expected_amount is null or (
-    order_data.amount is distinct from expected_amount
-    and not (order_data.legacy_price and order_data.billing_period = 'monthly'
-      and order_data.amount = 999.99)
+    (order_data.vat_itemized and (
+      order_data.taxable_amount is distinct from expected_amount
+      or order_data.vat_amount is distinct from round(expected_amount * 0.12, 2)
+      or order_data.amount is distinct from expected_amount + round(expected_amount * 0.12, 2)
+    ))
+    or (not order_data.vat_itemized
+      and order_data.amount is distinct from expected_amount
+      and not (order_data.legacy_price and order_data.billing_period = 'monthly'
+        and order_data.amount = 999.99))
   ) then
     raise exception 'Subscription order amount does not match its billing period';
   end if;
   if order_data.vat_itemized and (
     order_data.vat_rate is distinct from 0.12
     or order_data.taxable_amount + order_data.vat_amount is distinct from order_data.amount
-    or order_data.vat_amount is distinct from round(order_data.amount * 12 / 112, 2)
+    or order_data.vat_amount is distinct from round(order_data.taxable_amount * 0.12, 2)
   ) then
     raise exception 'Subscription VAT breakdown does not match its total';
   end if;

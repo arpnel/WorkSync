@@ -539,7 +539,7 @@ async function attachmentUrl(
 }
 
 const WORKSPACE_SELECT =
-  "order_id, application_id, job_id, service_id, freelancer_id, client_id, status, created_at, services(title, description, price, service_type, delivery_time_days, revisions_count, category_id), client_profiles(user_id), freelancer_profiles(user_id), projects(project_id, title, description, budget, status, start_date, due_date, project_type, milestones(milestone_id, title, description, amount, due_date, status, display_order)), contracts(contract_id, current_version, final_price, delivery_time_days, revisions_count, terms, status, client_signed_at, freelancer_signed_at)";
+  "order_id, application_id, job_id, service_id, freelancer_id, client_id, status, created_at, services(title, description, price, service_type, delivery_time_days, revisions_count, category_id), client_profiles(user_id), freelancer_profiles(user_id), projects(project_id, title, description, budget, status, start_date, due_date, project_type, milestones!milestones_project_id_fkey(milestone_id, title, description, amount, due_date, status, display_order)), contracts(contract_id, current_version, final_price, delivery_time_days, revisions_count, terms, status, client_signed_at, freelancer_signed_at)";
 
 export async function getProjectWorkspace(
   serviceOrderId: string,

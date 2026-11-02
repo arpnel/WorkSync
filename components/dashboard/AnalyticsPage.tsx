@@ -30,6 +30,7 @@ import {
 import { useWorkAnalytics } from "@/hooks/dashboard/useWorkAnalytics";
 import {
   dateKey,
+  freelancerEarningsAmount,
   growth,
   inPeriod,
   monthlyAnalytics,
@@ -192,7 +193,9 @@ export default function AnalyticsPage() {
     const payment = payments[p.id];
     return (
       payment?.status === "paid" &&
-      (payment.amount == null || !Number.isFinite(Number(payment.amount)))
+      (payment.amount == null || !Number.isFinite(Number(payment.amount)) ||
+        (p.party === "freelancer" &&
+          freelancerEarningsAmount(payment) === null))
     );
   }).length;
   const financialReady =
@@ -266,7 +269,7 @@ export default function AnalyticsPage() {
     <div className="@container mx-auto w-full max-w-[1600px] space-y-6">
       <WorkspacePageHeader
         title="Analytics"
-        description="Track your projects and confirmed payments over time."
+        description="Freelancer earnings exclude VAT and client transaction fees. Test-mode payments are included; client spending reflects the full checkout total."
       />
       {!valid ? (
         <p
@@ -402,7 +405,9 @@ export default function AnalyticsPage() {
             </Panel>
             <Panel
               title={showEarnings ? "Gross earnings over time" : "Client spending over time"}
-              description="Confirmed payments by date."
+              description={showEarnings
+                ? "Pre-VAT service earnings by payment date, excluding client transaction fees. Test-mode payments are included."
+                : "Full checkout totals by payment date, including VAT and transaction fees. Test-mode payments are included."}
               className="col-span-12 @min-[900px]:col-span-6"
             >
               {paymentLoading ? (

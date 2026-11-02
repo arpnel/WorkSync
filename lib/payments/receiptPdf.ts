@@ -263,7 +263,10 @@ export function createReceiptPdf(details: ReceiptDetails) {
     breakdownRow("Gross Earnings", "Earnings before withholding tax.", details.serviceGrossEarnings == null ? "Not recorded" : php(details.serviceGrossEarnings), 48, false);
     breakdownRow("Withholding Tax", "Tax withheld from freelancer earnings.", details.taxLines.length ? php(details.withholding) : "Not recorded", 48, false);
     const payoutStatuses = [...new Set(details.taxLines.map(line => line.payoutStatus).filter((status): status is string => Boolean(status)))];
-    const netPayoutNote = "Final payout amount." + (payoutStatuses.length ? " Transfer status: " + payoutStatuses.join(", ") + "." : "");
+    const demoStatusOnly = details.taxLines.some(line => ["processing", "paid"].includes(line.payoutStatus ?? "") && !line.transferReference);
+    const netPayoutNote = demoStatusOnly
+      ? "Demo payout status only; no money was transferred. Recorded status: " + payoutStatuses.join(", ") + "."
+      : "Final payout amount." + (payoutStatuses.length ? " Transfer status: " + payoutStatuses.join(", ") + "." : "");
     breakdownRow("Net Payout Amount", netPayoutNote, details.freelancerNetPayout == null ? "Not recorded" : php(details.freelancerNetPayout), 48, false);
     y -= 3;
     line(y);

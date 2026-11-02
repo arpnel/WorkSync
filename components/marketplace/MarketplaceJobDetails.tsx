@@ -458,6 +458,7 @@ export default function MarketplaceJobDetails({
                 <Button
                   type="button"
                   variant="outline"
+                  className="mr-2"
                   onClick={() => { setProposedPlan(application.proposed_plan); setEditingApplication(true); }}
                 >
                   Edit proposal

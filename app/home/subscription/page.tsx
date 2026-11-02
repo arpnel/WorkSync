@@ -1,19 +1,24 @@
-"use client";
+﻿"use client";
 import { useCallback, useEffect, useState } from "react";
 import {
-  CalendarDays,
   Check,
   Crown,
   LoaderCircle,
-  RefreshCw,
-  Sparkles,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { WorkspacePageHeader } from "@/components/shared/WorkspacePageHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { PremiumExpiryNotice } from "@/components/account/PremiumExpiryNotice";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { calculateVat } from "@/lib/payments/philippineTax";
 
 type Plan = {
   plan_code: string;
@@ -28,18 +33,64 @@ type Assignment = {
   access_type: "free" | "trial" | "paid";
   trial_claimed_at: string | null;
 };
+type PremiumPayment = {
+  order_id: string;
+  amount: number;
+  billing_period: "monthly" | "yearly";
+  paid_at: string | null;
+  created_at: string;
+};
 const uuid =
   /^[a-f\d]{8}-[a-f\d]{4}-[1-5][a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/i;
+const php = (amount: number) => new Intl.NumberFormat("en-PH", {
+  style: "currency",
+  currency: "PHP",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+}).format(amount);
+const dateInManila = (date: Date) => new Intl.DateTimeFormat("en-PH", {
+  dateStyle: "long",
+  timeZone: "Asia/Manila",
+}).format(date);
+const dateTimeInManila = (date: Date) => new Intl.DateTimeFormat("en-PH", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "Asia/Manila",
+}).format(date);
+function addBillingPeriod(startedAt: number, period: "monthly" | "yearly") {
+  const date = new Date(startedAt);
+  const originalDay = date.getUTCDate();
+  date.setUTCDate(1);
+  if (period === "monthly") date.setUTCMonth(date.getUTCMonth() + 1);
+  else date.setUTCFullYear(date.getUTCFullYear() + 1);
+  const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
+  date.setUTCDate(Math.min(originalDay, lastDay));
+  return date;
+}
+const planFeatures = [
+  ["Kanban board project plans", "1 saved plan", "Unlimited"],
+  ["Job applications", "1 per month", "Unlimited"],
+  ["Active projects", "1 at a time", "Up to 20 concurrent"],
+  ["Active job postings", "1 listing total", "Up to 100 listings"],
+  ["AI skills gap assessments", "1 every 6 months", "Unlimited"],
+  ["Transaction fee", "10% per job", "5% reduced fee"],
+  ["Support", "Standard Email", "24/7 Priority Support"],
+] as const;
 
 export default function SubscriptionPage() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [plan, setPlan] = useState("free");
   const [assignment, setAssignment] = useState<Assignment | null>(null);
-  const [usage, setUsage] = useState({ active: 0 });
+  const [paymentHistory, setPaymentHistory] = useState<PremiumPayment[]>([]);
+  const [paymentHistoryError, setPaymentHistoryError] = useState("");
+  const [usage, setUsage] = useState<{ active: number; activeProjects: number | null }>({ active: 0, activeProjects: null });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(false);
   const [checkoutStatus, setCheckoutStatus] = useState("");
+  const [paymentReceivedOpen, setPaymentReceivedOpen] = useState(false);
+  const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
+  const [buyer, setBuyer] = useState({ name: "", email: "" });
   const [clockNow, setClockNow] = useState<number | null>(null);
   const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">("monthly");
 
@@ -56,8 +107,32 @@ export default function SubscriptionPage() {
       const user = auth.session?.user;
       if (authError || !user)
         throw new Error("Sign in to view your subscription.");
+      const accessToken = auth.session!.access_token;
       const userId = user.id;
-      const [planResult, assignmentResult] = await Promise.all([
+      const historyPromise = (async () => {
+        try {
+          const response = await fetch("/api/subscriptions/history", {
+            headers: { Authorization: `Bearer ${accessToken}` },
+            cache: "no-store",
+          });
+          const result = await response.json();
+          if (!response.ok)
+            return {
+              payments: [] as PremiumPayment[],
+              error: result.error || "Unable to load Premium payment history.",
+            };
+          return {
+            payments: (Array.isArray(result.payments) ? result.payments : []) as PremiumPayment[],
+            error: "",
+          };
+        } catch {
+          return {
+            payments: [] as PremiumPayment[],
+            error: "Unable to load Premium payment history.",
+          };
+        }
+      })();
+      const [planResult, assignmentResult, historyResult] = await Promise.all([
         supabase
           .from("subscription_plans")
           .select("plan_code,display_name,active_listing_limit,provisional_monthly_price,provisional_annual_price")
@@ -67,6 +142,7 @@ export default function SubscriptionPage() {
           .select("plan_code,period_ends_at,access_type,trial_claimed_at")
           .eq("user_id", userId)
           .maybeSingle(),
+        historyPromise,
       ]);
       if (planResult.error || assignmentResult.error)
         throw new Error(
@@ -82,19 +158,51 @@ export default function SubscriptionPage() {
         .eq("owner_id", userId)
         .eq("status", "approved")
         .is("archived_at", null);
-      const active = await activeListings;
+      const freelancerProfile = supabase
+        .from("freelancer_profiles")
+        .select("freelancer_id")
+        .eq("user_id", userId)
+        .maybeSingle();
+      const buyerProfile = supabase
+        .from("profiles")
+        .select("display_name,first_name,last_name")
+        .eq("user_id", userId)
+        .maybeSingle();
+      const [active, freelancer, profile] = await Promise.all([activeListings, freelancerProfile, buyerProfile]);
       if (active.error)
         throw new Error(
           "Your subscription usage could not be loaded. Please try again.",
         );
+      let activeProjects: number | null = null;
+      if (!freelancer.error && freelancer.data?.freelancer_id) {
+        const projects = await supabase
+          .from("projects")
+          .select("project_id", { count: "exact", head: true })
+          .eq("freelancer_id", freelancer.data.freelancer_id)
+          .in("status", ["active", "revision", "in_progress"]);
+        if (!projects.error) activeProjects = projects.count ?? 0;
+      }
       setPlans((planResult.data ?? []) as Plan[]);
       setAssignment(activeAssignment);
+      setPaymentHistory(historyResult.payments);
+      setPaymentHistoryError(historyResult.error);
       setPlan(activePlan ? "pro" : "free");
+      const metadata = user.user_metadata ?? {};
+      const metadataName = typeof metadata.full_name === "string"
+        ? metadata.full_name
+        : typeof metadata.name === "string" ? metadata.name : "";
+      const profileName = [profile.data?.first_name, profile.data?.last_name].filter(Boolean).join(" ") ||
+        profile.data?.display_name?.trim();
+      setBuyer({
+        name: profileName || metadataName || user.email || "Account holder",
+        email: user.email || "",
+      });
       setClockNow(Date.now());
       if (typeof window !== "undefined")
         window.dispatchEvent(new Event("worksync:subscription-updated"));
       setUsage({
         active: active.count ?? 0,
+        activeProjects,
       });
     } catch (cause) {
       setError(
@@ -156,12 +264,21 @@ export default function SubscriptionPage() {
         if (!response.ok)
           throw new Error(result.error || "Unable to verify Premium checkout.");
         if (live) {
-          setCheckoutStatus(
-            result.status === "paid"
-              ? "Premium payment confirmed. Your plan is active."
-              : "Payment is not confirmed yet. Refresh the status after completing checkout.",
-          );
-          if (result.status === "paid") await load();
+          if (result.status === "paid") {
+            setCheckoutStatus("");
+            setPaymentReceivedOpen(true);
+            params.delete("order");
+            window.history.replaceState(
+              null,
+              "",
+              `${window.location.pathname}${params.toString() ? `?${params}` : ""}${window.location.hash}`,
+            );
+            await load();
+          } else {
+            setCheckoutStatus(
+              "Payment is not confirmed yet. Refresh the status after completing checkout.",
+            );
+          }
         }
       } catch (cause) {
         if (live)
@@ -209,6 +326,7 @@ export default function SubscriptionPage() {
           ? cause.message
           : "Unable to open Premium checkout.",
       );
+      setCheckoutDialogOpen(false);
       setActing(false);
     }
   }
@@ -233,12 +351,22 @@ export default function SubscriptionPage() {
       const result = await response.json();
       if (!response.ok)
         throw new Error(result.error || "Unable to verify Premium checkout.");
-      setCheckoutStatus(
-        result.status === "paid"
-          ? "Premium payment confirmed. Your plan is active."
-          : "Payment is not confirmed yet. Try again after completing checkout.",
-      );
-      if (result.status === "paid") await load();
+      if (result.status === "paid") {
+        setCheckoutStatus("");
+        setPaymentReceivedOpen(true);
+        const url = new URL(window.location.href);
+        url.searchParams.delete("order");
+        window.history.replaceState(
+          null,
+          "",
+          `${url.pathname}${url.search}${url.hash}`,
+        );
+        await load();
+      } else {
+        setCheckoutStatus(
+          "Payment is not confirmed yet. Try again after completing checkout.",
+        );
+      }
     } catch (cause) {
       setCheckoutStatus(
         cause instanceof Error
@@ -252,10 +380,12 @@ export default function SubscriptionPage() {
 
   const current = plans.find((item) => item.plan_code === plan);
   const offer = plans.find((item) => item.plan_code === "pro") ?? current;
-  const displayPlanName = (name?: string) =>
-    name?.replace(/\bpro\b/gi, "Premium");
   const activeLimit = current?.active_listing_limit;
   const hasActivePremium = plan === "pro" && assignment;
+  const eligibleForTrial =
+    billingPeriod === "monthly" &&
+    plan === "free" &&
+    !assignment?.trial_claimed_at;
   const price = billingPeriod === "monthly"
     ? offer?.provisional_monthly_price
     : offer?.provisional_annual_price;
@@ -266,27 +396,26 @@ export default function SubscriptionPage() {
           style: "currency",
           currency: "PHP",
         }).format(price);
-  const planName =
-    displayPlanName(current?.display_name) ??
-    (plan === "pro" ? "Premium" : "Free");
   const activePercent = activeLimit
     ? Math.min(100, (usage.active / activeLimit) * 100)
     : 0;
+  const premiumEndsAt = assignment ? new Date(assignment.period_ends_at) : null;
+  const daysRemaining = premiumEndsAt && clockNow != null
+    ? Math.max(0, Math.ceil((premiumEndsAt.getTime() - clockNow) / 86_400_000))
+    : null;
+  const trialProgress = assignment?.access_type === "trial" && assignment.trial_claimed_at && premiumEndsAt && clockNow != null
+    ? Math.max(0, Math.min(100, ((clockNow - Date.parse(assignment.trial_claimed_at)) / (premiumEndsAt.getTime() - Date.parse(assignment.trial_claimed_at))) * 100))
+    : null;
+  const checkoutBreakdown = price == null ? null : calculateVat(price, "exclusive", true);
+  const extensionBase = hasActivePremium && assignment
+    ? new Date(assignment.period_ends_at).getTime()
+    : clockNow ?? Date.now();
+  const newExpirationDate = addBillingPeriod(extensionBase, billingPeriod);
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6 pb-8">
       <WorkspacePageHeader
         title="Subscription"
-        description="Manage your plan, track marketplace usage, and control Premium access."
-        actions={
-          <Button
-            variant="outline"
-            onClick={() => void load()}
-            disabled={loading}
-          >
-            <RefreshCw className={loading ? "size-4 animate-spin" : "size-4"} />
-            Refresh
-          </Button>
-        }
+        description="Manage your plan tier and marketplace limits."
       />
 
       {error && (
@@ -329,213 +458,274 @@ export default function SubscriptionPage() {
         </div>
       ) : (
         <>
-          <section aria-label="Current plan overview">
-            <Card
-              className={`gap-0 overflow-hidden p-0 ${plan === "pro" ? "border-primary/30" : ""}`}
-            >
-              <div
-                className={`flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4 sm:px-6 ${plan === "pro" ? "bg-primary/10" : "bg-muted/40"}`}
-              >
-                <div className="flex items-center gap-3">
-                  <span
-                    className={`flex size-10 items-center justify-center rounded-xl ${plan === "pro" ? "bg-primary/15 text-primary" : "bg-background text-muted-foreground"}`}
-                  >
-                    {plan === "pro" ? (
-                      <Crown className="size-5" />
-                    ) : (
-                      <CalendarDays className="size-5" />
-                    )}
-                  </span>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                      Current plan
-                    </p>
-                    <p className="font-semibold">{planName}</p>
-                  </div>
-                </div>
-                <span
-                  className={`rounded-full px-3 py-1 text-xs font-semibold ${plan === "pro" ? "bg-primary/15 text-primary" : "bg-background text-muted-foreground"}`}
-                >
-                  {hasActivePremium
-                    ? assignment.access_type === "trial"
-                      ? "Premium active · trial"
-                      : "Premium active"
-                    : "Free plan active"}
+          <section aria-label="Current plan overview" className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <Card className="gap-0 space-y-4 p-4 sm:p-5">
+              <div className="flex items-center justify-between gap-3">
+                <p className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide">
+                  <span className="size-2 rounded-full bg-primary" />{plan === "pro" ? "Premium access" : "Free access"}
+                </p>
+                <span className="rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
+                  {hasActivePremium ? assignment.access_type === "trial" ? "Trial active" : "Premium active" : "Free plan"}
                 </span>
               </div>
-
-              <div className="grid gap-6 p-5 sm:p-6 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-center">
-                <div className="space-y-4">
-                  <div>
-                    <h2 className="text-2xl font-semibold tracking-tight">
-                      {plan === "pro"
-                        ? "Your Premium access"
-                        : "Your marketplace plan"}
-                    </h2>
-                    <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-                      {hasActivePremium
-                        ? `Your Premium ${assignment.access_type === "trial" ? "trial" : "access"} is active. Monthly and yearly renewals are manual.`
-                        : "Your Free plan is active. Upgrade when you need more marketplace capacity or AI screening."}
-                    </p>
-                  </div>
-                  {hasActivePremium && assignment && (
-                    <PremiumExpiryNotice
-                      periodEndsAt={assignment.period_ends_at}
-                      now={clockNow}
-                    />
-                  )}
-                  <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted-foreground">
-                    <span className="inline-flex items-center gap-2">
-                      <Check className="size-4 text-primary" />
-                      {activeLimit ?? "—"} active{" "}
-                      listings across jobs and services
-                    </span>
-                    <span className="inline-flex items-center gap-2">
-                      <Sparkles className="size-4 text-primary" />
-                      {plan === "pro" ? "Unlimited" : "1 every six months"} AI
-                      skills gap assessments
-                    </span>
-                  </div>
-                </div>
-
-                {offer && (
-                  <div className="rounded-xl border bg-background p-4">
-                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      {plan === "pro"
-                        ? `Manual ${billingPeriod} renewal`
-                        : "Upgrade to Premium"}
-                    </p>
-                    <p className="mt-1 text-2xl font-semibold tracking-tight">
-                      {priceLabel}
-                      <span className="text-sm font-normal text-muted-foreground">
-                        {" "}
-                        / {billingPeriod === "monthly" ? "month" : "year"}
-                      </span>
-                    </p>
-                    <div className="mt-3 inline-flex rounded-lg bg-muted p-1 text-xs">
-                      <button type="button" onClick={() => setBillingPeriod("monthly")} className={`rounded-md px-3 py-1.5 ${billingPeriod === "monthly" ? "bg-background shadow-sm" : "text-muted-foreground"}`}>Monthly</button>
-                      <button type="button" onClick={() => setBillingPeriod("yearly")} className={`rounded-md px-3 py-1.5 ${billingPeriod === "yearly" ? "bg-background shadow-sm" : "text-muted-foreground"}`}>Yearly · 2 months free</button>
+              <div className="rounded-lg border bg-background/60 p-4">
+                {hasActivePremium && assignment ? (
+                  <>
+                    <div className="flex flex-wrap items-start justify-between gap-3 text-xs">
+                      <span className="text-muted-foreground">Expiration date</span>
+                      <span className="font-semibold text-primary">{daysRemaining ?? "—"} days remaining</span>
                     </div>
-                    <Button
-                      className="mt-4 w-full"
-                      variant={plan === "pro" ? "outline" : "default"}
-                      disabled={
-                        acting || price == null
-                      }
-                      onClick={() => void renew()}
-                    >
-                      {acting ? (
-                        <LoaderCircle className="size-4 animate-spin" />
-                      ) : (
-                        <Crown className="size-4" />
-                      )}
-                      {acting
-                        ? "Opening checkout…"
-                        : !assignment?.trial_claimed_at && plan === "free"
-                          ? `Get Premium · ${priceLabel}/${billingPeriod === "monthly" ? "month" : "year"}`
-                          : plan === "pro"
-                            ? `Add ${billingPeriod === "monthly" ? "one month" : "one year"} · ${priceLabel}`
-                            : `Get Premium · ${priceLabel}/${billingPeriod === "monthly" ? "month" : "year"}`}
-                    </Button>
-                    <p className="mt-3 text-xs leading-5 text-muted-foreground">
-                      {plan === "pro"
-                        ? `One-time checkout. Pay early to add ${billingPeriod === "monthly" ? "one month" : "one year"} after your current end date. No automatic charge.`
-                        : assignment?.trial_claimed_at
-                          ? "Renewals are manual. You will not be charged automatically."
-                          : "One-time checkout. No automatic charges."}
+                    <p className="mt-2 font-semibold">
+                      {new Intl.DateTimeFormat("en-PH", { dateStyle: "long", timeZone: "Asia/Manila" }).format(new Date(assignment.period_ends_at))}
+                      <span className="ml-1 text-xs font-normal text-muted-foreground">at {new Intl.DateTimeFormat("en-PH", { timeStyle: "short", timeZone: "Asia/Manila" }).format(new Date(assignment.period_ends_at))} PHT</span>
                     </p>
-                  </div>
+                    {trialProgress != null && <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${trialProgress}%` }} /></div>}
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs text-muted-foreground">Current plan</p>
+                    <p className="mt-2 font-semibold">Free plan active</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Upgrade to extend your marketplace limits.</p>
+                  </>
                 )}
+              </div>
+            </Card>
+
+            {offer && (
+              <Card className="gap-3 p-4 sm:p-5">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium">Extend plan</p>
+                  <span className="rounded border px-2 py-0.5 text-[10px] text-muted-foreground">Manual</span>
+                </div>
+                <div className="grid grid-cols-2 rounded-md border bg-background p-1 text-xs">
+                  <button type="button" aria-pressed={billingPeriod === "monthly"} onClick={() => setBillingPeriod("monthly")} className={`rounded px-2 py-1.5 font-medium ${billingPeriod === "monthly" ? "bg-muted" : "text-muted-foreground"}`}>Monthly</button>
+                  <button type="button" aria-pressed={billingPeriod === "yearly"} onClick={() => setBillingPeriod("yearly")} className={`whitespace-nowrap rounded px-2 py-1.5 font-medium ${billingPeriod === "yearly" ? "bg-muted" : "text-muted-foreground"}`}>Yearly<span className="ml-1 text-primary">2 months free</span></button>
+                </div>
+                <p className="text-2xl font-bold tracking-tight">{priceLabel}<span className="ml-1 text-xs font-normal text-muted-foreground">/ {billingPeriod === "monthly" ? "monthly" : "yearly"}</span></p>
+                <Button className="w-full" disabled={acting || price == null} onClick={() => {
+                  if (eligibleForTrial) {
+                    window.location.assign("/home/subscription?billing=monthly&startTrial=1");
+                    return;
+                  }
+                  setCheckoutDialogOpen(true);
+                }}>
+                  {acting ? <LoaderCircle className="size-4 animate-spin" /> : <Crown className="size-4" />}
+                  {acting ? "Opening checkout..." : eligibleForTrial ? "Start 3-Month Trial" : `Extend ${billingPeriod === "monthly" ? "1 Month" : "1 Year"} · ${priceLabel}`}
+                </Button>
+              </Card>
+            )}
+          </section>
+          <section aria-labelledby="payment-history-title" className="space-y-3">
+            <div>
+              <h2 id="payment-history-title" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Premium payment history
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Completed payments and Premium time added to your account.
+              </p>
+            </div>
+            <Card className="overflow-hidden p-0">
+              {paymentHistoryError ? (
+                <p role="alert" className="p-4 text-sm text-destructive">{paymentHistoryError}</p>
+              ) : paymentHistory.length === 0 ? (
+                <p className="p-4 text-sm text-muted-foreground">No Premium payments yet.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[600px] text-left text-sm">
+                    <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
+                      <tr>
+                        <th scope="col" className="px-4 py-3 font-semibold">Date paid</th>
+                        <th scope="col" className="px-4 py-3 font-semibold">Premium added</th>
+                        <th scope="col" className="px-4 py-3 text-right font-semibold">Amount paid</th>
+                        <th scope="col" className="px-4 py-3 text-right font-semibold">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paymentHistory.map((payment) => (
+                        <tr key={payment.order_id} className="border-t">
+                          <td className="whitespace-nowrap px-4 py-3">
+                            {dateTimeInManila(new Date(payment.paid_at ?? payment.created_at))}
+                          </td>
+                          <td className="px-4 py-3">
+                            Premium · {payment.billing_period === "monthly" ? "1 month" : "1 year"}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-3 text-right font-medium tabular-nums">
+                            {php(payment.amount)}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <span className="rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+                              Paid
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Card>
+          </section>
+          <section aria-labelledby="usage-title" className="space-y-3">
+            <div className="flex flex-wrap items-end justify-between gap-2">
+              <div>
+                <h2 id="usage-title" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Usage and allowances
+                </h2>
+              </div>
+              <p className="text-xs text-muted-foreground">Approved jobs and services count together</p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {plan === "pro" ? (
+                <Card className="gap-0 p-5 sm:p-6">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground">Active listings</p>
+                      <p className="mt-3 text-2xl font-semibold">Unlimited</p>
+                    </div>
+                    <span className="rounded border border-primary/30 bg-primary/10 px-2 py-1 text-[10px] font-semibold text-primary">Unlimited</span>
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">{usage.active} active jobs and services.</p>
+                </Card>
+              ) : (
+                <UsageCard
+                  title="Active listings"
+                  value={`${usage.active} / ${activeLimit ?? "—"}`}
+                  caption={`${activeLimit == null ? 0 : Math.max(0, activeLimit - usage.active)} listing slots remaining`}
+                  progress={activePercent}
+                  indicator={`${Math.round(activePercent)}%`}
+                />
+              )}
+              <UsageCard
+                title="Active projects"
+                value={`${usage.activeProjects ?? 0} / ${plan === "pro" ? 20 : 1}`}
+                caption={usage.activeProjects == null ? "Project usage unavailable" : `${Math.max(0, (plan === "pro" ? 20 : 1) - usage.activeProjects)} workspace slots open`}
+                progress={usage.activeProjects == null ? 0 : Math.min(100, usage.activeProjects / (plan === "pro" ? 20 : 1) * 100)}
+                indicator={usage.activeProjects == null ? undefined : `${Math.round(Math.min(100, usage.activeProjects / (plan === "pro" ? 20 : 1) * 100))}%`}
+              />
+              <Card className="gap-0 p-5 sm:p-6">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">AI skills assessment</p>
+                    <p className="mt-3 text-2xl font-semibold">{plan === "pro" ? "Unlimited" : "1 every 6 months"}</p>
+                  </div>
+                  <span className="rounded border border-primary/30 bg-primary/10 px-2 py-1 text-[10px] font-semibold text-primary">{plan === "pro" ? "Unlimited" : "Free tier"}</span>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">AI diagnostic skill match testing.</p>
+              </Card>
+            </div>
+          </section>
+
+          <section aria-labelledby="plan-comparison-title" className="space-y-3">
+            <div>
+              <h2 id="plan-comparison-title" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Plan matrix
+              </h2>
+            </div>
+            <Card className="overflow-hidden p-0">
+              <div className="overflow-x-auto">
+                <div
+                  role="table"
+                  aria-label="Free and Premium plan comparison"
+                  className="min-w-[640px]"
+                >
+                  <div
+                    role="row"
+                    className="grid grid-cols-[minmax(180px,1.1fr)_minmax(180px,1fr)_minmax(220px,1.2fr)] border-b bg-muted/40 text-xs font-semibold uppercase tracking-wide"
+                  >
+                    <div role="columnheader" className="px-4 py-3">
+                      Feature
+                    </div>
+                    <div role="columnheader" className="px-4 py-3">
+                      Free tier
+                    </div>
+                    <div role="columnheader" className="bg-primary/5 px-4 py-3 text-primary">
+                      Premium tier
+                    </div>
+                  </div>
+                  {planFeatures.map(([feature, free, premium]) => (
+                    <div
+                      key={feature}
+                      role="row"
+                      className="grid grid-cols-[minmax(180px,1.1fr)_minmax(180px,1fr)_minmax(220px,1.2fr)] border-b text-sm last:border-b-0"
+                    >
+                      <div role="rowheader" className="px-4 py-3 font-medium">
+                        {feature}
+                      </div>
+                      <div
+                        role="cell"
+                        className={`px-4 py-3 text-muted-foreground ${plan === "free" ? "bg-primary/5" : ""}`}
+                      >
+                        {free}
+                      </div>
+                      <div
+                        role="cell"
+                        className={`px-4 py-3 text-muted-foreground ${plan === "pro" ? "bg-primary/5" : ""}`}
+                      >
+                        {premium}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </Card>
           </section>
 
-          <section aria-labelledby="usage-title" className="space-y-3">
-            <div className="flex flex-wrap items-end justify-between gap-2">
-              <div>
-                <h2 id="usage-title" className="text-lg font-semibold">
-                  Usage and allowances
-                </h2>
-                <p className="text-sm text-muted-foreground">
-                  A clear view of the limits included in your {planName} plan.
-                </p>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Approved jobs and services count together. Pending listings need an available slot before approval.
-              </p>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              <UsageCard
-                title="Active listings"
-                value={`${usage.active} of ${activeLimit ?? "—"}`}
-                caption="Jobs and services combined"
-                progress={activePercent}
-              />
-              <Card className="gap-0 p-5 sm:p-6">
-                <p className="text-sm font-medium text-muted-foreground">
-                  Active projects
-                </p>
-                <p className="mt-3 text-2xl font-semibold tracking-tight">
-                  {plan === "pro" ? "Up to 20" : "1 at a time"}
-                </p>
-                <p className="mt-3 text-xs text-muted-foreground">
-                  {plan === "pro"
-                    ? "Keep up to 20 projects active at once."
-                    : "Complete or close your active project before starting another."}
-                </p>
-              </Card>
-              <Card className="gap-0 p-5 sm:p-6">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">
-                      AI skills gap assessment
-                    </p>
-                    <p className="mt-3 text-2xl font-semibold">
-                      {plan === "pro" ? "Unlimited" : "1 assessment"}
-                    </p>
-                  </div>
-                  <span className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                    <Sparkles className="size-4" />
-                  </span>
-                </div>
-                <p className="mt-3 text-xs text-muted-foreground">
-                  {plan === "pro"
-                    ? "Unlimited assessments with Premium access."
-                    : "Available once every six months on the Free plan."}
-                </p>
-              </Card>
-            </div>
-          </section>
-
-          {plan === "free" && offer && (
-            <section
-              aria-label="Premium plan details"
-              className="rounded-2xl border bg-card px-5 py-4 sm:px-6"
-            >
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="flex items-center gap-2 font-semibold">
-                    <Crown className="size-4 text-primary" />
-                    Premium plan
-                  </p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Up to 20 active projects at a time, unlimited job applications
-                    and active job postings, boosted postings, and full applicant
-                    rankings with detailed explanations.
-                  </p>
-                </div>
-                <p className="shrink-0 text-sm font-medium">
-                  {priceLabel}
-                  <span className="font-normal text-muted-foreground">
-                    {" "}
-                    / month · manual renewal
-                  </span>
-                </p>
-              </div>
-            </section>
-          )}
         </>
       )}
+      <Dialog open={checkoutDialogOpen} onOpenChange={(open) => { if (!acting) setCheckoutDialogOpen(open); }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Review your Premium checkout</DialogTitle>
+            <DialogDescription>Review who is buying, the extension date, and the full amount before continuing to PayMongo.</DialogDescription>
+          </DialogHeader>
+          {checkoutBreakdown && (
+            <div className="space-y-4">
+              <div className="space-y-2 rounded-lg border bg-muted/20 p-3 text-sm">
+                <div className="flex justify-between gap-4"><span className="text-muted-foreground">Plan</span><span className="font-medium">Premium · {billingPeriod === "monthly" ? "1 month" : "1 year"}</span></div>
+                <div className="flex justify-between gap-4"><span className="text-muted-foreground">Current Premium expiry</span><span className="text-right font-medium">{hasActivePremium && assignment ? dateInManila(new Date(assignment.period_ends_at)) : "No active Premium access"}</span></div>
+                <div className="flex justify-between gap-4"><span className="text-muted-foreground">New expiration date</span><span className="text-right font-medium">{dateInManila(newExpirationDate)}</span></div>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Buyer</p>
+                <p className="mt-2 font-medium">{buyer.name || "Account holder"}</p>
+                <p className="text-sm text-muted-foreground">{buyer.email || "Email unavailable"}</p>
+              </div>
+              <div className="space-y-2 border-t pt-3 text-sm">
+                <div className="flex justify-between gap-4"><span className="text-muted-foreground">Subtotal</span><span className="tabular-nums">{php(checkoutBreakdown.taxableAmount)}</span></div>
+                <div className="flex justify-between gap-4"><span className="text-muted-foreground">VAT (12%)</span><span className="tabular-nums">{php(checkoutBreakdown.vatAmount)}</span></div>
+                <div className="flex justify-between gap-4 border-t pt-3 text-base font-semibold"><span>Total due</span><span className="tabular-nums">{php(checkoutBreakdown.total)}</span></div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={acting} onClick={() => setCheckoutDialogOpen(false)}>Cancel</Button>
+            <Button type="button" disabled={acting || !checkoutBreakdown} onClick={() => void renew()}>
+              {acting ? <LoaderCircle className="size-4 animate-spin" /> : <Crown className="size-4" />}
+              {acting ? "Opening PayMongo..." : "Checkout"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={paymentReceivedOpen} onOpenChange={setPaymentReceivedOpen}>
+        <DialogContent showCloseButton={false} className="sm:max-w-sm">
+          <DialogHeader className="items-center gap-4 py-5 text-center">
+            <div className="flex size-20 items-center justify-center rounded-full bg-emerald-600">
+              <Check aria-hidden="true" className="size-11 text-white" strokeWidth={3} />
+            </div>
+            <DialogTitle className="text-2xl font-semibold text-emerald-700 dark:text-emerald-400">
+              Payment Successful!
+            </DialogTitle>
+            <DialogDescription>
+              Your Premium subscription is now active.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="border-t-0 bg-transparent p-0">
+            <Button type="button" className="w-full" onClick={() => setPaymentReceivedOpen(false)}>
+              Continue
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -545,15 +735,20 @@ function UsageCard({
   value,
   caption,
   progress,
+  indicator,
 }: {
   title: string;
   value: string;
   caption: string;
   progress: number;
+  indicator?: string;
 }) {
   return (
     <Card className="gap-0 p-5 sm:p-6">
-      <p className="text-sm font-medium text-muted-foreground">{title}</p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-medium text-muted-foreground">{title}</p>
+        {indicator && <span className="text-xs text-muted-foreground">{indicator}</span>}
+      </div>
       <p className="mt-3 text-2xl font-semibold tracking-tight">{value}</p>
       <Progress
         value={progress}

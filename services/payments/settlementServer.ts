@@ -8,11 +8,7 @@ import {
   PaymentError,
 } from "@/lib/payments/paymongo";
 import {
-  decryptDestination,
-  payoutSource,
   transferRequest,
-  verifiedTransferStatus,
-  type ProviderTransfer,
 } from "@/lib/payments/payouts";
 
 async function verifyFunding(
@@ -63,9 +59,8 @@ async function verifyFunding(
 
 export type ProjectSettlementReviewStatus = "disabled" | "version_unavailable" | "payment_unavailable" | "reviewed_pending" | "completed";
 
-/** Best-effort fast path for approved deliveries; cron is the durable retry path. */
+/** Verify and record completed earnings; payout statuses are demo-only and no transfer is sent. */
 export async function reviewProjectPayment(projectId: string): Promise<ProjectSettlementReviewStatus> {
-  if (process.env.PROJECT_SETTLEMENT_ENABLED !== "true") return "disabled";
   const db = paymentDatabase();
   const version = await db.rpc("worksync_settlement_version");
   if (version.error || version.data !== 3) return "version_unavailable";
@@ -97,11 +92,7 @@ export async function reviewProjectPayment(projectId: string): Promise<ProjectSe
 }
 
 export async function settleProjects() {
-  // Leave time for the current provider request and database persistence before
-  // Vercel's 300-second function limit. Remaining rows rotate into the next run.
-  const stopAt = Date.now() + 210_000;
-  const reviewUntil = stopAt - 150_000;
-  const sendUntil = stopAt - 60_000;
+  const reviewUntil = Date.now() + 60_000;
   const db = paymentDatabase();
   const mode = paymentMode();
   const version = await db.rpc("worksync_settlement_version");
@@ -111,8 +102,6 @@ export async function settleProjects() {
     );
   const refundTracking = await reconcileRefunds(db, Date.now() + 20_000);
   let reviewed = 0,
-    sent = 0,
-    reconciled = 0,
     errors = refundTracking.errors;
   let refundsSubmitted = 0;
   // Rotate through payments so an old project or missing destination cannot starve other work.
@@ -155,181 +144,10 @@ export async function settleProjects() {
         .eq("payment_id", row.payment_id);
     }
   }
-  const ready = await db
-    .from("project_payouts")
-    .select("payout_id,payment_id,amount,encrypted_destination")
-    .eq("mode", mode)
-    .eq("status", "ready")
-    .not("withdrawal_requested_at", "is", null)
-    .order("updated_at")
-    .limit(10);
-  if (ready.error) throw new PaymentError("Payout queue unavailable.");
-  for (const queued of ready.data ?? []) {
-    if (Date.now() >= sendUntil) break;
-    let claimedId: string | null = null;
-    try {
-      const source = payoutSource();
-      const destination = decryptDestination(queued.encrypted_destination);
-      if (
-        destination.provider === "instapay" &&
-        Number(queued.amount) > 50000
-      ) {
-        await db
-          .from("project_payouts")
-          .update({ status: "needs_review" })
-          .eq("payout_id", queued.payout_id)
-          .eq("status", "ready");
-        continue;
-      }
-      const funding = await db
-        .from("payments")
-        .select(
-          "payment_id,project_id,order_id,payer_id,amount,status,transaction_reference,payment_method,provider_payment_id",
-        )
-        .eq("payment_id", queued.payment_id)
-        .single();
-      if (funding.error || !funding.data)
-        throw new PaymentError("Funding unavailable.");
-      await verifyFunding(db, funding.data);
-      const claim = await db.rpc("worksync_claim_payout", {
-        p_id: queued.payout_id,
-      });
-      if (claim.error) throw new PaymentError("Payout claim failed.");
-      const row = claim.data?.[0];
-      if (!row) continue;
-      claimedId = row.payout_id;
-      if (
-        row.payment_id !== funding.data.payment_id ||
-        row.project_id !== funding.data.project_id ||
-        row.mode !== mode ||
-        !Number.isFinite(Number(row.amount)) ||
-        Number(row.amount) <= 0 ||
-        Number(row.amount) > Number(funding.data.amount) ||
-        row.encrypted_destination !== queued.encrypted_destination
-      )
-        throw new PaymentError(
-          "Claimed payout does not match verified funding and destination.",
-        );
-      // Persisted claim prevents another worker from sending this payout. Never retry an ambiguous POST automatically.
-      const response = await transferRequest(
-        "/v2/batch_transfers",
-        {
-          transfers: [
-            {
-              provider: destination.provider,
-              amount: Math.round(Number(row.amount) * 100),
-              currency: "PHP",
-              purpose: "Disbursement",
-              description: "WorkSync project payment",
-              reference_number: row.payout_id,
-              source_account: source,
-              destination_account: {
-                name: destination.name,
-                number: destination.number,
-                bic: destination.bic,
-              },
-            },
-          ],
-        },
-        row.payout_id,
-      );
-      const transfer = response.data?.transfers?.[0] as
-        | ProviderTransfer
-        | undefined;
-      if (!transfer || !response.data?.id)
-        throw new PaymentError("Transfer response unavailable.");
-      // Persist identifiers first, then independently retrieve settlement evidence below.
-      verifiedTransferStatus(
-        transfer,
-        row.payout_id,
-        Number(row.amount),
-        destination,
-      );
-      const saved = await db
-        .from("project_payouts")
-        .update({
-          status: "pending",
-          provider_batch_id: response.data.id,
-          provider_transfer_id: transfer.id,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("payout_id", row.payout_id)
-        .eq("status", "processing");
-      if (saved.error)
-        throw new PaymentError("Transfer tracking could not be saved.");
-      sent++;
-    } catch {
-      errors++;
-      if (!claimedId)
-        await db
-          .from("project_payouts")
-          .update({ updated_at: new Date().toISOString() })
-          .eq("payout_id", queued.payout_id)
-          .eq("status", "ready");
-      if (claimedId)
-        await db
-          .from("project_payouts")
-          .update({
-            status: "needs_review",
-            updated_at: new Date().toISOString(),
-          })
-          .eq("payout_id", claimedId)
-          .eq("status", "processing");
-    }
-  }
-  // A worker crash after claiming is ambiguous. Quarantine it; do not risk a second transfer.
-  await db
-    .from("project_payouts")
-    .update({ status: "needs_review" })
-    .eq("mode", mode)
-    .eq("status", "processing")
-    .lt("claimed_at", new Date(Date.now() - 30 * 60000).toISOString());
-  const pending = await db
-    .from("project_payouts")
-    .select("*")
-    .eq("mode", mode)
-    .eq("status", "pending")
-    .order("updated_at")
-    .limit(25);
-  if (pending.error) throw new PaymentError("Transfer tracking unavailable.");
-  for (const row of pending.data ?? []) {
-    if (Date.now() >= stopAt) break;
-    try {
-      const response = await transferRequest(
-        `/v2/transfers/${encodeURIComponent(row.provider_transfer_id)}`,
-      );
-      if (response.data?.id !== row.provider_transfer_id)
-        throw new PaymentError("Transfer identity mismatch.");
-      const status = verifiedTransferStatus(
-        response.data,
-        row.payout_id,
-        Number(row.amount),
-        decryptDestination(row.encrypted_destination),
-      );
-      const result = await db
-        .from("project_payouts")
-        .update({
-          status,
-          paid_at: status === "paid" ? new Date().toISOString() : null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("payout_id", row.payout_id)
-        .eq("status", "pending");
-      if (result.error)
-        throw new PaymentError("Transfer status could not be saved.");
-      reconciled++;
-    } catch {
-      errors++;
-      await db
-        .from("project_payouts")
-        .update({ updated_at: new Date().toISOString() })
-        .eq("payout_id", row.payout_id);
-    }
-  }
   return {
     reviewed,
-    sent,
-    reconciled,
+    sent: 0,
+    reconciled: 0,
     errors,
     refundsSubmitted,
     refundsReconciled: refundTracking.reconciled,

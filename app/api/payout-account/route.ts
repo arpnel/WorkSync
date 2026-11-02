@@ -109,11 +109,28 @@ export async function POST(request: Request) {
     const parsed = destinationSchema.safeParse(
       await request.json().catch(() => null),
     );
-    if (!parsed.success)
+    if (!parsed.success) {
+      const fieldLabels: Record<string, string> = {
+        name: "account holder name",
+        number: "account number (6–34 digits)",
+        bic: "BIC/SWIFT code (8 or 11 letters/numbers)",
+        provider: "transfer network",
+        bankLabel: "bank or e-wallet name",
+      };
+      const invalidFields = [
+        ...new Set(
+          parsed.error.issues
+            .map((issue) => fieldLabels[String(issue.path[0] ?? "")])
+            .filter(Boolean),
+        ),
+      ];
       throw new PaymentError(
-        "Enter the account holder, account number, bank BIC, and transfer network.",
+        invalidFields.length
+          ? `Check these payout details: ${invalidFields.join(", ")}.`
+          : "Check the payout account details and try again.",
         400,
       );
+    }
     const value = parsed.data;
     const { error } = await db
       .from("freelancer_payout_accounts")

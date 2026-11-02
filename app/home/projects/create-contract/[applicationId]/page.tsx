@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import { JobAgreementWizard } from "@/components/project/JobAgreementWizard";
+import { JobContractCancellationPanel } from "@/components/project/JobContractCancellationPanel";
 import { supabase } from "@/lib/supabaseClient";
 import { platformAction } from "@/services/platform/platformService";
 import { getProjectRequests, type ProjectRequest } from "@/services/project/projectRequestService";
@@ -77,6 +78,7 @@ export default function CreateContractPage() {
   const [request, setRequest] = useState<ProjectRequest | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [cancellationLocked, setCancellationLocked] = useState(true);
   const [error, setError] = useState("");
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversationUserId, setConversationUserId] = useState<string | null>(null);
@@ -110,6 +112,7 @@ export default function CreateContractPage() {
     setConversationMessages([]);
     setConversationError("");
     setCanCreateAgreement(false);
+    setCancellationLocked(true);
     setAgreementOrderId(null);
     setFinalContractStatus(null);
     setBasicAgreement(null);
@@ -266,6 +269,10 @@ export default function CreateContractPage() {
 
   const onTypingChange = useCallback((isTyping: boolean) => {
     sendTypingRef.current(isTyping);
+  }, []);
+
+  const handleCancellationLockChange = useCallback((locked: boolean) => {
+    setCancellationLocked(locked);
   }, []);
 
   const refreshAgreementState = useCallback(async () => {
@@ -521,7 +528,12 @@ export default function CreateContractPage() {
       plan: request.proposedPlan,
       planSource: request.proposedPlan ? "Submitted application plan" : "No plan selected",
       projectType: request.projectType,
-    }} clientName={request.clientName} freelancerName={request.freelancerName} draftKey={`worksync:contract-draft:${request.currentParty === "client" ? request.clientUserId : request.freelancerUserId}:${applicationId}`} draftUserId={request.currentParty === "client" ? request.clientUserId : request.freelancerUserId} busy={busy} conversationError={conversationError} agreementStatus={finalContractStatus ?? (canCreateAgreement ? {
+    }} clientName={request.clientName} freelancerName={request.freelancerName} draftKey={`worksync:contract-draft:${request.currentParty === "client" ? request.clientUserId : request.freelancerUserId}:${applicationId}`} draftUserId={request.currentParty === "client" ? request.clientUserId : request.freelancerUserId} contractDetailsFooter={<JobContractCancellationPanel
+      applicationId={applicationId}
+      currentUserId={request.currentParty === "client" ? request.clientUserId : request.freelancerUserId}
+      otherParticipantName={request.currentParty === "client" ? request.freelancerName : request.clientName}
+      onStateChange={handleCancellationLockChange}
+    />} busy={busy || cancellationLocked} conversationError={conversationError} agreementStatus={finalContractStatus ?? (canCreateAgreement ? {
       currentParty: request.currentParty,
       clientAgreed: false,
       freelancerAgreed: false,

@@ -9,12 +9,14 @@ export const destinationSchema = z
     number: z
       .string()
       .trim()
-      .regex(/^\d{6,34}$/),
+      .transform((value) => value.replace(/[\s-]/g, ""))
+      .pipe(z.string().regex(/^\d{6,34}$/)),
     bic: z
       .string()
       .trim()
       .toUpperCase()
-      .regex(/^[A-Z0-9]{8}([A-Z0-9]{3})?$/),
+      .transform((value) => value.replace(/\s/g, ""))
+      .pipe(z.string().regex(/^[A-Z0-9]{8}([A-Z0-9]{3})?$/)),
     provider: z.enum(["instapay", "pesonet"]),
     bankLabel: z.string().trim().min(2).max(100),
   })

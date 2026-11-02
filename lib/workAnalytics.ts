@@ -4,6 +4,12 @@ import type { ProjectPayment } from "@/services/payments/paymentService";
 export type WorkProject = DashboardActivity["projects"][number];
 export type PaymentResult = ProjectPayment | { status: "unavailable" };
 export type PaymentMap = Record<string, PaymentResult>;
+export function freelancerEarningsAmount(payment: ProjectPayment): number | null {
+  const value = payment.vatBreakdown?.taxableAmount ?? payment.baseAmount;
+  if (value == null) return null;
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount >= 0 ? amount : null;
+}
 export function dateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
@@ -43,12 +49,14 @@ export function summarize(
     const payment = payments[project.id];
     if (payment?.status !== "paid" || !inPeriod(payment.paidAt, from, to))
       continue;
-    const amount = Number(payment.amount ?? 0);
-    if (!Number.isFinite(amount)) continue;
-    if (payment.mode === "test") testPayments += amount;
-    // Include recorded test-mode payments in the role-based graph too.
-    if (project.party === "freelancer") earnings += amount;
-    else spending += amount;
+    const checkoutAmount = Number(payment.amount);
+    if (!Number.isFinite(checkoutAmount)) continue;
+    if (payment.mode !== "test") continue;
+    testPayments += checkoutAmount;
+    if (project.party === "freelancer") {
+      const amount = freelancerEarningsAmount(payment);
+      if (amount !== null) earnings += amount;
+    } else spending += checkoutAmount;
   }
   const requests = projects.filter((p) => inPeriod(p.createdAt, from, to));
   return {

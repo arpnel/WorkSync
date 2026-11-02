@@ -33,6 +33,15 @@ export function useProjectSchedule() {
       }
     };
     void refresh();
+    const onProjectActivityChanged = () => {
+      // Task status changes create/update deadline_at. Reload the project
+      // deadlines so an open Schedule page reflects the new task deadline.
+      void refresh();
+    };
+    window.addEventListener(
+      "worksync:project-activity-changed",
+      onProjectActivityChanged,
+    );
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event) => {
@@ -57,6 +66,10 @@ export function useProjectSchedule() {
     window.addEventListener("account-role-changed", onRoleChanged);
     return () => {
       alive = false;
+      window.removeEventListener(
+        "worksync:project-activity-changed",
+        onProjectActivityChanged,
+      );
       window.removeEventListener("account-role-changed", onRoleChanged);
       subscription.unsubscribe();
     };

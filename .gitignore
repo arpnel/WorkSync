@@ -70,3 +70,4 @@ next-env.d.ts
 !/supabase/migrations/20261101000300_worksync_manual_payout_withdrawals.sql
 !/supabase/migrations/20261101000800_worksync_job_project_type.sql
 !/supabase/migrations/20261101000900_worksync_project_participant_read_access.sql
+!/supabase/migrations/20261102073741_free_one_job_application_per_month.sql

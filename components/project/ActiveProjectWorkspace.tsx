@@ -140,7 +140,7 @@ export function ActiveProjectWorkspace({
             <ProjectTaskBoard key={project.projectId} project={project} actions={<>
               {project.projectId && <ProjectMeetingsDialog projectId={project.projectId} active={!completed} />}
               <Dialog open={resolutionOpen} onOpenChange={setResolutionOpen}>
-                <DialogTrigger asChild><Button variant="outline" size="sm">Project resolution</Button></DialogTrigger>
+                <DialogTrigger asChild><Button variant="outline" size="sm">Cancellation &amp; disputes</Button></DialogTrigger>
                 <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-3xl"><DialogHeader><DialogTitle>Project resolution</DialogTitle><DialogDescription>Manage cancellation requests, disputes, and their history.</DialogDescription></DialogHeader><ProjectResolutionPanel orderStatus={project.orderStatus} orderId={project.orderId} projectId={project.projectId} status={project.status} userId={project.currentUserId} milestones={project.milestones} onRefresh={onRefresh} /></DialogContent>
               </Dialog>
             </>} />
@@ -155,7 +155,7 @@ export function ActiveProjectWorkspace({
             <CardContent className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
               <ProjectMeetingsDialog projectId={project.projectId} active={!completed} buttonClassName="w-full" />
               <Dialog open={resolutionOpen} onOpenChange={setResolutionOpen}>
-                <DialogTrigger asChild><Button variant="outline" size="sm" className="w-full justify-center gap-2"><Shield className="size-4" />Project resolution</Button></DialogTrigger>
+                <DialogTrigger asChild><Button variant="outline" size="sm" className="w-full justify-center gap-2"><Shield className="size-4" />Cancellation &amp; disputes</Button></DialogTrigger>
                 <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-3xl"><DialogHeader><DialogTitle>Project resolution</DialogTitle><DialogDescription>Manage cancellation requests, disputes, and their history.</DialogDescription></DialogHeader><ProjectResolutionPanel orderStatus={project.orderStatus} orderId={project.orderId} projectId={project.projectId} status={project.status} userId={project.currentUserId} milestones={project.milestones} onRefresh={onRefresh} /></DialogContent>
               </Dialog>
             </CardContent>

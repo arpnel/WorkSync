@@ -60,7 +60,7 @@ const PROJECT_ORDERS_SELECT = `
     budget, status, start_date, due_date, project_type, completed_at,
     created_at, updated_at,
     project_submissions (kind, attachment_path),
-    milestones (
+    milestones!milestones_project_id_fkey (
       milestone_id, project_id, title, description, amount, due_date,
       status, created_at, display_order
     )
@@ -106,10 +106,14 @@ export async function getProjects(): Promise<ProjectRecord[]> {
     : firstResult;
 
   if (error) {
-    console.error("Failed to fetch projects:", {
+    const diagnostic = {
       code: error.code || "UNKNOWN_DATABASE_ERROR",
-      message: error.message.slice(0, 300),
-    });
+      message: String(error.message ?? "").slice(0, 300),
+      details: String(error.details ?? "").slice(0, 200),
+      hint: String(error.hint ?? "").slice(0, 200),
+      status: String((error as typeof error & { status?: number }).status ?? ""),
+    };
+    console.error(`Failed to fetch projects: ${JSON.stringify(diagnostic)}`);
 
     throw new Error(error.message || "Failed to load projects.");
   }

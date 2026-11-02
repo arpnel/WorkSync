@@ -119,24 +119,58 @@ begin
   fn := pg_get_functiondef('public.worksync_payment_matches_project(uuid,uuid,text)'::regprocedure);
   if position('coalesce(pay.platform_service_fee,0)' in fn)=0 then
     old_check := 'pay.amount=round(c.final_price+coalesce(pay.freelancer_service_vat_amount,0),2)';
-    if position(old_check in fn)=0 then raise exception 'Unexpected payment matching body; review before applying fee migration'; end if;
-    fn := replace(fn, old_check,
-      '(pay.amount=round(c.final_price+coalesce(pay.freelancer_service_vat_amount,0),2) or pay.amount=round(c.final_price+coalesce(pay.freelancer_service_vat_amount,0)+coalesce(pay.platform_service_fee,0),2))');
+    if position(old_check in fn)>0 then
+      fn := replace(fn, old_check,
+        '(pay.amount=round(c.final_price+coalesce(pay.freelancer_service_vat_amount,0),2) or pay.amount=round(c.final_price+coalesce(pay.freelancer_service_vat_amount,0)+coalesce(pay.platform_service_fee,0),2))');
+    elsif position('pay.amount=p.budget' in fn)>0 then
+      -- The deployed matcher may predate VAT snapshots and compare against
+      -- the project budget directly. Keep that legacy amount valid, and also
+      -- accept the fee-inclusive checkout total for snapshot-backed payments.
+      fn := replace(fn, 'pay.amount=p.budget',
+        '(pay.amount=round(c.final_price+coalesce(pay.freelancer_service_vat_amount,0),2) or pay.amount=round(c.final_price+coalesce(pay.freelancer_service_vat_amount,0)+coalesce(pay.platform_service_fee,0),2))');
+    else
+      raise exception 'Unexpected payment matching body; review before applying fee migration';
+    end if;
   end if;
   execute fn;
 
   fn := pg_get_functiondef('public.worksync_claim_payout(uuid)'::regprocedure);
   if position('round(pay.freelancer_service_vat_taxable_base+pay.freelancer_service_vat_amount,2)' in fn)=0 then
     old_check := 'expected_gross:=pay.amount;';
-    if position(old_check in fn)=0 then raise exception 'Unexpected payout claim body; review before applying fee migration'; end if;
-    fn := replace(fn, old_check,
-      'expected_gross:=case when pay.freelancer_service_vat_taxable_base is null then pay.amount else round(pay.freelancer_service_vat_taxable_base+pay.freelancer_service_vat_amount,2) end;');
+    if position(old_check in fn)>0 then
+      fn := replace(fn, old_check,
+        'expected_gross:=case when pay.freelancer_service_vat_taxable_base is null then pay.amount else round(pay.freelancer_service_vat_taxable_base+pay.freelancer_service_vat_amount,2) end;');
+    elsif position('reserved numeric;' in fn)>0
+      and position('select * into pay from public.payments where payment_id=r.payment_id for update;' in fn)>0 then
+      -- Older deployed claims compare gross directly with project budget and
+      -- cap reservations against the client total. Introduce one freelancer
+      -- gross ceiling derived from the payment snapshot, excluding client fees.
+      fn := replace(fn, 'reserved numeric;', 'reserved numeric; expected_gross numeric;');
+      fn := replace(fn,
+        'select * into pay from public.payments where payment_id=r.payment_id for update;',
+        'select * into pay from public.payments where payment_id=r.payment_id for update; expected_gross:=case when pay.freelancer_service_vat_taxable_base is null then pay.amount else round(pay.freelancer_service_vat_taxable_base+pay.freelancer_service_vat_amount,2) end;');
+    else
+      raise exception 'Unexpected payout claim body; review before applying fee migration';
+    end if;
   end if;
-  if position('r.gross_amount is distinct from expected_gross and r.gross_amount is distinct from pay.amount' in fn)=0 then
-    old_check := 'or r.gross_amount is distinct from expected_gross or not public.worksync_delivery_approved(p.project_id,null)';
+  fn := replace(fn,
+    'r.gross_amount is distinct from expected_gross and r.gross_amount is distinct from pay.amount',
+    'r.gross_amount is distinct from expected_gross');
+  if position('r.gross_amount is distinct from expected_gross' in fn)=0 then
+    old_check := 'r.gross_amount is distinct from p.budget';
     if position(old_check in fn)=0 then raise exception 'Unexpected payout gross comparison; review before applying fee migration'; end if;
+    fn := replace(fn, old_check, 'r.gross_amount is distinct from expected_gross');
+  end if;
+  if position('reserved>expected_gross' in fn)=0 then
+    old_check := 'reserved>pay.amount';
+    if position(old_check in fn)=0 then raise exception 'Unexpected payout reservation cap; review before applying fee migration'; end if;
+    fn := replace(fn, old_check, 'reserved>expected_gross');
+  end if;
+  if position('worksync_project_milestone_vat(r.payment_id,p.project_id,r.milestone_id)' in fn)=0 then
+    old_check := 'and amount=r.gross_amount';
+    if position(old_check in fn)=0 then raise exception 'Unexpected milestone payout gross comparison; review before applying fee migration'; end if;
     fn := replace(fn, old_check,
-      'or (r.gross_amount is distinct from expected_gross and r.gross_amount is distinct from pay.amount) or not public.worksync_delivery_approved(p.project_id,null)');
+      'and ((pay.freelancer_service_vat_taxable_base is null and amount=r.gross_amount) or (pay.freelancer_service_vat_taxable_base is not null and r.gross_amount=round(amount+public.worksync_project_milestone_vat(r.payment_id,p.project_id,r.milestone_id),2)))');
   end if;
   execute fn;
 

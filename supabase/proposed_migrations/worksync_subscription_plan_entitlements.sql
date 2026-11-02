@@ -56,8 +56,8 @@ begin
   where f.user_id = applicant
     and a.created_at >= date_trunc('month', now())
     and a.created_at < date_trunc('month', now()) + interval '1 month';
-  if used >= 5 then
-    raise exception 'The Free plan allows five job applications per month. Upgrade to Premium to apply without a monthly limit.' using errcode='P0001';
+  if used >= 1 then
+    raise exception 'The Free plan allows one job application per month. Upgrade to Premium to apply without a monthly limit.' using errcode='P0001';
   end if;
   return new;
 end;

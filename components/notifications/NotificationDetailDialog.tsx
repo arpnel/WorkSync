@@ -309,7 +309,7 @@ export function NotificationDetailDialog({
         const result = await supabase
           .from("service_orders")
           .select(
-            "order_id,status,client_id,freelancer_id,services(title,description,price,service_type,delivery_time_days),contracts(terms,final_price,delivery_time_days),projects(project_id,title,description,budget,status,due_date,milestones(milestone_id,title,status,due_date,display_order))",
+            "order_id,status,client_id,freelancer_id,services(title,description,price,service_type,delivery_time_days),contracts(terms,final_price,delivery_time_days),projects(project_id,title,description,budget,status,due_date,milestones!milestones_project_id_fkey(milestone_id,title,status,due_date,display_order))",
           )
           .eq("order_id", id)
           .maybeSingle();
@@ -319,7 +319,7 @@ export function NotificationDetailDialog({
           const project = await supabase
             .from("projects")
             .select(
-              "project_id,order_id,client_id,freelancer_id,title,description,budget,status,due_date,milestones(milestone_id,title,status,due_date,display_order)",
+              "project_id,order_id,client_id,freelancer_id,title,description,budget,status,due_date,milestones!milestones_project_id_fkey(milestone_id,title,status,due_date,display_order)",
             )
             .eq("project_id", id)
             .maybeSingle();

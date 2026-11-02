@@ -13,9 +13,11 @@ export class PaymentError extends Error {
 }
 export function paymentMode() {
   const key = process.env.PAYMONGO_SECRET_KEY?.trim();
-  if (!key || !/^sk_(test|live)_/.test(key))
-    throw new PaymentError("Set PAYMONGO_SECRET_KEY on the server.");
-  return key.startsWith("sk_live_") ? "live" : "test";
+  if (!key || !/^sk_test_/.test(key))
+    throw new PaymentError(
+      "Test payments only. Configure PAYMONGO_SECRET_KEY with a test key.",
+    );
+  return "test";
 }
 export function paymentId(projectId: string, mode = paymentMode()) {
   const hex = createHash("sha256")
@@ -45,6 +47,12 @@ export interface CheckoutSession {
     livemode: boolean;
     status?: string;
     reference_number: string;
+    line_items?: {
+      name: string;
+      amount: number;
+      currency: string;
+      quantity: number;
+    }[];
     metadata?: Record<string, string>;
     payments?: {
       id: string;

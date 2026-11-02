@@ -28,16 +28,16 @@ export type PayoutCsvFormat = "earnings-summary" | "payout-tax-records";
 
 const earningsColumns = [
   "Created At", "Transaction ID", "Payout ID", "Project ID", "Gross Earnings (PHP)",
-  "Freelancer VAT (PHP)", "Withholding Tax (PHP)", "Net Transfer Amount (PHP)",
-  "Payout Status", "Transfer Reference", "Paid Status", "Confirmed At",
+  "Freelancer VAT (PHP)", "Withholding Tax (PHP)", "Net Earnings (PHP)",
+  "Recorded Status", "Transfer Reference", "Status Updated At",
 ];
 
 const detailedColumns = [
   "Transaction ID", "Payout ID", "Project ID", "Transfer Reference", "Created At",
-  "Gross Earnings (PHP)", "Freelancer VAT Base (PHP)", "Freelancer VAT (PHP)", "Net Transfer Amount (PHP)",
+  "Gross Earnings (PHP)", "Freelancer VAT Base (PHP)", "Freelancer VAT (PHP)", "Net Earnings After Withholding (PHP)",
   "Withholding Basis (PHP)", "Withholding Rate", "Withholding Amount (PHP)", "Withholding Date", "Withholding Rule",
   "Exemption Status", "Withholding Declaration ID", "Withholding Document ID", "VAT Document ID", "Freelancer VAT Rule",
-  "Payout Status", "Paid Status", "Confirmed At",
+  "Recorded Status", "Status Updated At",
 ];
 
 function csvCell(value: unknown) {
@@ -58,16 +58,12 @@ function label(value: string | null | undefined) {
   return value.replaceAll("_", " ");
 }
 
-function paidStatus(row: PayoutCsvRow) {
-  return row.paidAt ? "Confirmed" : "";
-}
-
 export function payoutCsvRows(rows: PayoutCsvRow[], format: PayoutCsvFormat) {
   if (format === "earnings-summary") {
     return [earningsColumns, ...rows.map((row) => [
       isoTimestamp(row.createdAt), row.transactionId, row.id, row.projectId,
       row.grossAmount, row.freelancerVatAmount, row.withholdingAmount, row.amount,
-      payoutStatusLabel(row.status), row.transferReference, paidStatus(row), isoTimestamp(row.paidAt),
+      payoutStatusLabel(row.status), row.transferReference, isoTimestamp(row.paidAt),
     ])];
   }
   return [detailedColumns, ...rows.map((row) => [
@@ -76,7 +72,7 @@ export function payoutCsvRows(rows: PayoutCsvRow[], format: PayoutCsvFormat) {
     row.withholdingBasis, row.withholdingRate == null ? "" : `${(row.withholdingRate * 100).toFixed(2)}%`,
     row.withholdingAmount, isoTimestamp(row.withholdingDate), row.withholdingRule,
     label(row.withholdingExemptionStatus), row.withholdingDeclarationId, row.withholdingDocumentId,
-    row.freelancerVatDocumentId, row.freelancerVatRule, payoutStatusLabel(row.status), paidStatus(row), isoTimestamp(row.paidAt),
+    row.freelancerVatDocumentId, row.freelancerVatRule, payoutStatusLabel(row.status), isoTimestamp(row.paidAt),
   ])];
 }
 

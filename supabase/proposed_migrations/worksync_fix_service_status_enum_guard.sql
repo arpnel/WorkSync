@@ -14,7 +14,10 @@ begin
     'public.worksync_guard_listing_content_update()'::regprocedure
   );
 
-  if pg_catalog.position('new.status::text = ''closed''' in pg_catalog.lower(fn)) > 0 then
+  if pg_catalog.strpos(
+    pg_catalog.lower(fn),
+    'new.status::text = ''closed'''
+  ) > 0 then
     return;
   end if;
 

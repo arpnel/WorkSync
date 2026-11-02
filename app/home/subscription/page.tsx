@@ -68,7 +68,7 @@ function addBillingPeriod(startedAt: number, period: "monthly" | "yearly") {
   return date;
 }
 const planFeatures = [
-  ["Kanban board project plans", "1 saved plan", "Unlimited"],
+  ["Kanban board", "1 saved plan", "Unlimited"],
   ["Job applications", "1 per month", "Unlimited"],
   ["Active projects", "1 at a time", "Up to 20 concurrent"],
   ["Active job postings", "1 listing total", "Up to 100 listings"],

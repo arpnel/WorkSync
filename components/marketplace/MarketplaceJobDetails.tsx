@@ -648,6 +648,7 @@ export default function MarketplaceJobDetails({
                     proposal: proposal.trim(),
                     proposed_price: Number(price),
                     estimated_days: Number(days),
+                    proposed_plan: proposedPlan,
                   });
                 } catch (cause) {
                   if (!openSubscriptionLimitDialog(cause))

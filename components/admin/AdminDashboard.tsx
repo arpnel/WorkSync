@@ -12,8 +12,10 @@ import {
 } from "lucide-react";
 import {
   getAdminRecords,
+  getAdminQuickActionCounts,
   type AdminResult,
   type AdminModule,
+  type AdminQuickActionCounts,
 } from "@/services/admin/adminService";
 import { ADMIN_MODULES } from "@/services/admin/adminModules";
 import { WorkspacePageHeader } from "@/components/shared/WorkspacePageHeader";
@@ -70,6 +72,7 @@ export default function AdminDashboard() {
     Partial<Record<AdminModule, FeedState>>
   >({});
   const [loading, setLoading] = useState(true);
+  const [actionCounts, setActionCounts] = useState<AdminQuickActionCounts | null>(null);
   const sequence = useRef(0);
   const load = useCallback(async () => {
     const request = ++sequence.current;
@@ -78,8 +81,8 @@ export default function AdminDashboard() {
       ...feeds.map((feed) => feed.module),
       ...reviewModules,
     ];
-    const values = await Promise.all(
-      modules.map(async (module) => {
+    const [values, counts] = await Promise.all([
+      Promise.all(modules.map(async (module) => {
         try {
           return [
             module,
@@ -96,10 +99,12 @@ export default function AdminDashboard() {
             },
           ] as const;
         }
-      }),
-    );
+      })),
+      getAdminQuickActionCounts().catch(() => null),
+    ]);
     if (request === sequence.current) {
       setResults(Object.fromEntries(values));
+      setActionCounts(counts);
       setLoading(false);
     }
   }, []);
@@ -124,58 +129,44 @@ export default function AdminDashboard() {
     counts[row.status] = (counts[row.status] ?? 0) + 1;
     return counts;
   }, {});
-  const pendingActionCount = (module: (typeof reviewModules)[number]) => {
-    const data = results[module]?.data;
-    if (!data) return 0;
-    const pendingStatuses = new Set([
-      "pending",
-      "open",
-      "under_review",
-      "pending_review",
-      "awaiting_review",
-      "submitted",
-      "escalated",
-    ]);
-    return data.rows.filter((row) =>
-      pendingStatuses.has(row.status.toLowerCase()),
-    ).length;
-  };
+  const actionCountUnavailable = !actionCounts ||
+    Object.values(actionCounts).some((count) => count === null);
   const quickActions = [
     {
       label: "Transactions",
       href: "/admin/financial",
       Icon: Wallet,
-      pendingCount: 0,
+      pendingCount: actionCounts?.transactions ?? null,
     },
     {
       label: "Verification",
       href: "/admin/verification",
       Icon: ShieldCheck,
-      pendingCount: pendingActionCount(ADMIN_MODULES.verification),
+      pendingCount: actionCounts?.verification ?? null,
     },
     {
       label: "Reports",
       href: "/admin/reports",
       Icon: ClipboardCheck,
-      pendingCount: pendingActionCount(ADMIN_MODULES.reports),
+      pendingCount: actionCounts?.reports ?? null,
     },
     {
       label: "Disputes",
       href: "/admin/disputes",
       Icon: Scale,
-      pendingCount: pendingActionCount(ADMIN_MODULES.disputes),
+      pendingCount: actionCounts?.disputes ?? null,
     },
     {
       label: "Listing moderation",
       href: "/admin/moderation",
       Icon: Store,
-      pendingCount: 0,
+      pendingCount: actionCounts?.listingModeration ?? null,
     },
     {
-      label: "Seller & tax review",
+      label: "Tax documents & declarations",
       href: "/admin/financial/tax",
       Icon: ClipboardCheck,
-      pendingCount: 0,
+      pendingCount: actionCounts?.sellerTaxReview ?? null,
     },
     {
       label: "Analytics",
@@ -193,7 +184,7 @@ export default function AdminDashboard() {
     .map((action, index) => ({ ...action, index }))
     .sort(
       (left, right) =>
-        (right.pendingCount ?? 0) - (left.pendingCount ?? 0) ||
+        (right.pendingCount ?? -1) - (left.pendingCount ?? -1) ||
         left.index - right.index,
     );
   return (
@@ -230,6 +221,11 @@ export default function AdminDashboard() {
                 <p className="mt-1 text-sm text-muted-foreground">
                   Open common admin workspaces.
                 </p>
+                {actionCountUnavailable && (
+                  <p role="status" className="mt-1 text-xs text-muted-foreground">
+                    Some pending counts could not be loaded. Open those workspaces to check their queues.
+                  </p>
+                )}
               </div>
             </CardHeader>
             <CardContent className="flex flex-wrap gap-2">
@@ -238,28 +234,26 @@ export default function AdminDashboard() {
                   key={href}
                   variant="outline"
                   asChild
-                  className={pendingCount ? "relative pr-8" : undefined}
+                  className={`min-w-fit flex-1${pendingCount != null && pendingCount > 0 ? " gap-2" : ""}`}
                 >
                   <Link
                     href={href}
                     aria-label={
-                      pendingCount
-                        ? `${label}, ${pendingCount} pending actions in the loaded queue page`
+                      pendingCount != null && pendingCount > 0
+                        ? `${label}, ${pendingCount} items need attention`
                         : label
                     }
                     title={
-                      pendingCount
-                        ? `${pendingCount} pending items on the loaded queue page`
+                      pendingCount != null && pendingCount > 0
+                        ? `${pendingCount} items need attention`
                         : undefined
                     }
                   >
                     <Icon className="size-4" />
                     {label}
-                    {pendingCount ? (
-                      <span
-                        aria-hidden="true"
-                        className="absolute -top-2 -right-2 grid size-5 place-items-center rounded-full border-2 border-background bg-destructive text-[10px] leading-none text-destructive-foreground"
-                      >
+                    {pendingCount != null && pendingCount > 0 ? (
+                      <span aria-hidden="true" className="ml-1 inline-flex items-center gap-1.5 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-semibold tabular-nums text-destructive">
+                        <span className="size-2 rounded-full bg-destructive" />
                         {pendingCount}
                       </span>
                     ) : null}

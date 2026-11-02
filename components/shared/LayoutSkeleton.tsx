@@ -19,6 +19,7 @@ export type LayoutVariant =
   | "verification-settings"
   | "contacts"
   | "table"
+  | "admin-table"
   | "notifications"
   | "calendar"
   | "marketplace"
@@ -269,6 +270,31 @@ function Shape({ variant, count }: { variant: LayoutVariant; count?: number }) {
   switch (variant) {
     case "table":
       return <TableRows count={count} />;
+    case "admin-table":
+      return (
+        <div className="overflow-x-auto rounded-lg border">
+          <div className="min-w-[760px]">
+            <div className="grid grid-cols-[minmax(220px,2fr)_repeat(5,minmax(90px,1fr))] gap-4 border-b bg-muted/40 px-3 py-3">
+              {[0, 1, 2, 3, 4, 5].map((i) => (
+                <Skeleton key={i} className={`h-4 ${i === 0 ? "w-32" : "w-20"}`} />
+              ))}
+            </div>
+            {Array.from({ length: count ?? 5 }, (_, i) => (
+              <div key={i} className="grid grid-cols-[minmax(220px,2fr)_repeat(5,minmax(90px,1fr))] items-center gap-4 border-b px-3 py-4 last:border-b-0">
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-3 w-2/3" />
+                </div>
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-6 w-16 rounded-full" />
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-6 w-20 rounded-full" />
+                <Skeleton className="ml-auto h-9 w-24 rounded-md" />
+              </div>
+            ))}
+          </div>
+        </div>
+      );
     case "projects":
       return <Rows count={count} />;
     case "requests":

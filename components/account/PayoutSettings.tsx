@@ -245,7 +245,7 @@ export default function PayoutSettings() {
         .then(() => payoutEarningsRequest())
         .then((value) => {
           setEarnings(value);
-          setNotice("Demo withdrawal marked paid out. No money was transferred.");
+          setNotice("");
         })
         .catch((cause) => {
           completingDemoPayouts.current.delete(withdrawal.id);
@@ -290,6 +290,12 @@ export default function PayoutSettings() {
       setRequestingWithdrawal(false);
     }
   };
+  const withdrawalErrorText = withdrawalError.toLowerCase();
+  const withdrawalFollowUp = /payout account/.test(withdrawalErrorText)
+    ? { href: "#payout-account-heading", label: "Review payout account" }
+    : /seller document|bir form 2303|canonical.*cor|check that your payout account/.test(withdrawalErrorText)
+      ? { href: "/home/settings#seller-verification", label: "Review documents" }
+      : null;
   const downloadCsv = (format: PayoutCsvFormat) => {
     const rows = earnings?.payouts ?? [];
     if (!rows.length) return;
@@ -447,11 +453,13 @@ export default function PayoutSettings() {
           {withdrawalError && (
             <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/20 bg-destructive/5 p-3">
               <div className="min-w-0 flex-1 space-y-1">
-                <p className="text-sm text-destructive">Ensure your payout account and required seller documents, including BIR Form 2303, are up to date and verified, then try again.</p>
+                <p className="text-sm text-destructive">{withdrawalError}</p>
               </div>
-              <Button asChild variant="outline" size="sm" className="shrink-0">
-                <Link href="/home/settings#seller-verification">Review documents</Link>
-              </Button>
+              {withdrawalFollowUp && (
+                <Button asChild variant="outline" size="sm" className="shrink-0">
+                  <Link href={withdrawalFollowUp.href}>{withdrawalFollowUp.label}</Link>
+                </Button>
+              )}
             </div>
           )}
           {!!earnings.withdrawals?.length && (

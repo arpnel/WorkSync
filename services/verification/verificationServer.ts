@@ -102,8 +102,10 @@ export async function getVerification(user: User) {
       verified: false,
       canStart: !!process.env.DIDIT_API_KEY,
     };
-  const decision = await decisionFor(user.id, state);
   const request = await findVerificationRequest(admin(), user.id, state);
+  if (request?.status === "revoked")
+    return { status: "Revoked", verified: false, canStart: !!process.env.DIDIT_API_KEY };
+  const decision = await decisionFor(user.id, state);
   // A browser callback/poll can show progress, but only the signed webhook
   // can grant verified status. Revocation is reflected immediately on reads.
   return {
@@ -131,43 +133,48 @@ async function serial<T>(key: string, operation: () => Promise<T>): Promise<T> {
 export function startVerification(userId: string) {
   return serial(userId, async () => {
     const user = await freshUser(userId);
-    const state = stateOf(user);
+    let state = stateOf(user);
     if (state) {
-      await ensureVerificationRequest(admin(), user.id, state);
-      const decision = await decisionFor(userId, state);
-      if (decision.status !== "Approved") {
-        await persistVerificationResult(
-          admin(),
-          user.id,
-          state,
-          decision.status,
-          verificationStatusFor(decision, false),
-        );
-      }
-      if (decision.status === "Approved")
-        throw new VerificationError(
-          "Your verification has been submitted. Refresh its status to confirm the result.",
-          409,
-        );
-      if (
-        ["Not Started", "In Progress", "Awaiting User", "Resubmitted"].includes(
-          decision.status,
+      const previousRequest = await findVerificationRequest(admin(), user.id, state);
+      if (previousRequest?.status === "revoked" && !previousRequest.is_current) {
+        state = null;
+      } else {
+        await ensureVerificationRequest(admin(), user.id, state);
+        const decision = await decisionFor(userId, state);
+        if (decision.status !== "Approved") {
+          await persistVerificationResult(
+            admin(),
+            user.id,
+            state,
+            decision.status,
+            verificationStatusFor(decision, false),
+          );
+        }
+        if (decision.status === "Approved")
+          throw new VerificationError(
+            "Your verification has been submitted. Refresh its status to confirm the result.",
+            409,
+          );
+        if (
+          ["Not Started", "In Progress", "Awaiting User", "Resubmitted"].includes(
+            decision.status,
+          )
         )
-      )
-        return {
-          url: verificationUrl(state.url),
-          session_id: state.session_id,
-        };
-      if (decision.status === "In Review")
-        throw new VerificationError(
-          "Your identity verification is being reviewed.",
-          409,
-        );
-      if (Date.now() - state.created_at < 60000)
-        throw new VerificationError(
-          "Please wait a minute before starting another verification.",
-          429,
-        );
+          return {
+            url: verificationUrl(state.url),
+            session_id: state.session_id,
+          };
+        if (decision.status === "In Review")
+          throw new VerificationError(
+            "Your identity verification is being reviewed.",
+            409,
+          );
+        if (Date.now() - state.created_at < 60000)
+          throw new VerificationError(
+            "Please wait a minute before starting another verification.",
+            429,
+          );
+      }
     }
     const conflicts = await admin()
       .from("verification_requests")
@@ -252,6 +259,9 @@ export async function applyVerificationEvent(
         "Unknown or mismatched verification session.",
         409,
       );
+    const storedRequest = await findVerificationRequest(admin(), user.id, state);
+    if (storedRequest?.status === "revoked" || storedRequest?.is_current === false)
+      return;
     if ((state.last_event_at ?? 0) > (event.created_at ?? event.timestamp))
       return;
     const decision = await decisionFor(user.id, state);

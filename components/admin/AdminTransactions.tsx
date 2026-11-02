@@ -4,11 +4,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Ban,
   CalendarDays,
+  Check,
+  ChevronDown,
   CircleDollarSign,
+  Code2,
+  CreditCard,
   Clock3,
+  Copy,
   Download,
   Eye,
   RotateCcw,
+  FolderKanban,
+  History,
   SlidersHorizontal,
   RefreshCw,
   Search,
@@ -303,7 +310,7 @@ export default function AdminTransactions() {
               {data.summary.pending.toLocaleString()}
             </p>
             <p className="text-xs text-muted-foreground">
-              Pending payments across filtered results
+              Pending payments
             </p>
           </Card>
           <Card
@@ -317,7 +324,7 @@ export default function AdminTransactions() {
               {data.summary.paid.toLocaleString()}
             </p>
             <p className="text-xs text-muted-foreground">
-              Confirmed payments across filtered results
+              Confirmed payments
             </p>
           </Card>
           <Card
@@ -331,7 +338,7 @@ export default function AdminTransactions() {
               {pageRefundedCount.toLocaleString()}
             </p>
             <p className="text-xs text-muted-foreground">
-              Visible transactions with confirmed refunds
+              Confirmed refunds
             </p>
           </Card>
           <Card
@@ -512,7 +519,7 @@ export default function AdminTransactions() {
         )}
         {loading && !data ? (
           <div className="p-4">
-            <ContentSkeleton label="Loading transactions" variant="table" />
+            <ContentSkeleton label="Loading transactions" variant="admin-table" />
           </div>
         ) : !data && !error ? (
           <div className="p-12 text-center text-sm text-muted-foreground">
@@ -535,7 +542,7 @@ export default function AdminTransactions() {
           </div>
         ) : (
           data && (
-            <div className="overflow-x-auto">
+            <div className="m-4 overflow-x-auto rounded-lg border">
               <Table className="min-w-[920px]">
                 <TableHeader>
                   <TableRow>
@@ -545,7 +552,7 @@ export default function AdminTransactions() {
                     <TableHead>Status</TableHead>
                     <TableHead>Recorded</TableHead>
                     <TableHead>Receipt</TableHead>
-                    <TableHead className="text-right">Inspect</TableHead>
+                    <TableHead className="w-28 text-right">Inspect</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -633,17 +640,6 @@ export default function AdminTransactions() {
                                 <Eye className="size-3.5" />
                                 View
                               </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                aria-label={`Download receipt for ${row.payment_id}`}
-                                disabled={receiptActionBusy}
-                                onClick={() => void receipt(row, true)}
-                              >
-                                <Download className="size-3.5" />
-                                PDF
-                              </Button>
                             </div>
                           ) : (
                             <span className="text-xs text-muted-foreground">
@@ -651,11 +647,11 @@ export default function AdminTransactions() {
                             </span>
                           )}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="w-28 text-right">
                           <Button
                             type="button"
                             size="sm"
-                            variant="ghost"
+                            variant="outline"
                             onClick={() => setSelected(row)}
                           >
                             Inspect
@@ -706,164 +702,95 @@ export default function AdminTransactions() {
           if (!open && !receiptBusy) setSelected(null);
         }}
       >
-        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-3xl">
+        <DialogContent className="flex max-h-[90dvh] w-[min(96vw,56rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none">
           {selected && (
             <>
-              <DialogHeader>
-                <DialogTitle>Transaction inspection</DialogTitle>
-                <DialogDescription className="break-all font-mono">
-                  {selected.payment_id}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <section className="space-y-3 rounded-xl border p-4">
-                  <h3 className="text-sm font-semibold">Payment record</h3>
-                  <dl className="grid gap-3 text-sm">
-                    <Detail label="Status">
-                      <AdminStatus
-                        tone={selected.status === "paid" ? "green" : "orange"}
-                      >
+              <div className="min-h-0 flex-1 overflow-y-auto">
+              <DialogHeader className="border-b px-5 py-4 pr-14">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <DialogTitle>Transaction details</DialogTitle>
+                      <AdminStatus tone={selected.status === "paid" ? "green" : "orange"}>
                         {paymentStatus(selected.status)}
                       </AdminStatus>
-                    </Detail>
-                    <Detail label="Amount">
-                      {peso.format(selected.amount)}{" "}
-                      {selected.currency || "PHP"}
-                    </Detail>
+                    </div>
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <DialogDescription className="break-all font-mono text-xs">{selected.payment_id}</DialogDescription>
+                      <CopyButton value={selected.payment_id} label="payment ID" />
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs font-medium text-muted-foreground">Total amount</p>
+                    <p className="mt-0.5 text-xl font-semibold tabular-nums">
+                      {peso.format(selected.amount)}
+                    </p>
+                  </div>
+                </div>
+              </DialogHeader>
+                <div className="space-y-4 px-5 py-4">
+                <section className="space-y-3 rounded-xl border p-4">
+                  <SectionHeading icon={<CreditCard className="size-3.5" />}>Payment information</SectionHeading>
+                  <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
                     <Detail label="Provider / environment">
-                      {selected.provider || "Provider not recorded"} ·{" "}
-                      {selected.livemode == null
-                        ? "Environment not recorded"
-                        : selected.livemode
-                          ? "Live"
-                          : "Test"}
+                      <span className="mr-2 font-semibold">{selected.provider || "Provider not recorded"}</span>
+                      <Badge variant="outline">{selected.livemode == null ? "Environment unknown" : selected.livemode ? "Live mode" : "Test mode"}</Badge>
                     </Detail>
                     <Detail label="Payment method">
-                      {selected.payment_method || "Not recorded"}
+                      <Badge variant="outline" className="mr-2">{selected.payment_method?.toUpperCase() || "N/A"}</Badge>
+                      {selected.payment_method?.toLowerCase() === "qrph" ? "QR Ph standard" : ""}
                     </Detail>
-                    <Detail label="Checkout reference">
-                      {selected.transaction_reference || "Not recorded"}
+                    <Detail label="Checkout session">
+                      <CopyValue value={selected.transaction_reference || "Not recorded"} label="checkout session" />
                     </Detail>
                     <Detail label="Provider payment ID">
-                      {selected.provider_payment_id || "Not recorded"}
+                      <CopyValue value={selected.provider_payment_id || "Not recorded"} label="provider payment ID" />
                     </Detail>
                     <Detail label="Payment date">
-                      {selected.paid_at
-                        ? formatDateTime(selected.paid_at)
-                        : "Payment date not recorded"}
+                      <span className="inline-flex items-center gap-2"><CalendarDays className="size-3.5 text-muted-foreground" />{selected.paid_at ? formatDateTime(selected.paid_at) : "Not recorded"}</span>
                     </Detail>
                   </dl>
                 </section>
                 <section className="space-y-3 rounded-xl border p-4">
-                  <h3 className="text-sm font-semibold">
-                    Project and participants
-                  </h3>
-                  <dl className="grid gap-3 text-sm">
+                  <SectionHeading icon={<FolderKanban className="size-3.5" />}>Project context</SectionHeading>
+                  <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
                     <Detail label="Project">
                       {selected.project?.title || "Project unavailable"}
                     </Detail>
-                    <Detail label="Project ID">
-                      {selected.project_id || "Not linked"}
-                    </Detail>
-                    <Detail label="Order ID">
-                      {selected.order_id ||
-                        selected.project?.order_id ||
-                        "Not linked"}
-                    </Detail>
                     <Detail label="Client / payer">
-                      <Link
-                        className="underline underline-offset-2"
-                        href={`/admin/users/${encodeURIComponent(selected.payer_id)}`}
-                      >
-                        {selected.payer.display_name ||
-                          selected.payer.email ||
-                          selected.payer_id}
-                      </Link>
-                      <span className="mt-1 block break-all font-mono text-xs text-muted-foreground">
-                        {selected.payer_id}
-                      </span>
-                    </Detail>
-                    <Detail label="Freelancer profile ID">
-                      {selected.project?.freelancer_id || "Not available"}
+                      {selected.payer.display_name || selected.payer.email || selected.payer_id}
                     </Detail>
                     <Detail label="Project status">
-                      {selected.project?.status?.replaceAll("_", " ") ||
-                        "Not available"}
+                      <Badge variant="outline" className="capitalize">{selected.project?.status?.replaceAll("_", " ") || "Not available"}</Badge>
                     </Detail>
                   </dl>
+                  <details className="group border-t pt-3">
+                    <summary className="flex cursor-pointer list-none items-center gap-2 text-xs text-muted-foreground hover:text-foreground">
+                      <Code2 className="size-3.5" /> Technical references &amp; raw metadata
+                      <ChevronDown className="ml-auto size-3.5 transition-transform group-open:rotate-180" />
+                    </summary>
+                    <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <Detail label="Project ID"><CopyValue value={selected.project_id || "Not linked"} label="project ID" /></Detail>
+                      <Detail label="Order ID"><CopyValue value={selected.order_id || selected.project?.order_id || "Not linked"} label="order ID" /></Detail>
+                      <Detail label="Client user ID"><CopyValue value={selected.payer_id} label="client user ID" /></Detail>
+                      <Detail label="Freelancer profile ID"><CopyValue value={selected.project?.freelancer_id || "Not available"} label="freelancer profile ID" /></Detail>
+                    </dl>
+                  </details>
                 </section>
-                <section className="space-y-3 rounded-xl border p-4">
-                  <h3 className="text-sm font-semibold">Audit timeline</h3>
-                  <dl className="grid gap-3 text-sm">
-                    <Detail label="Record created">
-                      {formatDateTime(selected.created_at)}
-                    </Detail>
-                    <Detail label="Last updated">
-                      {formatDateTime(selected.updated_at)}
-                    </Detail>
-                    <Detail label="Provider confirmed">
-                      {selected.paid_at
-                        ? formatDateTime(selected.paid_at)
-                        : "Payment date not recorded"}
-                    </Detail>
-                    <Detail label="Settlement last checked">
-                      {formatDateTime(selected.settlement_checked_at)}
-                    </Detail>
-                    <Detail label="Payment ID">{selected.payment_id}</Detail>
-                    <Detail label="Provider">
-                      {selected.provider || "Not recorded"}
-                    </Detail>
-                  </dl>
-                </section>
-                <section className="space-y-3 rounded-xl border p-4">
-                  <h3 className="text-sm font-semibold">
-                    Recorded tax and fee context
-                  </h3>
-                  <dl className="grid gap-3 text-sm">
-                    <Detail label="Platform service fee">
-                      {selected.platform_service_fee == null
-                        ? "Not recorded"
-                        : peso.format(selected.platform_service_fee)}
-                    </Detail>
-                    <Detail label="Platform VAT">
-                      {selected.platform_vat_amount == null
-                        ? "Not recorded"
-                        : peso.format(selected.platform_vat_amount)}
-                    </Detail>
-                    <Detail label="Platform tax treatment">
-                      {selected.platform_tax_treatment?.replaceAll("_", " ") ||
-                        "Not configured"}
-                    </Detail>
-                    <Detail label="Freelancer service VAT">
-                      {selected.freelancer_service_vat_amount == null
-                        ? "Not recorded"
-                        : peso.format(selected.freelancer_service_vat_amount)}
-                    </Detail>
-                    <Detail label="VAT classification">
-                      {selected.freelancer_service_vat_classification?.replaceAll(
-                        "_",
-                        " ",
-                      ) || "Not recorded"}
-                    </Detail>
-                    <Detail label="VAT rule">
-                      {selected.freelancer_service_vat_rule || "Not recorded"}
-                    </Detail>
+                <section className="rounded-xl border p-4">
+                  <SectionHeading icon={<History className="size-3.5" />}>Record audit &amp; history</SectionHeading>
+                  <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-md border p-3"><Detail label="Record created">{formatDateTime(selected.created_at)}</Detail></div>
+                    <div className="rounded-md border p-3"><Detail label="Last updated">{formatDateTime(selected.updated_at)}</Detail></div>
                   </dl>
                 </section>
               </div>
-              <section className="space-y-3 rounded-xl border p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <h3 className="text-sm font-semibold">Refund audit</h3>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Only provider-confirmed refunds count as refunded amounts.
-                    </p>
+              {selected.refunds.length > 0 && (
+                <section className="space-y-3 rounded-xl border p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <SectionHeading icon={<RotateCcw className="size-3.5" />}>Refunds</SectionHeading>
+                    <Badge variant="outline">{selected.refunds.length}</Badge>
                   </div>
-                  <Badge variant="outline">
-                    {selected.refunds.length} recorded
-                  </Badge>
-                </div>
-                {selected.refunds.length ? (
                   <div className="divide-y rounded-lg border">
                     {selected.refunds.map((refund) => (
                       <div
@@ -893,25 +820,16 @@ export default function AdminTransactions() {
                       </div>
                     ))}
                   </div>
-                ) : (
-                  <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                    No refund records are linked to this payment.
-                  </p>
-                )}
-              </section>
-              <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4">
+                </section>
+              )}
+              </div>
+              <section className="flex flex-wrap items-center justify-between gap-3 border-t p-4">
                 <div>
-                  <h3 className="text-sm font-semibold">Receipt</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {selected.status === "paid"
-                      ? selected.receipt
-                        ? `${selected.receipt.receipt_number} · issued ${dateOnly.format(new Date(selected.receipt.issued_at))}`
-                        : "A receipt can be opened after payment confirmation."
-                      : "A receipt is available after payment is confirmed."}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    WorkSync system-generated transaction receipt; not a BIR
-                    official invoice or receipt.
+                      <h3 className="text-sm font-semibold">Transaction receipt</h3>
+                    <p className="mt-1 break-all font-mono text-xs text-muted-foreground">
+                    {selected.status === "paid" && selected.receipt ? (
+                      <>{selected.receipt.receipt_number}<span className="mx-2 text-muted-foreground">&middot;</span>Issued {dateOnly.format(new Date(selected.receipt.issued_at))}</>
+                    ) : "Not available"}
                   </p>
                 </div>
                 {selected.status === "paid" && (
@@ -956,5 +874,55 @@ function Detail({
       <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="mt-1 break-words font-medium">{children}</dd>
     </div>
+  );
+}
+
+function SectionHeading({
+  icon,
+  children,
+}: {
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <h3 className="flex items-center gap-2 text-sm font-semibold">
+      <span className="text-muted-foreground">{icon}</span>
+      {children}
+    </h3>
+  );
+}
+
+function CopyButton({ value, label }: { value: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1000);
+    } catch {
+      setCopied(false);
+    }
+  };
+  return (
+    <Button
+      type="button"
+      size="icon-sm"
+      variant="ghost"
+      className="size-6 shrink-0"
+      aria-label={`Copy ${label}`}
+      title={`Copy ${label}`}
+      onClick={() => void handleCopy()}
+    >
+      {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+    </Button>
+  );
+}
+
+function CopyValue({ value, label }: { value: string; label: string }) {
+  return (
+    <span className="flex min-w-0 items-center gap-1 rounded-md border bg-background/40 px-2 py-0.5 font-mono text-xs">
+      <span className="min-w-0 break-all">{value}</span>
+      <CopyButton value={value} label={label} />
+    </span>
   );
 }

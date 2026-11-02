@@ -4,13 +4,19 @@ import { StyledSelect } from "@/components/ui/styled-select";
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import AdminPageHeader from "@/components/admin/AdminPageHeader";
-import { AdminFilterPanel } from "@/components/admin/admin-ui";
+import { AdminFilterPanel, AdminStatus } from "@/components/admin/admin-ui";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { RefreshCw, Search, SlidersHorizontal } from "lucide-react";
+import {
+  CheckCircle2,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  SlidersHorizontal,
+} from "lucide-react";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import {
   Dialog,
@@ -27,6 +33,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 type Submission = {
   submission_id: string;
@@ -45,8 +52,16 @@ type Submission = {
   owner_removed_at: string | null;
   created_at: string;
 };
+type ListingFacts = {
+  budgetMin?: number | string | null;
+  budgetMax?: number | string | null;
+  price?: number | string | null;
+  deadline?: string | null;
+  deliveryDays?: number | null;
+};
 const PAGE_SIZE = 10;
 const STATUSES = ["pending_review", "manual_review", "approved", "rejected"];
+const STATUS_FILTERS = ["pending_review", "approved", "rejected"];
 const RISKS = ["low", "medium", "high", "critical"];
 const isReviewable = (status: string) =>
   status === "pending_review" || status === "manual_review";
@@ -66,13 +81,86 @@ export default function ModerationPage() {
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState(0);
   const [selected, setSelected] = useState<Submission | null>(null);
-  const [decision, setDecision] = useState<
-    "approve" | "reject" | "flag" | null
-  >(null);
+  const [listingFacts, setListingFacts] = useState<ListingFacts | null>(null);
+  const [listingFactsLoading, setListingFactsLoading] = useState(false);
+  const [listingFactsError, setListingFactsError] = useState("");
+  const [decision, setDecision] = useState<"reject" | null>(null);
   const [category, setCategory] = useState("policy_violation");
   const [explanation, setExplanation] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    let current = true;
+    setListingFacts(null);
+    setListingFactsError("");
+    if (!selected) {
+      setListingFactsLoading(false);
+      return;
+    }
+    const activeSelection = selected;
+
+    async function loadListingFacts() {
+      setListingFactsLoading(true);
+      if (activeSelection.listing_type === "job") {
+        const { data, error: factsError } = await supabase
+          .from("jobs")
+          .select("budget_min,budget_max,deadline")
+          .eq("job_id", activeSelection.listing_id)
+          .maybeSingle();
+        if (!current) return;
+        if (factsError) setListingFactsError("Budget and deadline are unavailable.");
+        else if (data)
+          setListingFacts({
+            budgetMin: data.budget_min,
+            budgetMax: data.budget_max,
+            deadline: data.deadline,
+          });
+      } else {
+        const { data, error: factsError } = await supabase
+          .from("services")
+          .select("price,delivery_time_days")
+          .eq("service_id", activeSelection.listing_id)
+          .maybeSingle();
+        if (!current) return;
+        if (factsError) setListingFactsError("Price and delivery time are unavailable.");
+        else if (data)
+          setListingFacts({ price: data.price, deliveryDays: data.delivery_time_days });
+      }
+      if (current) setListingFactsLoading(false);
+    }
+
+    void loadListingFacts();
+    return () => {
+      current = false;
+    };
+  }, [selected]);
+
+  function formatPhp(value: number | string | null | undefined) {
+    if (value == null || !Number.isFinite(Number(value))) return "Not set";
+    return new Intl.NumberFormat("en-PH", {
+      style: "currency",
+      currency: "PHP",
+      maximumFractionDigits: 2,
+    }).format(Number(value));
+  }
+
+  function formatDateOnly(value: string | null | undefined) {
+    if (!value) return "Not set";
+    const date = new Date(`${value.slice(0, 10)}T00:00:00`);
+    return Number.isNaN(date.getTime()) ? "Not set" : date.toLocaleDateString();
+  }
+
+  function clearFilters() {
+    setSearch("");
+    setType("all");
+    setRisk("all");
+    setStatus("all");
+    setFromDate("");
+    setToDate("");
+    setOffset(0);
+    setFiltersOpen(false);
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -88,7 +176,9 @@ export default function ModerationPage() {
       .range(offset, offset + PAGE_SIZE - 1);
     if (type !== "all") query = query.eq("listing_type", type);
     if (risk !== "all") query = query.eq("ai_risk", risk);
-    if (status !== "all") query = query.eq("status", status);
+    if (status === "pending_review")
+      query = query.in("status", ["pending_review", "manual_review"]);
+    else if (status !== "all") query = query.eq("status", status);
     if (fromDate)
       query = query.gte(
         "created_at",
@@ -147,8 +237,8 @@ export default function ModerationPage() {
     return () => clearTimeout(timer);
   }, [load]);
 
-  async function act() {
-    if (!selected || !decision || busy) return;
+  async function act(action: "approve" | "reject" | null = decision) {
+    if (!selected || !action || busy) return;
     if (!isReviewable(selected.status)) {
       setDecision(null);
       setSelected(null);
@@ -157,7 +247,7 @@ export default function ModerationPage() {
       return;
     }
     if (
-      decision === "reject" &&
+      action === "reject" &&
       (explanation.trim().length < 12 || category.trim().length < 2)
     ) {
       setError("Choose a category and write a meaningful rejection reason.");
@@ -167,7 +257,7 @@ export default function ModerationPage() {
     setError("");
     const { error } = await supabase.rpc("worksync_admin_decide_listing", {
       p_submission: selected.submission_id,
-      p_action: decision,
+      p_action: action,
       p_category: category.trim(),
       p_explanation: explanation.trim(),
     });
@@ -189,7 +279,7 @@ export default function ModerationPage() {
           { label: "Total submissions", value: total, note: "Matching filters" },
           { label: "Pending review", value: (counts.pending_review ?? 0) + (counts.manual_review ?? 0), note: "Across the review queue" },
           { label: "Approved", value: counts.approved ?? 0, note: "All reviewed submissions" },
-          { label: "High risk", value: (counts.high_risk ?? 0) + (counts.critical_risk ?? 0), note: "High and critical risk" },
+          { label: "Rejected", value: counts.rejected ?? 0, note: "All rejected submissions" },
         ].map(({ label, value, note }) => (
           <Card key={label} className="gap-1 rounded-xl border p-3 shadow-none">
             <p className="text-xs text-muted-foreground">{label}</p>
@@ -214,43 +304,49 @@ export default function ModerationPage() {
                 }}
               />
             </label>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              aria-label={filtersOpen ? "Hide filters" : "Show filters"}
-              aria-expanded={filtersOpen}
-              onClick={() => setFiltersOpen((open) => !open)}
-            >
-              <SlidersHorizontal className="size-4" />
+            <Popover open={filtersOpen} onOpenChange={setFiltersOpen}>
+              <PopoverTrigger asChild>
+                <Button type="button" variant="outline" className="h-10">
+                  <SlidersHorizontal className="size-4" />
+                  Filters
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-[min(24rem,calc(100vw-2rem))] p-4">
+                <div className="grid gap-4">
+                  <label className="grid gap-1.5 text-sm font-medium">Listing type
+                    <StyledSelect className="h-10 w-full rounded-lg border bg-background px-3 font-normal" value={type} onChange={(event) => { setType(event.target.value); setOffset(0); }}>
+                      <option value="all">All types</option><option value="job">Jobs</option><option value="service">Services</option>
+                    </StyledSelect>
+                  </label>
+                  <label className="grid gap-1.5 text-sm font-medium">Risk
+                    <StyledSelect className="h-10 w-full rounded-lg border bg-background px-3 font-normal" value={risk} onChange={(event) => { setRisk(event.target.value); setOffset(0); }}>
+                      <option value="all">All risks</option>{RISKS.map((item) => <option key={item} value={item}>{item}</option>)}
+                    </StyledSelect>
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="grid min-w-0 gap-1.5 text-sm font-medium">Created from
+                      <Input className="h-10 rounded-lg bg-background font-normal" type="date" value={fromDate} max={toDate || undefined} onChange={(event) => { setFromDate(event.target.value); setOffset(0); }} />
+                    </label>
+                    <label className="grid min-w-0 gap-1.5 text-sm font-medium">Created to
+                      <Input className="h-10 rounded-lg bg-background font-normal" type="date" value={toDate} min={fromDate || undefined} onChange={(event) => { setToDate(event.target.value); setOffset(0); }} />
+                    </label>
+                  </div>
+                  <div className="flex justify-end border-t pt-3">
+                    <Button type="button" variant="ghost" size="sm" onClick={() => { setType("all"); setRisk("all"); setFromDate(""); setToDate(""); setOffset(0); }}>Clear filters</Button>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+            <Button type="button" variant="outline" size="icon" className="h-10" aria-label="Refresh moderation queue" onClick={() => void load()} disabled={loading}>
+              <RefreshCw className={loading ? "size-4 animate-spin" : "size-4"} />
             </Button>
           </div>
           <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by review status">
             <button type="button" className={`rounded-full px-3 py-1 text-xs font-medium ${status === "all" ? "bg-blue-600 text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"}`} aria-pressed={status === "all"} onClick={() => { setStatus("all"); setOffset(0); }}>All submissions</button>
-            {STATUSES.map((item) => (
+            {STATUS_FILTERS.map((item) => (
               <button key={item} type="button" className={`rounded-full px-3 py-1 text-xs font-medium capitalize ${status === item ? "bg-blue-600 text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"}`} aria-pressed={status === item} onClick={() => { setStatus(item); setOffset(0); }}>{item.replaceAll("_", " ")}</button>
             ))}
           </div>
-          {filtersOpen && (
-            <div className="grid gap-3 border-t pt-3 sm:grid-cols-2 xl:grid-cols-4">
-              <label className="grid gap-1.5 text-sm font-medium">Listing type
-                <StyledSelect className="h-10 w-full rounded-lg border bg-background px-3 font-normal" value={type} onChange={(event) => { setType(event.target.value); setOffset(0); }}>
-                  <option value="all">All types</option><option value="job">Jobs</option><option value="service">Services</option>
-                </StyledSelect>
-              </label>
-              <label className="grid gap-1.5 text-sm font-medium">Risk
-                <StyledSelect className="h-10 w-full rounded-lg border bg-background px-3 font-normal" value={risk} onChange={(event) => { setRisk(event.target.value); setOffset(0); }}>
-                  <option value="all">All risks</option>{RISKS.map((item) => <option key={item} value={item}>{item}</option>)}
-                </StyledSelect>
-              </label>
-              <label className="grid min-w-0 gap-1.5 text-sm font-medium">Created from
-                <Input className="h-10 rounded-lg bg-background font-normal" type="date" value={fromDate} onChange={(event) => { setFromDate(event.target.value); setOffset(0); }} />
-              </label>
-              <label className="grid min-w-0 gap-1.5 text-sm font-medium">Created to
-                <Input className="h-10 rounded-lg bg-background font-normal" type="date" value={toDate} onChange={(event) => { setToDate(event.target.value); setOffset(0); }} />
-              </label>
-            </div>
-          )}
         </div>
       </AdminFilterPanel>
       {error && (
@@ -266,7 +362,7 @@ export default function ModerationPage() {
           <div>
             <h2 className="font-semibold">Listing submissions</h2>
             <p className="mt-1 text-sm text-muted-foreground">AI screening results and moderator decisions.</p>
-            <Badge variant="outline" className="mt-1 w-fit font-normal">{total.toLocaleString()} submissions</Badge>
+            <Badge variant="outline" className="mt-1 w-fit font-normal">{total.toLocaleString()} matching</Badge>
           </div>
           <div className="flex items-center gap-3">
             <label className="flex items-center gap-2 whitespace-nowrap text-sm text-muted-foreground">
@@ -275,15 +371,19 @@ export default function ModerationPage() {
                 <option value="newest">Newest first</option><option value="oldest">Oldest first</option>
               </StyledSelect>
             </label>
-            <Button type="button" variant="outline" size="icon" aria-label="Refresh moderation queue" onClick={() => void load()} disabled={loading}>
-              <RefreshCw className={loading ? "size-4 animate-spin" : "size-4"} />
-            </Button>
           </div>
         </div>
         <CardContent className="overflow-x-auto p-4">
           {loading ? (
-            <ContentSkeleton label="Loading listing submissions" variant="table" />
+            <ContentSkeleton label="Loading listing submissions" variant="admin-table" />
+          ) : !error && rows.length === 0 ? (
+            <div className="space-y-2 border-y px-4 py-12 text-center">
+              <p className="font-medium">No submissions found</p>
+              <p className="text-sm text-muted-foreground">Try a different search or clear the filters.</p>
+              <Button type="button" variant="outline" size="sm" onClick={clearFilters}>Clear filters</Button>
+            </div>
           ) : (
+            <div className="rounded-lg border">
             <Table className="min-w-[1120px]">
               <TableHeader>
                 <TableRow>
@@ -307,15 +407,21 @@ export default function ModerationPage() {
                     <TableCell className="capitalize">{row.listing_type}</TableCell>
                     <TableCell className="font-mono text-xs">{row.owner_id.slice(0, 8)}</TableCell>
                     <TableCell><Badge variant="secondary" className="capitalize">{row.ai_risk ?? "assessment pending"}</Badge></TableCell>
-                    <TableCell><Badge className="capitalize">{row.status.replaceAll("_", " ")}</Badge></TableCell>
+                    <TableCell>
+                      <AdminStatus tone={row.status === "approved" ? "green" : row.status === "rejected" ? "neutral" : "blue"}>
+                        {row.status === "approved" ? "Approved" : row.status === "rejected" ? "Rejected" : "Pending"}
+                      </AdminStatus>
+                    </TableCell>
                     <TableCell className="whitespace-nowrap text-muted-foreground">{new Date(row.created_at).toLocaleDateString()}</TableCell>
                     <TableCell className="text-right">
                       {isReviewable(row.status) ? (
-                        <div className="flex justify-end gap-2">
-                          <Button size="sm" variant="outline" onClick={() => { setSelected(row); setDecision("flag"); }}>Flag</Button>
-                          <Button size="sm" variant="outline" onClick={() => { setSelected(row); setDecision("reject"); }}>Reject</Button>
-                          <Button size="sm" onClick={() => { setSelected(row); setDecision("approve"); }}>Approve</Button>
-                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setSelected(row)}
+                        >
+                          View details
+                        </Button>
                       ) : (
                         <span className="text-sm text-muted-foreground">Reviewed</span>
                       )}
@@ -324,15 +430,12 @@ export default function ModerationPage() {
                 ))}
               </TableBody>
             </Table>
-          )}
-          {!loading && !error && rows.length === 0 && (
-            <div className="rounded-xl border border-dashed bg-card px-4 py-12 text-center text-sm text-muted-foreground">No submissions match these filters.</div>
+            </div>
           )}
         </CardContent>
-      </Card>
-      <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <span className="text-sm text-muted-foreground">
-          {total} submissions · page {Math.floor(offset / PAGE_SIZE) + 1}
+          {total === 0 ? "0 submissions" : `Showing ${rows.length} of ${total.toLocaleString()} submissions`}
         </span>
         <div className="flex gap-2">
           <Button
@@ -353,62 +456,150 @@ export default function ModerationPage() {
           </Button>
         </div>
       </div>
+      </Card>
       <Dialog
         open={Boolean(selected) && !decision}
         onOpenChange={(open) => {
           if (!open) setSelected(null);
         }}
       >
-        <DialogContent className="max-h-[85dvh] overflow-y-auto rounded-2xl sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{selected?.title}</DialogTitle>
-            <DialogDescription>
-              {selected?.listing_type} · Owner {selected?.owner_id} ·{" "}
-              {selected && new Date(selected.created_at).toLocaleString()}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 text-sm">
-            <p className="whitespace-pre-wrap break-words">
-              {selected?.description}
-            </p>
-            <section className="space-y-2 rounded-xl border bg-muted/30 p-4">
-              <p className="font-semibold">
-                AI assessment: {selected?.ai_risk ?? "Not available"}
+        <DialogContent className="max-h-[90dvh] overflow-y-auto rounded-2xl p-0 sm:max-w-2xl">
+          <div className="px-5 pt-5 sm:px-6 sm:pt-6">
+            <DialogHeader className="space-y-2 text-left">
+              <DialogTitle className="text-lg">{selected?.title}</DialogTitle>
+              <DialogDescription className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                <Badge variant="secondary" className="px-2 py-0.5">
+                  {selected?.listing_type === "job" ? "Job listing" : "Service listing"}
+                </Badge>
+                <span>Owner: {selected?.owner_id}</span>
+                <span aria-hidden="true">·</span>
+                <span>{selected && new Date(selected.created_at).toLocaleString()}</span>
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="my-4 border-t" />
+
+            <section className="space-y-2 pb-4">
+              <p className="text-sm font-semibold">Listing Description</p>
+              <p className="whitespace-pre-wrap break-words text-sm font-medium">
+                {selected?.description || "No description provided."}
               </p>
-              <p className="text-muted-foreground">
-                {selected?.ai_explanation ??
-                  selected?.failure_reason ??
-                  "Assessment is queued or awaiting manual review."}
-              </p>
-              {(selected?.ai_categories?.length ?? 0) > 0 && (
-                <p>Categories: {selected?.ai_categories?.join(", ")}</p>
-              )}
-              {selected?.ai_evidence?.map((evidence, index) => (
-                <blockquote
-                  key={index}
-                  className="border-l-2 pl-3 text-muted-foreground"
-                >
-                  {evidence}
-                </blockquote>
-              ))}
-            </section>
-            {selected && isReviewable(selected.status) ? (
-              <div className="flex flex-wrap gap-2 border-t pt-4">
-                <Button onClick={() => setDecision("approve")}>Approve</Button>
-                <Button variant="outline" onClick={() => setDecision("flag")}>
-                  Flag for review
-                </Button>
-                <Button
-                  variant="destructive"
-                  onClick={() => setDecision("reject")}
-                >
-                  Reject
-                </Button>
+              <div className="grid gap-x-8 gap-y-2 border-t pt-3 text-sm sm:grid-cols-2">
+                {listingFactsLoading ? (
+                  <p className="text-muted-foreground">Loading listing details…</p>
+                ) : listingFactsError ? (
+                  <p className="text-muted-foreground">{listingFactsError}</p>
+                ) : selected?.listing_type === "job" ? (
+                  <>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-muted-foreground">Budget</span>
+                      <span className="font-medium">
+                        {listingFacts?.budgetMin == null && listingFacts?.budgetMax == null
+                          ? "Not set"
+                          : `${formatPhp(listingFacts?.budgetMin)} – ${formatPhp(listingFacts?.budgetMax)}`}
+                      </span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-muted-foreground">Deadline</span>
+                      <span className="font-medium">{formatDateOnly(listingFacts?.deadline)}</span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-muted-foreground">Price</span>
+                      <span className="font-medium">{formatPhp(listingFacts?.price)}</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-muted-foreground">Delivery time</span>
+                      <span className="font-medium">
+                        {listingFacts?.deliveryDays == null ? "Not set" : `${listingFacts.deliveryDays} days`}
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
-            ) : (
-              <p className="border-t pt-4 text-sm text-muted-foreground">
-                This submission has already been reviewed.
+            </section>
+
+            <div className="border-t" />
+
+            <section className="space-y-3 py-4">
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-500">
+                  <ShieldCheck className="size-5" aria-hidden="true" />
+                </span>
+                <div className="min-w-0 space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-sm font-semibold">AI content assessment</h3>
+                    <Badge variant="outline" className="capitalize">
+                      {selected?.ai_risk ?? "Risk unavailable"} risk
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {selected?.ai_explanation ?? selected?.failure_reason ?? "Assessment is queued or awaiting manual review."}
+                  </p>
+                </div>
+              </div>
+              {((selected?.ai_categories?.length ?? 0) > 0 || (selected?.ai_evidence?.length ?? 0) > 0) && (
+                <div className="space-y-2 pl-12 text-sm">
+                  {(selected?.ai_categories?.length ?? 0) > 0 && (
+                    <p className="text-muted-foreground">Categories: {selected?.ai_categories?.join(", ")}</p>
+                  )}
+                  {selected?.ai_evidence?.map((evidence, index) => (
+                    <blockquote key={index} className="border-l-2 pl-3 text-muted-foreground">
+                      {evidence}
+                    </blockquote>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="mb-5 space-y-1 rounded-xl bg-muted/50 p-3.5">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Recommended action</p>
+              <p className="flex items-center gap-2 text-sm font-semibold">
+                <CheckCircle2 className="size-4 text-emerald-500" aria-hidden="true" />
+                {selected?.ai_risk === "high" || selected?.ai_risk === "critical" ? "Review listing carefully" : "Approve listing"}
               </p>
+              <p className="text-xs text-muted-foreground">
+                {selected?.ai_risk === "high" || selected?.ai_risk === "critical"
+                  ? "The assessment identified concerns. Review the details before deciding."
+                  : "No immediate concerns detected. Admin judgment is still required."}
+              </p>
+            </section>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/20 px-5 py-3 sm:px-6">
+            {error && (
+              <p role="alert" className="basis-full text-sm text-destructive">
+                {error}
+              </p>
+            )}
+            {selected && isReviewable(selected.status) ? (
+              <>
+                <span className="text-xs text-muted-foreground">Review decision</span>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button
+                    className="h-10 min-w-28"
+                    variant="destructive"
+                    disabled={busy}
+                    onClick={() => {
+                      setError("");
+                      setDecision("reject");
+                    }}
+                  >
+                    Reject
+                  </Button>
+                  <Button
+                    className="h-10 min-w-28"
+                    disabled={busy}
+                    onClick={() => void act("approve")}
+                  >
+                    Approve
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">This submission has already been reviewed.</p>
             )}
           </div>
         </DialogContent>
@@ -427,14 +618,10 @@ export default function ModerationPage() {
             <DialogTitle>
               {decision === "reject"
                 ? "Reject listing"
-                : decision === "flag"
-                  ? "Flag for review"
-                  : "Approve listing"}
+                : "Approve listing"}
             </DialogTitle>
             <DialogDescription>
-              {decision === "reject"
-                ? "Give the owner a clear reason for this decision."
-                : "Record this moderation decision."}
+              Give the owner a clear reason for this decision.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">

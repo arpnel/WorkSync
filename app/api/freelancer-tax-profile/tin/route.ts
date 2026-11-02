@@ -38,13 +38,15 @@ export async function PUT(request: Request) {
 
     const body = await request.json().catch(() => null) as Record<string, unknown> | null;
     const encryptedTin = encryptTin(normalizeTin(body?.tin));
-    const { error } = await db.from("freelancer_tax_identifiers").upsert({
+    const { error } = await db.from("freelancer_tax_identifiers").insert({
       user_id: user.id,
       encrypted_tin: encryptedTin,
       created_by: user.id,
       updated_by: user.id,
       updated_at: new Date().toISOString(),
-    }, { onConflict: "user_id" });
+    });
+    if (error?.code === "23505")
+      throw new PaymentError("A TIN has already been submitted for this account.", 409);
     if (error) throw new PaymentError("TIN could not be saved securely.");
     return json({ hasTin: true });
   } catch (error) {

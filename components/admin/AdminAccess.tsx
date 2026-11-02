@@ -3,7 +3,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
-import ContentSkeleton from "@/components/shared/ContentSkeleton";
+import { Skeleton } from "@/components/ui/skeleton";
 export default function AdminAccess({ children }: { children: ReactNode }) {
   const [allowed, setAllowed] = useState(false);
   const [error, setError] = useState("");
@@ -58,8 +58,12 @@ export default function AdminAccess({ children }: { children: ReactNode }) {
   }, []);
   if (checking && !allowed)
     return (
-      <div className="mx-auto flex min-h-[60vh] max-w-5xl items-center px-6">
-        <ContentSkeleton label="Checking administrator access" variant="profile" />
+      <div className="mx-auto flex min-h-[60vh] max-w-lg items-center px-6" role="status" aria-label="Checking administrator access" aria-busy="true">
+        <div className="w-full space-y-4 rounded-xl border bg-card p-6">
+          <Skeleton className="h-6 w-56 max-w-full" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-2/3" />
+        </div>
       </div>
     );
   if (!allowed)

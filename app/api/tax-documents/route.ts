@@ -4,7 +4,7 @@ import { paymentResponse, paymentUser } from "@/services/payments/paymentServer"
 
 export const runtime = "nodejs";
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
-const documentTypes = ["bir_cor", "vat_registration", "tax_exemption", "business_tax_support"] as const;
+const documentTypes = ["bir_cor"] as const;
 
 async function partyTypes(db: Awaited<ReturnType<typeof paymentUser>>["db"], userId: string) {
   const [freelancer, client] = await Promise.all([
@@ -24,11 +24,6 @@ export async function GET(request: Request) {
         return json({ partyTypes: [], documents: [], canonicalBirCor: { document: null, needsReview: false }, setupRequired: true });
       throw new PaymentError("Tax documents are available to client and freelancer accounts.", 403);
     }
-    const profileResult = types.includes("freelancer")
-      ? await db.from("freelancer_tax_profiles").select("vat_classification").eq("user_id", user.id).maybeSingle()
-      : { data: null, error: null };
-    // Tax-document submission must remain available when the optional
-    // VAT-classification column has not been deployed yet.
     const { data, error } = await db.from("tax_documents").select("document_id,party_type,document_type,registered_name,claimed_tax_treatment,legal_basis,tax_year,issued_at,expires_at,status,submitted_at,reviewed_at,review_reason,is_canonical_bir_cor").eq("user_id", user.id).order("submitted_at", { ascending: false });
     if (error) throw new PaymentError("Tax documents are unavailable. The tax document migration may not be applied yet.");
     const documentId = new URL(request.url).searchParams.get("documentId");
@@ -43,20 +38,12 @@ export async function GET(request: Request) {
     }
     const today = new Date().toISOString().slice(0, 10);
     const documents = (data ?? []).map(row => ({ ...row, status: row.status === "verified" && row.expires_at && row.expires_at < today ? "expired" : row.status }));
-    let vatClassification = profileResult.error
-      ? "unverified"
-      : profileResult.data?.vat_classification ?? "unverified";
-    if (["vat_registered", "non_vat"].includes(vatClassification)) {
-      const requiredType = vatClassification === "vat_registered" ? "vat_registration" : "bir_cor";
-      const currentProof = documents.some(row => row.party_type === "freelancer" && row.document_type === requiredType && row.status === "verified" && (requiredType !== "bir_cor" || row.is_canonical_bir_cor === true));
-      if (!currentProof) vatClassification = "expired";
-    }
     const birRows = documents.filter(row => row.party_type === "freelancer" && row.document_type === "bir_cor");
     const canonical = birRows.find(row => row.is_canonical_bir_cor === true) ?? null;
     const latestTime = birRows.reduce<string | null>((max, row) => max === null || row.submitted_at > max ? row.submitted_at : max, null);
     const latestRows = latestTime ? birRows.filter(row => row.submitted_at === latestTime) : [];
     const canonicalBirCor = { document: canonical ?? (latestRows.length === 1 ? latestRows[0] : null), needsReview: !canonical && latestRows.length > 1 };
-    return json({ partyTypes: types, vatClassification, documents, canonicalBirCor });
+    return json({ partyTypes: types, documents, canonicalBirCor });
   } catch (error) { return paymentResponse(error); }
 }
 

@@ -179,6 +179,18 @@ export async function POST(request: Request) {
     if (result.error) {
       const message = result.error.message ?? "";
       const normalizedMessage = message.toLowerCase();
+      // A missing RPC signature is an app/database deployment mismatch, not a
+      // failed payout-account or tax-document check. In particular, the
+      // partial-withdrawal RPC must accept p_gross_amount so withholding is
+      // calculated from the requested gross amount on the server.
+      if (
+        result.error.code === "PGRST202" ||
+        /could not find the function .*worksync_request_partial_withdrawal/i.test(message)
+      )
+        throw new PaymentError(
+          "Withdrawal setup is incomplete. The database needs an update before withdrawals can be processed. Please contact support.",
+          503,
+        );
       if (/bir|2303|canonical.*cor|cor.*verified/.test(normalizedMessage))
         throw new PaymentError("A current BIR Form 2303 must be submitted and verified before you can withdraw.", 409);
       if (normalizedMessage.includes("payout account"))

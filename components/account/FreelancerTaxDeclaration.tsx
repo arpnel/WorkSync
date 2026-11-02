@@ -1,15 +1,28 @@
 ﻿"use client";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from "react";
-import { FileText } from "lucide-react";
+import { Check, Clock3, FileText, X } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { StyledSelect } from "@/components/ui/styled-select";
 import { AccountSetupFileDropzone } from "@/components/accountsetup/sections/AccountSetupFileDropzone";
-import { currentTaxYear, hasBlockingDeclaration, isSupportedTaxYear, supportedTaxYears } from "@/lib/tax/taxDeclaration";
+import { hasBlockingDeclaration } from "@/lib/tax/taxDeclaration";
 
 type Declaration = { declaration_id: string; tax_year: number; reported_threshold_status: string; status: string; submitted_at: string; reviewed_at: string | null; review_notes: string; document_url: string | null };
 export type FreelancerTaxDeclarationHandle = { submitForSetup: () => Promise<void> };
+const thresholdLabel = (status: string) => status === "not_exceeding"
+  ? "PHP 500,000 or less"
+  : status === "exceeded" ? "Over PHP 500,000" : status.replaceAll("_", " ");
+const declarationStatusLabel = (status: string) => status === "accepted"
+  ? "Approved"
+  : status === "pending" ? "Pending review" : status.replaceAll("_", " ");
+const declarationStatusClass = (status: string) => status === "accepted"
+  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-500"
+  : status === "pending" ? "border-amber-500/30 bg-amber-500/10 text-amber-500" : "border-border bg-muted text-muted-foreground";
+const declarationStatusIcon = (status: string) => status === "accepted"
+  ? <Check className="size-4" />
+  : status === "pending" ? <Clock3 className="size-4" /> : <X className="size-4" />;
+const DECLARATION_TAX_YEAR = 2026;
 
 const FreelancerTaxDeclaration = forwardRef<FreelancerTaxDeclarationHandle, { embedded?: boolean; setupMode?: boolean; profileReady?: boolean; hideSubmitButton?: boolean }>(function FreelancerTaxDeclaration({ embedded = false, setupMode = false, profileReady = true, hideSubmitButton = false }, ref) {
   const [rows, setRows] = useState<Declaration[]>([]);
@@ -17,7 +30,6 @@ const FreelancerTaxDeclaration = forwardRef<FreelancerTaxDeclarationHandle, { em
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [year, setYear] = useState(String(currentTaxYear()));
   const [thresholdStatus, setThresholdStatus] = useState("not_exceeding");
   const request = useCallback(async (method: "GET" | "POST", body?: unknown) => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -40,13 +52,8 @@ const FreelancerTaxDeclaration = forwardRef<FreelancerTaxDeclarationHandle, { em
   }, [profileReady, request, setupMode]);
   async function submit(allowProfileJustSaved = false) {
     if (busy || (!profileReady && !allowProfileJustSaved)) return;
-    if (!isSupportedTaxYear(year)) {
-      setError("Choose a supported tax year.");
-      return;
-    }
-    const selectedYear = Number(year);
-    if (hasBlockingDeclaration(rows, selectedYear)) {
-      setError(`A declaration is already pending or accepted for ${selectedYear}.`);
+    if (hasBlockingDeclaration(rows, DECLARATION_TAX_YEAR)) {
+      setError(`A declaration is already pending or accepted for ${DECLARATION_TAX_YEAR}.`);
       return;
     }
     if (!file) {
@@ -60,13 +67,13 @@ const FreelancerTaxDeclaration = forwardRef<FreelancerTaxDeclarationHandle, { em
       if (file.size > 5 * 1024 * 1024) throw new Error("Choose a file up to 5 MB.");
       const extension = file.name.split(".").at(-1)?.toLowerCase();
       if (!extension || !["pdf", "png", "jpg", "jpeg"].includes(extension)) throw new Error("Upload a PDF, PNG, or JPG.");
-      const ticketResponse = await fetch("/api/tax-documents/upload-url", { method: "POST", headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ partyType: "freelancer", uploadKind: "withholding_declaration", taxYear: selectedYear, fileName: file.name, contentType: file.type, size: file.size }), cache: "no-store" });
+      const ticketResponse = await fetch("/api/tax-documents/upload-url", { method: "POST", headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ partyType: "freelancer", uploadKind: "withholding_declaration", taxYear: DECLARATION_TAX_YEAR, fileName: file.name, contentType: file.type, size: file.size }), cache: "no-store" });
       const ticket = await ticketResponse.json();
       if (!ticketResponse.ok) throw new Error(ticket.error || "Secure upload could not be prepared.");
       const path = ticket.path as string;
       const uploaded = await supabase.storage.from("verification-documents").uploadToSignedUrl(path, ticket.token, file, { contentType: ticket.contentType });
       if (uploaded.error) throw new Error("Document upload failed. Please try again.");
-      await request("POST", { taxYear: selectedYear, documentPath: path, thresholdStatus });
+      await request("POST", { taxYear: DECLARATION_TAX_YEAR, documentPath: path, thresholdStatus });
       setFile(null);
       const fresh = await request("GET");
       setRows(fresh.declarations ?? []);
@@ -74,27 +81,36 @@ const FreelancerTaxDeclaration = forwardRef<FreelancerTaxDeclarationHandle, { em
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Document submission failed."); throw cause; }
     finally { setBusy(false); }
   }
-  const selectedYear = isSupportedTaxYear(year) ? Number(year) : null;
-  const hasBlockingRecord = selectedYear !== null && hasBlockingDeclaration(rows, selectedYear);
-  const canSubmit = profileReady && selectedYear !== null && !!file && !busy && !hasBlockingRecord;
+  const hasBlockingRecord = hasBlockingDeclaration(rows, DECLARATION_TAX_YEAR);
+  const canSubmit = profileReady && !!file && !busy && !hasBlockingRecord;
   useImperativeHandle(ref, () => ({
     async submitForSetup() {
       if (!setupMode || !file) return;
-      if (selectedYear === null || busy || hasBlockingRecord) {
-        const message = error || "The sworn declaration cannot be submitted with the current tax year or review status.";
+      if (busy || hasBlockingRecord) {
+        const message = error || "The 2026 sworn declaration cannot be submitted with the current review status.";
         setError(message);
         throw new Error(message);
       }
       await submit(true);
     },
-  }), [busy, error, file, hasBlockingRecord, selectedYear, setupMode, submit]);
+  }), [busy, error, file, hasBlockingRecord, setupMode, submit]);
   return <section className={embedded || setupMode ? "space-y-4" : "space-y-4 border-t pt-5"}>
-    {!embedded && <div><h3 className="font-semibold">{setupMode ? "BIR-Received Sworn Declaration" : "Withholding tax declaration"}</h3><p className="mt-1 text-sm text-muted-foreground">{setupMode ? "For the selected tax year." : "Submit the BIR-received sworn declaration for the selected tax year. The tax year is the period covered by the declaration; it is separate from the date the document was signed or prepared."}</p></div>}
-    {rows.map((row) => <article key={row.declaration_id} className="flex flex-wrap justify-between gap-2 border-t pt-3 text-sm"><span>{row.tax_year} declaration ({row.reported_threshold_status.replaceAll("_", " ")})</span><span className="capitalize">{row.status.replaceAll("_", " ")}</span>{row.document_url && <a className="text-primary underline" href={row.document_url} target="_blank" rel="noreferrer">Download document</a>}{row.review_notes && <p className="w-full text-muted-foreground">Review note: {row.review_notes}</p>}</article>)}
+    {!embedded && <div><h3 className="font-semibold">BIR sworn declaration</h3><p className="mt-1 text-sm text-muted-foreground">{setupMode ? "For tax year 2026." : "Submit the BIR-received sworn declaration for tax year 2026. Its tax year is separate from the date the document was signed or prepared."}</p></div>}
+    {rows.map((row) => <article key={row.declaration_id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-3 text-sm">
+      <div className="flex min-w-0 items-start gap-3">
+        <span className={`mt-0.5 grid size-8 shrink-0 place-items-center rounded-full border ${declarationStatusClass(row.status)}`}>{declarationStatusIcon(row.status)}</span>
+        <div className="min-w-0">
+          <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${declarationStatusClass(row.status)}`}>{declarationStatusLabel(row.status)}</span>
+          <p className="mt-1 font-medium">{row.tax_year} BIR sworn declaration ({thresholdLabel(row.reported_threshold_status)})</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">Submitted {new Date(row.submitted_at).toLocaleDateString()}{row.reviewed_at ? ` · Reviewed ${new Date(row.reviewed_at).toLocaleDateString()}` : ""}</p>
+          {row.review_notes && <p className="mt-2 text-sm text-muted-foreground">Review note: {row.review_notes}</p>}
+        </div>
+      </div>
+      {row.document_url && <Button asChild type="button" size="sm" variant="outline"><a href={row.document_url} target="_blank" rel="noreferrer"><FileText className="mr-2 size-4" />View document</a></Button>}
+    </article>)}
     <div className="space-y-4">
-      <div className="space-y-2"><Label htmlFor="tax-declaration-year">Tax year covered by this declaration</Label><StyledSelect id="tax-declaration-year" value={year} disabled={busy} aria-invalid={year !== "" && !isSupportedTaxYear(year)} onChange={(event) => { setYear(event.target.value); setError(""); }}><option value="">Choose tax year</option>{supportedTaxYears().map((supportedYear) => <option key={supportedYear} value={supportedYear}>{supportedYear}{supportedYear === currentTaxYear() ? " (current year)" : ""}</option>)}</StyledSelect>{year === "" && <p className="text-xs text-destructive">Choose the tax year covered by your declaration.</p>}{year !== "" && !isSupportedTaxYear(year) && <p className="text-xs text-destructive">Choose a tax year from 2024 through {currentTaxYear() + 1}.</p>}</div>
-      <div className="space-y-2"><Label htmlFor="tax-declaration-threshold">Expected annual marketplace remittances</Label><StyledSelect id="tax-declaration-threshold" className="h-10 w-full rounded-lg border bg-background px-3 text-sm" value={thresholdStatus} onChange={(event) => setThresholdStatus(event.target.value)}><option value="not_exceeding">Up to PHP 500,000</option><option value="exceeded">Over PHP 500,000</option></StyledSelect></div>
-      <div className="space-y-2"><Label htmlFor="tax-declaration-file">BIR-signed sworn declaration for {selectedYear ?? "the selected tax year"}</Label>
+      <div className="space-y-2"><Label htmlFor="tax-declaration-threshold">Expected annual marketplace remittances</Label><StyledSelect id="tax-declaration-threshold" className="h-10 w-full rounded-lg border bg-background px-3 text-sm" value={thresholdStatus} onChange={(event) => setThresholdStatus(event.target.value)}><option value="not_exceeding">PHP 500,000 or less</option><option value="exceeded">Over PHP 500,000</option></StyledSelect></div>
+      <div className="space-y-2"><Label htmlFor="tax-declaration-file">BIR-signed sworn declaration for 2026</Label>
         {file ? <div className="flex min-w-0 items-center gap-3 rounded-xl border bg-muted/30 p-3">
           <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><FileText className="size-5" /></span>
           <div className="min-w-0 flex-1"><p className="break-all text-sm font-medium text-foreground">{file.name}</p><p className="mt-0.5 text-xs text-muted-foreground">{file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf") ? "PDF document" : "Image document"}</p></div>
@@ -103,7 +119,7 @@ const FreelancerTaxDeclaration = forwardRef<FreelancerTaxDeclarationHandle, { em
           id="tax-declaration-file"
           accept="application/pdf,.pdf,image/png,.png,image/jpeg,.jpg,.jpeg"
           supportedTypes="PDF, JPG, or PNG (up to 5 MB)"
-          disabled={!selectedYear || busy || hasBlockingRecord}
+          disabled={busy || hasBlockingRecord}
           onFiles={(files) => {
             const next = files[0];
             if (!next) return;
@@ -117,7 +133,7 @@ const FreelancerTaxDeclaration = forwardRef<FreelancerTaxDeclarationHandle, { em
           }}
         />}
       </div>
-      {(!hideSubmitButton || hasBlockingRecord) && <div className="flex flex-col gap-2 sm:flex-row sm:items-center">{!hideSubmitButton && <Button type="button" disabled={!canSubmit} onClick={() => void submit().catch(() => undefined)}>{busy ? "Submitting…" : "Submit for review"}</Button>}{!setupMode && !hideSubmitButton && <p className="text-xs text-muted-foreground">The declaration must cover the selected tax year; its signing date may be earlier.</p>}{hasBlockingRecord && <p className="text-sm text-muted-foreground">A {selectedYear} declaration is already pending or accepted. You can submit again if it is rejected or revoked.</p>}</div>}
+      {(!hideSubmitButton || hasBlockingRecord) && <div className="flex flex-col gap-2 sm:flex-row sm:items-center">{!hideSubmitButton && <Button type="button" disabled={!canSubmit} onClick={() => void submit().catch(() => undefined)}>{busy ? "Submitting…" : "Submit for review"}</Button>}{!setupMode && !hideSubmitButton && <p className="text-xs text-muted-foreground">The declaration must cover tax year 2026; its signing date may be earlier.</p>}{hasBlockingRecord && <p className="text-sm text-muted-foreground">A 2026 declaration is already pending or accepted. You can submit again if it is rejected or revoked.</p>}</div>}
     </div>
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}{notice && <p role="status" className="text-sm text-primary">{notice}</p>}
   </section>;

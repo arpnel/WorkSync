@@ -60,7 +60,9 @@ $$;
 -- A withdrawal may consume portions of several ready earnings rows. Keep the
 -- request and its per-project allocations separate so the remaining balance is
 -- durable and concurrent requests cannot spend the same earnings twice.
-create table public.payout_withdrawal_requests (
+-- These support tables may already exist if an earlier manual SQL run created
+-- them before failing later in the script. Preserve their rows and continue.
+create table if not exists public.payout_withdrawal_requests (
   withdrawal_id uuid primary key default gen_random_uuid(),
   recipient_id uuid not null references public."Users"(user_id) on delete cascade,
   mode text not null check (mode='test'),
@@ -81,7 +83,7 @@ create table public.payout_withdrawal_requests (
   check ((status='paid' and paid_at is not null) or (status='processing' and paid_at is null))
 );
 
-create table public.payout_withdrawal_allocations (
+create table if not exists public.payout_withdrawal_allocations (
   withdrawal_id uuid not null references public.payout_withdrawal_requests(withdrawal_id) on delete cascade,
   payout_id uuid not null references public.project_payouts(payout_id) on delete restrict,
   gross_amount numeric not null check (gross_amount>0),
@@ -89,9 +91,9 @@ create table public.payout_withdrawal_allocations (
   primary key (withdrawal_id,payout_id)
 );
 
-create index payout_withdrawal_requests_owner_mode_status_created_idx
+create index if not exists payout_withdrawal_requests_owner_mode_status_created_idx
   on public.payout_withdrawal_requests(recipient_id,mode,status,created_at desc);
-create index payout_withdrawal_allocations_payout_idx
+create index if not exists payout_withdrawal_allocations_payout_idx
   on public.payout_withdrawal_allocations(payout_id);
 
 alter table public.payout_withdrawal_requests enable row level security;

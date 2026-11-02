@@ -5,7 +5,7 @@ import { isSupportedTaxYear } from "@/lib/tax/taxDeclaration";
 
 export const runtime = "nodejs";
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
-const types = ["bir_cor", "vat_registration", "tax_exemption", "business_tax_support"];
+const types = ["bir_cor"];
 
 export async function POST(request: Request) {
   try {

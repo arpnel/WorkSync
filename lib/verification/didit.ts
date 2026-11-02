@@ -66,6 +66,9 @@ export async function diditRequest(
   path: string,
   body?: Record<string, unknown>,
 ) {
+  const operation = path.endsWith("/decision/")
+    ? "decision_lookup"
+    : "session_create";
   const key = process.env.DIDIT_API_KEY;
   if (!key)
     throw new VerificationError(
@@ -84,16 +87,95 @@ export async function diditRequest(
       cache: "no-store",
       signal: AbortSignal.timeout(12000),
     });
-  } catch {
+  } catch (cause) {
+    console.error("Didit request could not reach provider", {
+      operation,
+      error: cause instanceof Error ? cause.name : "unknown",
+    });
     throw new VerificationError(
       "The identity verification service could not be reached. Please try again.",
     );
   }
-  if (!response.ok)
-    throw new VerificationError(
-      "The identity verification service could not complete the request.",
-    );
+  if (!response.ok) {
+    const providerError = await safeDiditError(response);
+    console.error("Didit request was rejected", {
+      operation,
+      providerStatus: response.status,
+      providerCode: providerError.code,
+      providerFields: providerError.fields,
+    });
+    const operationLabel =
+      operation === "session_create" ? "session creation" : "session status check";
+    const providerDetail = [
+      `HTTP ${response.status}`,
+      providerError.code ? `code ${providerError.code}` : null,
+      providerError.fields.length
+        ? `fields ${providerError.fields.join(", ")}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join("; ");
+    const message =
+      response.status === 401 || response.status === 403
+        ? `Didit rejected ${operationLabel} (${providerDetail}). Check the server API key and workflow permissions.`
+        : response.status === 404
+          ? `Didit could not find the workflow or session for ${operationLabel} (${providerDetail}). Check that the workflow and API key belong to the same Didit workspace.`
+          : response.status === 400 || response.status === 422
+            ? `Didit rejected ${operationLabel} (${providerDetail}). Check the workflow configuration and the reported fields.`
+            : response.status === 429
+              ? "The identity verification service is busy. Please wait a moment and try again."
+              : response.status >= 500
+                ? "The identity verification service is temporarily unavailable. Please try again shortly."
+                : `The identity verification service could not accept ${operationLabel} (${providerDetail}). Please refresh and try again.`;
+    throw new VerificationError(message);
+  }
   return response.json();
+}
+
+async function safeDiditError(response: Response) {
+  const allowedFieldNames = new Set([
+    "workflow_id",
+    "callback",
+    "vendor_data",
+    "callback_method",
+    "features",
+    "metadata",
+  ]);
+  try {
+    const payload: unknown = await response.clone().json();
+    if (!payload || typeof payload !== "object" || Array.isArray(payload))
+      return { code: null, fields: [] as string[] };
+
+    const root = payload as Record<string, unknown>;
+    const codeValue = root.error_code ?? root.code;
+    const code =
+      typeof codeValue === "string" && /^[a-z\d_.-]{1,64}$/i.test(codeValue)
+        ? codeValue
+        : null;
+    const fields = new Set<string>();
+    const collectFields = (value: unknown, depth: number) => {
+      if (!value || typeof value !== "object" || depth > 2) return;
+      if (Array.isArray(value)) {
+        value.slice(0, 8).forEach((item) => collectFields(item, depth + 1));
+        return;
+      }
+      for (const [key, child] of Object.entries(value)) {
+        if (allowedFieldNames.has(key)) fields.add(key);
+        if (
+          (key === "field" || key === "parameter" || key === "param") &&
+          typeof child === "string" &&
+          allowedFieldNames.has(child)
+        )
+          fields.add(child);
+        if (fields.size >= 6) return;
+        collectFields(child, depth + 1);
+      }
+    };
+    collectFields(root.errors ?? root.details ?? root, 0);
+    return { code, fields: [...fields] };
+  } catch {
+    return { code: null, fields: [] as string[] };
+  }
 }
 export function verificationUrl(value: string) {
   const url = new URL(value);

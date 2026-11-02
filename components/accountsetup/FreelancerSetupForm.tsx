@@ -88,7 +88,7 @@ export function FreelancerSetupForm() {
         const result = await response.json();
         if (active && response.ok) setTinSaved(result.hasTin === true);
       } catch {
-        // A user with an existing TIN can still enter it again if this check is unavailable.
+        // The server rejects duplicate TIN submissions if the status check is unavailable.
       }
     })();
     return () => { active = false; };
@@ -145,7 +145,7 @@ export function FreelancerSetupForm() {
     }
     setLocalErrors({});
     void handleSubmit(async () => {
-      if (normalizedTin) {
+      if (normalizedTin && !tinSaved) {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) throw new Error("Sign in again to save your TIN.");
         const response = await fetch("/api/freelancer-tax-profile/tin", {
@@ -155,7 +155,7 @@ export function FreelancerSetupForm() {
           cache: "no-store",
         });
         const result = await response.json();
-        if (!response.ok) throw new Error(result.error || "TIN could not be saved securely.");
+        if (!response.ok && response.status !== 409) throw new Error(result.error || "TIN could not be saved securely.");
         setTinSaved(true);
         setTin("");
         setTinError("");
@@ -289,12 +289,13 @@ export function FreelancerSetupForm() {
               value={tin}
               aria-invalid={Boolean(tinError)}
               onChange={(event) => { setTin(formatTinInput(event.target.value)); setTinError(""); }}
+              disabled={tinSaved}
               className={`flex h-11 w-full rounded-xl border bg-card py-2 pl-10 pr-3 font-mono text-sm outline-none transition-colors focus-visible:border-emerald-500 focus-visible:ring-1 focus-visible:ring-emerald-500 ${tinError ? "border-destructive" : "border-input"}`}
               placeholder="000-000-000-000"
             />
           </div>
           <p className="text-xs text-muted-foreground">Enter your 9 or 12 digit BIR-issued individual or business Tax Identification Number.</p>
-          {tinSaved && !tin && <p className="text-xs text-muted-foreground">A TIN is securely saved to your account.</p>}
+          {tinSaved && <p className="text-xs text-muted-foreground">Your TIN has already been submitted and saved. You do not need to submit it again.</p>}
           {tinError && <p role="alert" className="text-xs text-destructive">{tinError}</p>}
         </div>
         <p className="rounded-xl border border-amber-400 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">

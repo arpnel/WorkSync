@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { projectPlanSnapshotSchema } from "@/services/project/projectPlanSnapshot";
 
 const count = z.number().finite().int().nonnegative();
 const ADMIN_PAGE_SIZE = 10;
@@ -124,6 +125,82 @@ const disputePageSchema = z.object({
   total: count,
   offset: count.optional(),
 });
+const adminJobMonitoringDetailsSchema = z.object({
+  status: z.string(),
+  deadline: z.string().nullable(),
+  projectType: z.string().nullable(),
+  experienceLevel: z.string().nullable(),
+  planSnapshotsAvailable: z.boolean(),
+  clientName: z.string(),
+  applicants: z.array(
+    z.object({
+      applicationId: z.string(),
+      name: z.string(),
+      status: z.string(),
+      proposedPrice: z.union([z.number(), z.string()]).nullable(),
+      proposal: z.string().nullable(),
+      estimatedDays: z.union([z.number(), z.string()]).nullable(),
+      proposedPlan: projectPlanSnapshotSchema.nullable(),
+      appliedAt: z.string().nullable(),
+    }),
+  ),
+  hasMoreApplicants: z.boolean(),
+});
+const adminProjectDetailsSchema = z.object({
+  project: z.object({
+    id: z.string(),
+    title: z.string(),
+    description: z.string().nullable(),
+    status: z.string(),
+    budget: z.union([z.number(), z.string()]).nullable(),
+    projectType: z.string().nullable(),
+    startDate: z.string().nullable(),
+    dueDate: z.string().nullable(),
+    completedAt: z.string().nullable(),
+    createdAt: z.string().nullable(),
+    updatedAt: z.string().nullable(),
+    orderId: z.string().nullable(),
+    applicationId: z.string().nullable(),
+  }),
+  clientName: z.string(),
+  freelancerName: z.string(),
+  participantNamesAvailable: z.boolean(),
+  contractAvailable: z.boolean(),
+  milestonesAvailable: z.boolean(),
+  contract: z
+    .object({
+      id: z.string(),
+      status: z.string(),
+      finalPrice: z.union([z.number(), z.string()]).nullable(),
+      deliveryDays: z.number().nullable(),
+      revisions: z.number().nullable(),
+      createdAt: z.string().nullable(),
+      updatedAt: z.string().nullable(),
+      clientSignedAt: z.string().nullable(),
+      freelancerSignedAt: z.string().nullable(),
+      currentVersion: z.number().nullable(),
+      clientSignedVersion: z.number().nullable(),
+      freelancerSignedVersion: z.number().nullable(),
+    })
+    .nullable(),
+  milestones: z.array(
+    z.object({
+      id: z.string(),
+      title: z.string(),
+      description: z.string().nullable(),
+      amount: z.union([z.number(), z.string()]).nullable(),
+      dueDate: z.string().nullable(),
+    }),
+  ),
+  taskProgress: z
+    .object({
+      total: z.number().int().nonnegative(),
+      completed: z.number().int().nonnegative(),
+      inProgress: z.number().int().nonnegative(),
+      overdue: z.number().int().nonnegative(),
+    })
+    .nullable(),
+});
 const analyticsSchema = z.object({
   counts: z.record(count),
   completion_rate: z.number().finite().nullable(),
@@ -135,6 +212,24 @@ const analyticsSchema = z.object({
   activity: z.array(
     z.object({ month: z.string(), users: count, projects: count }),
   ),
+  revenue: z
+    .object({
+      transaction_fees: z.number().finite().nonnegative(),
+      premium_subscriptions: z.number().finite().nonnegative(),
+      total: z.number().finite().nonnegative(),
+      activity: z.array(
+        z.object({
+          month: z.string(),
+          transaction_fees: z.number().finite().nonnegative(),
+          premium_subscriptions: z.number().finite().nonnegative(),
+          project_payments: count,
+          premium_checkouts: count,
+          total: z.number().finite().nonnegative(),
+        }),
+      ),
+    })
+    .nullable()
+    .optional(),
 });
 const moderationAnalyticsSchema = z.object({
   from: z.string(),
@@ -152,6 +247,7 @@ const moderationAnalyticsSchema = z.object({
 const compatibleAnalyticsSchema = z.union([
   analyticsSchema.transform((value) => ({
     ...value,
+    revenue: value.revenue ?? null,
     scope: "platform" as const,
     moderation: null as null | {
       reports: Record<string, number>;
@@ -173,6 +269,7 @@ const compatibleAnalyticsSchema = z.union([
     average_rating: null,
     categories: null,
     activity: null,
+    revenue: null,
     moderation: {
       reports: value.listing_reports_by_status,
       disputes: value.disputes_by_status,
@@ -298,4 +395,18 @@ export function parseAdminAnalytics(value: unknown) {
 }
 export function parseAdminDisputeContext(value: unknown) {
   return parseResponse(disputeContextSchema, value, "worksync_dispute_context");
+}
+export function parseAdminJobMonitoringDetails(value: unknown) {
+  return parseResponse(
+    adminJobMonitoringDetailsSchema,
+    value,
+    "admin_job_monitoring_details",
+  );
+}
+export function parseAdminProjectDetails(value: unknown) {
+  return parseResponse(
+    adminProjectDetailsSchema,
+    value,
+    "admin_project_details",
+  );
 }

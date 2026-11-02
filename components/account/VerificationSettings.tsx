@@ -140,6 +140,11 @@ export default function VerificationSettings() {
             Your previous verification expired. Please verify again.
           </p>
         )}
+        {status === "Revoked" && (
+          <p className="text-sm text-muted-foreground">
+            Your previous identity verification was revoked. You can submit a new verification.
+          </p>
+        )}
         {notice && <p className="text-sm text-muted-foreground">{notice}</p>}
         {error && (
           <p role="alert" className="text-sm text-destructive">
@@ -157,6 +162,8 @@ export default function VerificationSettings() {
                 ? "Verification open…"
                 : status === "Not Started"
                   ? "Verify with Didit"
+                  : status === "Revoked"
+                    ? "Start new verification"
                   : "Continue verification"}
             </Button>
           )}

@@ -15,8 +15,7 @@ export default async function PaymentReturnPage({
     <div className="mx-auto max-w-2xl space-y-5 p-6">
       <h1 className="text-2xl font-semibold">Payment status</h1>
       <p className="text-sm text-muted-foreground">
-        We check PayMongo before confirming payment. Returning from checkout
-        does not by itself mean payment succeeded.
+        Review your payment status here before returning to your project.
       </p>
       {projectId ? (
         <PaymentPanel projectId={projectId} showProjectLink />

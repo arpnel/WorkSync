@@ -79,9 +79,9 @@ export const ADMIN_NAV_GROUPS = [
       },
       {
         href: "/admin/financial/tax",
-        label: "Seller & tax review",
+        label: "Tax documents & declarations",
         icon: ClipboardCheck,
-        description: "Review freelancer tax declarations and seller documents.",
+        description: "Review BIR sworn declarations and uploaded seller tax documents.",
       },
       {
         href: "/admin/disputes",

@@ -11,6 +11,7 @@ import {
 } from "@/lib/payments/paymongo";
 
 type Database = SupabaseClient;
+type PaymentMode = ReturnType<typeof paymentMode>;
 const orderIdPattern = /^[a-f\d]{8}-[a-f\d]{4}-[1-5][a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/i;
 
 type OpenSubscriptionOrder = {
@@ -41,7 +42,7 @@ function hasCurrentPremiumLineItem(
 async function resumeSubscriptionCheckout(
   db: Database,
   order: OpenSubscriptionOrder,
-  mode: "test" | "live",
+  mode: PaymentMode,
   billingPeriod: "monthly" | "yearly",
 ) {
   if (!order.transaction_reference) {

@@ -284,11 +284,13 @@ export async function getProjectPayment(
   projectId: string,
   userId: string,
 ) {
-  const { project, freelancerUserId, isClient, clientUserId } = await projectForUser(
-    db,
-    projectId,
-    userId,
-  );
+  const {
+    project,
+    projectHref,
+    freelancerUserId,
+    isClient,
+    clientUserId,
+  } = await projectForUser(db, projectId, userId);
   await storageReady(db);
   const row = await findPayment(db, paymentId(projectId));
   const basePrice = row

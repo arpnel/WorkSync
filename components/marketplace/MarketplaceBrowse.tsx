@@ -241,9 +241,7 @@ export default function MarketplaceBrowse({
             filters.listingType === "job" ||
             (ratings.get(item.freelancer_id ?? "") ?? 0) >= filters.rating,
         );
-        const pageItems = filters.listingType === "freelancer"
-          ? rated.filter((item, index, rows) => item.freelancer_id && rows.findIndex((candidate) => candidate.freelancer_id === item.freelancer_id) === index)
-          : rated;
+        const pageItems = rated;
         if (filters.sort.includes("highestRated"))
           pageItems.sort(
             (a, b) =>
@@ -252,17 +250,7 @@ export default function MarketplaceBrowse({
           );
         if (request === version.current) {
           setServices((current) => {
-            const next = append ? [...current, ...pageItems] : pageItems;
-            if (filters.listingType === "freelancer") {
-              const unique = new Map<string, MarketplaceItem>();
-              for (const item of next) {
-                if (item.freelancer_id && !unique.has(item.freelancer_id)) {
-                  unique.set(item.freelancer_id, item);
-                }
-              }
-              return [...unique.values()];
-            }
-            return next;
+            return append ? [...current, ...pageItems] : pageItems;
           });
           setRatings((current) => append ? new Map([...current, ...ratings]) : ratings);
           setHasMore(result.length === 24);
@@ -414,7 +402,7 @@ export default function MarketplaceBrowse({
         )}
         <div className="flex flex-wrap items-center justify-between gap-3 md:px-5">
           <p role="status" className="text-sm text-muted-foreground">
-            {loading ? "Finding listings..." : `${visible.length} ${filters.listingType === "freelancer" ? "freelancers" : "listings"}`}
+            {loading ? "Finding listings..." : `${visible.length} ${filters.listingType === "freelancer" ? "services" : "listings"}`}
           </p>
           <div className="flex w-full min-w-0 items-center justify-end gap-3 text-sm sm:ml-auto sm:w-auto">
             <span className="shrink-0 text-muted-foreground">Sort by</span>
@@ -488,23 +476,18 @@ export default function MarketplaceBrowse({
         ) : (
           <MarketplaceGrid
             services={visible}
-            freelancerMode={filters.listingType === "freelancer"}
             ratings={ratings}
             loading={loading}
             saved={saved}
             saving={saving}
             onSave={toggle}
-            onCardClick={(listing) =>
-              router.push(
-                filters.listingType === "freelancer" && listing.freelancer?.user_id
-                  ? guest
-                    ? `/marketplace/${listing.service_id}`
-                    : `/home/profile/${listing.freelancer.user_id}`
-                  : listing.listing_type === "service"
+            onCardClick={(listing) => {
+              const href =
+                listing.listing_type === "service"
                   ? `${guest ? "/marketplace" : "/home/marketplace"}/${listing.service_id}`
-                  : `${guest ? "/marketplace" : "/home/marketplace"}/jobs/${listing.job_id}`,
-              )
-            }
+                  : `${guest ? "/marketplace" : "/home/marketplace"}/jobs/${listing.job_id}`;
+              router.push(href);
+            }}
           />
         )}
         {!error && hasMore && (

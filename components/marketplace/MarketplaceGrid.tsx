@@ -17,7 +17,6 @@ interface Props {
   onSave?: (listing: MarketplaceItem) => void;
   services: MarketplaceItem[];
   loading?: boolean;
-  freelancerMode?: boolean;
   onCardClick?: (listing: MarketplaceItem) => void;
 }
 
@@ -25,7 +24,6 @@ export default function MarketplaceGrid({
   services,
   ratings,
   loading = false,
-  freelancerMode = false,
   onCardClick,
   saved = new Set(),
   saving = null,
@@ -67,7 +65,6 @@ export default function MarketplaceGrid({
               >
                 <MarketplaceCard
                   available={availability.get(listing.freelancer_id ?? "")}
-                  freelancerMode={freelancerMode}
                   listing={listing}
                   rating={ratings?.get(listing.freelancer_id ?? "")}
                   onClick={() => onCardClick?.(listing)}

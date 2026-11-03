@@ -34,7 +34,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Check, Copy, Search, SlidersHorizontal, X } from "lucide-react";
+import { Check, Copy, Download, Search, SlidersHorizontal, X } from "lucide-react";
 
 type Ticket = {
   ticket_id: string;
@@ -69,6 +69,8 @@ export default function SupportTickets() {
   const [approveCapacity, setApproveCapacity] = useState(false);
   const [newProjectLimit, setNewProjectLimit] = useState(15);
   const [busy, setBusy] = useState(false);
+  const [attachmentUrl, setAttachmentUrl] = useState("");
+  const [attachmentState, setAttachmentState] = useState<"loading" | "available" | "none" | "error">("none");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -145,11 +147,35 @@ export default function SupportTickets() {
 
   function openTicket(ticket: Ticket) {
     setSelected(ticket);
+    setAttachmentUrl("");
+    setAttachmentState("loading");
+    void loadAttachment(ticket.ticket_id);
     setCopiedReference(false);
     setResponse(ticket.admin_response ?? "");
     setStatus(ticket.status === "open" ? "in_progress" : ticket.status);
     setApproveCapacity(false);
     setNewProjectLimit((ticket.current_project_limit ?? 10) + 5);
+  }
+
+  async function loadAttachment(ticketId: string) {
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session?.access_token) throw new Error("Sign in again to open this attachment.");
+      const response = await fetch(`/api/admin/support-tickets/attachment-url?ticketId=${encodeURIComponent(ticketId)}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        cache: "no-store",
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Attachment unavailable.");
+      if (result.url) {
+        setAttachmentUrl(result.url);
+        setAttachmentState("available");
+      } else {
+        setAttachmentState("none");
+      }
+    } catch {
+      setAttachmentState("error");
+    }
   }
 
   return (
@@ -365,6 +391,25 @@ export default function SupportTickets() {
               <section className="rounded-xl border p-4">
                 <h3 className="font-semibold">Request details</h3>
                 <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6">{selected.description}</p>
+              </section>
+              <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4">
+                <div>
+                  <h3 className="font-semibold">Attachment</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {attachmentState === "loading" ? "Checking for an attached file…" : attachmentState === "available" ? "A file was attached to this ticket." : attachmentState === "none" ? "No file was attached." : "The attachment could not be loaded."}
+                  </p>
+                </div>
+                {attachmentState === "available" && (
+                  <Button asChild type="button" variant="outline">
+                    <a href={attachmentUrl} target="_blank" rel="noreferrer">
+                      <Download className="size-4" />
+                      Open attachment
+                    </a>
+                  </Button>
+                )}
+                {attachmentState === "error" && (
+                  <Button type="button" variant="outline" onClick={() => void loadAttachment(selected.ticket_id)}>Try again</Button>
+                )}
               </section>
               <label className="block space-y-1.5 text-sm font-medium">
                 Status

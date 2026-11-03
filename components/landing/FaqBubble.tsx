@@ -40,6 +40,7 @@ export function FaqBubble({
   const [category, setCategory] = useState("Other");
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
+  const [attachment, setAttachment] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -60,20 +61,51 @@ export function FaqBubble({
     setBusy(true);
     setError("");
     try {
-      const { data, error: rpcError } = await supabase.rpc(
-        "worksync_submit_support_ticket",
-        {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session?.access_token) throw new Error("Sign in again to submit your ticket.");
+      if (!attachment) {
+        const { data, error: rpcError } = await supabase.rpc("worksync_submit_support_ticket", {
           p_category: category,
           p_subject: subject.trim(),
           p_description: description.trim(),
-        },
-      );
-      if (rpcError) throw new Error(rpcError.message);
+        });
+        if (rpcError) throw new Error(rpcError.message);
+        setMessage(`Ticket ${String(data).slice(0, 8)} was submitted. Our team will review it.`);
+        setSubject("");
+        setDescription("");
+        return;
+      }
+      let attachmentPath: string | null = null;
+      if (attachment) {
+        const uploadResponse = await fetch("/api/support-tickets/upload-url", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ fileName: attachment.name, contentType: attachment.type, size: attachment.size }),
+        });
+        const uploadResult = await uploadResponse.json();
+        if (!uploadResponse.ok) throw new Error(uploadResult.error || "The attachment could not be prepared.");
+        const uploaded = await supabase.storage.from("support-ticket-attachments").uploadToSignedUrl(
+          uploadResult.path,
+          uploadResult.token,
+          attachment,
+          { contentType: uploadResult.contentType },
+        );
+        if (uploaded.error) throw new Error("The attachment could not be uploaded. Try again or submit without it.");
+        attachmentPath = uploadResult.path;
+      }
+      const response = await fetch("/api/support-tickets", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ category, subject: subject.trim(), description: description.trim(), attachmentPath }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Unable to submit your ticket.");
       setMessage(
-        `Ticket ${String(data).slice(0, 8)} was submitted. Our team will review it.`,
+        `Ticket ${String(result.ticketId).slice(0, 8)} was submitted. Our team will review it.`,
       );
       setSubject("");
       setDescription("");
+      setAttachment(null);
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -147,10 +179,6 @@ export function FaqBubble({
                 <form className="space-y-3" onSubmit={submitTicket}>
                   <div>
                     <p className="text-sm font-semibold">Contact support</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Do not include passwords, recovery codes, or full payment
-                      details.
-                    </p>
                     {category === "Capacity increase" && (
                       <p className="mt-2 text-xs text-muted-foreground">
                         Capacity increase requests are reviewed by an administrator.
@@ -199,6 +227,16 @@ export function FaqBubble({
                       onChange={(e) => setDescription(e.target.value)}
                       placeholder="Include relevant details or reference IDs."
                     />
+                  </label>
+                  <label className="grid gap-2 text-xs font-medium">
+                    <span className="block">Attachment (optional)</span>
+                    <Input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                      onChange={(event) => setAttachment(event.target.files?.[0] ?? null)}
+                      className="h-auto py-2 text-sm font-normal"
+                    />
+                    <span className="font-normal text-muted-foreground">PDF, JPG, or PNG up to 5 MB.</span>
                   </label>
                   {error && (
                     <p role="alert" className="text-xs text-destructive">

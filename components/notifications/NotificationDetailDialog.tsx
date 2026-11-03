@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import {
   AlertCircle,
@@ -45,6 +46,10 @@ type Detail = {
   projectType?: string;
   dueDate?: string;
   status?: string;
+  disputeCategory?: string;
+  disputeStatus?: string;
+  disputeDetails?: string;
+  disputeResolution?: string;
   proposal?: string;
   href?: string;
   action?: string;
@@ -82,6 +87,7 @@ export function NotificationDetailDialog({
   onClose: () => void;
   inline?: boolean;
 }) {
+  const router = useRouter();
   const [detail, setDetail] = useState<Detail>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -90,6 +96,7 @@ export function NotificationDetailDialog({
   const [responseSaved, setResponseSaved] = useState(false);
   const type = item.type ?? "";
   const lowerTitle = item.title.toLowerCase();
+  const isDispute = lowerTitle.includes("dispute");
   const isMessage = type.includes("message");
   const isDeclined =
     lowerTitle.includes("declined") || lowerTitle.includes("rejected");
@@ -309,7 +316,7 @@ export function NotificationDetailDialog({
         const result = await supabase
           .from("service_orders")
           .select(
-            "order_id,status,client_id,freelancer_id,services(title,description,price,service_type,delivery_time_days),contracts(terms,final_price,delivery_time_days),projects(project_id,title,description,budget,status,due_date,milestones!milestones_project_id_fkey(milestone_id,title,status,due_date,display_order))",
+            "order_id,job_id,status,client_id,freelancer_id,services(title,description,price,service_type,delivery_time_days),contracts(terms,final_price,delivery_time_days),projects(project_id,title,description,budget,status,project_type,due_date,milestones!milestones_project_id_fkey(milestone_id,title,status,due_date,display_order))",
           )
           .eq("order_id", id)
           .maybeSingle();
@@ -379,6 +386,26 @@ export function NotificationDetailDialog({
         const sender = identities.profiles.find(
           (profile) => profile.user_id !== session.session?.user.id,
         );
+        let disputeDetail: Pick<Detail, "disputeCategory" | "disputeStatus" | "disputeDetails" | "disputeResolution"> = {};
+        if (isDispute && project?.project_id) {
+          const dispute = await supabase
+            .from("project_disputes")
+            .select("category,description,status,resolution,admin_notes")
+            .eq("project_id", project.project_id)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (dispute.error) throw dispute.error;
+          if (dispute.data) {
+            disputeDetail = {
+              disputeCategory: dispute.data.category,
+              disputeStatus: dispute.data.status,
+              disputeDetails: dispute.data.description,
+              disputeResolution:
+                dispute.data.resolution || dispute.data.admin_notes || undefined,
+            };
+          }
+        }
         let terms: { projectTitle?: string; description?: string } = {};
         try {
           terms =
@@ -392,6 +419,19 @@ export function NotificationDetailDialog({
           contract?.final_price ?? service?.price ?? project?.budget;
         const days =
           contract?.delivery_time_days ?? service?.delivery_time_days;
+        let isMilestoneProject =
+          service?.service_type === "milestone" ||
+          project?.project_type === "milestone" ||
+          (Array.isArray(project?.milestones) && project.milestones.length > 0);
+        if (!isMilestoneProject && order.job_id && !service?.service_type) {
+          const job = await supabase
+            .from("jobs")
+            .select("project_type")
+            .eq("job_id", order.job_id)
+            .maybeSingle();
+          if (job.error) throw job.error;
+          isMilestoneProject = job.data?.project_type === "milestone";
+        }
         return {
           sender: displayName(sender),
           avatar: sender?.avatar_url,
@@ -422,10 +462,11 @@ export function NotificationDetailDialog({
                 }))
             : [],
           status: project?.status || order.status,
+          ...disputeDetail,
           requestPending: isRequest && order.status === "pending",
           href:
             "/home/projects/" +
-            (service?.service_type === "milestone" ? "milestone" : "standard") +
+            (isMilestoneProject ? "milestone" : "standard") +
             "/" +
             encodeURIComponent(id) +
             (/contract|agreement/.test(type)
@@ -463,6 +504,7 @@ export function NotificationDetailDialog({
   }, [
     item,
     isDeadline,
+    isDispute,
     isMessage,
     isRequest,
     isDeclined,
@@ -864,6 +906,41 @@ export function NotificationDetailDialog({
               </Button>
             </div>
           </section>
+        ) : isDispute ? (
+          <section className="space-y-5">
+            <div className="rounded-xl border bg-card p-5">
+              <h3 className="font-semibold">Dispute details</h3>
+              {detail.title && (
+                <p className="mt-2 text-sm text-muted-foreground">Project: {detail.title}</p>
+              )}
+              <dl className="mt-4 grid gap-3 border-t pt-4 text-sm sm:grid-cols-2">
+                {detail.disputeCategory && (
+                  <div>
+                    <dt className="text-muted-foreground">Category</dt>
+                    <dd className="mt-1 font-medium capitalize">{detail.disputeCategory}</dd>
+                  </div>
+                )}
+                {detail.disputeStatus && (
+                  <div>
+                    <dt className="text-muted-foreground">Status</dt>
+                    <dd className="mt-1 font-medium capitalize">{detail.disputeStatus.replaceAll("_", " ")}</dd>
+                  </div>
+                )}
+              </dl>
+              <div className="mt-4 border-t pt-4">
+                <h4 className="text-sm font-medium">Reason submitted</h4>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+                  {detail.disputeDetails || item.description || "Dispute details are unavailable."}
+                </p>
+              </div>
+              {detail.disputeResolution && (
+                <div className="mt-4 border-t pt-4">
+                  <h4 className="text-sm font-medium">Review update</h4>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{detail.disputeResolution}</p>
+                </div>
+              )}
+            </div>
+          </section>
         ) : isDeadline ? (
           <section className="space-y-6">
             <div className="rounded-xl border bg-card p-4 sm:p-5">
@@ -1135,6 +1212,15 @@ export function NotificationDetailDialog({
               {responding ? "Saving..." : "Accept Request"}
             </Button>
           </>
+        ) : isDispute && detail.href ? (
+          <Button
+            onClick={() => {
+              router.push(detail.href!);
+              onClose();
+            }}
+          >
+            {detail.action || "View Project"}
+          </Button>
         ) : detail.href ? (
           <Button asChild>
             <Link href={detail.href} onClick={onClose}>

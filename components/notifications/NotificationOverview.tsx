@@ -65,7 +65,11 @@ export function NotificationOverview() {
         // Fall back to notification details when the discussion is unavailable.
       }
     }
-    if (item.relatedId && /project|contract|agreement|milestone/.test(item.type ?? "")) {
+    if (
+      item.relatedId &&
+      !/dispute/i.test(item.title) &&
+      /project|contract|agreement|milestone/.test(item.type ?? "")
+    ) {
       try {
         const href = await getProjectNotificationHref(item.type, item.relatedId);
         if (href) {

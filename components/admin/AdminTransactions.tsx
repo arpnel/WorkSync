@@ -63,9 +63,11 @@ type Refund = {
   refunded_at: string | null;
 };
 type Transaction = {
+  kind?: "payment" | "subscription";
   payment_id: string;
   project_id: string | null;
   order_id: string | null;
+  billing_period?: "monthly" | "yearly" | null;
   payer_id: string;
   amount: number;
   status: string;
@@ -155,6 +157,10 @@ export default function AdminTransactions() {
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<Transaction | null>(null);
   const [receiptBusy, setReceiptBusy] = useState("");
+  const [refundBusy, setRefundBusy] = useState(false);
+  const [refundReviewed, setRefundReviewed] = useState(false);
+  const [refundMessage, setRefundMessage] = useState("");
+  const [recordType, setRecordType] = useState<"payments" | "subscriptions">("payments");
   const sequence = useRef(0);
 
   const load = useCallback(
@@ -168,6 +174,9 @@ export default function AdminTransactions() {
         mode: "all",
         offset: String(offset),
       });
+      const endpoint = recordType === "subscriptions"
+        ? "/api/admin/transactions/subscriptions"
+        : "/api/admin/transactions";
       if (from) params.set("from", dateFilterValue(from));
       if (through) params.set("through", dateFilterValue(through, true));
       let responseStatus: number | null = null;
@@ -186,7 +195,7 @@ export default function AdminTransactions() {
           throw new Error("Sign in to view payments.");
         diagnosticStage = "api_request";
         authorizationSent = true;
-        const response = await fetch(`/api/admin/transactions?${params}`, {
+        const response = await fetch(`${endpoint}?${params}`, {
           cache: "no-store",
           signal,
           headers: { Authorization: `Bearer ${session.access_token}` },
@@ -200,7 +209,12 @@ export default function AdminTransactions() {
           throw new Error(body.error || "Transactions are unavailable.");
         if (!Array.isArray(body.rows) || !body.summary)
           throw new Error("Transaction response was invalid.");
-        if (request === sequence.current) setData(body as PageData);
+        if (request === sequence.current) {
+          setData(body as PageData);
+          setSelected((current) => current
+            ? (body.rows as Transaction[]).find((row) => row.payment_id === current.payment_id) ?? current
+            : current);
+        }
       } catch (cause) {
         if (signal.aborted) return;
         console.error(
@@ -227,7 +241,7 @@ export default function AdminTransactions() {
         if (!signal.aborted && request === sequence.current) setLoading(false);
       }
     },
-    [from, offset, search, status, through],
+    [from, offset, recordType, search, status, through],
   );
 
   useEffect(() => {
@@ -287,6 +301,57 @@ export default function AdminTransactions() {
       setError(cause instanceof Error ? cause.message : "Receipt unavailable.");
     } finally {
       setReceiptBusy("");
+    }
+  }
+
+  async function refundSubscription(row: Transaction) {
+    if (!refundReviewed || refundBusy || row.kind !== "subscription") return;
+    setRefundBusy(true);
+    setError("");
+    setRefundMessage("");
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session?.access_token) throw new Error("Sign in again to process this refund.");
+      const response = await fetch("/api/admin/transactions/subscriptions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ orderId: row.payment_id, reviewedUnused: true }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Subscription refund could not be submitted.");
+      setRefundMessage(result.message || "Refund submitted.");
+      setRefundReviewed(false);
+      setReload((value) => value + 1);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Subscription refund could not be submitted.");
+    } finally {
+      setRefundBusy(false);
+    }
+  }
+
+  async function reconcileSubscriptionRefund(refundId: string) {
+    if (refundBusy) return;
+    setRefundBusy(true);
+    setError("");
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session?.access_token) throw new Error("Sign in again to review this refund.");
+      const response = await fetch("/api/admin/transactions/subscriptions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ reconcileRefundId: refundId }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Refund status could not be refreshed.");
+      setRefundMessage(result.message || "Refund status refreshed.");
+      setReload((value) => value + 1);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Refund status could not be refreshed.");
+    } finally {
+      setRefundBusy(false);
     }
   }
 
@@ -359,6 +424,10 @@ export default function AdminTransactions() {
       )}
 
       <AdminFilterPanel ariaLabel="Filter transactions">
+        <div className="mb-3 flex gap-2">
+          <Button type="button" size="sm" variant={recordType === "payments" ? "default" : "outline"} onClick={() => { setRecordType("payments"); setOffset(0); setSelected(null); }}>Project payments</Button>
+          <Button type="button" size="sm" variant={recordType === "subscriptions" ? "default" : "outline"} onClick={() => { setRecordType("subscriptions"); setOffset(0); setSelected(null); }}>Subscriptions</Button>
+        </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative min-w-0 flex-1">
             <Search
@@ -498,9 +567,9 @@ export default function AdminTransactions() {
       <Card className="min-w-0 gap-0 rounded-xl border shadow-none">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
           <div>
-            <h2 className="font-semibold">Payment records</h2>
+            <h2 className="font-semibold">{recordType === "subscriptions" ? "Subscription transactions" : "Payment records"}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Provider-confirmed payment, project, refund, and receipt context.
+              {recordType === "subscriptions" ? "Premium purchase and refund records." : "Provider-confirmed payment, project, refund, and receipt context."}
             </p>
           </div>
           {data && (
@@ -585,7 +654,7 @@ export default function AdminTransactions() {
                               "Client"}
                           </p>
                           <p className="mt-1 truncate text-xs text-muted-foreground">
-                            {row.project?.title || "Project unavailable"}
+                            {row.kind === "subscription" ? `Premium · ${row.billing_period === "yearly" ? "1 year" : "1 month"}` : row.project?.title || "Project unavailable"}
                           </p>
                         </TableCell>
                         <TableCell className="whitespace-nowrap font-semibold tabular-nums">
@@ -652,7 +721,7 @@ export default function AdminTransactions() {
                             type="button"
                             size="sm"
                             variant="outline"
-                            onClick={() => setSelected(row)}
+                            onClick={() => { setRefundReviewed(false); setRefundMessage(""); setSelected(row); }}
                           >
                             Inspect
                           </Button>
@@ -699,7 +768,7 @@ export default function AdminTransactions() {
       <Dialog
         open={!!selected}
         onOpenChange={(open) => {
-          if (!open && !receiptBusy) setSelected(null);
+          if (!open && !receiptBusy && !refundBusy) setSelected(null);
         }}
       >
         <DialogContent className="flex max-h-[90dvh] w-[min(96vw,56rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none">
@@ -752,17 +821,15 @@ export default function AdminTransactions() {
                   </dl>
                 </section>
                 <section className="space-y-3 rounded-xl border p-4">
-                  <SectionHeading icon={<FolderKanban className="size-3.5" />}>Project context</SectionHeading>
+                  <SectionHeading icon={<FolderKanban className="size-3.5" />}>{selected.kind === "subscription" ? "Subscription context" : "Project context"}</SectionHeading>
                   <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-                    <Detail label="Project">
-                      {selected.project?.title || "Project unavailable"}
+                    <Detail label={selected.kind === "subscription" ? "Plan" : "Project"}>
+                      {selected.kind === "subscription" ? `Premium · ${selected.billing_period === "yearly" ? "1 year" : "1 month"}` : selected.project?.title || "Project unavailable"}
                     </Detail>
-                    <Detail label="Client / payer">
+                    <Detail label={selected.kind === "subscription" ? "Purchaser" : "Client / payer"}>
                       {selected.payer.display_name || selected.payer.email || selected.payer_id}
                     </Detail>
-                    <Detail label="Project status">
-                      <Badge variant="outline" className="capitalize">{selected.project?.status?.replaceAll("_", " ") || "Not available"}</Badge>
-                    </Detail>
+                    {selected.kind !== "subscription" && <Detail label="Project status"><Badge variant="outline" className="capitalize">{selected.project?.status?.replaceAll("_", " ") || "Not available"}</Badge></Detail>}
                   </dl>
                   <details className="group border-t pt-3">
                     <summary className="flex cursor-pointer list-none items-center gap-2 text-xs text-muted-foreground hover:text-foreground">
@@ -770,10 +837,10 @@ export default function AdminTransactions() {
                       <ChevronDown className="ml-auto size-3.5 transition-transform group-open:rotate-180" />
                     </summary>
                     <dl className="mt-3 grid gap-3 sm:grid-cols-2">
-                      <Detail label="Project ID"><CopyValue value={selected.project_id || "Not linked"} label="project ID" /></Detail>
+                      {selected.kind !== "subscription" && <Detail label="Project ID"><CopyValue value={selected.project_id || "Not linked"} label="project ID" /></Detail>}
                       <Detail label="Order ID"><CopyValue value={selected.order_id || selected.project?.order_id || "Not linked"} label="order ID" /></Detail>
                       <Detail label="Client user ID"><CopyValue value={selected.payer_id} label="client user ID" /></Detail>
-                      <Detail label="Freelancer profile ID"><CopyValue value={selected.project?.freelancer_id || "Not available"} label="freelancer profile ID" /></Detail>
+                      {selected.kind !== "subscription" && <Detail label="Freelancer profile ID"><CopyValue value={selected.project?.freelancer_id || "Not available"} label="freelancer profile ID" /></Detail>}
                     </dl>
                   </details>
                 </section>
@@ -816,6 +883,11 @@ export default function AdminTransactions() {
                           {refund.status === "refunded"
                             ? formatDateTime(refund.refunded_at)
                             : "Not confirmed"}
+                          {selected.kind === "subscription" && refund.provider_refund_id && ["pending", "needs_review"].includes(refund.status) && (
+                            <Button type="button" size="sm" variant="outline" className="mt-2" disabled={refundBusy} onClick={() => void reconcileSubscriptionRefund(refund.refund_id)}>
+                              {refundBusy ? "Checking…" : "Refresh refund status"}
+                            </Button>
+                          )}
                         </p>
                       </div>
                     ))}
@@ -824,15 +896,28 @@ export default function AdminTransactions() {
               )}
               </div>
               <section className="flex flex-wrap items-center justify-between gap-3 border-t p-4">
-                <div>
+                {selected.kind === "subscription" && selected.status === "paid" && selected.refunds.every((refund) => refund.status === "failed") ? (
+                  <div className="min-w-full space-y-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+                    <p className="text-sm font-medium">Review the purchaser’s support ticket before issuing a full Premium refund.</p>
+                    <label className="flex items-start gap-2 text-sm">
+                      <input type="checkbox" className="mt-1" checked={refundReviewed} onChange={(event) => setRefundReviewed(event.target.checked)} />
+                      <span>I reviewed the ticket and confirmed that no Premium-only benefit was used.</span>
+                    </label>
+                    {refundMessage && <p role="status" className="text-sm text-emerald-700">{refundMessage}</p>}
+                    <Button type="button" variant="destructive" disabled={!refundReviewed || refundBusy} onClick={() => void refundSubscription(selected)}>
+                      {refundBusy ? "Submitting refund…" : "Issue full subscription refund"}
+                    </Button>
+                  </div>
+                ) : null}
+                {selected.kind !== "subscription" && <div>
                       <h3 className="text-sm font-semibold">Transaction receipt</h3>
                     <p className="mt-1 break-all font-mono text-xs text-muted-foreground">
                     {selected.status === "paid" && selected.receipt ? (
                       <>{selected.receipt.receipt_number}<span className="mx-2 text-muted-foreground">&middot;</span>Issued {dateOnly.format(new Date(selected.receipt.issued_at))}</>
                     ) : "Not available"}
                   </p>
-                </div>
-                {selected.status === "paid" && (
+                </div>}
+                {selected.kind !== "subscription" && selected.status === "paid" && (
                   <div className="flex gap-2">
                     <Button
                       type="button"

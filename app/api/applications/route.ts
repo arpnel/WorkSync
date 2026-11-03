@@ -119,7 +119,7 @@ export async function POST(request: Request) {
         error = legacy.error;
       }
     }
-    if (error?.code === "P0001" && /job applications per month/i.test(error.message))
+    if (error?.code === "P0001" && /job applications? per month/i.test(error.message))
       return json({ error: error.message }, 429);
     if (error?.code === "P0001")
       return json({ error: "You need a freelancer account to send a proposal for this job." }, 403);

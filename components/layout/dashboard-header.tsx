@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -99,11 +99,43 @@ export function DashboardHeader() {
   const [showClientDialog, setShowClientDialog] = useState(false);
 
   const [showFreelancerDialog, setShowFreelancerDialog] = useState(false);
+  const roleReadVersion = useRef(0);
 
   useEffect(() => {
     let active = true;
+    const readRole = async () => {
+      const version = ++roleReadVersion.current;
+      try {
+        const status = await getAccountRoleStatus();
+        if (active && version === roleReadVersion.current) {
+          setCurrentRole(status.currentRole);
+          setRoleLoading(false);
+        }
+      } catch (error) {
+        if (active && version === roleReadVersion.current) {
+          console.error(
+            "Failed to refresh dashboard account role:",
+            summarizeLoadError(error),
+          );
+        }
+      }
+    };
+
+    const onRoleChanged = (event: Event) => {
+      const role = (event as CustomEvent<{ role?: UserRole }>).detail?.role;
+      roleReadVersion.current += 1;
+      if (role === "client" || role === "freelancer") {
+        setCurrentRole(role);
+        setRoleLoading(false);
+      } else {
+        void readRole();
+      }
+    };
+
+    const onWindowFocus = () => void readRole();
 
     async function loadHeaderData() {
+      const version = roleReadVersion.current;
       try {
         const [profileResult, roleResult] = await Promise.allSettled([
           getCurrentProfile(),
@@ -121,9 +153,9 @@ export function DashboardHeader() {
           );
         }
 
-        if (roleResult.status === "fulfilled") {
+        if (roleResult.status === "fulfilled" && version === roleReadVersion.current) {
           setCurrentRole(roleResult.value.currentRole);
-        } else {
+        } else if (roleResult.status === "rejected" && version === roleReadVersion.current) {
           console.error(
             "Failed to load dashboard account role:",
             summarizeLoadError(roleResult.reason),
@@ -135,16 +167,20 @@ export function DashboardHeader() {
           summarizeLoadError(error),
         );
       } finally {
-        if (active) {
+        if (active && version === roleReadVersion.current) {
           setRoleLoading(false);
         }
       }
     }
 
+    window.addEventListener("account-role-changed", onRoleChanged);
+    window.addEventListener("focus", onWindowFocus);
     void loadHeaderData();
 
     return () => {
       active = false;
+      window.removeEventListener("account-role-changed", onRoleChanged);
+      window.removeEventListener("focus", onWindowFocus);
     };
   }, []);
 

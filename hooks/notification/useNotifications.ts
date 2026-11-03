@@ -154,6 +154,17 @@ function subscribe(listener: () => void) {
       invalidatePageReads();
       void load();
     };
+    const roleChanged = () => {
+      ++identityEpoch;
+      ++request;
+      loading = false;
+      loadingRequest = request;
+      loadAgain = false;
+      loadingMoreRequest = null;
+      invalidatePageReads();
+      publish({ ...initial, loading: true });
+      void load();
+    };
     const auth = supabase.auth.onAuthStateChange((_event, session) => {
       const next = session?.user.id ?? null;
       if (next === account) return;
@@ -176,6 +187,7 @@ function subscribe(listener: () => void) {
     });
     void load();
     window.addEventListener("notification-preferences-changed", preferences);
+    window.addEventListener("account-role-changed", roleChanged);
     stop = () => {
       ++generation;
       ++identityEpoch;
@@ -194,6 +206,7 @@ function subscribe(listener: () => void) {
         "notification-preferences-changed",
         preferences,
       );
+      window.removeEventListener("account-role-changed", roleChanged);
     };
   }
   return () => {

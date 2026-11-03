@@ -362,9 +362,9 @@ export async function getSubscriptionCheckoutStatus(
 export async function getSubscriptionPaymentHistory(db: Database, userId: string) {
   const { data, error } = await db
     .from("subscription_orders")
-    .select("order_id,amount,billing_period,paid_at,created_at")
+    .select("order_id,amount,billing_period,paid_at,created_at,status")
     .eq("user_id", userId)
-    .eq("status", "paid")
+    .in("status", ["paid", "refunded"])
     .order("paid_at", { ascending: false, nullsFirst: false })
     .limit(50);
   if (error)

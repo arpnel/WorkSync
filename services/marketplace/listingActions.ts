@@ -18,18 +18,20 @@ export function getSavedListings(): Promise<Set<string>> {
 }
 async function fetchSavedListings(): Promise<Set<string>> {
   const user = await requireUser();
-  const results = await Promise.all([
-    supabase.from("saved_services").select("service_id").eq("user_id", user.id),
-    supabase.from("saved_jobs").select("job_id").eq("user_id", user.id),
-  ]);
-  for (const result of results)
-    if (result.error) throw databaseError(result.error);
-  return new Set([
-    ...(results[0].data ?? []).map((row) =>
-      listingKey("service", row.service_id),
-    ),
-    ...(results[1].data ?? []).map((row) => listingKey("job", row.job_id)),
-  ]);
+  const { data, error } = await supabase
+    .from("saved_listings")
+    .select("listing_type, job_id, service_id")
+    .eq("user_id", user.id);
+  if (error) throw databaseError(error);
+  return new Set(
+    (data ?? []).flatMap((row) => {
+      if (row.listing_type === "job" && row.job_id)
+        return [listingKey("job", row.job_id)];
+      if (row.listing_type === "service" && row.service_id)
+        return [listingKey("service", row.service_id)];
+      return [];
+    }),
+  );
 }
 export async function saveListing(
   kind: ListingKind,
@@ -37,16 +39,25 @@ export async function saveListing(
   saved: boolean,
 ) {
   const user = await requireUser();
-  const table = kind === "service" ? "saved_services" : "saved_jobs";
   const column = kind === "service" ? "service_id" : "job_id";
   const result = saved
     ? await supabase
-        .from(table)
+        .from("saved_listings")
         .upsert(
-          { user_id: user.id, [column]: id },
+          {
+            user_id: user.id,
+            listing_type: kind,
+            job_id: kind === "job" ? id : null,
+            service_id: kind === "service" ? id : null,
+          },
           { onConflict: `user_id,${column}`, ignoreDuplicates: true },
         )
-    : await supabase.from(table).delete().eq("user_id", user.id).eq(column, id);
+    : await supabase
+        .from("saved_listings")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("listing_type", kind)
+        .eq(column, id);
   if (result.error) throw databaseError(result.error);
   invalidatePageReads();
 }

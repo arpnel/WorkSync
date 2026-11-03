@@ -26,6 +26,12 @@ import {
   type JobMilestonePlanAgreement,
 } from "@/services/project/jobMilestonePlanAgreementService";
 import {
+  agreeToJobWorkPlan,
+  getJobWorkPlanAgreement,
+  type JobWorkPlanAgreement,
+} from "@/services/project/jobWorkPlanAgreementService";
+import type { ProjectPlanSnapshotData } from "@/services/project/projectPlanSnapshot";
+import {
   saveContractVersionForAgreement,
   createProjectTypingChannel,
   activateConfirmedProjectAgreement,
@@ -96,6 +102,11 @@ export default function CreateContractPage() {
     updating: boolean;
     error?: string;
   }) | null>(null);
+  const [workPlanAgreement, setWorkPlanAgreement] = useState<(JobWorkPlanAgreement & {
+    currentParty: "client" | "freelancer";
+    updating: boolean;
+    error?: string;
+  }) | null>(null);
   const [sending, setSending] = useState(false);
   const [isOtherParticipantTyping, setIsOtherParticipantTyping] = useState(false);
   const sendTypingRef = useRef<(isTyping: boolean) => void>(() => undefined);
@@ -117,6 +128,7 @@ export default function CreateContractPage() {
     setFinalContractStatus(null);
     setBasicAgreement(null);
     setMilestoneAgreement(null);
+    setWorkPlanAgreement(null);
     void (async () => {
       try {
         const data = await getProjectRequests();
@@ -148,6 +160,26 @@ export default function CreateContractPage() {
               ? `Basic terms agreement could not be loaded: ${cause.message}`
               : "Basic terms agreement could not be loaded.");
           }
+        }
+        try {
+          const savedWorkPlan = await getJobWorkPlanAgreement(applicationId);
+          if (current) setWorkPlanAgreement({
+            ...savedWorkPlan,
+            currentParty: found.currentParty,
+            updating: false,
+          });
+        } catch (cause) {
+          if (current) setWorkPlanAgreement({
+            plan: found.proposedPlan,
+            previousPlan: null,
+            changedBy: null,
+            clientAgreed: false,
+            freelancerAgreed: false,
+            hasPlanAgreement: false,
+            currentParty: found.currentParty,
+            updating: false,
+            error: cause instanceof Error ? cause.message : "Work plan agreement could not be loaded.",
+          });
         }
         if (found.projectType === "milestone") {
           try {
@@ -297,6 +329,16 @@ export default function CreateContractPage() {
         } : current);
       }
     }
+    try {
+      const saved = await getJobWorkPlanAgreement(applicationId);
+      setWorkPlanAgreement({ ...saved, currentParty: request.currentParty, updating: false });
+    } catch (cause) {
+      setWorkPlanAgreement((current) => current ? {
+        ...current,
+        updating: false,
+        error: cause instanceof Error ? cause.message : "Work plan agreement could not be refreshed.",
+      } : current);
+    }
   }, [applicationId, request]);
 
   useEffect(() => {
@@ -314,7 +356,7 @@ export default function CreateContractPage() {
     };
   }, [applicationId, refreshAgreementState, request]);
 
-  const broadcastAgreementUpdate = useCallback((kind: "basic-terms" | "milestone-plan") => {
+  const broadcastAgreementUpdate = useCallback((kind: "basic-terms" | "work-plan" | "milestone-plan") => {
     void agreementUpdateChannel.current?.send({
       type: "broadcast",
       event: "agreement-updated",
@@ -337,6 +379,25 @@ export default function CreateContractPage() {
       return saved;
     } catch (cause) {
       setBasicAgreement((current) => current ? { ...current, updating: false } : current);
+      throw cause;
+    }
+  }, [applicationId, broadcastAgreementUpdate, request]);
+
+  const agreeToWorkPlan = useCallback(async (plan: ProjectPlanSnapshotData) => {
+    if (!request) throw new Error("Application details are unavailable.");
+    setWorkPlanAgreement((current) => current ? { ...current, updating: true, error: undefined } : current);
+    try {
+      const saved = await agreeToJobWorkPlan(applicationId, plan);
+      const next = { ...saved, currentParty: request.currentParty, updating: false } as const;
+      setWorkPlanAgreement(next);
+      broadcastAgreementUpdate("work-plan");
+      return saved;
+    } catch (cause) {
+      setWorkPlanAgreement((current) => current ? {
+        ...current,
+        updating: false,
+        error: cause instanceof Error ? cause.message : "Unable to save the work plan agreement.",
+      } : current);
       throw cause;
     }
   }, [applicationId, broadcastAgreementUpdate, request]);
@@ -370,14 +431,12 @@ export default function CreateContractPage() {
   const sendMessage = useCallback(async (
     message: string,
     attachment?: File,
-    onProgress?: (percent: number) => void,
-    signal?: AbortSignal,
   ) => {
     if (!conversationId) return false;
     setSending(true);
     setConversationError("");
     try {
-      await sendConversationMessage(conversationId, message, attachment, onProgress, signal);
+      await sendConversationMessage(conversationId, message, attachment);
       await refreshConversationMessages();
       return true;
     } catch (cause) {
@@ -525,8 +584,8 @@ export default function CreateContractPage() {
       startDate: basicAgreement?.terms?.startDate ?? null,
       revisions: basicAgreement?.terms?.revisionsCount ?? 0,
       deadline: basicAgreement?.terms?.deadline ?? null,
-      plan: request.proposedPlan,
-      planSource: request.proposedPlan ? "Submitted application plan" : "No plan selected",
+      plan: workPlanAgreement?.plan ?? request.proposedPlan,
+      planSource: workPlanAgreement?.hasPlanAgreement ? "Agreed work plan" : request.proposedPlan ? "Submitted application plan" : "No plan selected",
       projectType: request.projectType,
     }} clientName={request.clientName} freelancerName={request.freelancerName} draftKey={`worksync:contract-draft:${request.currentParty === "client" ? request.clientUserId : request.freelancerUserId}:${applicationId}`} draftUserId={request.currentParty === "client" ? request.clientUserId : request.freelancerUserId} contractDetailsFooter={<JobContractCancellationPanel
       applicationId={applicationId}
@@ -540,7 +599,7 @@ export default function CreateContractPage() {
       isNew: true,
       hasPastMilestoneDate: false,
       updating: busy,
-    } : undefined)} basicAgreementStatus={basicAgreement ?? undefined} onAgreeBasics={agreeToBasics} milestoneAgreementStatus={milestoneAgreement ?? undefined} onAgreeMilestonePlan={agreeToMilestonePlan} onAgree={finalContractStatus?.isNew === false && agreementOrderId ? confirmExistingContract : canCreateAgreement ? async (proposal, requestId, file) => proposal && requestId ? openExistingAgreement(proposal, requestId, file, true) : false : undefined} conversation={conversationId ? {
+    } : undefined)} basicAgreementStatus={basicAgreement ?? undefined} onAgreeBasics={agreeToBasics} workPlanAgreementStatus={workPlanAgreement ?? undefined} onAgreeWorkPlan={agreeToWorkPlan} milestoneAgreementStatus={milestoneAgreement ?? undefined} onAgreeMilestonePlan={agreeToMilestonePlan} onAgree={finalContractStatus?.isNew === false && agreementOrderId ? confirmExistingContract : canCreateAgreement ? async (proposal, requestId, file) => proposal && requestId ? openExistingAgreement(proposal, requestId, file, true) : false : undefined} conversation={conversationId ? {
       conversationId,
       messages: conversationMessages,
       sending,

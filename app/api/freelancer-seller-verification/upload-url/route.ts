@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     const path = `${user.id}/seller-verification/${type}/${crypto.randomUUID()}.${extension}`;
     const signed = await db.storage.from("verification-documents").createSignedUploadUrl(path, { upsert: false });
     if (signed.error || !signed.data?.token) throw new PaymentError("A secure private upload could not be prepared.");
-    const ticket = await db.from("freelancer_seller_verification_upload_tickets").insert({ document_path: path, user_id: user.id, requirement_id: req.data.requirement_id, expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString() });
+    const ticket = await db.from("upload_tickets").insert({ ticket_type: "seller_verification", path, user_id: user.id, requirement_id: req.data.requirement_id, expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString() });
     if (ticket.error) throw new PaymentError("A secure private upload could not be prepared.");
     return Response.json({ path, token: signed.data.token, contentType: body.contentType === "image/jpg" ? "image/jpeg" : body.contentType }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return paymentResponse(error); }

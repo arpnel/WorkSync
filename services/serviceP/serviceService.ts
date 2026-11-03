@@ -243,8 +243,10 @@ async function createFreelancerService(
 
   try {
     if (payload.skill_ids.length > 0) {
-      const { error } = await supabase.from("service_skills").insert(
+      const { error } = await supabase.from("listing_skills").insert(
         payload.skill_ids.map((skillId) => ({
+          listing_type: "service",
+          job_id: null,
           service_id: service.service_id,
           skill_id: skillId,
         })),
@@ -328,8 +330,9 @@ async function createFreelancerService(
         .delete()
         .eq("service_id", service.service_id),
       supabase
-        .from("service_skills")
+        .from("listing_skills")
         .delete()
+        .eq("listing_type", "service")
         .eq("service_id", service.service_id),
     ]);
 
@@ -398,8 +401,10 @@ async function createClientJob(
 
   try {
     if (payload.skill_ids.length > 0) {
-      const { error } = await supabase.from("job_skills").insert(
+      const { error } = await supabase.from("listing_skills").insert(
         payload.skill_ids.map((skillId) => ({
+          listing_type: "job",
+          service_id: null,
           job_id: job.job_id,
           skill_id: skillId,
         })),

@@ -2,6 +2,7 @@
 -- Persist a shared milestone schedule for accepted milestone jobs. Each
 -- participant confirms the same complete schedule; changing it resets the
 -- other participant's confirmation. Contract signatures remain a later step.
+-- Apply worksync_job_work_plan_agreement.sql before this migration.
 begin;
 
 alter table public.job_basic_terms_agreements
@@ -115,6 +116,11 @@ begin
      or agreement_row.client_agreed_at is null or agreement_row.freelancer_agreed_at is null then
     raise exception 'Agree to the basic contract details before planning milestones' using errcode = '22023';
   end if;
+  if agreement_row.work_plan is null
+     or agreement_row.client_work_plan_agreed_at is null
+     or agreement_row.freelancer_work_plan_agreed_at is null then
+    raise exception 'Both participants must agree to the work plan before planning milestones' using errcode = '22023';
+  end if;
   begin
     plan_budget := (agreement_row.terms->>'budget')::numeric;
     plan_start := (agreement_row.terms->>'startDate')::date;
@@ -168,6 +174,19 @@ begin
   end if;
   if (select count(distinct (value->>'id')::uuid) from jsonb_array_elements(p_milestones)) <> item_count then
     raise exception 'Milestone IDs must be unique' using errcode = '22023';
+  end if;
+  if exists (
+    select 1
+    from unnest(task_keys) as assigned(task_key)
+    where not exists (
+      select 1
+      from jsonb_array_elements(agreement_row.work_plan #> '{content,columns}') as plan_columns(column_value)
+      cross join lateral jsonb_array_elements(plan_columns.column_value->'tasks') as plan_tasks(task_value)
+      where plan_columns.column_value->>'type' = 'stage'
+        and assigned.task_key = (plan_columns.column_value->>'id') || ':' || (plan_tasks.task_value->>'id')
+    )
+  ) then
+    raise exception 'Milestone task assignments must match tasks in the agreed work plan' using errcode = '22023';
   end if;
 
   select jsonb_agg(

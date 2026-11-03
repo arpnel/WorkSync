@@ -33,8 +33,6 @@ type Props = {
   onSend: (
     message: string,
     attachment?: File,
-    onProgress?: (percent: number) => void,
-    signal?: AbortSignal,
   ) => Promise<boolean>;
   onTypingChange: (isTyping: boolean) => void;
 };
@@ -105,8 +103,6 @@ export function ProjectChatPanel({
   const [draft, setDraft] = useState("");
   const [attachment, setAttachment] = useState<File | null>(null);
   const [attachmentError, setAttachmentError] = useState("");
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
-  const uploadController = useRef<AbortController | null>(null);
   const messagesViewportRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -154,28 +150,11 @@ export function ProjectChatPanel({
     const content = draft.trim();
     if ((!content && !attachment) || sending) return;
     setTypingState(false);
-    const largeUpload = Boolean(
-      attachment && attachment.size > 50 * 1024 * 1024,
-    );
-    uploadController.current = largeUpload ? new AbortController() : null;
-    if (largeUpload) setUploadProgress(0);
-    try {
-      if (
-        await onSend(
-          content,
-          attachment ?? undefined,
-          largeUpload ? setUploadProgress : undefined,
-          uploadController.current?.signal,
-        )
-      ) {
-        setDraft("");
-        setAttachment(null);
-        setAttachmentError("");
-        if (fileInputRef.current) fileInputRef.current.value = "";
-      }
-    } finally {
-      setUploadProgress(null);
-      uploadController.current = null;
+    if (await onSend(content, attachment ?? undefined)) {
+      setDraft("");
+      setAttachment(null);
+      setAttachmentError("");
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -329,12 +308,12 @@ export function ProjectChatPanel({
                 (() => {
                   const file = event.target.files?.[0] ?? null;
                   setAttachmentError(
-                    file && file.size > 1024 * 1024 * 1024
-                      ? "Files must be 1 GB or smaller."
+                    file && file.size > 50 * 1024 * 1024
+                      ? "Files must be 50 MB or smaller."
                       : "",
                   );
                   setAttachment(
-                    file && file.size <= 1024 * 1024 * 1024 ? file : null,
+                    file && file.size <= 50 * 1024 * 1024 ? file : null,
                   );
                   event.target.value = "";
                 })()
@@ -381,24 +360,8 @@ export function ProjectChatPanel({
               {attachmentError}
             </p>
           )}
-          {uploadProgress !== null && (
-            <p
-              role="status"
-              className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground"
-            >
-              <span>Uploading large file: {uploadProgress}%</span>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => uploadController.current?.abort()}
-              >
-                Cancel upload
-              </Button>
-            </p>
-          )}
           <p className="mt-1.5 text-[11px] text-muted-foreground">
-            Images, videos, documents, or ZIP files up to 1 GB.
+            Images, videos, documents, or ZIP files up to 50 MB.
           </p>
         </div>
       </CardContent>

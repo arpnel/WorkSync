@@ -18,8 +18,6 @@ const schema = z
     currentPassword: z.string().min(1).max(256).optional(),
     nonce: z.string().trim().min(6).max(12).optional(),
     email: z.string().email().optional(),
-    firstName: z.string().trim().min(1).max(50).optional(),
-    lastName: z.string().trim().min(1).max(50).optional(),
   })
   .strict();
 
@@ -76,8 +74,8 @@ export async function POST(request: Request) {
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
   if (data.action === "signup") {
-    if (!data.email || !data.firstName || !data.lastName)
-      return Response.json({ error: "Enter your email and name." }, { status: 400 });
+    if (!data.email)
+      return Response.json({ error: "Enter your email address." }, { status: 400 });
     const auth = createClient(url, key, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
@@ -87,8 +85,6 @@ export async function POST(request: Request) {
       options: {
         emailRedirectTo: new URL("/auth/callback", request.url).toString(),
         data: {
-          first_name: data.firstName,
-          last_name: data.lastName,
           role: "client",
         },
       },

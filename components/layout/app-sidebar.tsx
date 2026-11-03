@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 
 import {
   Sidebar,
@@ -29,6 +30,10 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import {
+  getCurrentUserRole,
+  type UserRole,
+} from "@/services/marketplace/AccountServices";
 
 const NAV_GROUPS = [
   {
@@ -77,17 +82,54 @@ function itemIsActive(pathname: string, listingType: string | null, href: string
   return targetListingType ? listingType === targetListingType : true;
 }
 
+function useCurrentRole() {
+  const [currentRole, setCurrentRole] = useState<UserRole | null>(null);
+  useEffect(() => {
+    let active = true;
+    const readRole = () => {
+      void getCurrentUserRole()
+        .then((role) => {
+          if (active) setCurrentRole(role);
+        })
+        .catch(() => {
+          if (active) setCurrentRole(null);
+        });
+    };
+    const onRoleChanged = (event: Event) => {
+      const role = (event as CustomEvent<{ role?: UserRole }>).detail?.role;
+      if (role === "client" || role === "freelancer") setCurrentRole(role);
+      else readRole();
+    };
+    readRole();
+    window.addEventListener("account-role-changed", onRoleChanged);
+    return () => {
+      active = false;
+      window.removeEventListener("account-role-changed", onRoleChanged);
+    };
+  }, []);
+  return currentRole;
+}
+
 export function AppSidebar() {
+  const currentRole = useCurrentRole();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const listingType = searchParams.get("listingType");
   const { setOpenMobile, isMobile, state } = useSidebar();
   const collapsed = !isMobile && state === "collapsed";
+  const visibleGroups = NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter(
+      (item) =>
+        currentRole !== "client" ||
+        (item.href !== "/home/assessments" && item.href !== "/home/payouts"),
+    ),
+  })).filter((group) => group.items.length > 0);
 
   function navigation(iconOnly: boolean) {
     return (
       <>
-        {NAV_GROUPS.map((group, index) => (
+        {visibleGroups.map((group, index) => (
           <div key={group.label}>
             <SidebarGroup className={iconOnly ? "p-0.5" : "px-2 py-1"}>
               <SidebarGroupLabel className="h-6 px-2 text-[10px] font-semibold uppercase tracking-wide text-sidebar-foreground/60">
@@ -162,11 +204,20 @@ export function AppSidebar() {
 }
 
 export function MobileNavigation() {
+  const currentRole = useCurrentRole();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const listingType = searchParams.get("listingType");
   const { setOpenMobile, openMobile } = useSidebar();
-  const primary = MOBILE_ITEMS;
+  const primary =
+    currentRole === "client"
+      ? [
+          NAV_GROUPS[0].items[0],
+          NAV_GROUPS[1].items[0],
+          NAV_GROUPS[2].items[0],
+          NAV_GROUPS[2].items[4],
+        ]
+      : MOBILE_ITEMS;
   return (
     <nav
       aria-label="Phone navigation"

@@ -83,7 +83,11 @@ async function loadInput(
       .select("user_id,headline,years_of_experience,employment_preference")
       .eq("freelancer_id", application.freelancer_id)
       .limit(2),
-    db.from("job_skills").select("skill_id").eq("job_id", job.job_id),
+    db
+      .from("listing_skills")
+      .select("skill_id")
+      .eq("listing_type", "job")
+      .eq("job_id", job.job_id),
     db
       .from("freelancer_skills")
       .select("skill_id")
@@ -166,7 +170,7 @@ async function loadInput(
   }
   const professionalDataErrors = [
     { table: "freelancer_profiles", error: freelancerRows.error },
-    { table: "job_skills", error: required.error },
+    { table: "listing_skills", error: required.error },
     { table: "freelancer_skills", error: offered.error },
     { table: "job_categories", error: category.error },
   ].filter(({ error }) => Boolean(error));

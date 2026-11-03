@@ -19,7 +19,7 @@ export async function GET(request: Request) {
       : { data: [], error: null };
     const events = new Map<string, unknown[]>();
     for (const event of eventsResult.data ?? []) events.set(event.declaration_id, [...(events.get(event.declaration_id) ?? []), event]);
-    const profileRows = await db.from("freelancer_tax_profiles").select("user_id,marketplace_withholding_applicable,freelancer_vat_applicable");
+    const profileRows = await db.from("freelancer_tax_profiles").select("user_id,marketplace_withholding_applicable");
     if (profileRows.error) throw new PaymentError("Freelancer tax settings are unavailable.");
     const profiles = new Map((profileRows.data ?? []).map(row => [row.user_id, row]));
     const platformConfig = await db.from("platform_tax_configuration").select("marketplace_withholding_enabled").eq("configuration_id", true).maybeSingle();
@@ -27,7 +27,7 @@ export async function GET(request: Request) {
     const marketplaceWithholdingEnabled = platformConfig.data?.marketplace_withholding_enabled === true;
     const declarations = (data ?? []).map(row => {
       const config = profiles.get(row.user_id);
-      return { ...row, review_events: events.get(row.declaration_id) ?? [], marketplace_withholding_applicable: marketplaceWithholdingEnabled && (config?.marketplace_withholding_applicable ?? false), freelancer_vat_applicable: config?.freelancer_vat_applicable ?? false };
+      return { ...row, review_events: events.get(row.declaration_id) ?? [], marketplace_withholding_applicable: marketplaceWithholdingEnabled && (config?.marketplace_withholding_applicable ?? false) };
     });
     return json({ declarations, marketplaceWithholdingEnabled, revocationAvailable: !eventsResult.error });
   } catch (error) { return paymentResponse(error); }
@@ -35,22 +35,20 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const { db, user } = await requireAdmin(request);
-    const body = await request.json().catch(() => null) as { action?: unknown; declarationId?: unknown; decision?: unknown; notes?: unknown; taxYearConfirmed?: unknown; freelancerId?: unknown; vatApplicable?: unknown; marketplaceWithholdingApplicable?: unknown; reason?: unknown } | null;
+    const body = await request.json().catch(() => null) as { action?: unknown; declarationId?: unknown; decision?: unknown; notes?: unknown; taxYearConfirmed?: unknown; freelancerId?: unknown; marketplaceWithholdingApplicable?: unknown; reason?: unknown } | null;
     if (body?.action === "configure") {
-      if (typeof body.freelancerId !== "string" || typeof body.vatApplicable !== "boolean" || typeof body.marketplaceWithholdingApplicable !== "boolean" || typeof body.reason !== "string" || !body.reason.trim() || body.reason.length > 2000) throw new PaymentError("Tax configuration changes require a reason up to 2,000 characters.", 400);
+      if ("vatApplicable" in body) {
+        throw new PaymentError("Freelancer VAT-status verification is no longer supported.", 410);
+      }
+      if (typeof body.freelancerId !== "string" || typeof body.marketplaceWithholdingApplicable !== "boolean" || typeof body.reason !== "string" || !body.reason.trim() || body.reason.length > 2000) throw new PaymentError("Withholding configuration changes require a freelancer, a withholding setting, and a reason up to 2,000 characters.", 400);
       if (body.marketplaceWithholdingApplicable) {
         const platformGate = await db.from("platform_tax_configuration").select("marketplace_withholding_enabled").eq("configuration_id", true).maybeSingle();
         if (platformGate.error || !platformGate.data) throw new PaymentError("Platform withholding configuration is unavailable; no withholding setting can be activated.", 409);
         if (!platformGate.data.marketplace_withholding_enabled) throw new PaymentError("Marketplace withholding remains disabled pending legal confirmation for WorkSync.", 409);
       }
-      if (body.vatApplicable) {
-        const today = new Date().toISOString().slice(0, 10);
-        const proof = await db.from("tax_documents").select("document_id").eq("user_id", body.freelancerId).eq("party_type", "freelancer").eq("document_type", "vat_registration").eq("status", "verified").or(`expires_at.is.null,expires_at.gte.${today}`).limit(1).maybeSingle();
-        if (proof.error || !proof.data) throw new PaymentError("VAT treatment requires a current verified VAT registration document.", 409);
-      }
-      const result = await db.from("freelancer_tax_profiles").upsert({ user_id: body.freelancerId, marketplace_withholding_applicable: body.marketplaceWithholdingApplicable, freelancer_vat_applicable: body.vatApplicable, vat_classification: body.vatApplicable ? "vat_registered" : "unverified", updated_by: user.id, updated_at: new Date().toISOString(), updated_reason: body.reason.trim() });
+      const result = await db.from("freelancer_tax_profiles").upsert({ user_id: body.freelancerId, marketplace_withholding_applicable: body.marketplaceWithholdingApplicable, updated_by: user.id, updated_at: new Date().toISOString(), updated_reason: body.reason.trim() });
       if (result.error) throw new PaymentError("Tax configuration could not be saved.");
-      const audit = await db.from("admin_audit_log").insert({ admin_id: user.id, action: "configure_freelancer_tax_treatment", target_id: body.freelancerId, details: { marketplace_withholding_applicable: body.marketplaceWithholdingApplicable, freelancer_vat_applicable: body.vatApplicable, reason: body.reason.trim() } });
+      const audit = await db.from("admin_audit_log").insert({ admin_id: user.id, action: "configure_freelancer_tax_treatment", target_id: body.freelancerId, details: { marketplace_withholding_applicable: body.marketplaceWithholdingApplicable, reason: body.reason.trim() } });
       if (audit.error) throw new PaymentError("Tax configuration was saved, but the supplemental admin audit record failed.");
       return json({ saved: true });
     }

@@ -53,7 +53,6 @@ export interface MarketplaceQuery {
   /** Optional bounded page for marketplace feeds. */
   page?: number;
   pageSize?: number;
-  includeVatClassification?: boolean;
   matchedServiceIds?: string[];
   matchedJobIds?: string[];
 }
@@ -144,9 +143,6 @@ export interface MarketplaceService {
   client: null;
 
   category: MarketplaceCategory | null;
-
-  /** Public classification returned only after administrator verification. */
-  vat_classification?: "vat_registered" | "non_vat" | "unverified";
 }
 
 /* ==========================================================
@@ -454,7 +450,7 @@ async function buildMarketplaceJob(
 async function getServices(
   query: MarketplaceQuery,
 ): Promise<MarketplaceService[]> {
-  const columns = `service_id,freelancer_id,category_id,title,description,price,pricing_mode,delivery_time_days,revisions_count,service_type,status,slug,cover_image_url,created_at,updated_at${query.skillId ? ",service_skills!inner(skill_id)" : ""}`;
+  const columns = `service_id,freelancer_id,category_id,title,description,price,pricing_mode,delivery_time_days,revisions_count,service_type,status,slug,cover_image_url,created_at,updated_at${query.skillId ? ",listing_skills!inner(skill_id,listing_type)" : ""}`;
   let request = supabase
     .from(SERVICES_TABLE)
     .select(columns)
@@ -479,7 +475,9 @@ async function getServices(
     request = request.eq("category_id", query.categoryId);
   }
   if (query.skillId)
-    request = request.eq("service_skills.skill_id", query.skillId);
+    request = request
+      .eq("listing_skills.listing_type", "service")
+      .eq("listing_skills.skill_id", query.skillId);
 
   if (query.freelancerId) {
     request = request.eq("freelancer_id", query.freelancerId);
@@ -538,16 +536,7 @@ async function getServices(
   const rows = data as unknown as ServiceRow[];
   const related = await loadRelatedListings(rows, [], query.guest);
   const services = await Promise.all(rows.map((row) => buildMarketplaceService(row, related)));
-  if (!query.includeVatClassification) return services;
-  const userIds = [...new Set(services.map((service) => service.freelancer?.user_id).filter((id): id is string => Boolean(id)))];
-  if (!userIds.length) return services.map(service => ({ ...service, vat_classification: "unverified" as const }));
-  const rpcClient = supabase as unknown as { rpc: (name: string, args: Record<string, unknown>) => Promise<{ data: { user_id: string; vat_classification: string }[] | null; error: unknown }> };
-  const classificationResult = await rpcClient.rpc("worksync_public_vat_classifications", { p_user_ids: userIds });
-  const classifications = new Map((classificationResult.error ? [] : classificationResult.data ?? []).map(row => [row.user_id, row.vat_classification]));
-  return services.map(service => ({
-    ...service,
-    vat_classification: classifications.get(service.freelancer?.user_id ?? "") === "vat_registered" ? "vat_registered" : classifications.get(service.freelancer?.user_id ?? "") === "non_vat" ? "non_vat" : "unverified",
-  }));
+  return services;
 }
 
 /* ==========================================================
@@ -598,7 +587,7 @@ async function hideUnavailableJobsForCurrentFreelancer(
   return rows.filter((row) => !unavailable.has(row.job_id));
 }
 async function getJobs(query: MarketplaceQuery): Promise<MarketplaceJob[]> {
-  const columns = `job_id,client_id,category_id,title,description,budget_min,budget_max,pricing_type,project_type,experience_level,deadline,status,created_at,updated_at${query.skillId ? ",job_skills!inner(skill_id)" : ""}`;
+  const columns = `job_id,client_id,category_id,title,description,budget_min,budget_max,pricing_type,project_type,experience_level,deadline,status,created_at,updated_at${query.skillId ? ",listing_skills!inner(skill_id,listing_type)" : ""}`;
   let request = supabase
     .from(JOBS_TABLE)
     .select(columns)
@@ -622,7 +611,10 @@ async function getJobs(query: MarketplaceQuery): Promise<MarketplaceJob[]> {
   if (query.categoryId) {
     request = request.eq("category_id", query.categoryId);
   }
-  if (query.skillId) request = request.eq("job_skills.skill_id", query.skillId);
+  if (query.skillId)
+    request = request
+      .eq("listing_skills.listing_type", "job")
+      .eq("listing_skills.skill_id", query.skillId);
 
   if (query.clientId) {
     request = request.eq("client_id", query.clientId);
@@ -775,15 +767,17 @@ async function findMarketplaceSearchIds(
   const [serviceSkillsResult, jobSkillsResult] = await Promise.all([
     wantsServices && skillIds.length
       ? supabase
-          .from("service_skills")
+          .from("listing_skills")
           .select("service_id")
+          .eq("listing_type", "service")
           .in("skill_id", skillIds)
           .limit(5000)
       : Promise.resolve({ data: [], error: null }),
     wantsJobs && skillIds.length
       ? supabase
-          .from("job_skills")
+          .from("listing_skills")
           .select("job_id")
+          .eq("listing_type", "job")
           .in("skill_id", skillIds)
           .limit(5000)
       : Promise.resolve({ data: [], error: null }),

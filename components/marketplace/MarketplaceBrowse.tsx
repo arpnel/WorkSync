@@ -338,7 +338,7 @@ export default function MarketplaceBrowse({
   return (
     <main className="min-w-0">
       <Dialog open={signup} onOpenChange={setSignup}>
-        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-sm">
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
           <DialogTitle className="sr-only">
             Create an account to continue
           </DialogTitle>

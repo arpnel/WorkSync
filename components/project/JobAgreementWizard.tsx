@@ -14,9 +14,11 @@ import { WorkSyncLegalDialog, type WorkSyncLegalDocument } from "@/components/pr
 import { openSubscriptionLimitDialog } from "@/services/subscriptions/subscriptionLimitDialog";
 import { ProjectChatPanel } from "@/components/project/ProjectChatPanel";
 import { ProjectPlanSnapshotPreview } from "@/components/project/ProjectPlanSnapshotPreview";
+import { ProjectPlanProposalAttachment } from "@/components/project/ProjectPlanProposalAttachment";
 import type { ProjectPlanSnapshotData } from "@/services/project/projectPlanSnapshot";
 import type { ContractVersionAgreementInput, ContractVersionMilestoneInput } from "@/services/project/projectWorkspaceService";
 import type { JobMilestonePlanAgreement } from "@/services/project/jobMilestonePlanAgreementService";
+import type { JobWorkPlanAgreement } from "@/services/project/jobWorkPlanAgreementService";
 import type { JobBasicTerms } from "@/services/project/jobBasicTermsAgreementService";
 import {
   loadContractCreationDraft,
@@ -26,7 +28,7 @@ import {
 type WizardPlan = Omit<ProjectPlanSnapshotData, "content"> & {
   content: Omit<ProjectPlanSnapshotData["content"], "columns"> & {
     columns: Array<Omit<ProjectPlanSnapshotData["content"]["columns"][number], "tasks"> & {
-      tasks: Array<ProjectPlanSnapshotData["content"]["columns"][number]["tasks"][number] & { dueDate?: string; milestoneId?: string }>;
+      tasks: Array<ProjectPlanSnapshotData["content"]["columns"][number]["tasks"][number] & { dueDate?: string | null; milestoneId?: string | null }>;
     }>;
   };
 };
@@ -74,7 +76,7 @@ function restoreWizardPlan(value: unknown): WizardPlan | null | undefined {
   for (const column of plan.content.columns) {
     if (
       !column || typeof column.id !== "string" || typeof column.name !== "string" ||
-      column.type !== "stage" || !Array.isArray(column.tasks)
+      (column.type !== "stage" && column.type !== "done") || !Array.isArray(column.tasks)
     ) return undefined;
     for (const task of column.tasks) {
       if (
@@ -87,7 +89,26 @@ function restoreWizardPlan(value: unknown): WizardPlan | null | undefined {
       ) return undefined;
     }
   }
-  return plan as WizardPlan;
+    return normalizeWizardPlan(plan as ProjectPlanSnapshotData);
+}
+
+function normalizeWizardPlan(value: ProjectPlanSnapshotData | null): WizardPlan | null {
+  if (!value) return null;
+  return {
+    ...value,
+    content: {
+      ...value.content,
+      columns: value.content.columns.map((column) => ({
+        ...column,
+        tasks: column.tasks.map((task) => ({
+          ...task,
+          expectedDays: task.expectedDays ?? undefined,
+          dueDate: task.dueDate ?? undefined,
+          milestoneId: task.milestoneId ?? undefined,
+        })),
+      })),
+    },
+  } as WizardPlan;
 }
 
 const basicTermLabels: Record<keyof JobBasicTerms, string> = {
@@ -104,6 +125,15 @@ function formatBasicTerm(field: keyof JobBasicTerms, value: string | number) {
     return `PHP ${Number(value).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
   if (field === "revisionsCount") return `${value} revisions`;
   return String(value);
+}
+
+function stableJson(value: unknown): string {
+  return JSON.stringify(value, (_key, item: unknown) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return item;
+    return Object.fromEntries(
+      Object.entries(item as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right)),
+    );
+  });
 }
 
 function formatMilestoneValue(field: "title" | "description" | "amount" | "dueDate" | "taskIds", milestone: ContractVersionMilestoneInput) {
@@ -133,6 +163,72 @@ function milestonePlanChanges(previous: ContractVersionMilestoneInput[], current
   }
   for (const item of current) {
     if (!previousById.has(item.id)) changes.push(`Added milestone: ${item.title}`);
+  }
+  return changes;
+}
+
+function workPlanChanges(
+  previous: ProjectPlanSnapshotData | null,
+  current: ProjectPlanSnapshotData,
+): string[] {
+  if (!previous) {
+    const stages = current.content.columns.filter((column) => column.type === "stage");
+    const tasks = stages.reduce((count, column) => count + column.tasks.length, 0);
+    return [`Attached ${current.name} with ${stages.length} ${stages.length === 1 ? "stage" : "stages"} and ${tasks} ${tasks === 1 ? "task" : "tasks"}.`];
+  }
+  previous = normalizeWizardPlan(previous);
+  if (!previous) return [];
+  const changes: string[] = [];
+  if (previous.name !== current.name)
+    changes.push(`Plan name changed from â€œ${previous.name}â€ to â€œ${current.name}â€.`);
+  if (previous.description !== current.description)
+    changes.push("Plan description changed.");
+
+  const previousStages = previous.content.columns.filter((column) => column.type === "stage");
+  const currentStages = current.content.columns.filter((column) => column.type === "stage");
+  const previousStageById = new Map(previousStages.map((column, index) => [column.id, { column, index }]));
+  const currentStageById = new Map(currentStages.map((column, index) => [column.id, { column, index }]));
+  for (const [id, { column: oldStage, index: oldIndex }] of previousStageById) {
+    const next = currentStageById.get(id);
+    if (!next) {
+      changes.push(`Stage removed: ${oldStage.name}.`);
+      for (const task of oldStage.tasks) changes.push(`Task removed: ${task.title} (${oldStage.name}).`);
+      continue;
+    }
+    if (oldStage.name !== next.column.name)
+      changes.push(`Stage renamed from â€œ${oldStage.name}â€ to â€œ${next.column.name}â€.`);
+    if (oldIndex !== next.index)
+      changes.push(`Stage moved: ${next.column.name}.`);
+    const oldTasks = new Map(oldStage.tasks.map((task) => [task.id, task]));
+    const nextTasks = new Map(next.column.tasks.map((task) => [task.id, task]));
+    for (const [taskId, task] of oldTasks) {
+      const updated = nextTasks.get(taskId);
+      if (!updated) {
+        changes.push(`Task removed: ${task.title} (${oldStage.name}).`);
+        continue;
+      }
+      if (task.title !== updated.title)
+        changes.push(`Task renamed from â€œ${task.title}â€ to â€œ${updated.title}â€.`);
+      if (task.description !== updated.description)
+        changes.push(`Task description changed: ${updated.title}.`);
+      if (task.priority !== updated.priority)
+        changes.push(`Task priority changed: ${updated.title}.`);
+      if (task.expectedDays !== updated.expectedDays)
+        changes.push(`Task estimate changed: ${updated.title}.`);
+      if (task.dueDate !== updated.dueDate)
+        changes.push(`Task due date changed: ${updated.title}.`);
+      if (task.milestoneId !== updated.milestoneId)
+        changes.push(`Task milestone assignment changed: ${updated.title}.`);
+    }
+    for (const [taskId, task] of nextTasks) {
+      if (!oldTasks.has(taskId)) changes.push(`Task added: ${task.title} (${next.column.name}).`);
+    }
+  }
+  for (const [id, { column }] of currentStageById) {
+    if (!previousStageById.has(id)) {
+      changes.push(`Stage added: ${column.name}.`);
+      for (const task of column.tasks) changes.push(`Task added: ${task.title} (${column.name}).`);
+    }
   }
   return changes;
 }
@@ -209,7 +305,7 @@ function validDate(value: string): boolean {
 }
 
 function taskExceedsContractTimeline(
-  task: { expectedDays?: number; dueDate?: string },
+  task: { expectedDays?: number; dueDate?: string | null },
   startDate: string,
   deadline: string,
 ): boolean {
@@ -234,6 +330,8 @@ export function JobAgreementWizard({
   agreementStatus,
   basicAgreementStatus,
   onAgreeBasics,
+  workPlanAgreementStatus,
+  onAgreeWorkPlan,
   milestoneAgreementStatus,
   onAgreeMilestonePlan,
   onAgree,
@@ -272,6 +370,12 @@ export function JobAgreementWizard({
     updating: boolean;
     error?: string;
   };
+  workPlanAgreementStatus?: JobWorkPlanAgreement & {
+    currentParty: "client" | "freelancer";
+    updating: boolean;
+    error?: string;
+  };
+  onAgreeWorkPlan?: (plan: ProjectPlanSnapshotData) => Promise<JobWorkPlanAgreement>;
   milestoneAgreementStatus?: JobMilestonePlanAgreement & {
     currentParty: "client" | "freelancer";
     updating: boolean;
@@ -316,12 +420,10 @@ export function JobAgreementWizard({
   const contractDocumentInput = useRef<HTMLInputElement>(null);
   const versionRequestIdRef = useRef<string | null>(null);
   const versionRequestFingerprintRef = useRef<string | null>(null);
-  const [plan, setPlan] = useState<WizardPlan | null>(() => initial.plan ? {
-    ...initial.plan,
-    name: initial.title,
-    description: initial.description,
-    content: { ...initial.plan.content, columns: initial.plan.content.columns.map((column) => ({ ...column, tasks: column.tasks.map((task) => ({ ...task })) })) },
-  } : null);
+  const [plan, setPlan] = useState<WizardPlan | null>(() => {
+    const normalized = normalizeWizardPlan(initial.plan);
+    return normalized ? { ...normalized, name: initial.title, description: initial.description } : null;
+  });
   const [milestones, setMilestones] = useState<ContractVersionMilestoneInput[]>(() => milestoneAgreementStatus?.milestones ?? []);
   const [milestonePlanDirty, setMilestonePlanDirty] = useState(false);
   const [milestoneRevisionMode, setMilestoneRevisionMode] = useState(false);
@@ -341,6 +443,15 @@ export function JobAgreementWizard({
   const clientBasicAgreed = basicTermsMatch && basicAgreementStatus?.clientAgreed === true;
   const freelancerBasicAgreed = basicTermsMatch && basicAgreementStatus?.freelancerAgreed === true;
   const bothBasicTermsAgreed = clientBasicAgreed && freelancerBasicAgreed;
+  const workPlanMatches = Boolean(
+    plan && stableJson(plan) === stableJson(workPlanAgreementStatus?.plan),
+  );
+  const clientWorkPlanAgreed = workPlanMatches && workPlanAgreementStatus?.clientAgreed === true;
+  const freelancerWorkPlanAgreed = workPlanMatches && workPlanAgreementStatus?.freelancerAgreed === true;
+  const bothWorkPlanPartiesAgreed = clientWorkPlanAgreed && freelancerWorkPlanAgreed;
+  const currentPartyWorkPlanAgreed = workPlanAgreementStatus?.currentParty === "freelancer"
+    ? freelancerWorkPlanAgreed
+    : clientWorkPlanAgreed;
   const bothBasicTermsAgreedRef = useRef(bothBasicTermsAgreed);
   bothBasicTermsAgreedRef.current = bothBasicTermsAgreed;
   const milestonePlanMatches = !milestoneRevisionMode && Boolean(milestoneAgreementStatus && JSON.stringify(milestoneAgreementStatus.milestones) === JSON.stringify(milestones));
@@ -369,6 +480,16 @@ export function JobAgreementWizard({
     }
     if (!milestonePlanDirty && milestoneAgreementStatus) setMilestones(milestoneAgreementStatus.milestones);
   }, [milestoneFingerprint, milestonePlanDirty, milestoneAgreementStatus]);
+  const workPlanFingerprint = JSON.stringify(workPlanAgreementStatus?.plan ?? null);
+  const serverWorkPlanFingerprintRef = useRef(workPlanFingerprint);
+  useEffect(() => {
+    if (serverWorkPlanFingerprintRef.current === workPlanFingerprint) return;
+    serverWorkPlanFingerprintRef.current = workPlanFingerprint;
+    setPlan(normalizeWizardPlan(workPlanAgreementStatus?.plan ?? null));
+    setStep(1);
+    setError("");
+    setNotice("The work plan changed. Review the listed changes and both parties must confirm the updated plan.");
+  }, [workPlanFingerprint, workPlanAgreementStatus?.plan]);
   const basicAgreementAtMountRef = useRef(basicAgreementStatus);
   const bothBasicTermsAgreedAtMountRef = useRef(bothBasicTermsAgreed);
   const currentPartyBasicAgreed = basicAgreementStatus?.currentParty === "client"
@@ -389,7 +510,20 @@ export function JobAgreementWizard({
   const [willVerifySavedTerms, setWillVerifySavedTerms] = useState(false);
   const [planPreviewOpen, setPlanPreviewOpen] = useState(false);
   const [openingAgreement, setOpeningAgreement] = useState(false);
-  const planSource = initial.planSource;
+  const planSource = !plan
+    ? "No plan selected"
+    : initial.plan && stableJson(plan) === stableJson(normalizeWizardPlan(initial.plan))
+      ? initial.planSource
+      : "Selected project plan";
+  const displayedPlanChanges = plan
+    ? !workPlanMatches
+      ? workPlanChanges(workPlanAgreementStatus?.plan ?? initial.plan, plan)
+      : workPlanAgreementStatus?.previousPlan
+        ? workPlanChanges(workPlanAgreementStatus.previousPlan, plan)
+        : workPlanAgreementStatus?.hasPlanAgreement && workPlanAgreementStatus.changedBy
+          ? workPlanChanges(null, plan)
+          : []
+    : [];
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [draftReady, setDraftReady] = useState(false);
@@ -431,7 +565,7 @@ export function JobAgreementWizard({
         versionRequestIdRef.current = draft.versionRequestId;
         versionRequestFingerprintRef.current = draft.versionRequestFingerprint;
         setNoticeError(false);
-        setNotice(`Draft restored from Supabase. Last saved ${new Date(draft.savedAt).toLocaleString()}.${draft.contractDocumentName ? ` Reattach â€œ${draft.contractDocumentName}â€ if you still want to send it.` : ""}`);
+        setNotice(`Draft restored from Supabase. Last saved ${new Date(draft.savedAt).toLocaleString()}.${draft.contractDocumentName ? ` Reattach Ã¢â‚¬Å“${draft.contractDocumentName}Ã¢â‚¬Â if you still want to send it.` : ""}`);
       })
       .catch((cause) => {
         if (!current) return;
@@ -518,6 +652,10 @@ export function JobAgreementWizard({
       setError("Add a complete work plan before continuing.");
       return false;
     }
+    if (!bothWorkPlanPartiesAgreed) {
+      setError("Both the client and freelancer must agree to the same work plan before the contract can continue.");
+      return false;
+    }
     if (initial.projectType === "milestone" && !bothMilestonePartiesAgreed) {
       setError("Both the client and freelancer must agree to the milestone plan before the contract can be sent.");
       return false;
@@ -584,6 +722,10 @@ export function JobAgreementWizard({
 
   async function agreeToContract(): Promise<boolean> {
     if (!onAgree || currentPartyContractAgreed) return false;
+    if (!bothWorkPlanPartiesAgreed) {
+      setError("Both the client and freelancer must agree to the same work plan before the contract can continue.");
+      return false;
+    }
     if (agreementStatus?.isNew === false) {
       setError("");
       setOpeningAgreement(true);
@@ -633,6 +775,17 @@ export function JobAgreementWizard({
       setError(cause instanceof Error ? cause.message : "Unable to record agreement to the basic terms.");
     } finally {
       setOpeningAgreement(false);
+    }
+  }
+
+  async function agreeToWorkPlan(): Promise<void> {
+    if (!onAgreeWorkPlan || !plan || !workPlanAgreementStatus) return;
+    setError("");
+    setNotice("");
+    try {
+      await onAgreeWorkPlan(plan);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to save the work plan agreement.");
     }
   }
 
@@ -746,28 +899,104 @@ export function JobAgreementWizard({
       <div className="space-y-4">
       <Card className="border-border/80 bg-card/70"><CardHeader><CardTitle>Contract Details</CardTitle><p className="text-sm text-muted-foreground">Define the basic terms of your agreement.</p></CardHeader><CardContent className="space-y-5">
         <Field id="wizard-title" label="Project title" required error={error && !title.trim() ? "Project title is required." : ""}><Input id="wizard-title" value={title} onChange={(event) => { const next = event.target.value; setTitle(next); setPlan((current) => current ? { ...current, name: next } : current); }} placeholder="Project title" aria-invalid={!!error && !title.trim()}/></Field>
-        <Field id="wizard-description" label="Description" required error={error && !description.trim() ? "Description is required." : ""}><Textarea id="wizard-description" value={description} onChange={(event) => { const next = event.target.value; setDescription(next); setPlan((current) => current ? { ...current, description: next } : current); }} placeholder="Describe the agreed scope and intended outcomeâ€¦" className="min-h-24" aria-invalid={!!error && !description.trim()}/></Field>
+        <Field id="wizard-description" label="Description" required error={error && !description.trim() ? "Description is required." : ""}><Textarea id="wizard-description" value={description} onChange={(event) => { const next = event.target.value; setDescription(next); setPlan((current) => current ? { ...current, description: next } : current); }} placeholder="Describe the agreed scope and intended outcomeÃ¢â‚¬Â¦" className="min-h-24" aria-invalid={!!error && !description.trim()}/></Field>
         <div className="grid gap-4 sm:grid-cols-2"><Field id="wizard-budget" label="Budget (PHP)" required error={error && (!Number.isFinite(Number(budget)) || Number(budget) <= 0) ? "Enter a positive budget." : ""}><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">PHP</span><Input id="wizard-budget" type="number" min="1" step="0.01" className="pl-12" value={budget} onChange={(event) => setBudget(event.target.value)}/></div></Field><Field id="wizard-revisions" label="Included revisions" required error={error && (!revisions.trim() || !Number.isInteger(Number(revisions)) || Number(revisions) < 0) ? "Enter zero or more revisions." : ""}><Input id="wizard-revisions" type="number" min="0" step="1" value={revisions} onChange={(event) => setRevisions(event.target.value)}/></Field></div>
         <div className="grid gap-4 sm:grid-cols-2"><Field id="wizard-start-date" label="Project start date" required error={error && (!validDate(startDate) || startDate < todayDate()) ? "Choose today or a future project start date." : ""}><div className="relative"><CalendarDays className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"/><Input id="wizard-start-date" type="date" min={todayDate()} className="pl-10" value={startDate} onChange={(event) => { if (event.target.value >= todayDate()) setStartDate(event.target.value); }}/></div></Field><Field id="wizard-deadline" label="Delivery deadline" required error={error && (!validDate(deadline) || deadline < startDate) ? "Choose a delivery deadline on or after the project start date." : ""}><div className="relative"><CalendarDays className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"/><Input id="wizard-deadline" type="date" min={startDate} className="pl-10" value={deadline} onChange={(event) => { if (event.target.value >= startDate) setDeadline(event.target.value); }}/></div>{!(initial.estimatedDays && !initial.deadline) && <p className="text-xs text-muted-foreground">Choose a deadline on or after the project start date.</p>}</Field></div>
-        <Field id="contract-document" label="Attach your contract document (optional)"><input ref={contractDocumentInput} id="contract-document" type="file" className="sr-only" aria-label="Choose a PDF or Word contract document" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => setContractDocumentFile(event.target.files?.[0] ?? null)}/><div onDragEnter={(event) => { event.preventDefault(); setDraggingDocument(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDraggingDocument(false); }} onDrop={(event) => { event.preventDefault(); setDraggingDocument(false); setContractDocumentFile(event.dataTransfer.files.item(0)); }} className={`flex min-h-[76px] items-center gap-3 rounded-lg border px-4 py-3 transition ${draggingDocument ? "border-primary bg-primary/10" : "border-border/80 bg-muted/30"}`}><button type="button" aria-label="Drag and drop a PDF, DOC, or DOCX file here, or click to browse" onClick={() => contractDocumentInput.current?.click()} className="flex min-w-0 flex-1 cursor-pointer items-center justify-center gap-2 rounded-md text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><FileUp className="size-6 shrink-0 text-primary"/><span className="max-w-[85%]">{contractDocument ? <><span className="block truncate text-xs font-medium text-foreground">{contractDocument.name}</span><span className="mt-1 block text-[10px] text-muted-foreground">{(contractDocument.size / (1024 * 1024)).toFixed(2)} MB Â· click to replace</span></> : <><span className="block text-xs font-medium text-foreground">Drag &amp; drop your file or click to browse</span><span className="mt-1 block text-[10px] text-muted-foreground">Supported: PDF, DOC, DOCX</span></>}</span></button>{contractDocument && <Button type="button" variant="ghost" size="icon" className="shrink-0" aria-label="Remove contract document" onClick={() => { setContractDocumentFile(null); if (contractDocumentInput.current) contractDocumentInput.current.value = ""; }}><X className="size-4"/></Button>}</div>{documentError && <p role="alert" className="text-xs text-destructive">{documentError}</p>}<p className="text-xs text-muted-foreground">Attach a custom contract document for the other party to review in your agreement conversation.</p></Field>
+        <Field id="contract-document" label="Attach your contract document (optional)"><input ref={contractDocumentInput} id="contract-document" type="file" className="sr-only" aria-label="Choose a PDF or Word contract document" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => setContractDocumentFile(event.target.files?.[0] ?? null)}/><div onDragEnter={(event) => { event.preventDefault(); setDraggingDocument(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDraggingDocument(false); }} onDrop={(event) => { event.preventDefault(); setDraggingDocument(false); setContractDocumentFile(event.dataTransfer.files.item(0)); }} className={`flex min-h-[76px] items-center gap-3 rounded-lg border px-4 py-3 transition ${draggingDocument ? "border-primary bg-primary/10" : "border-border/80 bg-muted/30"}`}><button type="button" aria-label="Drag and drop a PDF, DOC, or DOCX file here, or click to browse" onClick={() => contractDocumentInput.current?.click()} className="flex min-w-0 flex-1 cursor-pointer items-center justify-center gap-2 rounded-md text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><FileUp className="size-6 shrink-0 text-primary"/><span className="max-w-[85%]">{contractDocument ? <><span className="block truncate text-xs font-medium text-foreground">{contractDocument.name}</span><span className="mt-1 block text-[10px] text-muted-foreground">{(contractDocument.size / (1024 * 1024)).toFixed(2)} MB Ã‚Â· click to replace</span></> : <><span className="block text-xs font-medium text-foreground">Drag &amp; drop your file or click to browse</span><span className="mt-1 block text-[10px] text-muted-foreground">Supported: PDF, DOC, DOCX</span></>}</span></button>{contractDocument && <Button type="button" variant="ghost" size="icon" className="shrink-0" aria-label="Remove contract document" onClick={() => { setContractDocumentFile(null); if (contractDocumentInput.current) contractDocumentInput.current.value = ""; }}><X className="size-4"/></Button>}</div>{documentError && <p role="alert" className="text-xs text-destructive">{documentError}</p>}<p className="text-xs text-muted-foreground">Attach a custom contract document for the other party to review in your agreement conversation.</p></Field>
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-        <div className="flex justify-end gap-2"><Button type="button" variant="outline" disabled={!draftReady || draftSaving} onClick={() => void saveDraftNotice()}>{draftSaving ? "Savingâ€¦" : "Save draft"}</Button><Button type="button" disabled={Boolean(basicAgreementStatus && !bothBasicTermsAgreed)} onClick={() => { const validation = validateDetails(); setError(validation || (basicAgreementStatus && !bothBasicTermsAgreed ? "Both the client and freelancer must agree to these basic terms before continuing to the planner." : "")); setNotice(""); if (!validation && (!basicAgreementStatus || bothBasicTermsAgreed)) setStep(1); }}>Continue to planner <ArrowRight/></Button></div>
+        <div className="flex justify-end gap-2"><Button type="button" variant="outline" disabled={!draftReady || draftSaving} onClick={() => void saveDraftNotice()}>{draftSaving ? "SavingÃ¢â‚¬Â¦" : "Save draft"}</Button><Button type="button" disabled={Boolean(basicAgreementStatus && !bothBasicTermsAgreed)} onClick={() => { const validation = validateDetails(); setError(validation || (basicAgreementStatus && !bothBasicTermsAgreed ? "Both the client and freelancer must agree to these basic terms before continuing to the planner." : "")); setNotice(""); if (!validation && (!basicAgreementStatus || bothBasicTermsAgreed)) setStep(1); }}>Continue to planner <ArrowRight/></Button></div>
       </CardContent></Card>
       {contractDetailsFooter}
       </div>
-      <Card className="border-border/80 bg-card/70"><CardHeader><CardTitle>Contract Summary</CardTitle></CardHeader><CardContent className="space-y-5"><SummaryRow icon={<FileText/>} label="Project" value={title || "Not set"}/><SummaryRow icon={<Wallet/>} label="Budget" value={budget && Number(budget) > 0 ? `PHP ${Number(budget).toLocaleString("en-PH", { minimumFractionDigits: 2 })}` : "Not set"}/><SummaryRow icon={<RotateCcw/>} label="Included revisions" value={revisions || "Not set"}/><SummaryRow icon={<CalendarDays/>} label="Delivery deadline" value={deadline ? new Date(`${deadline}T00:00:00`).toLocaleDateString() : "Not set"}/>{basicAgreementStatus && onAgreeBasics && <div className="space-y-3 border-t pt-4"><h3 className="font-semibold">Basic terms agreement</h3>{basicAgreementStatus.error && <p role="alert" className="text-xs text-destructive">Agreement status could not be loaded: {basicAgreementStatus.error}</p>}<div className="flex items-center justify-between gap-3 text-sm"><span className="text-muted-foreground">{clientLabel}</span><Badge variant={clientBasicAgreed ? "secondary" : "outline"}>{clientBasicAgreed ? "Agreed" : "Pending"}</Badge></div><div className="flex items-center justify-between gap-3 text-sm"><span className="text-muted-foreground">{freelancerLabel}</span><Badge variant={freelancerBasicAgreed ? "secondary" : "outline"}>{freelancerBasicAgreed ? "Agreed" : "Pending"}</Badge></div>{!bothBasicTermsAgreed && basicAgreementStatus.previousTerms && basicAgreementStatus.terms && Boolean(basicAgreementStatus.changedFields?.length) && <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3"><p className="text-sm font-medium">{basicAgreementStatus.changedBy === "client" ? clientLabel : freelancerLabel} changed these terms. Both parties must agree again.</p>{basicAgreementStatus.changedFields?.map((field) => <div key={field} className="rounded-md bg-background/60 px-2.5 py-2 text-sm"><p className="font-medium">{basicTermLabels[field]}</p><p className="mt-1 text-muted-foreground"><span className="line-through">{formatBasicTerm(field, basicAgreementStatus.previousTerms![field])}</span><span className="mx-2 text-amber-600">→</span><span className="font-semibold text-foreground">{formatBasicTerm(field, basicAgreementStatus.terms![field])}</span></p></div>)}</div>}{basicAgreementStatus.terms && !basicTermsMatch && <p className="text-xs text-muted-foreground">These terms changed. Both parties must agree to the updated terms.</p>}{!bothBasicTermsAgreed && <p className="text-xs text-muted-foreground">Both parties must agree to these basic terms before the planner can continue.</p>}<Button type="button" className="w-full" disabled={busy || openingAgreement || basicAgreementStatus.updating || !draftReady || currentPartyBasicAgreed} onClick={() => void agreeToBasicTerms()}>{openingAgreement ? "Saving agreement..." : currentPartyBasicAgreed ? "Agreed to basic terms" : "Agree to basic terms"}</Button></div>}<div className="border-t pt-5"><h3 className="font-semibold">Conversation</h3>{conversationError && <p role="alert" className="mt-2 text-sm text-destructive">{conversationError}</p>}{conversation ? <ProjectChatPanel {...conversation} className="mt-3 h-[min(55vh,520px)] min-h-[320px]"/> : !conversationError ? <p className="mt-2 text-sm text-muted-foreground">Loading the shared conversation...</p> : null}</div></CardContent></Card>
+      <Card className="border-border/80 bg-card/70"><CardHeader><CardTitle>Contract Summary</CardTitle></CardHeader><CardContent className="space-y-5"><SummaryRow icon={<FileText/>} label="Project" value={title || "Not set"}/><SummaryRow icon={<Wallet/>} label="Budget" value={budget && Number(budget) > 0 ? `PHP ${Number(budget).toLocaleString("en-PH", { minimumFractionDigits: 2 })}` : "Not set"}/><SummaryRow icon={<RotateCcw/>} label="Included revisions" value={revisions || "Not set"}/><SummaryRow icon={<CalendarDays/>} label="Delivery deadline" value={deadline ? new Date(`${deadline}T00:00:00`).toLocaleDateString() : "Not set"}/>{basicAgreementStatus && onAgreeBasics && <div className="space-y-3 border-t pt-4"><h3 className="font-semibold">Basic terms agreement</h3>{basicAgreementStatus.error && <p role="alert" className="text-xs text-destructive">Agreement status could not be loaded: {basicAgreementStatus.error}</p>}<div className="flex items-center justify-between gap-3 text-sm"><span className="text-muted-foreground">{clientLabel}</span><Badge variant={clientBasicAgreed ? "secondary" : "outline"}>{clientBasicAgreed ? "Agreed" : "Pending"}</Badge></div><div className="flex items-center justify-between gap-3 text-sm"><span className="text-muted-foreground">{freelancerLabel}</span><Badge variant={freelancerBasicAgreed ? "secondary" : "outline"}>{freelancerBasicAgreed ? "Agreed" : "Pending"}</Badge></div>{!bothBasicTermsAgreed && basicAgreementStatus.previousTerms && basicAgreementStatus.terms && Boolean(basicAgreementStatus.changedFields?.length) && <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3"><p className="text-sm font-medium">{basicAgreementStatus.changedBy === "client" ? clientLabel : freelancerLabel} changed these terms. Both parties must agree again.</p>{basicAgreementStatus.changedFields?.map((field) => <div key={field} className="rounded-md bg-background/60 px-2.5 py-2 text-sm"><p className="font-medium">{basicTermLabels[field]}</p><p className="mt-1 text-muted-foreground"><span className="line-through">{formatBasicTerm(field, basicAgreementStatus.previousTerms![field])}</span><span className="mx-2 text-amber-600">â†’</span><span className="font-semibold text-foreground">{formatBasicTerm(field, basicAgreementStatus.terms![field])}</span></p></div>)}</div>}{basicAgreementStatus.terms && !basicTermsMatch && <p className="text-xs text-muted-foreground">These terms changed. Both parties must agree to the updated terms.</p>}{!bothBasicTermsAgreed && <p className="text-xs text-muted-foreground">Both parties must agree to these basic terms before the planner can continue.</p>}<Button type="button" className="w-full" disabled={busy || openingAgreement || basicAgreementStatus.updating || !draftReady || currentPartyBasicAgreed} onClick={() => void agreeToBasicTerms()}>{openingAgreement ? "Saving agreement..." : currentPartyBasicAgreed ? "Agreed to basic terms" : "Agree to basic terms"}</Button></div>}<div className="border-t pt-5"><h3 className="font-semibold">Conversation</h3>{conversationError && <p role="alert" className="mt-2 text-sm text-destructive">{conversationError}</p>}{conversation ? <ProjectChatPanel {...conversation} className="mt-3 h-[min(55vh,520px)] min-h-[320px]"/> : !conversationError ? <p className="mt-2 text-sm text-muted-foreground">Loading the shared conversation...</p> : null}</div></CardContent></Card>
     </div></>}
 
-    {step === 1 && <div className={conversation && conversationOpen ? "grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(280px,0.75fr)] xl:items-stretch" : ""}><Card className="flex flex-col border-border/80 bg-card/70"><CardHeader className="flex flex-wrap items-start justify-between gap-3 sm:flex-row"><div><CardTitle>Plan the Work</CardTitle><p className="mt-1 text-sm text-muted-foreground">Review the plan attached by the freelancer to this application.</p></div><div className="flex flex-col items-end gap-2"><Badge variant="outline">{planSource}</Badge><div className="flex flex-nowrap gap-2">{plan && <Button type="button" variant="outline" onClick={() => setEditingPlan(true)}><Pencil/>Edit plan</Button>}{conversation && <Button type="button" variant="outline" aria-expanded={conversationOpen} onClick={() => setConversationOpen((open) => !open)}><MessageSquare/>{conversationOpen ? "Hide conversation" : "Show conversation"}</Button>}</div></div></CardHeader><CardContent className="flex flex-col gap-3">{deadlineViolationIds.size > 0 && <p role="alert" className="rounded-lg border border-destructive bg-destructive/10 p-3 text-sm text-destructive">{deadlineViolationIds.size} {deadlineViolationIds.size === 1 ? "task exceeds" : "tasks exceed"} the contract delivery deadline. Shorten the estimate or move the due date to on or before {deadline} to continue.</p>}{plan ? <div className="flex h-[min(66dvh,720px)] min-h-[420px] shrink-0 flex-col gap-3"><div className="shrink-0 space-y-2"><h3 className="font-semibold">{plan.name}</h3><p className="text-sm text-muted-foreground">{plan.description || "No plan description."}</p></div><div className="min-h-0 flex-1 overflow-auto"><PlanColumns value={plan} fit invalidTaskIds={deadlineViolationIds}/></div></div> : <div className="rounded-xl border border-dashed p-12 text-center"><FileText className="mx-auto size-8 text-muted-foreground"/><h3 className="mt-3 font-medium">No attached work plan</h3><p className="mx-auto mt-1 max-w-lg text-sm text-muted-foreground">This application does not include a freelancer-submitted plan. A different saved plan cannot be selected here.</p></div>}{error && <p role="alert" className="text-sm text-destructive">{error}</p>}<div className="flex shrink-0 flex-col-reverse justify-between gap-2 sm:flex-row"><Button type="button" variant="outline" onClick={() => { setError(""); setStep(0); }}>Back to contract details</Button><div className="flex justify-end gap-2"><Button type="button" variant="outline" disabled={!draftReady || draftSaving} onClick={() => void saveDraftNotice()}>{draftSaving ? "Savingâ€¦" : "Save draft"}</Button><Button type="button" disabled={!plan || deadlineViolationIds.size > 0} onClick={() => { setError(""); setEditingPlan(false); setStep(isMilestoneProject ? milestoneStep : reviewStep); }}>{isMilestoneProject ? "Continue to milestone plan" : "Continue to review"} <ArrowRight/></Button></div></div></CardContent></Card>{plan && <Dialog open={editingPlan} onOpenChange={setEditingPlan}><DialogContent className="flex h-[96dvh] max-h-[96dvh] w-[98vw] max-w-[98vw] flex-col gap-3 overflow-hidden p-4 sm:max-w-[98vw]"><DialogHeader className="shrink-0"><DialogTitle>Edit project plan</DialogTitle><DialogDescription>Update the plan name, description, stages, and tasks for this contract proposal.</DialogDescription></DialogHeader><div className="flex min-h-0 flex-1"><PlanEditor value={plan} startDate={startDate} deadline={deadline} invalidTaskIds={deadlineViolationIds} onUpdateColumn={updatePlanColumn} onUpdateTask={updateTask} onMoveTask={movePlanTask} onUpdateDetails={(patch) => setPlan((current) => current ? { ...current, ...patch } : current)} /></div><DialogFooter className="shrink-0"><Button type="button" onClick={() => setEditingPlan(false)}>Done editing</Button></DialogFooter></DialogContent></Dialog>}{conversation && <ProjectChatPanel {...conversation} className={`${conversationOpen ? "h-[min(92dvh,1000px)] min-h-[480px]" : "hidden"}`} />}</div>}
+    {step === 1 && <div className={conversation && conversationOpen ? "grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(280px,0.75fr)] xl:items-stretch" : ""}>
+      <Card className="flex flex-col border-border/80 bg-card/70">
+        <CardHeader className="flex flex-wrap items-start justify-between gap-3 sm:flex-row">
+          <div>
+            <CardTitle>Plan the Work</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">Attach a saved plan or review the freelancer&apos;s submitted plan. Both participants must confirm the same version.</p>
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            <Badge variant="outline">{planSource}</Badge>
+            <div className="flex flex-nowrap gap-2">
+              {plan && <Button type="button" variant="outline" onClick={() => setEditingPlan(true)}><Pencil/>Edit plan board</Button>}
+              {conversation && <Button type="button" variant="outline" aria-expanded={conversationOpen} onClick={() => setConversationOpen((open) => !open)}><MessageSquare/>{conversationOpen ? "Hide conversation" : "Show conversation"}</Button>}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          {deadlineViolationIds.size > 0 && <p role="alert" className="rounded-lg border border-destructive bg-destructive/10 p-3 text-sm text-destructive">{deadlineViolationIds.size} {deadlineViolationIds.size === 1 ? "task exceeds" : "tasks exceed"} the contract delivery deadline. Shorten the estimate or move the due date to on or before {deadline} to continue.</p>}
+          <ProjectPlanProposalAttachment
+            value={plan}
+            showAttachedEditor={false}
+            onChange={(next) => { setPlan(normalizeWizardPlan(next)); setError(""); }}
+          />
+          {plan ? (
+            <div className="flex h-[min(66dvh,720px)] min-h-[420px] shrink-0 flex-col gap-3">
+              <div className="shrink-0 space-y-2">
+                <h3 className="font-semibold">{plan.name}</h3>
+                <p className="text-sm text-muted-foreground">{plan.description || "No plan description."}</p>
+              </div>
+              <div className="min-h-0 flex-1 overflow-auto"><PlanColumns value={plan} fit invalidTaskIds={deadlineViolationIds}/></div>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed p-8 text-center">
+              <FileText className="mx-auto size-8 text-muted-foreground"/>
+              <h3 className="mt-3 font-medium">No attached work plan</h3>
+              <p className="mx-auto mt-1 max-w-lg text-sm text-muted-foreground">Choose a saved plan above or ask the freelancer to attach one before continuing.</p>
+            </div>
+          )}
+          {displayedPlanChanges.length > 0 && (
+            <section aria-label="Changes to the work plan" className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-semibold">Changes to the work plan</h3>
+                {workPlanMatches && workPlanAgreementStatus?.changedBy && <Badge variant="outline">Changed by {workPlanAgreementStatus.changedBy === "client" ? clientLabel : freelancerLabel}</Badge>}
+              </div>
+              <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+                {displayedPlanChanges.map((change, index) => <li key={`${index}-${change}`}>{change}</li>)}
+              </ul>
+            </section>
+          )}
+          <section aria-label="Work plan confirmation status" className="space-y-3 rounded-xl border p-4">
+            <div>
+              <h3 className="font-semibold">Work plan confirmation</h3>
+              <p className="mt-1 text-sm text-muted-foreground">Both participants must agree to the same saved work plan before continuing.</p>
+            </div>
+            {workPlanAgreementStatus?.error && <p role="alert" className="text-sm text-destructive">Work plan confirmation is unavailable: {workPlanAgreementStatus.error}</p>}
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="flex items-center justify-between gap-3 rounded-lg bg-muted/30 px-3 py-2 text-sm"><span>{clientLabel}</span><Badge variant={clientWorkPlanAgreed ? "secondary" : "outline"}>{clientWorkPlanAgreed ? "Agreed" : "Pending"}</Badge></div>
+              <div className="flex items-center justify-between gap-3 rounded-lg bg-muted/30 px-3 py-2 text-sm"><span>{freelancerLabel}</span><Badge variant={freelancerWorkPlanAgreed ? "secondary" : "outline"}>{freelancerWorkPlanAgreed ? "Agreed" : "Pending"}</Badge></div>
+            </div>
+            {plan && !workPlanMatches && <p className="text-xs text-amber-700 dark:text-amber-300">Save these changes first. Both participants will need to confirm the updated version.</p>}
+            {workPlanMatches && workPlanAgreementStatus?.changedBy && !bothWorkPlanPartiesAgreed && <p className="text-xs text-amber-700 dark:text-amber-300">The plan was changed by {workPlanAgreementStatus.changedBy === "client" ? clientLabel : freelancerLabel}. Both participants must confirm this version again.</p>}
+            <Button type="button" className="w-full sm:w-auto" disabled={!plan || !workPlanAgreementStatus || Boolean(workPlanAgreementStatus.error) || workPlanAgreementStatus.updating || !draftReady || currentPartyWorkPlanAgreed} onClick={() => void agreeToWorkPlan()}>
+              {workPlanAgreementStatus?.updating ? "Saving confirmation…" : !workPlanMatches ? "Save plan changes" : currentPartyWorkPlanAgreed ? "Agreed to work plan" : "Agree to work plan"}
+            </Button>
+          </section>
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+          <div className="flex shrink-0 flex-col-reverse justify-between gap-2 border-t pt-3 sm:flex-row">
+            <Button type="button" variant="outline" onClick={() => { setError(""); setStep(0); }}>Back to contract details</Button>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" disabled={!draftReady || draftSaving} onClick={() => void saveDraftNotice()}>{draftSaving ? "Saving…" : "Save draft"}</Button>
+              <Button type="button" disabled={!bothWorkPlanPartiesAgreed || !plan || deadlineViolationIds.size > 0} onClick={() => { setError(""); setEditingPlan(false); setStep(isMilestoneProject ? milestoneStep : reviewStep); }}>{isMilestoneProject ? "Continue to milestone plan" : "Continue to review"} <ArrowRight/></Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+      {plan && <Dialog open={editingPlan} onOpenChange={setEditingPlan}><DialogContent className="flex h-[96dvh] max-h-[96dvh] w-[98vw] max-w-[98vw] flex-col gap-3 overflow-hidden p-4 sm:max-w-[98vw]"><DialogHeader className="shrink-0"><DialogTitle>Edit project plan</DialogTitle><DialogDescription>Update the plan name, description, stages, tasks, estimates, and milestones for this contract proposal.</DialogDescription></DialogHeader><div className="flex min-h-0 flex-1"><PlanEditor value={plan} startDate={startDate} deadline={deadline} invalidTaskIds={deadlineViolationIds} onUpdateColumn={updatePlanColumn} onUpdateTask={updateTask} onMoveTask={movePlanTask} onUpdateDetails={(patch) => setPlan((current) => current ? { ...current, ...patch } : current)} /></div><DialogFooter className="shrink-0"><Button type="button" onClick={() => setEditingPlan(false)}>Done editing</Button></DialogFooter></DialogContent></Dialog>}
+      {conversation && <ProjectChatPanel {...conversation} className={`${conversationOpen ? "h-[min(92dvh,1000px)] min-h-[480px]" : "hidden"}`} />}
+    </div>}
 
     {step === milestoneStep && isMilestoneProject && <div className={conversation && conversationOpen ? "grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(280px,0.75fr)] xl:items-stretch" : ""}>
       <MilestonePlanAgreementSection projectType={initial.projectType} status={milestoneAgreementStatus} budget={Number(budget)} deadline={deadline} milestones={milestones} tasks={milestoneTasks} clientAgreed={clientMilestoneAgreed} freelancerAgreed={freelancerMilestoneAgreed} currentParty={milestoneAgreementStatus?.currentParty ?? basicAgreementStatus?.currentParty ?? "client"} clientLabel={clientLabel} freelancerLabel={freelancerLabel} updating={openingAgreement || Boolean(milestoneAgreementStatus?.updating)} reviewed={milestoneReviewed} onReviewedChange={setMilestoneReviewed} onRequestRevision={() => { setMilestoneRevisionMode(true); setMilestonePlanDirty(true); setMilestoneReviewed(false); }} onChange={(next) => { setMilestones(next); setMilestonePlanDirty(true); setMilestoneReviewed(false); }} onAgree={() => void agreeToMilestonePlan()} headerAction={conversation ? <Button type="button" variant="outline" aria-expanded={conversationOpen} onClick={() => setConversationOpen((open) => !open)}><MessageSquare/>{conversationOpen ? "Hide conversation" : "Show conversation"}</Button> : null} navigation={<div className="flex flex-col-reverse justify-between gap-2 border-t pt-4 sm:flex-row"><Button type="button" variant="outline" onClick={() => { setError(""); setStep(1); }}>Back to Plan the Work</Button><Button type="button" disabled={!bothMilestonePartiesAgreed || deadlineViolationIds.size > 0 || milestones.length === 0 || !milestoneBudgetMatches} onClick={() => { setError(""); setStep(reviewStep); }}>Continue to review <ArrowRight/></Button></div>} />
       {conversation && <ProjectChatPanel {...conversation} className={`${conversationOpen ? "h-[min(92dvh,1000px)] min-h-[480px]" : "hidden"}`} />}
     </div>}
 
-    {step === reviewStep && <Card className="border-border/80 bg-card/70"><CardHeader><CardTitle>Review & Agreement</CardTitle><p className="text-sm text-muted-foreground">Review the prepared details and plan before final confirmation.</p></CardHeader><CardContent className="space-y-5"><section className="rounded-xl border p-4"><h2 className="text-lg font-semibold">{title}</h2><p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{description}</p><div className="mt-4 grid gap-3 border-t pt-4 sm:grid-cols-4"><InlineSummaryRow label="Budget" value={`PHP ${Number(budget).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`}/><InlineSummaryRow label="Included revisions" value={revisions}/><InlineSummaryRow label="Project start" value={new Date(`${startDate}T00:00:00`).toLocaleDateString()}/><InlineSummaryRow label="Delivery deadline" value={new Date(`${deadline}T00:00:00`).toLocaleDateString()}/></div>{contractDocument && <div className="mt-4 flex items-center gap-2 border-t pt-4 text-sm"><Paperclip className="size-4 text-muted-foreground"/><span>{contractDocument.name}</span><span className="text-xs text-muted-foreground">Will be sent in the agreement conversation for review; it is not automatically part of the signed terms.</span></div>}</section>{initial.projectType === "milestone" && <section className="rounded-xl border p-4"><h2 className="font-semibold">Agreed milestone schedule</h2><div className="mt-3 space-y-2">{milestones.map((milestone, index) => <div key={milestone.id} className="flex flex-wrap justify-between gap-2 border-t pt-2 text-sm"><span>{index + 1}. {milestone.title}</span><span className="text-muted-foreground">PHP {milestone.amount.toLocaleString("en-PH", { minimumFractionDigits: 2 })} · Due {milestone.dueDate}</span></div>)}</div><p className="mt-3 border-t pt-3 text-sm font-medium">Total: PHP {milestoneTotal.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</p></section>}{plan && <Card className="border-border/80 bg-card/50"><CardHeader className="pb-3"><CardTitle className="text-base">{plan.name}</CardTitle>{plan.description && <p className="whitespace-pre-wrap text-sm text-muted-foreground">{plan.description}</p>}</CardHeader><CardContent className="pt-0"><PlanColumns value={plan} fit invalidTaskIds={deadlineViolationIds}/></CardContent></Card>}{error && <p role="alert" className="text-sm text-destructive">{error}</p>}{(agreementStatus || basicAgreementStatus || initial.projectType === "milestone") && <section aria-label="Party agreement status" className="space-y-3 rounded-xl border p-4"><h2 className="font-semibold">Final contract confirmation</h2><div className="grid gap-2 sm:grid-cols-2"><div className="flex items-center justify-between gap-3 rounded-lg bg-muted/30 px-3 py-2 text-sm"><span>{clientLabel}</span><Badge variant={agreementStatus?.clientAgreed ? "secondary" : "outline"}>{agreementStatus?.clientAgreed ? "Agreed" : "Pending"}</Badge></div><div className="flex items-center justify-between gap-3 rounded-lg bg-muted/30 px-3 py-2 text-sm"><span>{freelancerLabel}</span><Badge variant={agreementStatus?.freelancerAgreed ? "secondary" : "outline"}>{agreementStatus?.freelancerAgreed ? "Agreed" : "Pending"}</Badge></div></div><p className="text-xs text-muted-foreground">The project becomes Active after both parties confirm the final contract.</p></section>}<div className="flex flex-col-reverse justify-between gap-2 sm:flex-row"><Button type="button" variant="outline" onClick={() => setStep(isMilestoneProject ? milestoneStep : 1)}>{isMilestoneProject ? "Back to Milestone Plan" : "Back to Plan the Work"}</Button><Button type="button" disabled={busy || openingAgreement || deadlineViolationIds.size > 0} onClick={() => { setTermsPolicyAccepted(false); setAgreementReviewed(false); setWillVerifySavedTerms(false); setFinalConfirmationOpen(true); }}>Final confirmation</Button></div></CardContent></Card>}
+    {step === reviewStep && <Card className="border-border/80 bg-card/70"><CardHeader><CardTitle>Review & Agreement</CardTitle><p className="text-sm text-muted-foreground">Review the prepared details and plan before final confirmation.</p></CardHeader><CardContent className="space-y-5"><section className="rounded-xl border p-4"><h2 className="text-lg font-semibold">{title}</h2><p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{description}</p><div className="mt-4 grid gap-3 border-t pt-4 sm:grid-cols-4"><InlineSummaryRow label="Budget" value={`PHP ${Number(budget).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`}/><InlineSummaryRow label="Included revisions" value={revisions}/><InlineSummaryRow label="Project start" value={new Date(`${startDate}T00:00:00`).toLocaleDateString()}/><InlineSummaryRow label="Delivery deadline" value={new Date(`${deadline}T00:00:00`).toLocaleDateString()}/></div>{contractDocument && <div className="mt-4 flex items-center gap-2 border-t pt-4 text-sm"><Paperclip className="size-4 text-muted-foreground"/><span>{contractDocument.name}</span><span className="text-xs text-muted-foreground">Will be sent in the agreement conversation for review; it is not automatically part of the signed terms.</span></div>}</section>{initial.projectType === "milestone" && <section className="rounded-xl border p-4"><h2 className="font-semibold">Agreed milestone schedule</h2><div className="mt-3 space-y-2">{milestones.map((milestone, index) => <div key={milestone.id} className="flex flex-wrap justify-between gap-2 border-t pt-2 text-sm"><span>{index + 1}. {milestone.title}</span><span className="text-muted-foreground">PHP {milestone.amount.toLocaleString("en-PH", { minimumFractionDigits: 2 })} Â· Due {milestone.dueDate}</span></div>)}</div><p className="mt-3 border-t pt-3 text-sm font-medium">Total: PHP {milestoneTotal.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</p></section>}{plan && <Card className="border-border/80 bg-card/50"><CardHeader className="pb-3"><CardTitle className="text-base">{plan.name}</CardTitle>{plan.description && <p className="whitespace-pre-wrap text-sm text-muted-foreground">{plan.description}</p>}</CardHeader><CardContent className="pt-0"><PlanColumns value={plan} fit invalidTaskIds={deadlineViolationIds}/></CardContent></Card>}{error && <p role="alert" className="text-sm text-destructive">{error}</p>}{(agreementStatus || basicAgreementStatus || initial.projectType === "milestone") && <section aria-label="Party agreement status" className="space-y-3 rounded-xl border p-4"><h2 className="font-semibold">Final contract confirmation</h2><div className="grid gap-2 sm:grid-cols-2"><div className="flex items-center justify-between gap-3 rounded-lg bg-muted/30 px-3 py-2 text-sm"><span>{clientLabel}</span><Badge variant={agreementStatus?.clientAgreed ? "secondary" : "outline"}>{agreementStatus?.clientAgreed ? "Agreed" : "Pending"}</Badge></div><div className="flex items-center justify-between gap-3 rounded-lg bg-muted/30 px-3 py-2 text-sm"><span>{freelancerLabel}</span><Badge variant={agreementStatus?.freelancerAgreed ? "secondary" : "outline"}>{agreementStatus?.freelancerAgreed ? "Agreed" : "Pending"}</Badge></div></div><p className="text-xs text-muted-foreground">The project becomes Active after both parties confirm the final contract.</p></section>}<div className="flex flex-col-reverse justify-between gap-2 sm:flex-row"><Button type="button" variant="outline" onClick={() => setStep(isMilestoneProject ? milestoneStep : 1)}>{isMilestoneProject ? "Back to Milestone Plan" : "Back to Plan the Work"}</Button><Button type="button" disabled={busy || openingAgreement || deadlineViolationIds.size > 0} onClick={() => { setTermsPolicyAccepted(false); setAgreementReviewed(false); setWillVerifySavedTerms(false); setFinalConfirmationOpen(true); }}>Final confirmation</Button></div></CardContent></Card>}
 
-    {step === reviewStep && <Dialog open={finalConfirmationOpen} onOpenChange={(open) => { setFinalConfirmationOpen(open); if (!open) { setTermsPolicyAccepted(false); setAgreementReviewed(false); setWillVerifySavedTerms(false); } }}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl"><DialogHeader><DialogTitle>{onAgree ? agreementStatus?.isNew ? "Review and agree to contract" : "Confirm contract agreement" : "Final proposal confirmation"}</DialogTitle><DialogDescription>{onAgree ? agreementStatus?.isNew ? "Review the proposed terms. Agreeing will create the contract and record your confirmation." : "Review the saved contract terms and confirm your agreement." : "Review the project terms and plan before continuing to the existing contract view."}</DialogDescription></DialogHeader><section className="rounded-lg border p-4"><ul className="space-y-2 text-sm"><li><span className="font-semibold">Project name:</span> {title}</li><li><span className="font-semibold">Description:</span> <span className="line-clamp-2 text-muted-foreground">{description}</span></li><li><span className="font-semibold">Budget:</span> PHP {Number(budget).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</li><li><span className="font-semibold">Included revisions:</span> {revisions}</li><li><span className="font-semibold">Project start:</span> {new Date(`${startDate}T00:00:00`).toLocaleDateString()}</li><li><span className="font-semibold">Delivery deadline:</span> {new Date(`${deadline}T00:00:00`).toLocaleDateString()}</li>{contractDocument && <li><span className="font-semibold">Custom contract (optional):</span> {contractDocument.name}</li>}</ul></section>{initial.projectType === "milestone" && <section className="rounded-lg border p-4"><h3 className="font-semibold">Agreed milestone schedule</h3><ul className="mt-2 space-y-2 text-sm">{milestones.map((milestone, index) => <li key={milestone.id} className="flex flex-wrap justify-between gap-2 border-t pt-2"><span>{index + 1}. {milestone.title}</span><span>PHP {milestone.amount.toLocaleString("en-PH", { minimumFractionDigits: 2 })} · {milestone.dueDate}</span></li>)}</ul><p className="mt-2 text-right text-sm font-semibold">Total: PHP {milestoneTotal.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</p></section>}{plan && <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3"><div className="min-w-0"><h3 className="truncate text-sm font-medium">{plan.name}</h3><p className="text-xs text-muted-foreground">{plan.content.columns.length} stages Â· {plan.content.columns.reduce((count, column) => count + column.tasks.length, 0)} tasks</p></div><Button type="button" size="sm" variant="outline" className="shrink-0" onClick={() => setPlanPreviewOpen(true)}><Eye/>View full plan</Button></section>}<section className="space-y-3 rounded-lg border p-4"><h3 className="font-semibold">Terms and agreement</h3><div className="flex items-start gap-3 text-sm"><Checkbox id="worksync-terms-policy" checked={termsPolicyAccepted} onCheckedChange={(checked) => setTermsPolicyAccepted(checked === true)} aria-label="I agree to WorkSync contract terms and have read the contract privacy notice" className="mt-0.5 size-5"/><div className="leading-6"><label htmlFor="worksync-terms-policy">I agree to WorkSync&#39;s</label> <button type="button" className="cursor-pointer underline underline-offset-2 hover:text-foreground" onClick={() => { setLegalDocument("terms"); setLegalDialogOpen(true); }}>Contract Terms</button> and <button type="button" className="cursor-pointer underline underline-offset-2 hover:text-foreground" onClick={() => { setLegalDocument("privacy"); setLegalDialogOpen(true); }}>Contract Privacy Notice</button>.</div></div><label className="flex cursor-pointer items-start gap-3 text-sm"><Checkbox checked={agreementReviewed} onCheckedChange={(checked) => setAgreementReviewed(checked === true)} aria-label="Confirm that I reviewed the agreement terms above" className="mt-0.5 size-5"/><span>I confirm that I have reviewed the agreement terms above.</span></label><label className="flex cursor-pointer items-start gap-3 text-sm"><Checkbox checked={willVerifySavedTerms} onCheckedChange={(checked) => setWillVerifySavedTerms(checked === true)} aria-label="Confirm that I will verify the saved contract terms before signing" className="mt-0.5 size-5"/><span>I will verify the saved contract terms before signing.</span></label></section>{error && <p role="alert" className="text-sm text-destructive">{error}</p>}<DialogFooter><Button type="button" disabled={currentPartyContractAgreed ? busy || openingAgreement || agreementStatus?.updating : !(termsPolicyAccepted && agreementReviewed && willVerifySavedTerms) || busy || openingAgreement || agreementStatus?.updating} onClick={() => { if (currentPartyContractAgreed) { setFinalConfirmationOpen(false); setTermsPolicyAccepted(false); setAgreementReviewed(false); setWillVerifySavedTerms(false); return; } void (onAgree ? agreeToContract() : openAgreementFlow()).then((opened) => { if (opened) setFinalConfirmationOpen(false); }); }}>{busy || openingAgreement || agreementStatus?.updating ? "Saving agreement…" : currentPartyContractAgreed ? "Close" : onAgree ? agreementStatus?.isNew ? "Agree and create contract" : "Agree to contract" : "Continue to contract view"}</Button></DialogFooter></DialogContent></Dialog>}<WorkSyncLegalDialog open={legalDialogOpen} onOpenChange={setLegalDialogOpen} document={legalDocument} onDocumentChange={setLegalDocument} context="contract"/>{plan && <ProjectPlanSnapshotPreview plan={plan} open={planPreviewOpen} onOpenChange={setPlanPreviewOpen}/> }
+    {step === reviewStep && <Dialog open={finalConfirmationOpen} onOpenChange={(open) => { setFinalConfirmationOpen(open); if (!open) { setTermsPolicyAccepted(false); setAgreementReviewed(false); setWillVerifySavedTerms(false); } }}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl"><DialogHeader><DialogTitle>{onAgree ? agreementStatus?.isNew ? "Review and agree to contract" : "Confirm contract agreement" : "Final proposal confirmation"}</DialogTitle><DialogDescription>{onAgree ? agreementStatus?.isNew ? "Review the proposed terms. Agreeing will create the contract and record your confirmation." : "Review the saved contract terms and confirm your agreement." : "Review the project terms and plan before continuing to the existing contract view."}</DialogDescription></DialogHeader><section className="rounded-lg border p-4"><ul className="space-y-2 text-sm"><li><span className="font-semibold">Project name:</span> {title}</li><li><span className="font-semibold">Description:</span> <span className="line-clamp-2 text-muted-foreground">{description}</span></li><li><span className="font-semibold">Budget:</span> PHP {Number(budget).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</li><li><span className="font-semibold">Included revisions:</span> {revisions}</li><li><span className="font-semibold">Project start:</span> {new Date(`${startDate}T00:00:00`).toLocaleDateString()}</li><li><span className="font-semibold">Delivery deadline:</span> {new Date(`${deadline}T00:00:00`).toLocaleDateString()}</li>{contractDocument && <li><span className="font-semibold">Custom contract (optional):</span> {contractDocument.name}</li>}</ul></section>{initial.projectType === "milestone" && <section className="rounded-lg border p-4"><h3 className="font-semibold">Agreed milestone schedule</h3><ul className="mt-2 space-y-2 text-sm">{milestones.map((milestone, index) => <li key={milestone.id} className="flex flex-wrap justify-between gap-2 border-t pt-2"><span>{index + 1}. {milestone.title}</span><span>PHP {milestone.amount.toLocaleString("en-PH", { minimumFractionDigits: 2 })} Â· {milestone.dueDate}</span></li>)}</ul><p className="mt-2 text-right text-sm font-semibold">Total: PHP {milestoneTotal.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</p></section>}{plan && <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3"><div className="min-w-0"><h3 className="truncate text-sm font-medium">{plan.name}</h3><p className="text-xs text-muted-foreground">{plan.content.columns.length} stages Ã‚Â· {plan.content.columns.reduce((count, column) => count + column.tasks.length, 0)} tasks</p></div><Button type="button" size="sm" variant="outline" className="shrink-0" onClick={() => setPlanPreviewOpen(true)}><Eye/>View full plan</Button></section>}<section className="space-y-3 rounded-lg border p-4"><h3 className="font-semibold">Terms and agreement</h3><div className="flex items-start gap-3 text-sm"><Checkbox id="worksync-terms-policy" checked={termsPolicyAccepted} onCheckedChange={(checked) => setTermsPolicyAccepted(checked === true)} aria-label="I agree to WorkSync contract terms and have read the contract privacy notice" className="mt-0.5 size-5"/><div className="leading-6"><label htmlFor="worksync-terms-policy">I agree to WorkSync&#39;s</label> <button type="button" className="cursor-pointer underline underline-offset-2 hover:text-foreground" onClick={() => { setLegalDocument("terms"); setLegalDialogOpen(true); }}>Contract Terms</button> and <button type="button" className="cursor-pointer underline underline-offset-2 hover:text-foreground" onClick={() => { setLegalDocument("privacy"); setLegalDialogOpen(true); }}>Contract Privacy Notice</button>.</div></div><label className="flex cursor-pointer items-start gap-3 text-sm"><Checkbox checked={agreementReviewed} onCheckedChange={(checked) => setAgreementReviewed(checked === true)} aria-label="Confirm that I reviewed the agreement terms above" className="mt-0.5 size-5"/><span>I confirm that I have reviewed the agreement terms above.</span></label><label className="flex cursor-pointer items-start gap-3 text-sm"><Checkbox checked={willVerifySavedTerms} onCheckedChange={(checked) => setWillVerifySavedTerms(checked === true)} aria-label="Confirm that I will verify the saved contract terms before signing" className="mt-0.5 size-5"/><span>I will verify the saved contract terms before signing.</span></label></section>{error && <p role="alert" className="text-sm text-destructive">{error}</p>}<DialogFooter><Button type="button" disabled={currentPartyContractAgreed ? busy || openingAgreement || agreementStatus?.updating : !(termsPolicyAccepted && agreementReviewed && willVerifySavedTerms) || busy || openingAgreement || agreementStatus?.updating} onClick={() => { if (currentPartyContractAgreed) { setFinalConfirmationOpen(false); setTermsPolicyAccepted(false); setAgreementReviewed(false); setWillVerifySavedTerms(false); return; } void (onAgree ? agreeToContract() : openAgreementFlow()).then((opened) => { if (opened) setFinalConfirmationOpen(false); }); }}>{busy || openingAgreement || agreementStatus?.updating ? "Saving agreementâ€¦" : currentPartyContractAgreed ? "Close" : onAgree ? agreementStatus?.isNew ? "Agree and create contract" : "Agree to contract" : "Continue to contract view"}</Button></DialogFooter></DialogContent></Dialog>}<WorkSyncLegalDialog open={legalDialogOpen} onOpenChange={setLegalDialogOpen} document={legalDocument} onDocumentChange={setLegalDocument} context="contract"/>{plan && <ProjectPlanSnapshotPreview plan={plan} open={planPreviewOpen} onOpenChange={setPlanPreviewOpen}/> }
 
   </main>;
 }
@@ -915,7 +1144,7 @@ function MilestonePlanAgreementSection({ projectType, status, budget, deadline, 
       {headerAction}
     </div>
     {tasks.length === 0 ? <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Add tasks to the freelancer&#39;s plan before creating milestones.</p> : <div className="grid gap-2 rounded-lg border bg-card/60 p-2 sm:grid-cols-[minmax(0,1.5fr)_minmax(180px,1fr)] sm:items-start">
-      <Field compact id="milestone-new-task" label="Milestone task (optional)"><select id="milestone-new-task" value={draftTaskId} disabled={updating || myApproval} onChange={(event) => setDraftTaskId(event.target.value)} className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"><option value="">Choose a plan task</option>{tasks.map((task) => <option key={task.id} value={task.id} disabled={assignedTaskIds.has(task.id)}>{task.stage} · {task.title}{assignedTaskIds.has(task.id) ? " (already assigned)" : ""}</option>)}</select></Field>
+      <Field compact id="milestone-new-task" label="Milestone task (optional)"><select id="milestone-new-task" value={draftTaskId} disabled={updating || myApproval} onChange={(event) => setDraftTaskId(event.target.value)} className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"><option value="">Choose a plan task</option>{tasks.map((task) => <option key={task.id} value={task.id} disabled={assignedTaskIds.has(task.id)}>{task.stage} Â· {task.title}{assignedTaskIds.has(task.id) ? " (already assigned)" : ""}</option>)}</select></Field>
       <Field compact id="milestone-new-amount" label="Budget amount (PHP)"><Input className="h-9" id="milestone-new-amount" type="number" min="0.01" max={draftBudgetLimit} step="0.01" value={draftAmount} disabled={updating || myApproval || draftBudgetLimit <= 0} placeholder="0.00" onChange={(event) => { const value = event.target.value === "" ? "" : Number(event.target.value); if (value === "") setDraftAmount(""); else if (Number.isFinite(value) && value > 0) setDraftAmount(String(Math.min(value, draftBudgetLimit))); }}/></Field>
     </div>}
     <div className="flex justify-end gap-2">{editingMilestoneId && <Button type="button" size="sm" variant="ghost" onClick={() => { setEditingMilestoneId(null); setDraftTaskId(""); setDraftAmount(""); }}>Cancel edit</Button>}<Button type="button" size="sm" variant="outline" disabled={!canAddMilestone} title={editingMilestone && !draftTask ? "Choose a plan task for this milestone." : draftBudgetLimit <= 0 ? "Edit a milestone and lower its budget to free funds first." : "Enter a positive amount within the available budget."} onClick={addMilestone}>{editingMilestone ? <><Check className="size-4"/>Update milestone</> : <><Plus className="size-4"/>Add milestone</>}</Button></div>
@@ -926,7 +1155,7 @@ function MilestonePlanAgreementSection({ projectType, status, budget, deadline, 
       return <div key={milestone.id} className={`flex items-center gap-3 px-3 py-3 transition-colors ${selected ? "bg-primary/5" : "hover:bg-muted/30"}`}>
         <button type="button" aria-pressed={selected} disabled={updating} onClick={beginEdit} className="flex min-w-0 flex-1 items-center gap-3 text-left">
           <span className={`size-4 shrink-0 rounded-full border ${selected ? "border-primary bg-primary" : "border-muted-foreground/50"}`} aria-hidden="true"/>
-          <span className="min-w-0"><span className="block truncate text-sm font-medium">{task ? `${task.stage} · ${task.title}` : `Milestone ${index + 1}`}</span><span className="block truncate text-xs text-muted-foreground">{task?.description || (task ? "No task description." : "Choose a task from the plan.")}</span></span>
+          <span className="min-w-0"><span className="block truncate text-sm font-medium">{task ? `${task.stage} Â· ${task.title}` : `Milestone ${index + 1}`}</span><span className="block truncate text-xs text-muted-foreground">{task?.description || (task ? "No task description." : "Choose a task from the plan.")}</span></span>
         </button>
         <span className={`shrink-0 text-right text-sm font-medium ${totalExceedsBudget ? "text-destructive" : "text-foreground"}`}>PHP {milestone.amount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
         <Button type="button" size="icon" variant="ghost" className="size-8 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={updating || myApproval} aria-label={`Remove milestone ${index + 1}`} title={`Remove milestone ${index + 1}`} onClick={() => { onChange(milestones.filter((item) => item.id !== milestone.id).map((item, itemIndex) => ({ ...item, displayOrder: itemIndex + 1 }))); if (editingMilestoneId === milestone.id) { setEditingMilestoneId(null); setDraftTaskId(""); setDraftAmount(""); } }}><X className="size-4"/></Button>

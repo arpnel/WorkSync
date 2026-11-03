@@ -258,8 +258,6 @@ export function useProjectWorkspace(serviceOrderId: string) {
   const sendMessage = async (
     message: string,
     attachment?: File,
-    onProgress?: (percent: number) => void,
-    signal?: AbortSignal,
   ) => {
     const content = message.trim();
     if ((!content && !attachment) || !workspace) return false;
@@ -295,8 +293,6 @@ export function useProjectWorkspace(serviceOrderId: string) {
         content,
         messageId,
         attachment,
-        onProgress,
-        signal,
       );
       setWorkspace((current) =>
         current?.orderId === serviceOrderId

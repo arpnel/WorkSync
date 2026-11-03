@@ -6,6 +6,8 @@ const planTaskSchema = z.object({
   description: z.string().max(1000),
   priority: z.enum(["low", "medium", "high"]),
   expectedDays: z.number().int().min(1).max(3650).optional(),
+  dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  milestoneId: z.string().min(1).max(80).nullable().optional(),
 });
 
 const planColumnSchema = z.object({

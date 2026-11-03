@@ -46,9 +46,11 @@ function taskCount(plan: ProjectPlanSnapshot) {
 export function ProjectPlanProposalAttachment({
   value,
   onChange,
+  showAttachedEditor = true,
 }: {
   value: ProjectPlanSnapshot | null;
   onChange: (plan: ProjectPlanSnapshot | null) => void;
+  showAttachedEditor?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"choose" | "selected" | "attached">(
@@ -178,7 +180,7 @@ export function ProjectPlanProposalAttachment({
             >
               <Eye /> View plan
             </Button>
-            <Button
+            {showAttachedEditor && <Button
               type="button"
               size="sm"
               variant="outline"
@@ -190,7 +192,7 @@ export function ProjectPlanProposalAttachment({
               }}
             >
               Edit plan board
-            </Button>
+            </Button>}
             <Button
               type="button"
               size="sm"

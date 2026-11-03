@@ -128,9 +128,11 @@ export default function OffersPage() {
                 <Crown className="size-4 text-primary" aria-hidden="true" />
                 Premium
               </h2>
-              <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary">
-                2 months free
-              </span>
+              {billingPeriod === "yearly" && (
+                <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary">
+                  2 months free · yearly plan
+                </span>
+              )}
             </div>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
               More room to grow, with expanded listings and powerful AI tools.

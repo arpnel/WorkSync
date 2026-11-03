@@ -1,6 +1,5 @@
 ﻿import {
   EMAIL_REGEX,
-  NAME_REGEX,
   ERROR_MESSAGES,
 } from "../../components/auth/constants";
 
@@ -49,34 +48,6 @@ export function validateEmail(
     return {
       valid: false,
       message: ERROR_MESSAGES.INVALID_EMAIL,
-    };
-  }
-
-  return {
-    valid: true,
-  };
-}
-
-
-// Name Validation (Signup Only)
-export function validateName(
-  name: string,
-  field: "First Name" | "Last Name"
-): ValidationResult {
-
-  const cleanName = name.trim();
-
-  if (!cleanName) {
-    return {
-      valid: false,
-      message: `${field} is required.`,
-    };
-  }
-
-  if (!NAME_REGEX.test(cleanName)) {
-    return {
-      valid: false,
-      message: `Please enter a valid ${field.toLowerCase()}.`,
     };
   }
 
@@ -145,26 +116,6 @@ export function validateSignupForm(
 
   if (!emailValidation.valid) {
     return emailValidation;
-  }
-
-
-  const firstNameValidation = validateName(
-    form.firstName,
-    "First Name"
-  );
-
-  if (!firstNameValidation.valid) {
-    return firstNameValidation;
-  }
-
-
-  const lastNameValidation = validateName(
-    form.lastName,
-    "Last Name"
-  );
-
-  if (!lastNameValidation.valid) {
-    return lastNameValidation;
   }
 
 

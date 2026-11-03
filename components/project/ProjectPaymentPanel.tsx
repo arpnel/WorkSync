@@ -198,7 +198,7 @@ export function PaymentPanel({
           {payment?.vatBreakdown?.status === "not_applicable" && (
             <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-xs">
               <dt className="text-muted-foreground">Freelancer service VAT</dt>
-              <dd className="text-muted-foreground">Not applicable (reviewed non-VAT status)</dd>
+              <dd className="text-muted-foreground">No service VAT recorded in this payment snapshot</dd>
             </div>
           )}
           {payment?.transactionFee != null && (

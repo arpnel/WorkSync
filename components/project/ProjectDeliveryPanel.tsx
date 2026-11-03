@@ -91,8 +91,6 @@ export function ProjectDeliveryPanel({
   const [kind, setKind] = useState<"progress" | "delivery">("delivery");
   const [milestone, setMilestone] = useState("");
   const [file, setFile] = useState<File>();
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
-  const uploadController = useRef<AbortController | null>(null);
   const [reviewing, setReviewing] = useState<{
     submission: WorkSubmission;
     action: "approve" | "revision";
@@ -360,13 +358,6 @@ export function ProjectDeliveryPanel({
                           e.preventDefault();
                           if (kind === "delivery" && pendingDelivery) return;
                           setUploadError("");
-                          const largeUpload = Boolean(
-                            file && file.size > 50 * 1024 * 1024,
-                          );
-                          uploadController.current = largeUpload
-                            ? new AbortController()
-                            : null;
-                          if (largeUpload) setUploadProgress(0);
                           void act(async () => {
                             try {
                               await submitProjectWork(
@@ -376,8 +367,6 @@ export function ProjectDeliveryPanel({
                                 link,
                                 kind,
                                 file,
-                                largeUpload ? setUploadProgress : undefined,
-                                uploadController.current?.signal,
                               );
                             } catch (cause) {
                               setUploadError(
@@ -386,9 +375,6 @@ export function ProjectDeliveryPanel({
                                   : "Unable to submit work.",
                               );
                               throw cause;
-                            } finally {
-                              setUploadProgress(null);
-                              uploadController.current = null;
                             }
                             setUploadOpen(false);
                             setBody("");
@@ -453,7 +439,7 @@ export function ProjectDeliveryPanel({
                             />
                           </label>
                           <div className="space-y-1 text-sm">
-                            <p>Attachment (max 1 GB)</p>
+                            <p>Attachment (max 50 MB)</p>
                             <FileUpload
                               file={file ?? null}
                               onFileSelect={(selected) => {
@@ -463,7 +449,7 @@ export function ProjectDeliveryPanel({
                               onFileRemove={() => setFile(undefined)}
                               onFileError={setUploadError}
                               accept="*/*"
-                              maxSizeBytes={1024 * 1024 * 1024}
+                              maxSizeBytes={50 * 1024 * 1024}
                               placeholder="Choose an attachment"
                             />
                           </div>
@@ -493,22 +479,6 @@ export function ProjectDeliveryPanel({
                             {busy ? "Saving…" : "Submit work"}
                           </Button>
                         </fieldset>
-                        {uploadProgress !== null && (
-                          <div
-                            className="flex items-center justify-between gap-3 px-1 text-sm"
-                            role="status"
-                          >
-                            <span>Uploading large file: {uploadProgress}%</span>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => uploadController.current?.abort()}
-                            >
-                              Cancel upload
-                            </Button>
-                          </div>
-                        )}
                       </form>
                     </DialogContent>
                   </Dialog>
@@ -627,8 +597,6 @@ export function ProjectDeliveryPanel({
                         size="sm"
                         onClick={() => void openProjectAttachment(
                           submission.attachment_path!,
-                          "submission",
-                          submission.submission_id,
                         ).catch((cause) => setError(cause instanceof Error ? cause.message : "Unable to open attachment."))}
                       >
                         {submission.attachment_name ?? "Open attachment"}

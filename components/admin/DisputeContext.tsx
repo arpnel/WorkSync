@@ -33,9 +33,9 @@ export default function DisputeContext({ id }: { id: string }) {
     };
   }, [id, retry]);
 
-  async function file(path: string, kind: "dispute" | "submission", recordId: string) {
+  async function file(path: string) {
     try {
-      await openProjectAttachment(path, kind, recordId);
+      await openProjectAttachment(path);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to open the attachment.");
     }
@@ -108,7 +108,7 @@ export default function DisputeContext({ id }: { id: string }) {
                 <div className="rounded-xl border p-4">
                   <h3 className="font-semibold">Dispute evidence</h3>
                   <p className="mt-1 text-sm text-muted-foreground">Open the file attached to this dispute.</p>
-                  <Button className="mt-3" variant="outline" onClick={() => void file(data.dispute.evidence_path!, "dispute", id)}>View evidence</Button>
+                  <Button className="mt-3" variant="outline" onClick={() => void file(data.dispute.evidence_path!)}>View evidence</Button>
                 </div>
               )}
               {data.dispute.resolution && (
@@ -147,7 +147,7 @@ export default function DisputeContext({ id }: { id: string }) {
                     <p className="mt-1 text-xs text-muted-foreground">{new Date(submission.created_at).toLocaleString()}</p>
                     {submission.body && <p className="mt-2 whitespace-pre-wrap break-words">{submission.body}</p>}
                     {submission.link && /^https?:\/\//i.test(submission.link) && <a className="mt-2 inline-block underline" href={submission.link} target="_blank" rel="noopener noreferrer">Submitted link</a>}
-                    {submission.attachment_path && <Button variant="link" className="h-auto p-0" onClick={() => void file(submission.attachment_path!, "submission", submission.submission_id)}>{submission.attachment_name ?? "View attachment"}</Button>}
+                    {submission.attachment_path && <Button variant="link" className="h-auto p-0" onClick={() => void file(submission.attachment_path!)}>{submission.attachment_name ?? "View attachment"}</Button>}
                   </article>
                 ))}
               </div>

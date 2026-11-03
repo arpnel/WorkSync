@@ -7,16 +7,7 @@ import {
 import { supabase } from "@/lib/supabaseClient";
 import { getActiveAccountContext } from "@/services/marketplace/AccountServices";
 import { traceProjectFlow } from "@/services/project/projectFlowDiagnostics";
-import {
-  LARGE_FILE_MAX_BYTES,
-  SUPABASE_MAX_FILE_BYTES,
-  usesR2Storage,
-} from "@/lib/storage/hybridStorage";
-import {
-  deleteUnusedLargeFile,
-  getLargeFileUrl,
-  uploadLargeFile,
-} from "@/services/storage/hybridStorageClient";
+import { SUPABASE_MAX_FILE_BYTES } from "@/lib/storage/supabaseStorage";
 import { createSignedUrlMap } from "@/services/storage/signedUrlBatch";
 import { projectPlanSnapshotSchema } from "@/services/project/projectPlanSnapshot";
 import { getPublicIdentities } from "@/services/profile/publicIdentityService";
@@ -476,7 +467,7 @@ async function currentUserId(): Promise<string> {
 }
 
 const MESSAGE_ATTACHMENTS_BUCKET = "message-attachments";
-const MAX_ATTACHMENT_SIZE = LARGE_FILE_MAX_BYTES;
+const MAX_ATTACHMENT_SIZE = SUPABASE_MAX_FILE_BYTES;
 const PROJECT_MESSAGE_PAGE_SIZE = 50;
 
 async function messageAttachmentUrls(
@@ -487,8 +478,7 @@ async function messageAttachmentUrls(
     .filter(
       (path): path is string =>
         typeof path === "string" &&
-        !/^https?:\/\//.test(path) &&
-        !path.startsWith("r2:"),
+        !/^https?:\/\//.test(path)
     );
   const signed = await createSignedUrlMap(
     supabase,
@@ -502,40 +492,10 @@ async function messageAttachmentUrls(
       const path = row.attachment_url;
       if (!path) return;
       if (/^https?:\/\//.test(path)) resolved.set(row.message_id, path);
-      else if (path.startsWith("r2:"))
-        resolved.set(row.message_id, await attachmentUrl(path, row.message_id));
       else resolved.set(row.message_id, signed.get(path) ?? null);
     }),
   );
   return resolved;
-}
-
-async function attachmentUrl(
-  value: string | null,
-  messageId?: string,
-): Promise<string | null> {
-  if (!value || /^https?:\/\//.test(value)) return value;
-  if (value.startsWith("r2:")) {
-    if (!messageId) return null;
-    try {
-      return await getLargeFileUrl("message", messageId);
-    } catch (error) {
-      console.warn(
-        "Project attachment is unavailable:",
-        error instanceof Error ? error.message : error,
-      );
-      return null;
-    }
-  }
-
-  const result = await supabase.storage
-    .from(MESSAGE_ATTACHMENTS_BUCKET)
-    .createSignedUrl(value, 60 * 60);
-  if (result.error) {
-    console.warn("Project attachment is unavailable:", result.error.message);
-    return null;
-  }
-  return result.data.signedUrl;
 }
 
 const WORKSPACE_SELECT =
@@ -924,8 +884,6 @@ export async function sendProjectMessage(
   message: string,
   messageId: string,
   attachment?: File,
-  onProgress?: (percent: number) => void,
-  signal?: AbortSignal,
 ): Promise<{
   attachmentUrl: string | null;
   attachmentType: string | null;
@@ -946,48 +904,28 @@ export async function sendProjectMessage(
   let attachmentUrl: string | null = null;
   let attachmentType: string | null = null;
   let uploadedPath: string | null = null;
-  let r2UploadId: string | null = null;
 
   if (attachment) {
-    if (attachment.size > MAX_ATTACHMENT_SIZE) {
-      throw new Error("Attachments must be 1 GB or smaller.");
-    }
-
-    if (usesR2Storage(attachment.size)) {
-      const uploaded = await uploadLargeFile(
-        attachment,
-        {
-          purpose: "message",
-          targetId: conversationId,
-        },
-        onProgress,
-        signal,
-      );
-      uploadedPath = uploaded.reference;
-      r2UploadId = uploaded.uploadId;
-      attachmentType = uploaded.contentType;
-    } else {
-      if (attachment.size > SUPABASE_MAX_FILE_BYTES)
-        throw new Error("Attachments must be 50 MB or smaller.");
-      const safeName = attachment.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const filePath = `${senderId}/${conversationId}/${messageId}-${safeName}`;
-      const upload = await supabase.storage
+    if (attachment.size > MAX_ATTACHMENT_SIZE)
+      throw new Error("Attachments must be 50 MB or smaller.");
+    const safeName = attachment.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const filePath = `${senderId}/${conversationId}/${messageId}-${safeName}`;
+    const upload = await supabase.storage
+      .from(MESSAGE_ATTACHMENTS_BUCKET)
+      .upload(filePath, attachment, { upsert: false });
+    if (upload.error) throw new Error(upload.error.message);
+    uploadedPath = filePath;
+    const signedUrl = await supabase.storage
+      .from(MESSAGE_ATTACHMENTS_BUCKET)
+      .createSignedUrl(filePath, 60 * 60);
+    if (signedUrl.error) {
+      await supabase.storage
         .from(MESSAGE_ATTACHMENTS_BUCKET)
-        .upload(filePath, attachment, { upsert: false });
-      if (upload.error) throw new Error(upload.error.message);
-      uploadedPath = filePath;
-      const signedUrl = await supabase.storage
-        .from(MESSAGE_ATTACHMENTS_BUCKET)
-        .createSignedUrl(filePath, 60 * 60);
-      if (signedUrl.error) {
-        await supabase.storage
-          .from(MESSAGE_ATTACHMENTS_BUCKET)
-          .remove([filePath]);
-        throw new Error(signedUrl.error.message);
-      }
-      attachmentUrl = signedUrl.data.signedUrl;
-      attachmentType = attachment.type || "application/octet-stream";
+        .remove([filePath]);
+      throw new Error(signedUrl.error.message);
     }
+    attachmentUrl = signedUrl.data.signedUrl;
+    attachmentType = attachment.type || "application/octet-stream";
   }
 
   const { error: messageError } = await supabase.from("messages").insert({
@@ -999,22 +937,12 @@ export async function sendProjectMessage(
     attachment_type: attachmentType,
   });
   if (messageError) {
-    if (r2UploadId) {
-      await deleteUnusedLargeFile(r2UploadId).catch(() => undefined);
-    } else if (uploadedPath) {
+    if (uploadedPath) {
       await supabase.storage
         .from(MESSAGE_ATTACHMENTS_BUCKET)
         .remove([uploadedPath]);
     }
     throw new Error(messageError.message);
-  }
-
-  if (r2UploadId) {
-    try {
-      attachmentUrl = await getLargeFileUrl("message", messageId);
-    } catch {
-      attachmentUrl = null;
-    }
   }
 
   return { attachmentUrl, attachmentType, conversationId };

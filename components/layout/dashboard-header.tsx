@@ -42,6 +42,7 @@ import {
 import type { Profile } from "@/types/profile/profile";
 import { getCurrentProfile } from "@/services/profile/profileservice";
 import { NotificationOverview } from "@/components/notifications/NotificationOverview";
+import { AuthLoadingScreen } from "@/components/auth/AuthLoadingScreen";
 import { logout } from "@/services/auth/signinService";
 import { toast } from "sonner";
 import { usePremiumStatus } from "@/hooks/usePremiumStatus";
@@ -334,6 +335,9 @@ export function DashboardHeader() {
 
   return (
     <>
+      {switchingRole && (
+        <AuthLoadingScreen message="Switching account role..." />
+      )}
       {loggingOut && (
         <div
           className="fixed inset-0 z-[1000] flex items-center justify-center bg-background/75 p-4 text-foreground"

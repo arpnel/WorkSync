@@ -112,8 +112,9 @@ export default function MarketplaceServiceDetails({
     async function loadSkills() {
       try {
         const links = await supabase
-          .from("service_skills")
+          .from("listing_skills")
           .select("skill_id")
+          .eq("listing_type", "service")
           .eq("service_id", serviceId);
         if (links.error) throw links.error;
         const ids = [...new Set((links.data ?? []).map((row) => row.skill_id))];

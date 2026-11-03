@@ -10,7 +10,7 @@ export default function GuestSignup({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-sm">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
         <DialogTitle className="sr-only">Create an account</DialogTitle>
         <SignupDialog />
       </DialogContent>

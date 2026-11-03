@@ -4,8 +4,6 @@
 
 export const MIN_PASSWORD_LENGTH = 8;
 
-export const MAX_NAME_LENGTH = 50;
-
 export const POPUP_DURATION = 2500;
 
 export const DEFAULT_ROLE = "client";
@@ -17,10 +15,6 @@ export const DEFAULT_ROLE = "client";
 
 export const EMAIL_REGEX =
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-export const NAME_REGEX =
-  /^[A-Za-zÀ-ÿ' -]{2,50}$/;
-
 
 /**
  * Success Messages

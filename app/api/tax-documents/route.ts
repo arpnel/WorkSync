@@ -74,22 +74,22 @@ export async function POST(request: Request) {
       if (existing.data?.[0]?.status === "pending") throw new PaymentError("Your Form 2303 is already awaiting review.", 409);
       if (existing.data?.length === 2 && existing.data[0].submitted_at === existing.data[1].submitted_at) throw new PaymentError("An administrator must resolve the existing Form 2303 review before you submit another copy.", 409);
     }
-    const ticket = await db.from("tax_document_upload_tickets").select("document_path").eq("document_path", path).eq("user_id", user.id).gt("expires_at", new Date().toISOString()).maybeSingle();
+    const ticket = await db.from("upload_tickets").select("path").eq("ticket_type", "tax_document").eq("path", path).eq("user_id", user.id).gt("expires_at", new Date().toISOString()).maybeSingle();
     if (ticket.error || !ticket.data) throw new PaymentError("This upload session expired. Start the document upload again.", 403);
     const { data: file, error: fileError } = await db.storage.from("verification-documents").download(path);
     if (fileError || !file) throw new PaymentError("Upload the selected file before submitting it for review.", 400);
     const bytes = new Uint8Array(await file.arrayBuffer());
     try { inspectTaxDocument(path.slice(path.lastIndexOf("/") + 1), file.type, bytes); }
     catch (cause) {
-      await Promise.all([db.storage.from("verification-documents").remove([path]), db.from("tax_document_upload_tickets").delete().eq("document_path", path).eq("user_id", user.id)]);
+      await Promise.all([db.storage.from("verification-documents").remove([path]), db.from("upload_tickets").delete().eq("ticket_type", "tax_document").eq("path", path).eq("user_id", user.id)]);
       throw new PaymentError(cause instanceof Error ? cause.message : "Invalid document file.", 400);
     }
     const { data, error } = await db.from("tax_documents").insert({ user_id: user.id, party_type: partyType, document_type: type, document_path: path, registered_name: registeredName, claimed_tax_treatment: claimedTreatment, legal_basis: legalBasis, tax_year: taxYear, issued_at: issuedAt, expires_at: expiresAt }).select("document_id,party_type,document_type,status,submitted_at").single();
     if (error) {
-      await Promise.all([db.storage.from("verification-documents").remove([path]), db.from("tax_document_upload_tickets").delete().eq("document_path", path).eq("user_id", user.id)]);
+      await Promise.all([db.storage.from("verification-documents").remove([path]), db.from("upload_tickets").delete().eq("ticket_type", "tax_document").eq("path", path).eq("user_id", user.id)]);
       throw new PaymentError(error.code === "23505" ? "This document has already been submitted." : "Tax document could not be submitted.", 409);
     }
-    await db.from("tax_document_upload_tickets").delete().eq("document_path", path).eq("user_id", user.id);
+    await db.from("upload_tickets").delete().eq("ticket_type", "tax_document").eq("path", path).eq("user_id", user.id);
     return json({ document: data }, 201);
   } catch (error) { return paymentResponse(error); }
 }

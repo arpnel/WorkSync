@@ -80,7 +80,11 @@ export async function getArchivedJobRepostDraft(jobId: string): Promise<Archived
 
   const [categoryResult, skillsResult] = await Promise.all([
     supabase.from("job_categories").select("name").eq("id", job.category_id).maybeSingle(),
-    supabase.from("job_skills").select("skill_id").eq("job_id", jobId),
+    supabase
+      .from("listing_skills")
+      .select("skill_id")
+      .eq("listing_type", "job")
+      .eq("job_id", jobId),
   ]);
   if (categoryResult.error) throw new Error(categoryResult.error.message);
   if (skillsResult.error) throw new Error(skillsResult.error.message);

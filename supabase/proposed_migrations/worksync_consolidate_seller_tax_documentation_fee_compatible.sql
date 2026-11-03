@@ -336,10 +336,10 @@ create or replace function public.worksync_apply_payout_tax_snapshot()
 returns trigger language plpgsql security definer set search_path='' as $$
 declare
   withholding_applicable boolean:=false; withholding_globally_enabled boolean:=false;
-  vat_configured boolean:=false; exemption text:='not_applicable';
+  exemption text:='not_applicable';
   latest_status text; latest_threshold_status text; prior_gross numeric:=0;
   current_year integer:=extract(year from now() at time zone 'Asia/Manila')::integer;
-  declaration_id uuid; cor_id uuid; vat_doc_id uuid;
+  declaration_id uuid; cor_id uuid;
   pay public.payments; milestone_base numeric; milestone_vat numeric;
 begin
   select * into pay from public.payments where payment_id=new.payment_id;
@@ -366,25 +366,8 @@ begin
     new.freelancer_vat_rule:=pay.freelancer_service_vat_rule;
     new.freelancer_vat_document_id:=pay.freelancer_service_vat_document_id;
   else
-    if new.gross_amount is null then new.gross_amount:=new.amount; end if;
-    select coalesce(freelancer_vat_applicable,false) into vat_configured
-      from public.freelancer_tax_profiles where user_id=new.recipient_id;
-    select document_id into vat_doc_id from public.tax_documents
-      where user_id=new.recipient_id and party_type='freelancer' and document_type='vat_registration'
-        and status='verified' and (expires_at is null or expires_at>=current_date)
-      order by reviewed_at desc,submitted_at desc limit 1;
-    if vat_configured and vat_doc_id is not null then
-      new.freelancer_vat_rate:=0.12;
-      new.freelancer_vat_rule:='Legacy saved price treated as VAT-inclusive; verified registration on file';
-      new.freelancer_vat_taxable_amount:=round(new.gross_amount/1.12,2);
-      new.freelancer_vat_amount:=new.gross_amount-new.freelancer_vat_taxable_amount;
-      new.freelancer_vat_document_id:=vat_doc_id;
-    else
-      new.freelancer_vat_rate:=0;
-      new.freelancer_vat_rule:='Legacy VAT treatment not recorded with current verified registration';
-      new.freelancer_vat_taxable_amount:=new.gross_amount; new.freelancer_vat_amount:=0;
-      new.freelancer_vat_document_id:=null;
-    end if;
+    raise exception 'Payout cannot use a payment without an immutable VAT snapshot; reconcile the legacy payment before settlement'
+      using errcode='23514';
   end if;
   select coalesce(marketplace_withholding_applicable,false) into withholding_applicable
     from public.freelancer_tax_profiles where user_id=new.recipient_id;

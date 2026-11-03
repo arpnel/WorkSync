@@ -85,7 +85,8 @@ async function loadWithClientQueries(): Promise<ExplorerCategory[]> {
     availableCategories.map(async ({ category }) => {
       const { data, error } = await supabase
         .from("services")
-        .select("service_id,service_skills(skill_id)")
+        .select("service_id,listing_skills!inner(skill_id,listing_type)")
+        .eq("listing_skills.listing_type", "service")
         .eq("category_id", category.id)
         .eq("status", "Active")
         .eq("is_archived", false)
@@ -99,12 +100,12 @@ async function loadWithClientQueries(): Promise<ExplorerCategory[]> {
         );
         return {
           category,
-          rows: [] as { service_skills: { skill_id: string }[] }[],
+          rows: [] as { listing_skills: { skill_id: string }[] }[],
         };
       }
       return {
         category,
-        rows: (data ?? []) as { service_skills: { skill_id: string }[] }[],
+        rows: (data ?? []) as { listing_skills: { skill_id: string }[] }[],
       };
     }),
   );
@@ -113,7 +114,7 @@ async function loadWithClientQueries(): Promise<ExplorerCategory[]> {
     ...new Set(
       samples.flatMap(({ rows }) =>
         rows.flatMap((row) =>
-          row.service_skills.map((skill) => skill.skill_id),
+          row.listing_skills.map((skill) => skill.skill_id),
         ),
       ),
     ),
@@ -135,7 +136,7 @@ async function loadWithClientQueries(): Promise<ExplorerCategory[]> {
       const sampledSkillIds = [
         ...new Set(
           rows.flatMap((row) =>
-            row.service_skills.map((skill) => skill.skill_id),
+            row.listing_skills.map((skill) => skill.skill_id),
           ),
         ),
       ];

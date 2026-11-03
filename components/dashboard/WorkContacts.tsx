@@ -128,6 +128,12 @@ export default function WorkContacts() {
       ),
     [projects, selectedContactId],
   );
+  const contactHeading =
+    role === "client"
+      ? "Freelancers"
+      : role === "freelancer"
+        ? "Clients"
+        : "Contacts";
   const filteredProjects = useMemo(
     () =>
       statusFilter === "All"
@@ -150,7 +156,7 @@ export default function WorkContacts() {
               className="inline-flex min-h-10 items-center gap-2 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary"
             >
               <ArrowLeft className="size-4" aria-hidden="true" />
-              Back to {role === "client" ? "clients" : "freelancers"}
+              Back to {contactHeading.toLowerCase()}
             </button>
             <div>
               <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
@@ -196,7 +202,7 @@ export default function WorkContacts() {
         <>
           <div className="space-y-1">
             <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-              {role === "client" ? "Clients" : "Freelancers"}
+              {contactHeading}
             </h1>
             <p className="text-sm text-muted-foreground">
               People you have worked with.

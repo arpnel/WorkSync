@@ -7,8 +7,8 @@ export type WorkSyncLegalContext = "account" | "contract";
 
 const documents: Record<WorkSyncLegalDocument, { title: string; summary: string; sections: Array<{ heading: string; text: string }> }> = {
   terms: {
-    title: "WorkSync Terms of Use",
-    summary: "These terms explain the rules for using WorkSync as a freelance services and project marketplace.",
+    title: "Terms and Conditions",
+    summary: "WorkSync · Effective November 2, 2026. Please read before accepting.",
     sections: [
       { heading: "1. Using WorkSync", text: "By creating an account or using WorkSync, you agree to these Terms and applicable laws. You must be legally able to enter into an agreement where you live. Provide accurate account information, keep your sign-in credentials secure, and use only accounts you are authorized to control." },
       { heading: "2. Marketplace relationships", text: "WorkSync provides tools for clients and freelancers to find one another, communicate, make proposals, record project terms, and manage work. Unless a separate written agreement says otherwise, WorkSync is not a party to agreements between users and does not employ, supervise, or act as an agent for clients or freelancers. Each user is responsible for checking the other party, deciding whether to proceed, and complying with laws that apply to their work." },
@@ -23,8 +23,8 @@ const documents: Record<WorkSyncLegalDocument, { title: string; summary: string;
     ],
   },
   privacy: {
-    title: "WorkSync Privacy Policy",
-    summary: "This notice describes personal information processed when you use WorkSync and the choices available to you.",
+    title: "Privacy Policy",
+    summary: "WorkSync · Effective November 2, 2026. Please read before accepting.",
     sections: [
       { heading: "1. Information we process", text: "Depending on how you use WorkSync, this may include account and contact details; profile names, photos, location, skills, and work history; listings, applications, proposals, plans, contracts, messages, and attachments; payment, billing, tax, and verification information you submit; support requests and reports; and technical, device, usage, and security records. Do not include sensitive personal information in a profile, message, or upload unless it is needed for the feature and you are authorized to provide it." },
       { heading: "2. Why we use it", text: "We use information to create and secure accounts; operate profiles, search, listings, applications, messaging, project planning, contracts, payments, and support; verify accounts or documents where a feature requires it; calculate and display plan or transaction information; prevent fraud, abuse, and security incidents; respond to disputes and legal requests; maintain and improve the service; and meet legal, accounting, and regulatory obligations." },
@@ -79,16 +79,34 @@ export function WorkSyncLegalDialog({ open, onOpenChange, document, onDocumentCh
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[88dvh] flex-col overflow-hidden sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>{selected.title}</DialogTitle>
-          <DialogDescription>{selected.summary}</DialogDescription>
+        <DialogHeader
+          className={
+            context === "account"
+              ? "gap-1 rounded-md bg-muted/40 px-4 py-3 pr-10"
+              : undefined
+          }
+        >
+          <DialogTitle
+            className={context === "account" ? "text-base font-semibold" : undefined}
+          >
+            {selected.title}
+          </DialogTitle>
+          <DialogDescription
+            className={context === "account" ? "text-xs" : undefined}
+          >
+            {selected.summary}
+          </DialogDescription>
         </DialogHeader>
         <div aria-label="Legal documents" className="flex gap-2 border-b pb-2">
-          <button type="button" aria-pressed={document === "terms"} onClick={() => onDocumentChange("terms")} className={`rounded-md px-3 py-2 text-sm ${document === "terms" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}>{context === "contract" ? "Contract Terms" : "Terms of Use"}</button>
+          <button type="button" aria-pressed={document === "terms"} onClick={() => onDocumentChange("terms")} className={`rounded-md px-3 py-2 text-sm ${document === "terms" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}>{context === "contract" ? "Contract Terms" : "Terms and Conditions"}</button>
           <button type="button" aria-pressed={document === "privacy"} onClick={() => onDocumentChange("privacy")} className={`rounded-md px-3 py-2 text-sm ${document === "privacy" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}>{context === "contract" ? "Contract Privacy Notice" : "Privacy Policy"}</button>
         </div>
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain pr-2 text-sm leading-6">
-          <p className="text-xs text-muted-foreground">Effective November 2, 2026</p>
+          {context === "contract" && (
+            <p className="text-xs text-muted-foreground">
+              Effective November 2, 2026
+            </p>
+          )}
           {selected.sections.map((section) => (
             <section key={section.heading} className="space-y-1">
               <h3 className="font-semibold leading-5">{section.heading}</h3>

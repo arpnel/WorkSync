@@ -43,8 +43,8 @@ export async function POST(request: Request) {
       : `${user.id}/tax-docs/${body.partyType}/${crypto.randomUUID()}.${normalizedExtension}`;
     const { data: signed, error: signedError } = await db.storage.from("verification-documents").createSignedUploadUrl(path, { upsert: false });
     if (signedError || !signed?.token) throw new PaymentError("A secure upload could not be prepared.");
-    await db.from("tax_document_upload_tickets").delete().lt("expires_at", new Date().toISOString());
-    const ticket = await db.from("tax_document_upload_tickets").insert({ document_path: path, user_id: user.id, expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString() });
+    await db.from("upload_tickets").delete().eq("ticket_type", "tax_document").lt("expires_at", new Date().toISOString());
+    const ticket = await db.from("upload_tickets").insert({ ticket_type: "tax_document", path, user_id: user.id, expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString() });
     if (ticket.error) {
       if (["42P01", "PGRST205"].includes(ticket.error.code ?? ""))
         throw new PaymentError(

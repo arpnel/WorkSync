@@ -435,8 +435,6 @@ export function useMessaging() {
     async (
       message: string,
       attachment?: File,
-      onProgress?: (percent: number) => void,
-      signal?: AbortSignal,
     ): Promise<boolean> => {
       if (!selectedConversationId || sendingRef.current) {
         return false;
@@ -450,8 +448,6 @@ export function useMessaging() {
           selectedConversationId,
           message,
           attachment,
-          onProgress,
-          signal,
         );
         if (sentMessage && selectedRef.current === selectedConversationId) {
           setMessageState((current) => {

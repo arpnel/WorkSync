@@ -216,11 +216,12 @@ export function ServiceDialog({
     if (!open || !listing) return;
     const isJobListing = listing.listing_type === "job";
     const idColumn = isJobListing ? "job_id" : "service_id";
-    const relation = isJobListing ? "job_skills" : "service_skills";
+    const listingType = isJobListing ? "job" : "service";
     const listingId = isJobListing ? listing.job_id : listing.service_id;
     void supabase
-      .from(relation)
+      .from("listing_skills")
       .select("skill_id")
+      .eq("listing_type", listingType)
       .eq(idColumn, listingId)
       .then(({ data, error }) => {
         if (error) {
@@ -421,17 +422,19 @@ export function ServiceDialog({
         if (error) throw error;
         if (!saved) throw new Error("The listing could not be updated.");
 
-        const skillTable = isJobListing ? "job_skills" : "service_skills";
         const { error: deleteSkillsError } = await supabase
-          .from(skillTable)
+          .from("listing_skills")
           .delete()
+          .eq("listing_type", isJobListing ? "job" : "service")
           .eq(idColumn, listingId);
         if (deleteSkillsError) throw deleteSkillsError;
         if (data.skillIds.length) {
           const { error: addSkillsError } = await supabase
-            .from(skillTable)
+            .from("listing_skills")
             .insert(
               data.skillIds.map((skillId) => ({
+                listing_type: isJobListing ? "job" : "service",
+                [isJobListing ? "service_id" : "job_id"]: null,
                 [idColumn]: listingId,
                 skill_id: skillId,
               })),

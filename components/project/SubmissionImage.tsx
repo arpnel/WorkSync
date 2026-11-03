@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { getLargeFileUrl } from "@/services/storage/hybridStorageClient";
 
 export function SubmissionImage({
   path,
@@ -20,10 +19,8 @@ export function SubmissionImage({
   useEffect(() => {
     if (!image && !video) return;
     let alive = true;
-    void (path.startsWith("r2:")
-      ? getLargeFileUrl("submission", submissionId)
-      : supabase.storage.from("project-attachments").createSignedUrl(path, 3600)
-          .then(({ data }) => data?.signedUrl ?? null))
+    void supabase.storage.from("project-attachments").createSignedUrl(path, 3600)
+      .then(({ data }) => data?.signedUrl ?? null)
       .then((url) => {
         if (alive && url) setPreview({ path, url });
       })

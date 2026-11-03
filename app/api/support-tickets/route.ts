@@ -28,9 +28,10 @@ export async function POST(request: Request) {
       if (typeof body.attachmentPath !== "string" || !new RegExp(`^${userId}/support/[a-f\\d-]{36}\\.(pdf|jpg|png)$`, "i").test(body.attachmentPath))
         throw new PaymentError("Choose a valid ticket attachment.", 400);
       attachmentPath = body.attachmentPath;
-      const ticket = await db.from("support_ticket_upload_tickets")
-        .select("file_path,expected_size")
-        .eq("file_path", attachmentPath)
+      const ticket = await db.from("upload_tickets")
+        .select("path,expected_size")
+        .eq("ticket_type", "support")
+        .eq("path", attachmentPath)
         .eq("user_id", userId)
         .gt("expires_at", new Date().toISOString())
         .maybeSingle();
@@ -46,10 +47,10 @@ export async function POST(request: Request) {
         throw new PaymentError(cause instanceof Error ? cause.message : "The attachment file is invalid.", 400);
       }
       validationToken = randomUUID();
-      const validated = await db.from("support_ticket_upload_tickets").update({
+      const validated = await db.from("upload_tickets").update({
         validated_at: new Date().toISOString(),
         validation_token: validationToken,
-      }).eq("file_path", attachmentPath).eq("user_id", userId).is("validated_at", null);
+      }).eq("ticket_type", "support").eq("path", attachmentPath).eq("user_id", userId).is("validated_at", null);
       if (validated.error) throw new PaymentError("The attachment could not be verified for ticket submission.");
     }
 
@@ -68,13 +69,13 @@ export async function POST(request: Request) {
       p_validation_token: validationToken,
     });
     if (submitted.error || !submitted.data) throw new PaymentError("The ticket could not be submitted. Please try again.", 409);
-    if (attachmentPath) await db.from("support_ticket_upload_tickets").delete().eq("file_path", attachmentPath).eq("user_id", userId);
+    if (attachmentPath) await db.from("upload_tickets").delete().eq("ticket_type", "support").eq("path", attachmentPath).eq("user_id", userId);
     return Response.json({ ticketId: submitted.data }, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     if (ownsUploadTicket && attachmentPath && db) {
       await Promise.all([
         db.storage.from("support-ticket-attachments").remove([attachmentPath]),
-        db.from("support_ticket_upload_tickets").delete().eq("file_path", attachmentPath).eq("user_id", userId),
+        db.from("upload_tickets").delete().eq("ticket_type", "support").eq("path", attachmentPath).eq("user_id", userId),
       ]);
     }
     return paymentResponse(error);

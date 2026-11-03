@@ -37,13 +37,13 @@ export async function POST(request: Request) {
     const taxYear = Number(year);
     const validPath = typeof path === "string" && path.startsWith(`${user.id}/tax/${taxYear}/`) && /^[a-f\d-]{36}\.(pdf|png|jpe?g)$/i.test(path.slice(path.lastIndexOf("/") + 1));
     if (!validPath) throw new PaymentError("Upload a document for the selected tax year.", 400);
-    const ticket = await db.from("tax_document_upload_tickets").select("document_path").eq("document_path", path).eq("user_id", user.id).gt("expires_at", new Date().toISOString()).maybeSingle();
+    const ticket = await db.from("upload_tickets").select("path").eq("ticket_type", "tax_document").eq("path", path).eq("user_id", user.id).gt("expires_at", new Date().toISOString()).maybeSingle();
     if (ticket.error || !ticket.data) throw new PaymentError("This upload session expired. Start the document upload again.", 403);
     const { data: document, error: fileError } = await db.storage.from("verification-documents").download(path);
     if (fileError || !document) throw new PaymentError("Upload the selected file before submitting it for review.", 400);
     try { inspectTaxDocument(path.slice(path.lastIndexOf("/") + 1), document.type, new Uint8Array(await document.arrayBuffer())); }
     catch (cause) {
-      await Promise.all([db.storage.from("verification-documents").remove([path]), db.from("tax_document_upload_tickets").delete().eq("document_path", path).eq("user_id", user.id)]);
+      await Promise.all([db.storage.from("verification-documents").remove([path]), db.from("upload_tickets").delete().eq("ticket_type", "tax_document").eq("path", path).eq("user_id", user.id)]);
       throw new PaymentError(cause instanceof Error ? cause.message : "Invalid document file.", 400);
     }
     const existing = await db.from("freelancer_tax_declarations")
@@ -56,16 +56,16 @@ export async function POST(request: Request) {
     if (existing.data?.length) {
       await Promise.all([
         db.storage.from("verification-documents").remove([path]),
-        db.from("tax_document_upload_tickets").delete().eq("document_path", path).eq("user_id", user.id),
+        db.from("upload_tickets").delete().eq("ticket_type", "tax_document").eq("path", path).eq("user_id", user.id),
       ]);
       throw new PaymentError(`A declaration is already pending or accepted for ${taxYear}.`, 409);
     }
     const { data, error } = await db.from("freelancer_tax_declarations").insert({ user_id: user.id, tax_year: taxYear, reported_threshold_status: body?.thresholdStatus, document_path: path, status: "pending" }).select("declaration_id,tax_year,reported_threshold_status,status,submitted_at").single();
     if (error) {
-      await Promise.all([db.storage.from("verification-documents").remove([path]), db.from("tax_document_upload_tickets").delete().eq("document_path", path).eq("user_id", user.id)]);
+      await Promise.all([db.storage.from("verification-documents").remove([path]), db.from("upload_tickets").delete().eq("ticket_type", "tax_document").eq("path", path).eq("user_id", user.id)]);
       throw new PaymentError(error.code === "23505" ? "A declaration is already pending or accepted for that tax year." : "Tax declaration could not be submitted.", 409);
     }
-    await db.from("tax_document_upload_tickets").delete().eq("document_path", path).eq("user_id", user.id);
+    await db.from("upload_tickets").delete().eq("ticket_type", "tax_document").eq("path", path).eq("user_id", user.id);
     return json({ declaration: data }, 201);
   } catch (error) { return paymentResponse(error); }
 }

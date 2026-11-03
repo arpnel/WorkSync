@@ -82,6 +82,12 @@ export function SigninForm({
                     : "Sign In"}
             </Button>
 
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <span className="h-px flex-1 bg-border" />
+                <span>Or continue with</span>
+                <span className="h-px flex-1 bg-border" />
+            </div>
+
             <GoogleButton
                 loading={loading}
                 onClick={onGoogle}

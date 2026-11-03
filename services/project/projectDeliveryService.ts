@@ -5,8 +5,7 @@ import {
   projectPaymentCoversAgreedAmount,
 } from "@/services/payments/paymentService";
 import { supabase } from "@/lib/supabaseClient";
-import { LARGE_FILE_MAX_BYTES, SUPABASE_MAX_FILE_BYTES, usesR2Storage } from "@/lib/storage/hybridStorage";
-import { deleteUnusedLargeFile, getLargeFileUrl, uploadLargeFile } from "@/services/storage/hybridStorageClient";
+import { SUPABASE_MAX_FILE_BYTES } from "@/lib/storage/supabaseStorage";
 import {
   databaseError,
   platformAction,
@@ -108,8 +107,6 @@ export async function submitProjectWork(
   link: string,
   kind: "progress" | "delivery",
   file?: File,
-  onProgress?: (percent: number) => void,
-  signal?: AbortSignal,
 ) {
   const user = await requireUser();
   if (!body.trim() && !file && !link.trim())
@@ -121,8 +118,8 @@ export async function submitProjectWork(
     if (!["https:", "http:"].includes(url.protocol))
       throw new Error("Use an HTTP or HTTPS link.");
   }
-  if (file && file.size > LARGE_FILE_MAX_BYTES)
-    throw new Error("Files must be 1 GB or smaller.");
+  if (file && file.size > SUPABASE_MAX_FILE_BYTES)
+    throw new Error("Files must be 50 MB or smaller.");
   const payment = await getProjectPayment(projectId);
   if (
     !projectPaymentCoversAgreedAmount(
@@ -133,21 +130,12 @@ export async function submitProjectWork(
     throw new Error("The client must pay before work can be submitted.");
   const id = crypto.randomUUID();
   let path: string | null = null;
-  let r2UploadId: string | null = null;
   if (file) {
-    if (usesR2Storage(file.size)) {
-      const uploaded = await uploadLargeFile(file, { purpose: "submission", targetId: projectId }, onProgress, signal);
-      path = uploaded.reference;
-      r2UploadId = uploaded.uploadId;
-    } else {
-      if (file.size > SUPABASE_MAX_FILE_BYTES)
-        throw new Error("Files must be 50 MB or smaller.");
-      path = `${projectId}/${user.id}/${id}/${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-      const { error } = await supabase.storage
-        .from("project-attachments")
-        .upload(path, file, { upsert: false });
-      if (error) throw databaseError(error);
-    }
+    path = `${projectId}/${user.id}/${id}/${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+    const { error } = await supabase.storage
+      .from("project-attachments")
+      .upload(path, file, { upsert: false });
+    if (error) throw databaseError(error);
   }
   try {
     await submitPaidWork({
@@ -161,31 +149,22 @@ export async function submitProjectWork(
       p_name: file?.name ?? null,
     });
   } catch (cause) {
-    if (r2UploadId) await deleteUnusedLargeFile(r2UploadId).catch(() => undefined);
-    else if (path) await supabase.storage.from("project-attachments").remove([path]);
+    if (path) await supabase.storage.from("project-attachments").remove([path]);
     throw cause;
   }
 }
 export async function openProjectAttachment(
   path: string,
-  purpose: "submission" | "dispute" = "submission",
-  recordId?: string,
 ) {
   const viewer = window.open("about:blank", "_blank");
   if (!viewer) throw new Error("Allow pop-ups to open this project attachment.");
   viewer.opener = null;
   try {
-    let url: string;
-    if (path.startsWith("r2:")) {
-      if (!recordId) throw new Error("This file is missing its WorkSync record reference.");
-      url = await getLargeFileUrl(purpose, recordId);
-    } else {
-      const { data, error } = await supabase.storage
-        .from("project-attachments")
-        .createSignedUrl(path, 60);
-      if (error) throw databaseError(error);
-      url = data.signedUrl;
-    }
+    const { data, error } = await supabase.storage
+      .from("project-attachments")
+      .createSignedUrl(path, 60);
+    if (error) throw databaseError(error);
+    const url = data.signedUrl;
     viewer.location.replace(url);
   } catch (error) {
     viewer.close();

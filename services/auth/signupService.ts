@@ -1,12 +1,14 @@
 import { CreateAccountData } from "../../types/auth/signup.types";
 
-export async function createAccount({ email, password, firstName, lastName }: CreateAccountData) {
+export async function createAccount({ email, password }: CreateAccountData) {
   const cleanEmail = email.trim().toLowerCase();
-  const cleanFirstName = firstName.trim();
-  const cleanLastName = lastName.trim();
-  if (!cleanEmail || !password || !cleanFirstName || !cleanLastName) throw new Error("INVALID_SIGNUP_DATA");
+  if (!cleanEmail || !password) throw new Error("INVALID_SIGNUP_DATA");
   try {
-    const response = await fetch("/api/auth/password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "signup", email: cleanEmail, password, firstName: cleanFirstName, lastName: cleanLastName }) });
+    const response = await fetch("/api/auth/password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "signup", email: cleanEmail, password }),
+    });
     const result = await response.json().catch(() => null) as { user?: { id: string }; error?: string } | null;
     if (!response.ok) {
       const message = result?.error ?? "Failed to create account.";

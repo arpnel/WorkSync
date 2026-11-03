@@ -17,18 +17,19 @@ export async function POST(request: Request) {
       || (extension === "png" && body.contentType === "image/png");
     if (!valid) throw new PaymentError("The file type must match its PDF, JPG, or PNG extension.", 400);
 
-    const stale = await db.from("support_ticket_upload_tickets").select("file_path").lt("expires_at", new Date().toISOString()).limit(100);
+    const stale = await db.from("upload_tickets").select("path").eq("ticket_type", "support").lt("expires_at", new Date().toISOString()).limit(100);
     if (!stale.error && stale.data?.length) {
-      await db.storage.from("support-ticket-attachments").remove(stale.data.map((row) => row.file_path));
-      await db.from("support_ticket_upload_tickets").delete().in("file_path", stale.data.map((row) => row.file_path));
+      await db.storage.from("support-ticket-attachments").remove(stale.data.map((row) => row.path));
+      await db.from("upload_tickets").delete().eq("ticket_type", "support").in("path", stale.data.map((row) => row.path));
     }
 
     const normalizedExtension = extension === "jpeg" ? "jpg" : extension;
     const path = `${user.id}/support/${randomUUID()}.${normalizedExtension}`;
     const signed = await db.storage.from("support-ticket-attachments").createSignedUploadUrl(path, { upsert: false });
     if (signed.error || !signed.data?.token) throw new PaymentError("A secure attachment upload could not be prepared.");
-    const ticket = await db.from("support_ticket_upload_tickets").insert({
-      file_path: path,
+    const ticket = await db.from("upload_tickets").insert({
+      ticket_type: "support",
+      path,
       user_id: user.id,
       expected_size: body.size,
       expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),

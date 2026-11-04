@@ -13,4 +13,5 @@ export interface SignupFormData {
 export interface CreateAccountData {
   email: string;
   password: string;
+  acceptedTerms: boolean;
 }

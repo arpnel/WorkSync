@@ -174,7 +174,8 @@ export default function AdminAssessments() {
           Skill assessments
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Category knowledge checks. These do not change identity verification.
+          Create category assessments, open them to eligible freelancers, and
+          review their results.
         </p>
       </header>
       {error && (

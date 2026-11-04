@@ -1,7 +1,13 @@
 import { ADMIN_RECORD_MODULES, type AdminModule } from "./adminModules";
 export type { AdminModule } from "./adminModules";
 import { platformAction } from "@/services/platform/platformService";
+import { clearProjectReadCache } from "@/lib/projectReadCache";
+import { invalidatePageReads } from "@/lib/pageReadCache";
 import { supabase } from "@/lib/supabaseClient";
+import {
+  getPublicIdentities,
+  identityName,
+} from "@/services/profile/publicIdentityService";
 import {
   parseAdminAnalytics,
   parseAdminJobMonitoringDetails,
@@ -19,22 +25,95 @@ async function adminRead(name: string, args: Record<string, unknown>) {
   return data;
 }
 export async function getAdminDisputeContext(id: string) {
-  return parseAdminDisputeContext(
+  const context = parseAdminDisputeContext(
     await adminRead("worksync_dispute_context", { p_id: id }),
   );
+  const identitiesNeeded = context.parties.filter(
+    (party) => !party.display_name?.trim(),
+  );
+  const userIds = identitiesNeeded.flatMap((party) =>
+    party.user_id ? [party.user_id] : [],
+  );
+  const clientIds = identitiesNeeded.flatMap((party) =>
+    party.role === "client" && party.profile_id ? [party.profile_id] : [],
+  );
+  const freelancerIds = identitiesNeeded.flatMap((party) =>
+    party.role === "freelancer" && party.profile_id
+      ? [party.profile_id]
+      : [],
+  );
+  if (!userIds.length && !clientIds.length && !freelancerIds.length) {
+    return context;
+  }
+
+  try {
+    const identities = await getPublicIdentities({
+      userIds,
+      clientIds,
+      freelancerIds,
+    });
+    const clients = new Map(
+      identities.clients.map((client) => [client.client_id, client.user_id]),
+    );
+    const freelancers = new Map(
+      identities.freelancers.map((freelancer) => [
+        freelancer.freelancer_id,
+        freelancer.user_id,
+      ]),
+    );
+    const profiles = new Map(
+      identities.profiles.map((profile) => [profile.user_id, profile]),
+    );
+
+    return {
+      ...context,
+      parties: context.parties.map((party) => {
+        const roleUserId = party.profile_id
+          ? party.role === "client"
+            ? clients.get(party.profile_id)
+            : party.role === "freelancer"
+              ? freelancers.get(party.profile_id)
+              : undefined
+          : undefined;
+        const userId = party.user_id ?? roleUserId ?? null;
+        const profile = userId ? profiles.get(userId) : undefined;
+        const displayName =
+          party.display_name?.trim() || identityName(profile, "").trim();
+        return {
+          ...party,
+          user_id: userId,
+          display_name: displayName || null,
+        };
+      }),
+    };
+  } catch {
+    return context;
+  }
 }
 export async function getAdminAnalytics(
   from: string,
-  to: string,
-  status: string,
+  through: string,
+  environment: "all" | "live" | "test",
 ) {
-  return parseAdminAnalytics(
-    await adminRead("worksync_admin_analytics", {
-      p_from: from,
-      p_to: to,
-      p_status: status === "all" ? null : status,
-    }),
-  );
+  const {
+    data: { session },
+    error,
+  } = await supabase.auth.getSession();
+  if (error) throw error;
+  if (!session) throw new Error("Sign in to view platform analytics.");
+  const query = new URLSearchParams({ from, through, environment });
+  const response = await fetch(`/api/admin/analytics?${query.toString()}`, {
+    headers: { Authorization: `Bearer ${session.access_token}` },
+    cache: "no-store",
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok)
+    throw new Error(
+      typeof body?.error === "string"
+        ? body.error
+        : "Platform analytics could not be loaded.",
+    );
+  return parseAdminAnalytics(body);
 }
 export type AdminRow = {
   id: string;
@@ -44,6 +123,8 @@ export type AdminRow = {
   detail: string;
   owner_id?: string;
   document_paths?: string[];
+  disputeMilestoneId?: string | null;
+  disputeCompletionActionsAvailable?: boolean;
 };
 export interface AdminResult {
   rows: AdminRow[];
@@ -226,12 +307,33 @@ export async function reviewAdminRecord(
       p_reason: notes.trim(),
     });
   }
-  if (module === "disputes")
-    return platformAction("worksync_resolve_dispute", {
-      p_id: id,
-      p_action: action,
-      p_notes: notes.trim(),
+  if (module === "disputes") {
+    const {
+      data: { session },
+      error,
+    } = await supabase.auth.getSession();
+    if (error) throw error;
+    if (!session) throw new Error("Sign in to review this dispute.");
+    const response = await fetch("/api/admin/disputes", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ id, action, notes: notes.trim() }),
+      cache: "no-store",
     });
+    const body = await response.json().catch(() => null);
+    if (!response.ok)
+      throw new Error(
+        typeof body?.error === "string"
+          ? body.error
+          : "Dispute action could not be saved.",
+      );
+    invalidatePageReads();
+    clearProjectReadCache();
+    return body;
+  }
   if (module === "reports") {
     const reportAction =
       action === "under_review"

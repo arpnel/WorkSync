@@ -81,6 +81,10 @@ const FreelancerTaxDeclaration = forwardRef<FreelancerTaxDeclarationHandle, { em
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Document submission failed."); throw cause; }
     finally { setBusy(false); }
   }
+  const blockingDeclaration = rows.find((row) =>
+    row.tax_year === DECLARATION_TAX_YEAR
+      && (row.status === "pending" || row.status === "accepted"),
+  );
   const hasBlockingRecord = hasBlockingDeclaration(rows, DECLARATION_TAX_YEAR);
   const canSubmit = profileReady && !!file && !busy && !hasBlockingRecord;
   useImperativeHandle(ref, () => ({
@@ -133,7 +137,15 @@ const FreelancerTaxDeclaration = forwardRef<FreelancerTaxDeclarationHandle, { em
           }}
         />}
       </div>
-      {(!hideSubmitButton || hasBlockingRecord) && <div className="flex flex-col gap-2 sm:flex-row sm:items-center">{!hideSubmitButton && <Button type="button" disabled={!canSubmit} onClick={() => void submit().catch(() => undefined)}>{busy ? "Submitting…" : "Submit for review"}</Button>}{!setupMode && !hideSubmitButton && <p className="text-xs text-muted-foreground">The declaration must cover tax year 2026; its signing date may be earlier.</p>}{hasBlockingRecord && <p className="text-sm text-muted-foreground">A 2026 declaration is already pending or accepted. You can submit again if it is rejected or revoked.</p>}</div>}
+      {(!hideSubmitButton || hasBlockingRecord) && <div className="space-y-3">
+        {!hasBlockingRecord && !setupMode && !hideSubmitButton && <p className="text-sm text-muted-foreground">The document must cover tax year 2026. It may have been signed earlier.</p>}
+        {blockingDeclaration && <p role="status" className={`rounded-lg border p-3 text-sm ${declarationStatusClass(blockingDeclaration.status)}`}>
+          {blockingDeclaration.status === "accepted"
+            ? "Your 2026 declaration is approved. A replacement may be submitted if it is revoked."
+            : "Your 2026 declaration is awaiting review. Submit a corrected version if it is rejected."}
+        </p>}
+        {!hideSubmitButton && <Button type="button" disabled={!canSubmit} onClick={() => void submit().catch(() => undefined)}>{busy ? "Submitting…" : "Submit for review"}</Button>}
+      </div>}
     </div>
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}{notice && <p role="status" className="text-sm text-primary">{notice}</p>}
   </section>;

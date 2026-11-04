@@ -10,6 +10,7 @@ import { assertFreelancerAvailable } from "./freelancerAvailability";
 
 const SERVICES_TABLE = "services";
 const JOBS_TABLE = "jobs";
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const FREELANCER_TABLE = "freelancer_profiles";
 const CLIENT_TABLE = "client_profiles";
@@ -1145,7 +1146,7 @@ export async function getMarketplaceService(
   serviceId: string,
   guest = false,
 ): Promise<MarketplaceService | null> {
-  if (!serviceId) {
+  if (!UUID_PATTERN.test(serviceId)) {
     return null;
   }
 

@@ -613,13 +613,9 @@ export default function ProjectPlansLibrary() {
             <ArrowLeft />
           </Button>
           <div className="min-w-0 flex-1">
-            {editing && !previewing ? (
-              <h1 className="px-2 text-lg font-semibold sm:text-xl">Project planner</h1>
-            ) : (
-              <h1 className="truncate px-2 text-lg font-semibold sm:text-xl">
-                {draft.name || "Untitled plan"}
-              </h1>
-            )}
+            <h1 className="px-2 text-lg font-semibold sm:text-xl">
+              Project planner
+            </h1>
           </div>
           {editing && (
             <Button
@@ -642,11 +638,18 @@ export default function ProjectPlansLibrary() {
           )}
         </header>
 
-        {!(editing && !previewing) && draft.description ? (
-          <p className="px-1 text-sm text-muted-foreground">
-            {draft.description}
-          </p>
-        ) : null}
+        {!(editing && !previewing) && (
+          <div className="space-y-1 px-1">
+            <h2 className="text-xl font-semibold">
+              {draft.name || "Untitled plan"}
+            </h2>
+            {draft.description && (
+              <p className="text-sm text-muted-foreground">
+                {draft.description}
+              </p>
+            )}
+          </div>
+        )}
 
         {editing && !previewing && showPlanningHint && (
           <div className="flex items-center gap-2 rounded-lg bg-primary/5 px-3 py-2 text-xs text-muted-foreground">

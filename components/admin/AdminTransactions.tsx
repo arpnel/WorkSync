@@ -21,7 +21,6 @@ import {
   Search,
   X,
 } from "lucide-react";
-import Link from "next/link";
 import AdminPageHeader from "@/components/admin/AdminPageHeader";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import { AdminFilterPanel, AdminStatus } from "@/components/admin/admin-ui";
@@ -68,6 +67,19 @@ type Transaction = {
   project_id: string | null;
   order_id: string | null;
   billing_period?: "monthly" | "yearly" | null;
+  current_premium?: {
+    plan_code: string;
+    access_type: "free" | "trial" | "paid";
+    period_started_at: string | null;
+    period_ends_at: string;
+    remaining_days: number | null;
+  } | null;
+  refund_eligibility?: {
+    standard: boolean;
+    latest_paid_order: boolean;
+    usage_signals: string[];
+    usage_check_complete: boolean;
+  };
   payer_id: string;
   amount: number;
   status: string;
@@ -107,6 +119,7 @@ type PageData = {
   limit: number;
   offset: number;
   summary: { total: number; paid: number; pending: number };
+  refundsAvailable?: boolean;
 };
 
 const peso = new Intl.NumberFormat("en-PH", {
@@ -118,6 +131,7 @@ const dateTime = new Intl.DateTimeFormat(undefined, {
   timeStyle: "short",
 });
 const dateOnly = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
+const uuidPattern = /^[a-f\d]{8}-[a-f\d]{4}-[1-5][a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/i;
 const formatDateTime = (value: string | null) =>
   value && Number.isFinite(Date.parse(value))
     ? dateTime.format(new Date(value))
@@ -141,7 +155,7 @@ function summaryTone(kind: "paid" | "pending" | "refunded" | "canceled") {
   return "border-rose-500/20 bg-rose-500/5";
 }
 
-export default function AdminTransactions() {
+export default function AdminTransactions({ mode = "payments" }: { mode?: "payments" | "subscriptions" }) {
   const [data, setData] = useState<PageData | null>(null);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
@@ -160,7 +174,9 @@ export default function AdminTransactions() {
   const [refundBusy, setRefundBusy] = useState(false);
   const [refundReviewed, setRefundReviewed] = useState(false);
   const [refundMessage, setRefundMessage] = useState("");
-  const [recordType, setRecordType] = useState<"payments" | "subscriptions">("payments");
+  const [supportTicketRef, setSupportTicketRef] = useState("");
+  const [refundException, setRefundException] = useState<"" | "technical_failure" | "applicable_law">("");
+  const [refundExceptionReason, setRefundExceptionReason] = useState("");
   const sequence = useRef(0);
 
   const load = useCallback(
@@ -174,7 +190,7 @@ export default function AdminTransactions() {
         mode: "all",
         offset: String(offset),
       });
-      const endpoint = recordType === "subscriptions"
+      const endpoint = mode === "subscriptions"
         ? "/api/admin/transactions/subscriptions"
         : "/api/admin/transactions";
       if (from) params.set("from", dateFilterValue(from));
@@ -241,7 +257,7 @@ export default function AdminTransactions() {
         if (!signal.aborted && request === sequence.current) setLoading(false);
       }
     },
-    [from, offset, recordType, search, status, through],
+    [from, mode, offset, search, status, through],
   );
 
   useEffect(() => {
@@ -305,7 +321,9 @@ export default function AdminTransactions() {
   }
 
   async function refundSubscription(row: Transaction) {
-    if (!refundReviewed || refundBusy || row.kind !== "subscription") return;
+    const standardReady = row.refund_eligibility?.standard === true && refundReviewed;
+    const exceptionReady = !!refundException && refundExceptionReason.trim().length >= 10;
+    if ((!standardReady && !exceptionReady) || !uuidPattern.test(supportTicketRef.trim()) || refundBusy || row.kind !== "subscription") return;
     setRefundBusy(true);
     setError("");
     setRefundMessage("");
@@ -318,12 +336,21 @@ export default function AdminTransactions() {
           Authorization: `Bearer ${session.access_token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ orderId: row.payment_id, reviewedUnused: true }),
+        body: JSON.stringify({
+          orderId: row.payment_id,
+          reviewedUnused: refundReviewed,
+          supportTicketRef,
+          exceptionType: refundException || null,
+          exceptionReason: refundExceptionReason,
+        }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Subscription refund could not be submitted.");
       setRefundMessage(result.message || "Refund submitted.");
       setRefundReviewed(false);
+      setSupportTicketRef("");
+      setRefundException("");
+      setRefundExceptionReason("");
       setReload((value) => value + 1);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Subscription refund could not be submitted.");
@@ -357,9 +384,15 @@ export default function AdminTransactions() {
 
   return (
     <div className="min-w-0 space-y-5">
-      <AdminPageHeader title="Recorded transactions" />
+      <AdminPageHeader title={mode === "subscriptions" ? "Subscription transactions" : "Recorded transactions"} />
 
-      {data && (
+      {mode === "subscriptions" && data?.refundsAvailable === false && (
+        <div role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-900 dark:text-amber-200">
+          Subscription purchases are available, but refund history and actions are unavailable until the refund fields are deployed on the existing subscription orders table.
+        </div>
+      )}
+
+      {data && mode === "payments" && (
         <section
           aria-label="Transaction summary"
           className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
@@ -423,11 +456,7 @@ export default function AdminTransactions() {
         </section>
       )}
 
-      <AdminFilterPanel ariaLabel="Filter transactions">
-        <div className="mb-3 flex gap-2">
-          <Button type="button" size="sm" variant={recordType === "payments" ? "default" : "outline"} onClick={() => { setRecordType("payments"); setOffset(0); setSelected(null); }}>Project payments</Button>
-          <Button type="button" size="sm" variant={recordType === "subscriptions" ? "default" : "outline"} onClick={() => { setRecordType("subscriptions"); setOffset(0); setSelected(null); }}>Subscriptions</Button>
-        </div>
+      <AdminFilterPanel ariaLabel={mode === "subscriptions" ? "Filter subscriptions" : "Filter transactions"}>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative min-w-0 flex-1">
             <Search
@@ -435,9 +464,9 @@ export default function AdminTransactions() {
               className="pointer-events-none absolute left-3 top-3 size-4 text-muted-foreground"
             />
             <Input
-              aria-label="Search transactions"
+              aria-label={mode === "subscriptions" ? "Search subscriptions" : "Search transactions"}
               className="h-10 bg-background pl-10 font-normal"
-              placeholder="Search transactions, client ID, or provider reference"
+              placeholder={mode === "subscriptions" ? "Search subscriptions, purchaser, or provider reference" : "Search transactions, client ID, or provider reference"}
               value={search}
               onChange={(event) => {
                 setSearch(event.target.value);
@@ -469,13 +498,13 @@ export default function AdminTransactions() {
               >
                 <div className="grid gap-4">
                   <label className="grid gap-1.5 text-sm font-medium">
-                    Payment status
+                    {mode === "subscriptions" ? "Subscription status" : "Payment status"}
                     <StyledSelect
                       className="h-10 rounded-lg border bg-background px-3 font-normal"
                       value={draftStatus}
                       onChange={(event) => setDraftStatus(event.target.value)}
                     >
-                      <option value="all">All payment statuses</option>
+                      <option value="all">All statuses</option>
                       <option value="paid">Paid / confirmed</option>
                       <option value="pending">Awaiting confirmation</option>
                       <option value="refunded">Refunded</option>
@@ -530,7 +559,7 @@ export default function AdminTransactions() {
             <Button
               type="button"
               variant="outline"
-              aria-label="Refresh transactions"
+              aria-label={mode === "subscriptions" ? "Refresh subscriptions" : "Refresh transactions"}
               onClick={() => setReload((value) => value + 1)}
               disabled={loading}
             >
@@ -567,9 +596,9 @@ export default function AdminTransactions() {
       <Card className="min-w-0 gap-0 rounded-xl border shadow-none">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
           <div>
-            <h2 className="font-semibold">{recordType === "subscriptions" ? "Subscription transactions" : "Payment records"}</h2>
+            <h2 className="font-semibold">{mode === "subscriptions" ? "Subscription records" : "Payment records"}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              {recordType === "subscriptions" ? "Premium purchase and refund records." : "Provider-confirmed payment, project, refund, and receipt context."}
+              {mode === "subscriptions" ? "Premium purchases, refunds, and purchaser details." : "Provider-confirmed payment, project, refund, and receipt context."}
             </p>
           </div>
           {data && (
@@ -616,11 +645,11 @@ export default function AdminTransactions() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Transaction</TableHead>
-                    <TableHead>Client / project</TableHead>
+                    <TableHead>{mode === "subscriptions" ? "Purchaser / plan" : "Client / project"}</TableHead>
                     <TableHead>Amount</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Recorded</TableHead>
-                    <TableHead>Receipt</TableHead>
+                    {mode === "payments" && <TableHead>Receipt</TableHead>}
                     <TableHead className="w-28 text-right">Inspect</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -654,7 +683,7 @@ export default function AdminTransactions() {
                               "Client"}
                           </p>
                           <p className="mt-1 truncate text-xs text-muted-foreground">
-                            {row.kind === "subscription" ? `Premium · ${row.billing_period === "yearly" ? "1 year" : "1 month"}` : row.project?.title || "Project unavailable"}
+                            {mode === "subscriptions" ? `Premium · ${row.billing_period === "yearly" ? "1 year" : "1 month"}` : row.project?.title || "Project unavailable"}
                           </p>
                         </TableCell>
                         <TableCell className="whitespace-nowrap font-semibold tabular-nums">
@@ -695,7 +724,7 @@ export default function AdminTransactions() {
                         <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
                           {formatDateTime(row.created_at)}
                         </TableCell>
-                        <TableCell>
+                        {mode === "payments" && <TableCell>
                           {row.status === "paid" ? (
                             <div className="flex flex-wrap gap-1.5">
                               <Button
@@ -715,13 +744,13 @@ export default function AdminTransactions() {
                               After payment
                             </span>
                           )}
-                        </TableCell>
+                        </TableCell>}
                         <TableCell className="w-28 text-right">
                           <Button
                             type="button"
                             size="sm"
                             variant="outline"
-                            onClick={() => { setRefundReviewed(false); setRefundMessage(""); setSelected(row); }}
+                            onClick={() => { setRefundReviewed(false); setRefundMessage(""); setSupportTicketRef(""); setRefundException(""); setRefundExceptionReason(""); setSelected(row); }}
                           >
                             Inspect
                           </Button>
@@ -829,8 +858,35 @@ export default function AdminTransactions() {
                     <Detail label={selected.kind === "subscription" ? "Purchaser" : "Client / payer"}>
                       {selected.payer.display_name || selected.payer.email || selected.payer_id}
                     </Detail>
+                    {selected.kind === "subscription" && (
+                      <>
+                        <Detail label="Current Premium status">
+                          {selected.current_premium?.plan_code === "pro" && selected.current_premium.access_type === "paid" ? "Paid Premium active" : selected.current_premium?.plan_code === "pro" ? `Premium ${selected.current_premium.access_type}` : "No active Premium"}
+                        </Detail>
+                        <Detail label="Current Premium expiry">
+                          {selected.current_premium?.period_ends_at ? `${formatDateTime(selected.current_premium.period_ends_at)} · ${selected.current_premium.remaining_days ?? 0} days left` : "Not active"}
+                        </Detail>
+                        <Detail label="Standard refund review">
+                          {selected.refund_eligibility?.standard ? "Available after support-ticket and usage review" : selected.refund_eligibility?.latest_paid_order === false ? "Review the purchaser’s most recent paid order" : (selected.current_premium?.remaining_days ?? 0) <= 30 ? "Unavailable with 30 days or less remaining" : selected.refund_eligibility?.usage_signals.length ? "Premium-only usage was found; exception review required" : selected.refund_eligibility?.usage_check_complete === false ? "Usage records could not be fully checked; exception review required" : "Standard refund criteria are not met"}
+                        </Detail>
+                      </>
+                    )}
                     {selected.kind !== "subscription" && <Detail label="Project status"><Badge variant="outline" className="capitalize">{selected.project?.status?.replaceAll("_", " ") || "Not available"}</Badge></Detail>}
                   </dl>
+                  {selected.kind === "subscription" && selected.refund_eligibility && (
+                    <div className="border-t pt-3">
+                      <p className="text-xs font-medium text-muted-foreground">Premium usage signals since purchase</p>
+                      {selected.refund_eligibility.usage_signals.length ? (
+                        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
+                          {selected.refund_eligibility.usage_signals.map((signal) => <li key={signal}>{signal}</li>)}
+                        </ul>
+                      ) : (
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {selected.refund_eligibility.usage_check_complete ? "No use above recorded Free-plan limits was found. Review feature activity and the support ticket; not every Premium benefit has a usage event." : "Some usage records could not be checked. Use exception review if the ticket supports a refund."}
+                        </p>
+                      )}
+                    </div>
+                  )}
                   <details className="group border-t pt-3">
                     <summary className="flex cursor-pointer list-none items-center gap-2 text-xs text-muted-foreground hover:text-foreground">
                       <Code2 className="size-3.5" /> Technical references &amp; raw metadata
@@ -896,17 +952,33 @@ export default function AdminTransactions() {
               )}
               </div>
               <section className="flex flex-wrap items-center justify-between gap-3 border-t p-4">
-                {selected.kind === "subscription" && selected.status === "paid" && selected.refunds.every((refund) => refund.status === "failed") ? (
+                {selected.kind === "subscription" && data?.refundsAvailable !== false && selected.status === "paid" && selected.refund_eligibility?.latest_paid_order !== false && selected.refunds.every((refund) => refund.status === "failed") ? (
                   <div className="min-w-full space-y-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
-                    <p className="text-sm font-medium">Review the purchaser’s support ticket before issuing a full Premium refund.</p>
+                    <p className="text-sm font-medium">Review the support ticket and account usage before refunding this Premium purchase.</p>
+                    <label className="grid gap-1.5 text-sm font-medium">
+                      Support ticket ID
+                      <Input value={supportTicketRef} maxLength={36} onChange={(event) => setSupportTicketRef(event.target.value)} placeholder="Paste the purchaser’s ticket ID" />
+                    </label>
                     <label className="flex items-start gap-2 text-sm">
                       <input type="checkbox" className="mt-1" checked={refundReviewed} onChange={(event) => setRefundReviewed(event.target.checked)} />
-                      <span>I reviewed the ticket and confirmed that no Premium-only benefit was used.</span>
+                      <span>I reviewed the ticket and system records and confirmed that no Premium-only benefit was used.</span>
                     </label>
+                    <label className="grid gap-1.5 text-sm font-medium">
+                      Exception review (optional)
+                      <select className="h-10 rounded-lg border bg-background px-3 font-normal" value={refundException} onChange={(event) => setRefundException(event.target.value as "" | "technical_failure" | "applicable_law")}>
+                        <option value="">Standard refund</option>
+                        <option value="technical_failure">WorkSync technical failure</option>
+                        <option value="applicable_law">Applicable law or approved exception</option>
+                      </select>
+                    </label>
+                    {refundException && <label className="grid gap-1.5 text-sm font-medium">
+                      Exception review notes
+                      <textarea className="min-h-20 rounded-lg border bg-background px-3 py-2 font-normal" maxLength={2000} value={refundExceptionReason} onChange={(event) => setRefundExceptionReason(event.target.value)} placeholder="Record the technical issue or legal basis and what you verified." />
+                    </label>}
                     {refundMessage && <p role="status" className="text-sm text-emerald-700">{refundMessage}</p>}
-                    <Button type="button" variant="destructive" disabled={!refundReviewed || refundBusy} onClick={() => void refundSubscription(selected)}>
-                      {refundBusy ? "Submitting refund…" : "Issue full subscription refund"}
-                    </Button>
+                    {(selected.refund_eligibility?.standard || refundException) && <Button type="button" variant="destructive" disabled={refundBusy || !uuidPattern.test(supportTicketRef.trim()) || (refundException ? refundExceptionReason.trim().length < 10 : !refundReviewed)} onClick={() => void refundSubscription(selected)}>
+                      {refundBusy ? "Submitting refund…" : refundException ? "Issue reviewed exception refund" : "Issue full subscription refund"}
+                    </Button>}
                   </div>
                 ) : null}
                 {selected.kind !== "subscription" && <div>

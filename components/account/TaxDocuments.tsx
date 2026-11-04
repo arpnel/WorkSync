@@ -262,10 +262,10 @@ const TaxDocuments = forwardRef<TaxDocumentsSetupHandle, TaxDocumentsProps>(func
   const registrationFields = <div className="space-y-4 rounded-lg border bg-card p-4">
     {canonicalBirCor.needsReview && <p role="status" className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">Multiple latest Form 2303 records have conflicting or tied review histories. Seller approval and tax checks are paused until an administrator selects the canonical record.</p>}
     {canonicalBirCor.document && <article className="flex flex-wrap items-center justify-between gap-3 border-b pb-3 text-sm">
-      <div className="flex items-start gap-3"><span className={`mt-0.5 grid size-7 shrink-0 place-items-center rounded-full border ${canonicalBirCor.document.status === "verified" ? "border-emerald-500 text-emerald-500" : "border-border text-muted-foreground"}`}>{canonicalBirCor.document.status === "verified" ? <Check className="size-4" /> : <FileText className="size-4" />}</span><div><p className={`text-xs font-semibold ${canonicalBirCor.document.status === "verified" ? "text-emerald-500" : "text-foreground"}`}>{statusLabel(canonicalBirCor.document.status)}</p><p className="mt-1 font-medium">{labels.bir_cor}{canonicalBirCor.document.registered_name ? ` Â· ${canonicalBirCor.document.registered_name}` : ""}</p><p className="mt-0.5 text-xs text-muted-foreground">Submitted {new Date(canonicalBirCor.document.submitted_at).toLocaleDateString()}{canonicalBirCor.document.review_reason ? ` Â· ${canonicalBirCor.document.review_reason}` : ""}</p></div></div>
+      <div className="flex items-start gap-3"><span className={`mt-0.5 grid size-7 shrink-0 place-items-center rounded-full border ${canonicalBirCor.document.status === "verified" ? "border-emerald-500 text-emerald-500" : "border-border text-muted-foreground"}`}>{canonicalBirCor.document.status === "verified" ? <Check className="size-4" /> : <FileText className="size-4" />}</span><div><p className={`text-xs font-semibold ${canonicalBirCor.document.status === "verified" ? "text-emerald-500" : "text-foreground"}`}>{statusLabel(canonicalBirCor.document.status)}</p><p className="mt-1 font-medium">{labels.bir_cor}{canonicalBirCor.document.registered_name ? ` · ${canonicalBirCor.document.registered_name}` : ""}</p><p className="mt-0.5 text-xs text-muted-foreground">Submitted {new Date(canonicalBirCor.document.submitted_at).toLocaleDateString()}{canonicalBirCor.document.review_reason ? ` · ${canonicalBirCor.document.review_reason}` : ""}</p></div></div>
       <Button type="button" size="sm" variant="outline" onClick={() => void viewDocument(canonicalBirCor.document!.document_id)}><FileText className="mr-2 size-4" />View document</Button>
     </article>}
-    {canonicalBirCor.document?.status === "rejected" && <p className="text-sm text-destructive">Review the administratorâ€™s feedback, then submit a corrected Form 2303.</p>}
+    {canonicalBirCor.document?.status === "rejected" && <p className="text-sm text-destructive">Review the administrator's feedback, then submit a corrected Form 2303.</p>}
     {canonicalBirCor.document?.status !== "pending" && <div className="space-y-4">
       <div className="space-y-2"><Label htmlFor="canonical-bir-registered-name">Registered name on Form 2303 <span className="text-destructive">*</span></Label><Input id="canonical-bir-registered-name" placeholder="Enter registered name" value={registeredName} maxLength={200} onChange={event => setRegisteredName(event.target.value)} disabled={busy} /></div>
       <div className="space-y-2"><Label htmlFor={settingsMode ? "canonical-bir-file" : "setup-bir-file"}>Form 2303 document <span className="text-destructive">*</span></Label>
@@ -282,7 +282,7 @@ const TaxDocuments = forwardRef<TaxDocumentsSetupHandle, TaxDocumentsProps>(func
           onFiles={(files) => selectBirCorFile(files[0])}
         />}
       </div>
-      {!setupMode && <div className="flex justify-end border-t pt-4"><Button type="button" className="bg-emerald-700 text-white hover:bg-emerald-600" onClick={() => void submitBirCor().catch(() => undefined)} disabled={!file || !registeredName.trim() || busy || canonicalBirCor.needsReview}>{busy && <LoaderCircle className="mr-2 size-4 animate-spin" />}{busy ? "Submittingâ€¦" : canonicalBirCor.document?.status === "rejected" ? "Submit correction" : "Submit for review"}</Button></div>}
+      {!setupMode && <div className="flex justify-end border-t pt-4"><Button type="button" className="bg-emerald-700 text-white hover:bg-emerald-600" onClick={() => void submitBirCor().catch(() => undefined)} disabled={!file || !registeredName.trim() || busy || canonicalBirCor.needsReview}>{busy && <LoaderCircle className="mr-2 size-4 animate-spin" />}{busy ? "Submitting…" : canonicalBirCor.document?.status === "rejected" ? "Submit correction" : "Submit for review"}</Button></div>}
     </div>}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}{notice && <p role="status" className="text-sm text-emerald-600">{notice}</p>}
   </div>;
@@ -291,7 +291,7 @@ const TaxDocuments = forwardRef<TaxDocumentsSetupHandle, TaxDocumentsProps>(func
 
   return (
     <div className="space-y-4">
-      {loading && <div className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" /> Loading tax documentsâ€¦</div>}
+      {loading && <div className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" /> Loading tax documents…</div>}
       {settingsMode && !loading && freelancerAvailable && <section className="space-y-6 rounded-2xl border bg-card p-5 shadow-xl sm:p-8" aria-labelledby="settings-tax-documents-heading">
         <header className="flex flex-col justify-between gap-3 border-b pb-5 sm:flex-row sm:items-center">
           <div>
@@ -304,7 +304,10 @@ const TaxDocuments = forwardRef<TaxDocumentsSetupHandle, TaxDocumentsProps>(func
         </header>
         <div className="space-y-3 rounded-xl border bg-background/40 p-4 sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <label htmlFor="settings-tax-tin" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Taxpayer Identification Number (TIN) <span className="text-destructive">*</span></label>
+            <div className="flex flex-wrap items-center gap-2">
+              <label htmlFor="settings-tax-tin" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Taxpayer Identification Number (TIN) <span className="text-destructive">*</span></label>
+              {tinSaved && <span role="status" className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-400"><Check className="size-3.5" aria-hidden="true" />TIN submitted</span>}
+            </div>
             <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-500"><Lock className="size-3" />Mandatory for Payouts</span>
           </div>
           <div className="relative">
@@ -312,12 +315,11 @@ const TaxDocuments = forwardRef<TaxDocumentsSetupHandle, TaxDocumentsProps>(func
             <input id="settings-tax-tin" type="text" inputMode="numeric" autoComplete="off" maxLength={15} value={tin} aria-invalid={Boolean(tinError)} onChange={event => { setTin(formatTinInput(event.target.value)); setTinError(""); setTinNotice(""); }} disabled={tinBusy || tinStatusLoading || tinSaved} className={`flex h-11 w-full rounded-xl border bg-card py-2 pl-10 pr-3 font-mono text-sm outline-none transition-colors focus-visible:border-emerald-500 focus-visible:ring-1 focus-visible:ring-emerald-500 ${tinError ? "border-destructive" : "border-input"}`} placeholder="000-000-000-000" />
           </div>
           <p className="text-xs text-muted-foreground">Enter your 9 or 12 digit BIR-issued individual or business Tax Identification Number.</p>
-          {tinSaved && <p className="text-xs text-muted-foreground">Your TIN has already been submitted and saved. It cannot be resubmitted here.</p>}
           {tinError && <p role="alert" className="text-xs text-destructive">{tinError}</p>}
-          {tinNotice && <p role="status" className="text-xs text-emerald-600">{tinNotice}</p>}
+          {tinNotice && !tinSaved && <p role="status" className="text-xs text-emerald-600">{tinNotice}</p>}
           <div className="flex justify-end border-t pt-3">
             <Button type="button" onClick={() => void saveTin()} disabled={tinBusy || tinStatusLoading || tinSaved} className="bg-emerald-700 text-white hover:bg-emerald-600">
-              {tinBusy ? <><LoaderCircle className="size-4 animate-spin" />Savingâ€¦</> : <><Save className="size-4" />Save Tax Profile</>}
+              {tinBusy ? <><LoaderCircle className="size-4 animate-spin" />Saving…</> : <><Save className="size-4" />Save Tax Profile</>}
             </Button>
           </div>
         </div>

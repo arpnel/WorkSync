@@ -152,39 +152,41 @@ export function ProjectCard({ project, onChanged }: ProjectCardProps) {
                         "MMM d, yyyy 'at' h:mm a",
                       )}
                     </span>
-                    <span className="inline-flex items-center gap-1 font-medium text-primary">
-                      {project.currentParty === "freelancer"
-                        ? "Review request"
-                        : "View sent request"}
-                      <ArrowRight className="h-3.5 w-3.5" />
-                    </span>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3 border-t pt-3 text-sm sm:min-w-[300px] sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Budget</p>
-                    <p className="mt-1 inline-flex items-center gap-1 font-medium">
-                      <BriefcaseBusiness className="h-3.5 w-3.5 text-muted-foreground" />
-                      PHP {project.budget.toLocaleString()}
-                    </p>
+                <div className="flex flex-col gap-4 border-t pt-3 text-sm sm:min-w-[300px] sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0">
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Budget</p>
+                      <p className="mt-1 inline-flex items-center gap-1 font-medium">
+                        <BriefcaseBusiness className="h-3.5 w-3.5 text-muted-foreground" />
+                        PHP {project.budget.toLocaleString()}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Delivery</p>
+                      <p className="mt-1 inline-flex items-center gap-1 font-medium">
+                        <Clock3 className="h-3.5 w-3.5 text-muted-foreground" />
+                        {project.deliveryDays == null
+                          ? "Not set"
+                          : `${project.deliveryDays} days`}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Revisions</p>
+                      <p className="mt-1 inline-flex items-center gap-1 font-medium">
+                        <RotateCcw className="h-3.5 w-3.5 text-muted-foreground" />
+                        {project.revisions ?? "Not set"}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Delivery</p>
-                    <p className="mt-1 inline-flex items-center gap-1 font-medium">
-                      <Clock3 className="h-3.5 w-3.5 text-muted-foreground" />
-                      {project.deliveryDays == null
-                        ? "Not set"
-                        : `${project.deliveryDays} days`}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Revisions</p>
-                    <p className="mt-1 inline-flex items-center gap-1 font-medium">
-                      <RotateCcw className="h-3.5 w-3.5 text-muted-foreground" />
-                      {project.revisions ?? "Not set"}
-                    </p>
-                  </div>
+                  <span className="ml-auto inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium text-primary">
+                    {project.currentParty === "freelancer"
+                      ? "Review request"
+                      : "View sent request"}
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </span>
                 </div>
               </div>
             </CardContent>

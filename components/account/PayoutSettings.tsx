@@ -1,7 +1,8 @@
 ﻿"use client";
 import { StyledSelect } from "@/components/ui/styled-select";
 import Link from "next/link";
-import { openFreelancerPayoutStatement } from "@/lib/payments/receiptClient";
+import { openSavedTaxReceipt } from "@/lib/payments/receiptClient";
+import { openWithdrawalReceipt } from "@/lib/payments/withdrawalReceiptPdf";
 import { filterPayoutHistory, paginatePayoutHistory, payoutStatusGroup, payoutStatusLabel } from "@/lib/payments/payoutHistory";
 import { buildPayoutCsv, payoutCsvFilename, type PayoutCsvFormat } from "@/lib/payments/payoutCsv";
 
@@ -203,6 +204,9 @@ export default function PayoutSettings() {
   const [search, setSearch] = useState("");
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [page, setPage] = useState(0);
+  const [withdrawalSearch, setWithdrawalSearch] = useState("");
+  const [withdrawalSortOrder, setWithdrawalSortOrder] = useState<"newest" | "oldest">("newest");
+  const [withdrawalPage, setWithdrawalPage] = useState(0);
   const [withdrawalAmount, setWithdrawalAmount] = useState("");
   const completingDemoPayouts = useRef(new Set<string>());
   const [form, setForm] = useState({
@@ -262,6 +266,21 @@ export default function PayoutSettings() {
   const pageSize = 10;
   const pageCount = Math.max(1, Math.ceil(matchingPayouts.length / pageSize));
   const visiblePayouts = paginatePayoutHistory(matchingPayouts, page, pageSize);
+  const withdrawalRows = earnings?.withdrawals ?? [];
+  const matchingWithdrawals = withdrawalRows
+    .filter((withdrawal) =>
+      withdrawal.id.toLowerCase().includes(withdrawalSearch.trim().toLowerCase()),
+    )
+    .sort((first, second) => {
+      const dateDifference = Date.parse(first.requestedAt) - Date.parse(second.requestedAt);
+      return withdrawalSortOrder === "newest" ? -dateDifference : dateDifference;
+    });
+  const withdrawalPageSize = 10;
+  const withdrawalPageCount = Math.max(1, Math.ceil(matchingWithdrawals.length / withdrawalPageSize));
+  const visibleWithdrawals = matchingWithdrawals.slice(
+    withdrawalPage * withdrawalPageSize,
+    (withdrawalPage + 1) * withdrawalPageSize,
+  );
   const withdrawalQuote = earnings?.withdrawalQuote;
   const withdrawalPreview = calculateWithdrawalPreview(
     withdrawalAmount,
@@ -386,7 +405,7 @@ export default function PayoutSettings() {
         <section aria-labelledby="withdraw-earnings-heading" className="space-y-4 rounded-xl border bg-card p-4 sm:p-5">
           <div>
             <h3 id="withdraw-earnings-heading" className="text-lg font-semibold">Withdraw earnings</h3>
-            <p className="mt-1 text-sm text-muted-foreground">Enter a gross amount up to your ready earnings. The estimate shows withholding and the net amount of your withdrawal. This is a demo status flow; no PayMongo transfer is sent.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Enter an amount from your ready earnings, then review the withholding and estimated net withdrawal.</p>
           </div>
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.8fr)]">
             <form
@@ -462,22 +481,138 @@ export default function PayoutSettings() {
               )}
             </div>
           )}
-          {!!earnings.withdrawals?.length && (
-            <div className="space-y-2 border-t pt-4">
-              <h4 className="text-sm font-semibold">Recent withdrawal requests</h4>
-              <ul className="space-y-2">
-                {earnings.withdrawals.slice(0, 5).map((withdrawal) => (
-                  <li key={withdrawal.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm">
-                    <div>
-                      <p className="font-medium">{php(withdrawal.requestedNetAmount)} net</p>
-                      <p className="text-xs text-muted-foreground">{payoutDate(withdrawal.requestedAt)} &middot; {php(withdrawal.grossAmount)} gross &minus; {php(withdrawal.withholdingAmount)} withholding</p>
-                    </div>
-                    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${statusStyle(withdrawal.status)}`}>{payoutStatusLabel(withdrawal.status)}</span>
-                  </li>
-                ))}
-              </ul>
+        </section>
+      )}
+      {data?.eligible && earnings?.available !== false && earnings?.summary && (
+        <section aria-labelledby="withdrawal-history-heading" className="space-y-4">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h3 id="withdrawal-history-heading" className="text-lg font-semibold">Withdrawal history</h3>
+              <p className="mt-1 text-sm text-muted-foreground">Review withdrawal amounts, withholding, and status.</p>
             </div>
-          )}
+            <p className="text-sm text-muted-foreground" aria-live="polite">
+              {matchingWithdrawals.length} {matchingWithdrawals.length === 1 ? "withdrawal" : "withdrawals"}
+            </p>
+          </div>
+          <div className="overflow-hidden rounded-xl border bg-card">
+            <div className="flex flex-col gap-3 border-b bg-card p-4 sm:flex-row sm:items-end">
+              <div className="relative min-w-0 flex-1">
+                <Label htmlFor="withdrawal-search">Search withdrawal ID</Label>
+                <Search className="pointer-events-none absolute left-3 top-9 size-4 text-muted-foreground" aria-hidden="true" />
+                <Input
+                  id="withdrawal-search"
+                  className="mt-1 pl-9"
+                  value={withdrawalSearch}
+                  placeholder="Withdrawal ID"
+                  onChange={(event) => {
+                    setWithdrawalSearch(event.target.value);
+                    setWithdrawalPage(0);
+                  }}
+                />
+              </div>
+              <div className="w-full shrink-0 sm:w-48">
+                <Label htmlFor="withdrawal-sort">Sort</Label>
+                <StyledSelect
+                  id="withdrawal-sort"
+                  className="mt-1 h-10 w-full rounded-lg border bg-background px-3 text-sm"
+                  value={withdrawalSortOrder}
+                  onChange={(event) => {
+                    setWithdrawalSortOrder(event.target.value as "newest" | "oldest");
+                    setWithdrawalPage(0);
+                  }}
+                >
+                  <option value="newest">Newest first</option>
+                  <option value="oldest">Oldest first</option>
+                </StyledSelect>
+              </div>
+            </div>
+            {matchingWithdrawals.length === 0 ? (
+              <div className="px-4 py-10 text-center">
+                <p className="font-medium">
+                  {withdrawalSearch.trim() ? "No withdrawals match your search" : "No withdrawals yet"}
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="hidden overflow-x-auto md:block">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+                      <tr>
+                        <th className="px-4 py-3 font-medium">Date</th>
+                        <th className="px-4 py-3 font-medium">Gross amount</th>
+                        <th className="px-4 py-3 font-medium">Withholding</th>
+                        <th className="px-4 py-3 font-medium">Net amount</th>
+                        <th className="px-4 py-3 font-medium">Status</th>
+                        <th className="px-4 py-3 text-right font-medium">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {visibleWithdrawals.map((withdrawal) => (
+                        <tr key={withdrawal.id} className="bg-card">
+                          <td className="px-4 py-3">
+                            <p>{payoutDate(withdrawal.requestedAt)}</p>
+                            <p className="mt-1 max-w-52 truncate text-xs text-muted-foreground" title={withdrawal.id}>Withdrawal {withdrawal.id}</p>
+                          </td>
+                          <td className="px-4 py-3 font-medium tabular-nums">{php(withdrawal.grossAmount)}</td>
+                          <td className="px-4 py-3 font-medium tabular-nums">{php(withdrawal.withholdingAmount)}</td>
+                          <td className="px-4 py-3 font-medium tabular-nums">{php(withdrawal.requestedNetAmount)}</td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${statusStyle(withdrawal.status)}`}>
+                              {payoutStatusLabel(withdrawal.status)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex justify-end">
+                              <Button variant="outline" size="sm" onClick={() => openWithdrawalReceipt(withdrawal)}>
+                                View receipt
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="space-y-3 p-4 md:hidden">
+                  {visibleWithdrawals.map((withdrawal) => (
+                    <article key={withdrawal.id} className="space-y-3 rounded-xl border bg-card p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-medium">{payoutDate(withdrawal.requestedAt)}</p>
+                          <p className="mt-1 truncate text-xs text-muted-foreground" title={withdrawal.id}>Withdrawal {withdrawal.id}</p>
+                        </div>
+                        <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium ${statusStyle(withdrawal.status)}`}>
+                          {payoutStatusLabel(withdrawal.status)}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-3 border-t pt-3">
+                        <div><p className="text-xs text-muted-foreground">Gross</p><p className="mt-1 font-medium tabular-nums">{php(withdrawal.grossAmount)}</p></div>
+                        <div><p className="text-xs text-muted-foreground">Withholding</p><p className="mt-1 font-medium tabular-nums">{php(withdrawal.withholdingAmount)}</p></div>
+                        <div><p className="text-xs text-muted-foreground">Net</p><p className="mt-1 font-medium tabular-nums">{php(withdrawal.requestedNetAmount)}</p></div>
+                      </div>
+                      <Button variant="outline" size="sm" onClick={() => openWithdrawalReceipt(withdrawal)}>
+                        View receipt
+                      </Button>
+                    </article>
+                  ))}
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-sm">
+                  <p className="text-muted-foreground">
+                    Showing {visibleWithdrawals.length} of {matchingWithdrawals.length}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" disabled={withdrawalPage === 0} onClick={() => setWithdrawalPage((value) => Math.max(0, value - 1))}>
+                      <ChevronLeft className="mr-1 size-4" />Previous
+                    </Button>
+                    <span className="tabular-nums text-muted-foreground">Page {withdrawalPage + 1} of {withdrawalPageCount}</span>
+                    <Button variant="outline" size="sm" disabled={withdrawalPage + 1 >= withdrawalPageCount} onClick={() => setWithdrawalPage((value) => Math.min(withdrawalPageCount - 1, value + 1))}>
+                      Next<ChevronRight className="ml-1 size-4" />
+                    </Button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         </section>
       )}
       {data?.eligible && earnings?.available !== false && earnings?.summary && (
@@ -520,7 +655,7 @@ export default function PayoutSettings() {
                       <td className="px-4 py-3 font-medium tabular-nums">{php(payout.grossAmount)}</td>
                       <td className="px-4 py-3 font-medium tabular-nums">{php(payout.amount)}{payout.withholdingAmount > 0 && <p className="mt-1 text-xs font-normal text-muted-foreground">Withholding: {php(payout.withholdingAmount)}</p>}</td>
                       <td className="px-4 py-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${statusStyle(payout.status)}`}>{payoutStatusLabel(payout.status)}</span></td>
-                      <td className="px-4 py-3"><div className="flex justify-end"><Button variant="outline" size="sm" onClick={() => void openFreelancerPayoutStatement(payout.transactionId).catch((cause) => setError(cause instanceof Error ? cause.message : "Payout statement unavailable."))}>View receipt</Button></div></td>
+                      <td className="px-4 py-3"><div className="flex justify-end"><Button variant="outline" size="sm" onClick={() => void openSavedTaxReceipt(payout.transactionId).catch((cause) => setError(cause instanceof Error ? cause.message : "Client receipt unavailable."))}>View receipt</Button></div></td>
                     </tr>)}
                   </tbody>
                 </table>
@@ -529,11 +664,11 @@ export default function PayoutSettings() {
                 {visiblePayouts.map((payout) => <article key={payout.id} className="space-y-3 rounded-xl border bg-card p-4">
                   <div className="flex items-start justify-between gap-3"><div><p className="font-medium">{payout.projectTitle}</p><p className="mt-1 text-xs text-muted-foreground">{payoutDate(payout.createdAt)}</p><p className="mt-1 max-w-52 truncate text-xs text-muted-foreground" title={payout.transferReference ?? payout.id}>{payout.transferReference ? `Ref ${payout.transferReference}` : `Payout ${payout.id}`}</p></div><span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium ${statusStyle(payout.status)}`}>{payoutStatusLabel(payout.status)}</span></div>
                   <div className="grid grid-cols-2 gap-3 border-t pt-3"><div><p className="text-xs text-muted-foreground">Gross earnings</p><p className="mt-1 font-medium tabular-nums">{php(payout.grossAmount)}</p></div><div><p className="text-xs text-muted-foreground">Net earnings</p><p className="mt-1 font-medium tabular-nums">{php(payout.amount)}</p>{payout.withholdingAmount > 0 && <p className="mt-1 text-xs text-muted-foreground">Withholding: {php(payout.withholdingAmount)}</p>}</div></div>
-                  <Button variant="outline" size="sm" onClick={() => void openFreelancerPayoutStatement(payout.transactionId).catch((cause) => setError(cause instanceof Error ? cause.message : "Payout statement unavailable."))}>View receipt</Button>
+                  <Button variant="outline" size="sm" onClick={() => void openSavedTaxReceipt(payout.transactionId).catch((cause) => setError(cause instanceof Error ? cause.message : "Client receipt unavailable."))}>View receipt</Button>
                 </article>)}
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-sm">
-                <p className="text-muted-foreground">Showing {page * pageSize + 1} to {Math.min((page + 1) * pageSize, matchingPayouts.length)} of {matchingPayouts.length}</p>
+                <p className="text-muted-foreground">Showing {visiblePayouts.length} of {matchingPayouts.length}</p>
                 <div className="flex items-center gap-2"><Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((value) => Math.max(0, value - 1))}><ChevronLeft className="mr-1 size-4" />Previous</Button><span className="tabular-nums text-muted-foreground">Page {page + 1} of {pageCount}</span><Button variant="outline" size="sm" disabled={page + 1 >= pageCount} onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))}>Next<ChevronRight className="ml-1 size-4" /></Button></div>
               </div>
             </>

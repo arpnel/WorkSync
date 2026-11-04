@@ -2,7 +2,6 @@
 
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { getProjects } from "@/services/project/projectService";
 import { mapProject } from "@/hooks/project/useProjects";
@@ -13,6 +12,13 @@ import { supabase } from "@/lib/supabaseClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { getCurrentUserRole } from "@/services/marketplace/AccountServices";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const record = (value: unknown): Record<string, unknown> => {
   const row = Array.isArray(value) ? value[0] : value;
@@ -144,145 +150,154 @@ export default function WorkContacts() {
 
   return (
     <div className="space-y-5">
-      {selectedContact ? (
-        <div className="space-y-5">
-          <div className="space-y-3">
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedContactId(null);
-                setStatusFilter("All");
-              }}
-              className="inline-flex min-h-10 items-center gap-2 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary"
-            >
-              <ArrowLeft className="size-4" aria-hidden="true" />
-              Back to {contactHeading.toLowerCase()}
-            </button>
-            <div>
-              <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-                {selectedContact.name}
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                Shared jobs and projects with their current status.
-              </p>
-            </div>
-          </div>
-
-          <ProjectTabs
-            activeFilter={statusFilter}
-            onFilterChange={setStatusFilter}
-          />
-
-          {loading ? (
-            <ContentSkeleton
-              label="Loading shared projects"
-              variant="projects"
-            />
-          ) : error ? (
-            <p role="alert" className="text-destructive">
-              {error}
-            </p>
-          ) : filteredProjects.length ? (
-            <div className="space-y-3">
-              {filteredProjects.map((project) => (
-                <ProjectCard key={project.orderId} project={project} />
-              ))}
-            </div>
-          ) : (
-            <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-              No{" "}
-              {statusFilter === "All"
-                ? "shared projects"
-                : statusFilter.toLowerCase() + " projects"}{" "}
-              for this contact.
-            </p>
-          )}
-        </div>
+      <div className="space-y-1">
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+          {contactHeading}
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          People you have worked with.
+        </p>
+      </div>
+      {error && <p role="alert" className="text-destructive">{error}</p>}
+      {loading ? (
+        <ContentSkeleton label="Loading contacts" variant="contacts" />
       ) : (
-        <>
-          <div className="space-y-1">
-            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-              {contactHeading}
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              People you have worked with.
-            </p>
-          </div>
-          {error && (
-            <p role="alert" className="text-destructive">
-              {error}
-            </p>
-          )}
-          {loading ? (
-            <ContentSkeleton label="Loading contacts" variant="contacts" />
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {contacts.map((contact) => (
-                  <Card
-                    key={contact.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => {
-                      setSelectedContactId(contact.id);
-                      setStatusFilter("All");
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        setSelectedContactId(contact.id);
-                        setStatusFilter("All");
-                      }
-                    }}
-                    className="gap-0 cursor-pointer transition-colors hover:border-primary/40 focus-visible:outline-2 focus-visible:outline-primary"
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {contacts.map((contact) => (
+            <Card
+              key={contact.id}
+              className="relative cursor-pointer gap-0 transition-colors hover:border-primary/40"
+            >
+              <button
+                type="button"
+                aria-haspopup="dialog"
+                aria-label={`View shared projects with ${contact.name}`}
+                onClick={() => {
+                  setSelectedContactId(contact.id);
+                  setStatusFilter("All");
+                }}
+                className="absolute inset-0 z-0 rounded-xl border-0 bg-transparent p-0 focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2"
+              />
+              <CardHeader className="pointer-events-none relative z-10 pb-2">
+                <CardTitle className="flex items-center gap-3 text-base">
+                  <Link
+                    href={`/home/profile/${contact.id}`}
+                    aria-label={`View ${contact.name}'s profile`}
+                    className="pointer-events-auto relative z-20 shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-primary"
                   >
-                    <CardHeader className="pb-2">
-                      <CardTitle className="flex items-center gap-3 text-base">
-                        <Link
-                          href={`/home/profile/${contact.id}`}
-                          aria-label={`View ${contact.name}'s profile`}
-                          onClick={(event) => event.stopPropagation()}
-                          className="shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-primary"
-                        >
-                          <Avatar className="size-10">
-                            <AvatarImage
-                              src={contact.avatarUrl ?? undefined}
-                              alt={contact.name}
-                            />
-                            <AvatarFallback>
-                              {contact.name
-                                .split(" ")
-                                .map((part) => part[0])
-                                .join("")
-                                .slice(0, 2)
-                                .toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                        </Link>
-                        <Link
-                          href={`/home/profile/${contact.id}`}
-                          onClick={(event) => event.stopPropagation()}
-                          className="truncate rounded-sm hover:text-primary focus-visible:outline-2 focus-visible:outline-primary"
-                        >
-                          {contact.name}
-                        </Link>
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="pt-1 pb-4 text-left text-sm leading-6 text-muted-foreground">
-                      {contact.count} shared jobs / projects
-                    </CardContent>
-                  </Card>
-              ))}
-            </div>
-          )}
-          {!loading && !error && !contacts.length && (
-            <p className="py-8 text-center text-lg font-medium text-muted-foreground">
-              {role === "client"
-                ? "Your list of clients will appear here."
-                : "Your list of freelancers will appear here."}
-            </p>
-          )}
-        </>
+                    <Avatar className="size-10">
+                      <AvatarImage
+                        src={contact.avatarUrl ?? undefined}
+                        alt={contact.name}
+                      />
+                      <AvatarFallback>
+                        {contact.name
+                          .split(" ")
+                          .map((part) => part[0])
+                          .join("")
+                          .slice(0, 2)
+                          .toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                  </Link>
+                  <Link
+                    href={`/home/profile/${contact.id}`}
+                    className="pointer-events-auto relative z-20 truncate rounded-sm hover:text-primary focus-visible:outline-2 focus-visible:outline-primary"
+                  >
+                    {contact.name}
+                  </Link>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pointer-events-none relative z-10 pt-1 pb-4 text-left text-sm leading-6 text-muted-foreground">
+                {contact.count} shared projects
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       )}
+      {!loading && !error && !contacts.length && (
+        <p className="py-8 text-center text-lg font-medium text-muted-foreground">
+          {role === "client"
+            ? "Your list of freelancers will appear here."
+            : "Your list of clients will appear here."}
+        </p>
+      )}
+
+      <Dialog
+        open={Boolean(selectedContact)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedContactId(null);
+            setStatusFilter("All");
+          }
+        }}
+      >
+        {selectedContact && (
+          <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
+            <DialogHeader className="shrink-0 border-b p-5 pr-12">
+              <div className="flex min-w-0 items-center gap-3">
+                <Link
+                  href={`/home/profile/${selectedContact.id}`}
+                  aria-label={`View ${selectedContact.name}'s profile`}
+                  className="shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-primary"
+                >
+                  <Avatar className="size-10">
+                    <AvatarImage
+                      src={selectedContact.avatarUrl ?? undefined}
+                      alt={selectedContact.name}
+                    />
+                    <AvatarFallback>
+                      {selectedContact.name
+                        .split(" ")
+                        .map((part) => part[0])
+                        .join("")
+                        .slice(0, 2)
+                        .toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                </Link>
+                <div className="min-w-0">
+                  <DialogTitle className="truncate">
+                    <Link
+                      href={`/home/profile/${selectedContact.id}`}
+                      className="rounded-sm hover:text-primary focus-visible:outline-2 focus-visible:outline-primary"
+                    >
+                      {selectedContact.name}
+                    </Link>
+                  </DialogTitle>
+                  <DialogDescription>
+                    {selectedContact.count} shared projects
+                  </DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+              <ProjectTabs
+                activeFilter={statusFilter}
+                onFilterChange={setStatusFilter}
+              />
+              {loading ? (
+                <ContentSkeleton
+                  label="Loading shared projects"
+                  variant="projects"
+                />
+              ) : error ? (
+                <p role="alert" className="text-destructive">{error}</p>
+              ) : filteredProjects.length ? (
+                <div className="space-y-3">
+                  {filteredProjects.map((project) => (
+                    <ProjectCard key={project.orderId} project={project} />
+                  ))}
+                </div>
+              ) : (
+                <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+                  No {statusFilter === "All" ? "shared projects" : statusFilter.toLowerCase() + " projects"} for this contact.
+                </p>
+              )}
+            </div>
+          </DialogContent>
+        )}
+      </Dialog>
     </div>
   );
 }

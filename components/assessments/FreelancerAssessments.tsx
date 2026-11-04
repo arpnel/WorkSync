@@ -7,7 +7,6 @@ import {
   CalendarDays,
   ClipboardCheck,
   Clock,
-  Info,
   ListChecks,
   Target,
 } from "lucide-react";
@@ -174,6 +173,12 @@ export default function FreelancerAssessments() {
       : x.status === "closed" || x.attempt?.status === "expired"
         ? "expired"
         : "available";
+  const submittedResult =
+    attempt?.status === "submitted"
+      ? attempt
+      : selected?.attempt?.status === "submitted"
+        ? selected.attempt
+        : null;
   if (loading)
     return (
       <div className="mx-auto max-w-4xl space-y-5">
@@ -192,8 +197,8 @@ export default function FreelancerAssessments() {
           Skill assessments
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          WorkSync category knowledge checks, separate from identity
-          verification.
+          Check your category knowledge and add passing assessment results to
+          your profile.
         </p>
       </header>
       {error && (
@@ -306,43 +311,46 @@ export default function FreelancerAssessments() {
                 <CalendarDays className="size-4 shrink-0" aria-hidden="true" />
                 Opens {date(selected.opensAt)} · Closes {date(selected.closesAt)}
               </p>
-              <div className="flex items-start gap-3 rounded-xl border border-primary/15 bg-primary/5 p-4">
-                <Info
-                  className="mt-0.5 size-4 shrink-0 text-primary"
-                  aria-hidden="true"
-                />
-                <p className="leading-6 text-muted-foreground">
-                  {selected.timeLimitMinutes
-                    ? "One attempt for this opening. Your timer continues if you leave. Submit before this opening closes or your attempt timer expires, whichever comes first. Expired attempts are not scored. Early Admin closure ends unsubmitted attempts. Save answers before refreshing."
-                    : "One attempt for this opening, with no separate attempt timer. Work at your own pace, but submit before this opening closes. Expired attempts are not scored. Early Admin closure ends unsubmitted attempts. Save answers before refreshing."}
-                </p>
-              </div>
+              {submittedResult && (
+                <div
+                  className={`flex items-start gap-3 rounded-xl border p-4 ${
+                    submittedResult.passed
+                      ? "border-emerald-500/25 bg-emerald-500/5"
+                      : "border-amber-500/25 bg-amber-500/5"
+                  }`}
+                  role="status"
+                >
+                  <ClipboardCheck
+                    className={`mt-0.5 size-4 shrink-0 ${
+                      submittedResult.passed
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-amber-600 dark:text-amber-400"
+                    }`}
+                    aria-hidden="true"
+                  />
+                  <div>
+                    <p className="font-semibold">
+                      {submittedResult.passed
+                        ? "Assessment passed"
+                        : "Assessment not passed"}
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Score: {submittedResult.percentage}% · {submittedResult.score}/
+                      {submittedResult.total} points
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Submitted{" "}
+                      {submittedResult.submittedAt
+                        ? date(submittedResult.submittedAt)
+                        : "—"}
+                      . Answer keys are not disclosed.
+                    </p>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
-          {attempt?.status === "submitted" ||
-          (!attempt && selected.attempt?.status === "submitted") ? (
-            <Card>
-              <CardContent className="pt-5">
-                <h2 className="font-semibold">
-                  {(attempt ?? selected.attempt)?.passed
-                    ? "Assessment passed"
-                    : "Assessment not passed"}
-                </h2>
-                <p className="mt-2">
-                  Score: {(attempt ?? selected.attempt)?.percentage}% ·{" "}
-                  {(attempt ?? selected.attempt)?.score}/
-                  {(attempt ?? selected.attempt)?.total} points
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  Submitted{" "}
-                  {(attempt ?? selected.attempt)?.submittedAt
-                    ? date((attempt ?? selected.attempt)!.submittedAt!)
-                    : "—"}
-                  . Answer keys are not disclosed.
-                </p>
-              </CardContent>
-            </Card>
-          ) : attempt?.status === "expired" ||
+          {submittedResult ? null : attempt?.status === "expired" ||
             selected.status === "closed" ||
             selected.attempt?.status === "expired" ? (
             <p role="status">
@@ -397,7 +405,9 @@ export default function FreelancerAssessments() {
                 <p className="mt-1 text-sm text-muted-foreground">
                   {selected.status === "scheduled"
                     ? `It opens ${date(selected.opensAt)}.`
-                    : "Review the details above before starting your attempt."}
+                    : selected.attempt
+                      ? "Continue your saved answers and submit before the assessment closes."
+                      : `Answer questions about ${selected.category} and submit before the assessment closes.`}
                 </p>
               </div>
               <Button
@@ -431,8 +441,11 @@ export default function FreelancerAssessments() {
           </div>
           {!items.filter((x) => group(x) === tab).length && (
             <p className="rounded-lg border p-6 text-sm text-muted-foreground">
-              No {tab} assessments. Invitations are based on your category,
-              account age and eligibility when Admin publishes an opening.
+              {tab === "available"
+                ? "When an assessment opens for your category, you can take it here."
+                : tab === "completed"
+                  ? "Your finished assessments and scores will appear here."
+                  : "Review assessments that closed or expired before submission here."}
             </p>
           )}
           <div className="grid gap-3 sm:grid-cols-2">
@@ -482,7 +495,7 @@ export default function FreelancerAssessments() {
                         {item.category}
                       </CardTitle>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        Skill assessment{" "}
+                        Category knowledge check{" "}
                         <span aria-hidden="true">/</span> Version {item.version}
                       </p>
                     </div>

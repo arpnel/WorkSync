@@ -64,7 +64,7 @@ function jobBudget(detail: string) {
       currency: "PHP",
       maximumFractionDigits: 0,
     }).format(Number(value.replaceAll(",", "")));
-  return `${format(match[1])} â€“ ${format(match[2])}`;
+  return `${format(match[1])} – ${format(match[2])}`;
 }
 
 function jobDescription(detail: string) {
@@ -185,6 +185,23 @@ function projectDate(value: string | null | undefined) {
   if (!value) return "Not recorded";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
+function adminActionLabel(module: AdminModule, value: string) {
+  if (module === "disputes") {
+    const labels: Record<string, string> = {
+      under_review: "Under review",
+      resume_work: "Resume work",
+      cancel_project: "Cancel project",
+      complete_project: "Complete project",
+      complete_milestone: "Complete affected milestone",
+    };
+    return labels[value] ?? value.replaceAll("_", " ");
+  }
+  if (module === "projects" && value === "cancel_project") return "Cancel project";
+  if ((module === "jobs" || module === "services") && value === "hide") return "Hide listing";
+  if ((module === "jobs" || module === "services") && value === "restore") return "Restore";
+  return value.replaceAll("_", " ");
 }
 
 export default function AdminRecords({
@@ -358,7 +375,18 @@ export default function AdminRecords({
     module === "users"
       ? ["suspend", "restore"]
       : module === "disputes"
-        ? ["under_review", "resume_work", "cancel_project"]
+        ? [
+            "under_review",
+            "resume_work",
+            "cancel_project",
+            ...(selected?.disputeCompletionActionsAvailable
+              ? [
+                  selected.disputeMilestoneId
+                    ? "complete_milestone"
+                    : "complete_project",
+                ]
+              : []),
+          ]
         : module === "reports"
           ? ["under_review", "resolved", "dismissed"]
           : module === "verification"
@@ -1239,7 +1267,7 @@ export default function AdminRecords({
                     <TableCell className="text-right text-xs text-muted-foreground md:text-left md:text-sm">
                       {row.created_at
                         ? new Date(row.created_at).toLocaleDateString()
-                        : "â€”"}
+                        : "—"}
                     </TableCell>
                     {module === "transactions" && (
                       <TableCell className="col-span-2 md:text-left">
@@ -1330,8 +1358,8 @@ export default function AdminRecords({
                     : `Showing ${visibleRows.length} of ${matchingCount.toLocaleString()} ${recordNoun}`
                   : isStructuredRecordsModule && data?.total != null
                   ? statusFilter === "all" && !fromDate && !toDate
-                    ? `Showing ${data.rows.length ? data.offset + 1 : 0}â€“${data.offset + data.rows.length} of ${data.total.toLocaleString()}`
-                    : `Showing ${visibleRows.length} of ${data.rows.length} loaded Â· ${data.total.toLocaleString()} total`
+                    ? `Showing ${data.rows.length ? data.offset + 1 : 0}–${data.offset + data.rows.length} of ${data.total.toLocaleString()}`
+                    : `Showing ${visibleRows.length} of ${data.rows.length} loaded · ${data.total.toLocaleString()} total`
                   : `Page ${previousOffsets.length + 1}: ${data?.rows.length ?? 0} records loaded; ${visibleRows.length} shown`}
               </span>
               <Button
@@ -1363,7 +1391,7 @@ export default function AdminRecords({
                 <Badge variant="secondary" className="capitalize">
                   {(jobDetails?.status ?? selected.status).replaceAll("_", " ")}
                   {jobDetails?.projectType
-                    ? ` Â· ${jobDetails.projectType.replaceAll("_", " ")}`
+                    ? ` · ${jobDetails.projectType.replaceAll("_", " ")}`
                     : ""}
                 </Badge>
               </div>
@@ -1572,7 +1600,7 @@ export default function AdminRecords({
                 <div className="min-w-0 rounded-xl border p-4">
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Reporter account</p>
                   <p className="mt-1 text-sm font-semibold">
-                    {reportDetails?.reporterName ?? (reportDetailsLoading ? "Loading nameâ€¦" : "Name unavailable")}
+                    {reportDetails?.reporterName ?? (reportDetailsLoading ? "Loading name…" : "Name unavailable")}
                   </p>
                   <p className="mt-1 break-all text-xs text-muted-foreground">
                     Account ID: {reportDetails?.reporterId ?? reportFields.reporter ?? "Not available"}
@@ -1675,7 +1703,7 @@ export default function AdminRecords({
                                   </div>
                                   <p className="text-xs text-muted-foreground">
                                     Applied {adminJobDate(applicant.appliedAt)}
-                                    {price ? ` Â· Proposed ${price}` : ""}
+                                    {price ? ` · Proposed ${price}` : ""}
                                   </p>
                                 </div>
                               </div>
@@ -1845,7 +1873,7 @@ export default function AdminRecords({
                       <h3 className="text-lg font-semibold">Work progress</h3>
                       <span className="text-xs text-muted-foreground">
                         {projectDetails.taskProgress
-                          ? `${projectDetails.taskProgress.total} tasks Â· `
+                          ? `${projectDetails.taskProgress.total} tasks · `
                           : ""}
                         {projectDetails.milestones.length} milestones
                       </span>
@@ -1973,16 +2001,26 @@ export default function AdminRecords({
                 setBusy(true);
                 setError("");
                 try {
-                  await reviewAdminRecord(
+                  const result = await reviewAdminRecord(
                     module,
                     selected.id,
                     action,
                     notes,
                     expires,
                   );
+                  const settlementReviewStatus =
+                    module === "disputes" && action.startsWith("complete_") &&
+                    typeof result === "object" && result !== null &&
+                    "settlementReviewStatus" in result
+                      ? String(result.settlementReviewStatus)
+                      : null;
                   setSelected(null);
                   setFeedback(
-                    "Action saved and recorded in the audit history.",
+                    settlementReviewStatus === "settlement_pending"
+                      ? "Delivery approved, but earnings are still awaiting the normal settlement checks."
+                      : settlementReviewStatus
+                        ? "Delivery approved and freelancer earnings were recorded through the normal settlement flow."
+                        : "Action saved and recorded in the audit history.",
                   );
                   await load();
                 } catch (cause) {
@@ -2021,18 +2059,20 @@ export default function AdminRecords({
                   onChange={(e) => setAction(e.target.value)}
                 >
                   {actions.map((value) => (
-                    <option key={value} value={value}>
-                      {module === "projects" && value === "cancel_project"
-                        ? "Cancel project"
-                        : (module === "jobs" || module === "services") && value === "hide"
-                        ? "Hide listing"
-                        : (module === "jobs" || module === "services") && value === "restore"
-                          ? "Restore"
-                        : value.replaceAll("_", " ")}
-                    </option>
+                    <option key={value} value={value}>{adminActionLabel(module, value)}</option>
                   ))}
                 </StyledSelect>
               </label>}
+              {module === "disputes" && action === "complete_project" && (
+                <p className="text-sm text-muted-foreground">
+                  This approves the latest submitted delivery for a standard project, or all remaining latest milestone deliveries when the dispute covers the whole project. Payouts still follow the normal settlement checks.
+                </p>
+              )}
+              {module === "disputes" && action === "complete_milestone" && (
+                <p className="text-sm text-muted-foreground">
+                  This approves the latest submitted delivery for the affected milestone. Payouts still follow the normal settlement checks.
+                </p>
+              )}
               {module === "reports" && (
                 <div className="space-y-2">
                   <p className="text-xs text-muted-foreground">Quick review actions</p>
@@ -2146,9 +2186,11 @@ export default function AdminRecords({
               )}
               <Button disabled={busy || !notes.trim()}>
                 {busy
-                  ? "Savingâ€¦"
+                  ? "Saving…"
                   : module === "projects" && action === "cancel_project"
                     ? "Confirm project cancellation"
+                    : module === "disputes" && action.startsWith("complete_")
+                      ? "Confirm completion"
                     : isVerificationModule
                       ? "Revoke verification"
                     : "Confirm action"}
@@ -2210,7 +2252,7 @@ export default function AdminRecords({
                       </h3>
                       {proposalApplicant.proposedPlan ? (
                         <p className="text-sm text-muted-foreground">
-                          {proposalApplicant.proposedPlan.content.columns.length} stages Â· {proposalApplicant.proposedPlan.content.columns.reduce((total, column) => total + column.tasks.length, 0)} tasks
+                          {proposalApplicant.proposedPlan.content.columns.length} stages · {proposalApplicant.proposedPlan.content.columns.reduce((total, column) => total + column.tasks.length, 0)} tasks
                         </p>
                       ) : (
                         <p className="text-sm text-muted-foreground">

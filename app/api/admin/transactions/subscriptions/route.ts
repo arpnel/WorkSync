@@ -10,6 +10,149 @@ const pageSize = 10;
 const json = (data: unknown, status = 200) =>
   Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 
+type AdminDatabase = Awaited<ReturnType<typeof paymentUser>>["db"];
+type PremiumUsageEvidence = { signals: string[]; verified: boolean };
+
+async function premiumUsageEvidence(
+  db: AdminDatabase,
+  userId: string,
+  paidAt: string | null,
+): Promise<PremiumUsageEvidence> {
+  if (!paidAt) return { signals: [], verified: false };
+  const since = new Date(paidAt).toISOString();
+  const sixMonthsAgo = new Date(Date.now() - 183 * 86_400_000).toISOString();
+  const sixMonthStart = since > sixMonthsAgo ? since : sixMonthsAgo;
+  const [plans, attempts, freelancer, client] = await Promise.all([
+    db.from("project_plans").select("plan_id").eq("owner_id", userId).gte("created_at", since).limit(2),
+    db.from("skill_assessment_attempts").select("attempt_id").eq("user_id", userId).gte("started_at", sixMonthStart).limit(2),
+    db.from("freelancer_profiles").select("freelancer_id").eq("user_id", userId).maybeSingle(),
+    db.from("client_profiles").select("client_id").eq("user_id", userId).maybeSingle(),
+  ]);
+  let verified = !plans.error && !attempts.error && !freelancer.error && !client.error;
+  const signals: string[] = [];
+  if ((plans.data?.length ?? 0) > 1) signals.push("More than one project plan created since purchase");
+  if ((attempts.data?.length ?? 0) > 1) signals.push("More than one skills assessment started in the last six months");
+
+  if (freelancer.data?.freelancer_id) {
+    const freelancerId = freelancer.data.freelancer_id;
+    const [applications, projects] = await Promise.all([
+      db.from("job_applications").select("application_id,created_at").eq("freelancer_id", freelancerId).gte("created_at", since).order("created_at").limit(1000),
+      db.from("projects").select("project_id").eq("freelancer_id", freelancerId).in("status", ["active", "revision", "in_progress"]).gte("created_at", since).limit(2),
+    ]);
+    verified = verified && !applications.error && !projects.error;
+    const byMonth = new Map<string, number>();
+    for (const application of applications.data ?? []) {
+      const month = String(application.created_at).slice(0, 7);
+      byMonth.set(month, (byMonth.get(month) ?? 0) + 1);
+    }
+    if ([...byMonth.values()].some((count) => count > 1)) signals.push("More than one job application in a calendar month since purchase");
+    if ((projects.data?.length ?? 0) > 1) signals.push("More than one active project started since purchase");
+  }
+
+  if (client.data?.client_id) {
+    const jobs = await db.from("jobs").select("job_id").eq("client_id", client.data.client_id).limit(1000);
+    if (jobs.error) verified = false;
+    else if (jobs.data?.length) {
+      const applications = await db.from("job_applications").select("application_id").in("job_id", jobs.data.map((job) => job.job_id)).limit(2000);
+      if (applications.error) verified = false;
+      else if (applications.data?.length) {
+        const screenings = await db.from("screening_results").select("screening_id").in("application_id", applications.data.map((application) => application.application_id)).gte("screened_at", sixMonthStart).limit(6);
+        if (screenings.error) verified = false;
+        else if ((screenings.data?.length ?? 0) > 5) signals.push("More than five applicant screenings in the last six months");
+      }
+    }
+  }
+  return { signals, verified };
+}
+
+type UsageOrder = { order_id: string; user_id: string; paid_at: string | null; created_at: string | null };
+
+async function premiumUsageEvidenceForOrders(
+  db: AdminDatabase,
+  orders: UsageOrder[],
+): Promise<Map<string, PremiumUsageEvidence>> {
+  const evidence = new Map<string, PremiumUsageEvidence>();
+  if (!orders.length) return evidence;
+  const sinceByOrder = new Map(orders.map((row) => [row.order_id, row.paid_at ?? row.created_at ?? ""]));
+  const earliest = [...sinceByOrder.values()].filter(Boolean).sort()[0];
+  if (!earliest) {
+    for (const row of orders) evidence.set(row.order_id, { signals: [], verified: false });
+    return evidence;
+  }
+  const userIds = [...new Set(orders.map((row) => row.user_id))];
+  const [plans, attempts, freelancers, clients] = await Promise.all([
+    db.from("project_plans").select("plan_id,owner_id,created_at").in("owner_id", userIds).gte("created_at", earliest).limit(1000),
+    db.from("skill_assessment_attempts").select("attempt_id,user_id,started_at").in("user_id", userIds).gte("started_at", earliest).limit(1000),
+    db.from("freelancer_profiles").select("user_id,freelancer_id").in("user_id", userIds),
+    db.from("client_profiles").select("user_id,client_id").in("user_id", userIds),
+  ]);
+  let verified = !plans.error && !attempts.error && !freelancers.error && !clients.error && (plans.data?.length ?? 0) < 1000 && (attempts.data?.length ?? 0) < 1000;
+  const freelancerIds = (freelancers.data ?? []).map((row) => row.freelancer_id);
+  const clientIds = (clients.data ?? []).map((row) => row.client_id);
+  const [applications, projects, jobs] = await Promise.all([
+    freelancerIds.length ? db.from("job_applications").select("application_id,freelancer_id,created_at").in("freelancer_id", freelancerIds).gte("created_at", earliest).limit(1000) : Promise.resolve({ data: [], error: null }),
+    freelancerIds.length ? db.from("projects").select("project_id,freelancer_id,created_at").in("freelancer_id", freelancerIds).in("status", ["active", "revision", "in_progress"]).gte("created_at", earliest).limit(1000) : Promise.resolve({ data: [], error: null }),
+    clientIds.length ? db.from("jobs").select("job_id,client_id").in("client_id", clientIds).limit(1000) : Promise.resolve({ data: [], error: null }),
+  ]);
+  verified = verified && !applications.error && !projects.error && !jobs.error && (applications.data?.length ?? 0) < 1000 && (projects.data?.length ?? 0) < 1000 && (jobs.data?.length ?? 0) < 1000;
+  const jobIds = (jobs.data ?? []).map((row) => row.job_id);
+  const clientApplications = jobIds.length
+    ? await db.from("job_applications").select("application_id,job_id").in("job_id", jobIds).limit(2000)
+    : { data: [], error: null };
+  const applicationIds = (clientApplications.data ?? []).map((row) => row.application_id);
+  const screenings = applicationIds.length
+    ? await db.from("screening_results").select("screening_id,application_id,screened_at").in("application_id", applicationIds).gte("screened_at", earliest).limit(1000)
+    : { data: [], error: null };
+  verified = verified && !clientApplications.error && !screenings.error && (clientApplications.data?.length ?? 0) < 2000 && (screenings.data?.length ?? 0) < 1000;
+
+  const freelancerByUser = new Map((freelancers.data ?? []).map((row) => [row.user_id, row.freelancer_id]));
+  const clientByUser = new Map((clients.data ?? []).map((row) => [row.user_id, row.client_id]));
+  const clientByJob = new Map((jobs.data ?? []).map((row) => [row.job_id, row.client_id]));
+  const jobByApplication = new Map((clientApplications.data ?? []).map((row) => [row.application_id, row.job_id]));
+  const screensByApplication = new Map<string, Array<{ screened_at: string | null }>>();
+  for (const screen of screenings.data ?? []) {
+    const rows = screensByApplication.get(screen.application_id) ?? [];
+    rows.push(screen);
+    screensByApplication.set(screen.application_id, rows);
+  }
+  const day = 86_400_000;
+  for (const row of orders) {
+    const purchaseTime = Date.parse(sinceByOrder.get(row.order_id) ?? "");
+    if (!Number.isFinite(purchaseTime)) {
+      evidence.set(row.order_id, { signals: [], verified: false });
+      continue;
+    }
+    const sixMonthStart = Math.max(purchaseTime, Date.now() - 183 * day);
+    const signals: string[] = [];
+    if ((plans.data ?? []).filter((item) => item.owner_id === row.user_id && Date.parse(item.created_at) >= purchaseTime).length > 1)
+      signals.push("More than one project plan created since purchase");
+    if ((attempts.data ?? []).filter((item) => item.user_id === row.user_id && Date.parse(item.started_at) >= sixMonthStart).length > 1)
+      signals.push("More than one skills assessment started in the last six months");
+    const freelancerId = freelancerByUser.get(row.user_id);
+    if (freelancerId) {
+      const byMonth = new Map<string, number>();
+      for (const application of applications.data ?? []) {
+        if (application.freelancer_id !== freelancerId || Date.parse(application.created_at) < purchaseTime) continue;
+        const month = String(application.created_at).slice(0, 7);
+        byMonth.set(month, (byMonth.get(month) ?? 0) + 1);
+      }
+      if ([...byMonth.values()].some((count) => count > 1)) signals.push("More than one job application in a calendar month since purchase");
+      if ((projects.data ?? []).filter((project) => project.freelancer_id === freelancerId && Date.parse(project.created_at) >= purchaseTime).length > 1)
+        signals.push("More than one active project started since purchase");
+    }
+    const clientId = clientByUser.get(row.user_id);
+    if (clientId) {
+      const screeningCount = (screenings.data ?? []).filter((screen) => {
+        const jobId = jobByApplication.get(screen.application_id);
+        return jobId && clientByJob.get(jobId) === clientId && screen.screened_at && Date.parse(screen.screened_at) >= sixMonthStart;
+      }).length;
+      if (screeningCount > 5) signals.push("More than five applicant screenings in the last six months");
+    }
+    evidence.set(row.order_id, { signals, verified });
+  }
+  return evidence;
+}
+
 async function adminContext(request: Request) {
   const context = await paymentUser(request);
   const admin = await context.db.from("admin_members").select("user_id").eq("user_id", context.user.id).maybeSingle();
@@ -60,35 +203,68 @@ export async function GET(request: Request) {
     const orders = page.data ?? [];
     const userIds = [...new Set(orders.map((row) => row.user_id))];
     const orderIds = orders.map((row) => row.order_id);
-    const [profiles, users, refunds] = await Promise.all([
+    const [profiles, users, refundState, assignments, latestOrders] = await Promise.all([
       userIds.length ? db.from("profiles").select("user_id,display_name").in("user_id", userIds) : Promise.resolve({ data: [], error: null }),
       userIds.length ? db.from("Users").select("user_id,email").in("user_id", userIds) : Promise.resolve({ data: [], error: null }),
-      orderIds.length ? db.from("subscription_refunds").select("refund_id,order_id,amount,status,provider_refund_id,claimed_at,updated_at,refunded_at").in("order_id", orderIds).order("claimed_at") : Promise.resolve({ data: [], error: null }),
+      orderIds.length ? db.from("subscription_orders").select("order_id,refund_id,refund_status,refund_provider_refund_id,refund_claimed_at,refund_updated_at,refund_completed_at").in("order_id", orderIds) : Promise.resolve({ data: [], error: null }),
+      userIds.length ? db.from("user_subscriptions").select("user_id,plan_code,access_type,period_started_at,period_ends_at").in("user_id", userIds) : Promise.resolve({ data: [], error: null }),
+      Promise.all(userIds.map((userId) => db.from("subscription_orders").select("order_id").eq("user_id", userId).eq("status", "paid").order("paid_at", { ascending: false, nullsFirst: false }).order("order_id", { ascending: false }).limit(1).maybeSingle())),
     ]);
-    if (profiles.error || users.error || refunds.error) throw new PaymentError("Subscription transaction details are unavailable.");
+    const refundColumnsMissing = Boolean(
+      refundState.error && ["42P01", "42703", "PGRST204", "PGRST205"].includes(refundState.error.code ?? ""),
+    );
+    if (profiles.error || users.error || assignments.error || latestOrders.some((result) => result.error) || (refundState.error && !refundColumnsMissing))
+      throw new PaymentError("Subscription transaction details are unavailable.");
     const names = new Map((profiles.data ?? []).map((row) => [row.user_id, row.display_name]));
     const emails = new Map((users.data ?? []).map((row) => [row.user_id, row.email]));
-    const refundRows = new Map<string, typeof refunds.data>();
-    for (const refund of refunds.data ?? []) {
-      const rows = refundRows.get(refund.order_id) ?? [];
-      rows.push(refund);
-      refundRows.set(refund.order_id, rows);
-    }
+    const refundRows = new Map((refundState.data ?? []).map((row) => [row.order_id, row]));
+    const assignmentByUser = new Map((assignments.data ?? []).map((row) => [row.user_id, row]));
+    const latestPaidOrderByUser = new Map(userIds.map((userId, index) => [userId, latestOrders[index].data?.order_id ?? null]));
+    const latestOrderIds = new Set(latestOrders.map((result) => result.data?.order_id).filter((id): id is string => !!id));
+    const usageByOrder = await premiumUsageEvidenceForOrders(db, orders.filter((row) => latestOrderIds.has(row.order_id)));
+    const now = Date.now();
     return json({
-      rows: orders.map((row) => ({
-        payment_id: row.order_id, order_id: row.order_id, kind: "subscription", billing_period: row.billing_period,
-        project_id: null, payer_id: row.user_id, amount: Number(row.amount), status: row.status,
-        payment_method: null, transaction_reference: row.transaction_reference, provider: "PayMongo",
-        livemode: row.livemode, currency: "PHP", provider_payment_id: row.provider_payment_id,
-        created_at: row.created_at, updated_at: row.created_at, paid_at: row.paid_at, settlement_checked_at: null,
-        platform_service_fee: null, platform_vat_amount: null, platform_tax_treatment: null,
-        freelancer_service_vat_taxable_base: null, freelancer_service_vat_rate: null,
-        freelancer_service_vat_amount: null, freelancer_service_vat_classification: null, freelancer_service_vat_rule: null,
-        payer: { user_id: row.user_id, display_name: names.get(row.user_id) ?? null, email: emails.get(row.user_id) ?? null },
-        project: null, refunds: refundRows.get(row.order_id) ?? [], receipt: null,
-      })),
+      rows: orders.map((row) => {
+        const assignment = assignmentByUser.get(row.user_id);
+        const endTime = assignment?.period_ends_at ? Date.parse(assignment.period_ends_at) : NaN;
+        const remainingMs = Number.isFinite(endTime) ? Math.max(0, endTime - now) : null;
+        const remainingDays = remainingMs == null ? null : Math.ceil(remainingMs / 86_400_000);
+        const usage = usageByOrder.get(row.order_id) ?? { signals: [], verified: false };
+        const currentPaidPremium = assignment?.plan_code === "pro" && assignment.access_type === "paid" && remainingMs != null && remainingMs > 0;
+        const canStandardRefund = row.status === "paid" && currentPaidPremium && remainingMs! > 30 * 86_400_000 && latestPaidOrderByUser.get(row.user_id) === row.order_id && usage.verified && usage.signals.length === 0;
+        const refund = refundRows.get(row.order_id);
+        const refunds = refund?.refund_id && refund.refund_status ? [{
+          refund_id: refund.refund_id,
+          amount: Number(row.amount),
+          status: refund.refund_status,
+          provider_refund_id: refund.refund_provider_refund_id,
+          claimed_at: refund.refund_claimed_at,
+          updated_at: refund.refund_updated_at,
+          refunded_at: refund.refund_completed_at,
+        }] : [];
+        return {
+          payment_id: row.order_id, order_id: row.order_id, kind: "subscription", billing_period: row.billing_period,
+          project_id: null, payer_id: row.user_id, amount: Number(row.amount), status: row.status,
+          payment_method: null, transaction_reference: row.transaction_reference, provider: "PayMongo",
+          livemode: row.livemode, currency: "PHP", provider_payment_id: row.provider_payment_id,
+          created_at: row.created_at, updated_at: row.created_at, paid_at: row.paid_at, settlement_checked_at: null,
+          platform_service_fee: null, platform_vat_amount: null, platform_tax_treatment: null,
+          freelancer_service_vat_taxable_base: null, freelancer_service_vat_rate: null,
+          freelancer_service_vat_amount: null, freelancer_service_vat_classification: null, freelancer_service_vat_rule: null,
+          payer: { user_id: row.user_id, display_name: names.get(row.user_id) ?? null, email: emails.get(row.user_id) ?? null },
+          current_premium: assignment ? { plan_code: assignment.plan_code, access_type: assignment.access_type, period_started_at: assignment.period_started_at, period_ends_at: assignment.period_ends_at, remaining_days: remainingDays } : null,
+          refund_eligibility: {
+            standard: canStandardRefund,
+            latest_paid_order: latestPaidOrderByUser.get(row.user_id) === row.order_id,
+            usage_signals: usage.signals,
+            usage_check_complete: usage.verified,
+          },
+          project: null, refunds, receipt: null,
+        };
+      }),
       total: page.count ?? 0, limit: pageSize, offset,
       summary: { total: page.count ?? 0, paid: paid.count ?? 0, pending: pending.count ?? 0 },
+      refundsAvailable: !refundColumnsMissing,
     });
   } catch (error) { return paymentResponse(error); }
 }
@@ -100,30 +276,54 @@ export async function POST(request: Request) {
   try {
     const context = await adminContext(request);
     db = context.db;
-    const body = await request.json().catch(() => null) as { orderId?: unknown; reviewedUnused?: unknown } | null;
+    const body = await request.json().catch(() => null) as { orderId?: unknown; reviewedUnused?: unknown; supportTicketRef?: unknown; exceptionType?: unknown; exceptionReason?: unknown; reconcileRefundId?: unknown } | null;
     if (body && typeof (body as { reconcileRefundId?: unknown }).reconcileRefundId === "string") {
       const refundKey = (body as { reconcileRefundId: string }).reconcileRefundId;
       if (!/^[a-f\d]{8}-[a-f\d]{4}-[1-5][a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/i.test(refundKey)) throw new PaymentError("Choose a valid refund record.", 400);
-      const { data: refund, error: refundError } = await db.from("subscription_refunds").select("refund_id,order_id,amount,status,provider_refund_id").eq("refund_id", refundKey).maybeSingle();
-      if (refundError || !refund || !refund.provider_refund_id || !["pending", "needs_review"].includes(refund.status)) throw new PaymentError("This refund is not ready for provider reconciliation.", 409);
-      const { data: order, error: orderError } = await db.from("subscription_orders").select("provider_payment_id,livemode").eq("order_id", refund.order_id).single();
-      if (orderError || !order?.provider_payment_id || order.livemode !== (paymentMode() === "live")) throw new PaymentError("The refund payment environment requires review.", 409);
-      const evidence = await transferRequest(`/v1/refunds/${encodeURIComponent(refund.provider_refund_id)}`);
+      const { data: refund, error: refundError } = await db.from("subscription_orders").select("order_id,amount,refund_id,refund_status,refund_provider_refund_id,provider_payment_id,livemode").eq("refund_id", refundKey).maybeSingle();
+      if (refundError || !refund || !refund.refund_provider_refund_id || !["pending", "needs_review"].includes(refund.refund_status)) throw new PaymentError("This refund is not ready for provider reconciliation.", 409);
+      if (!refund.provider_payment_id || refund.livemode !== (paymentMode() === "live")) throw new PaymentError("The refund payment environment requires review.", 409);
+      const evidence = await transferRequest(`/v1/refunds/${encodeURIComponent(refund.refund_provider_refund_id)}`);
       const reconciledStatus = verifiedRefundStatus(evidence.data, {
-        providerPaymentId: order.provider_payment_id,
-        providerRefundId: refund.provider_refund_id,
+        providerPaymentId: refund.provider_payment_id,
+        providerRefundId: refund.refund_provider_refund_id,
         amountCentavos: Math.round(Number(refund.amount) * 100),
-        live: order.livemode,
+        live: refund.livemode,
       });
       const reconciled = await db.rpc("worksync_finish_subscription_refund", { p_refund: refund.refund_id, p_status: reconciledStatus });
       if (reconciled.error || reconciled.data !== true) throw new PaymentError("Refund status could not be recorded safely.");
       return json({ status: reconciledStatus, message: `Provider status: ${reconciledStatus.replaceAll("_", " ")}.` });
     }
     if (!body || typeof body.orderId !== "string" || !/^[a-f\d]{8}-[a-f\d]{4}-[1-5][a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/i.test(body.orderId)) throw new PaymentError("Choose a valid subscription transaction.", 400);
-    if (body.reviewedUnused !== true) throw new PaymentError("Confirm that the support ticket was reviewed and no Premium-only benefit was used.", 400);
+    if (typeof body.supportTicketRef !== "string" || !/^[a-f\d]{8}-[a-f\d]{4}-[1-5][a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/i.test(body.supportTicketRef.trim())) throw new PaymentError("Enter the support ticket ID you reviewed.", 400);
+    if (typeof body.reviewedUnused !== "boolean") throw new PaymentError("Confirm whether a Premium-only benefit was used.", 400);
+    const exceptionType = body.exceptionType === "technical_failure" || body.exceptionType === "applicable_law" ? body.exceptionType : null;
+    const exceptionReason = typeof body.exceptionReason === "string" ? body.exceptionReason.trim() : "";
+    if (body.exceptionType && (!exceptionType || exceptionReason.length < 10 || exceptionReason.length > 2000)) throw new PaymentError("Choose a valid exception and provide at least 10 characters of review notes.", 400);
 
     const mode = paymentMode();
-    const claim = await db.rpc("worksync_claim_subscription_refund", { p_order: body.orderId, p_reviewer: context.user.id, p_reviewed_unused: true });
+    const { data: order, error: orderError } = await db.from("subscription_orders").select("order_id,user_id,status,amount,provider_payment_id,livemode,billing_period,paid_at,created_at").eq("order_id", body.orderId).maybeSingle();
+    if (orderError || !order || order.status !== "paid") throw new PaymentError("Only a confirmed Premium purchase can be refunded.", 409);
+    const { data: supportTicket, error: ticketError } = await db.from("support_tickets").select("ticket_id,requester_id").eq("ticket_id", body.supportTicketRef.trim()).maybeSingle();
+    if (ticketError || !supportTicket || supportTicket.requester_id !== order.user_id) throw new PaymentError("Review a support ticket opened by this Premium purchaser.", 409);
+    const [{ data: assignment, error: assignmentError }, usage, { data: latest, error: latestError }] = await Promise.all([
+      db.from("user_subscriptions").select("plan_code,access_type,period_ends_at").eq("user_id", order.user_id).maybeSingle(),
+      premiumUsageEvidence(db, order.user_id, order.paid_at ?? order.created_at),
+      db.from("subscription_orders").select("order_id").eq("user_id", order.user_id).eq("status", "paid").order("paid_at", { ascending: false, nullsFirst: false }).order("order_id", { ascending: false }).limit(1).maybeSingle(),
+    ]);
+    if (assignmentError || latestError || !assignment || latest?.order_id !== order.order_id) throw new PaymentError("Review the purchaser’s current Premium status and most recent purchase before issuing a refund.", 409);
+    const remainingMs = Date.parse(assignment.period_ends_at) - Date.now();
+    const standardEligible = assignment.plan_code === "pro" && assignment.access_type === "paid" && remainingMs > 30 * 86_400_000 && usage.verified && usage.signals.length === 0 && body.reviewedUnused === true;
+    if (!standardEligible && (!exceptionType || exceptionReason.length < 10)) throw new PaymentError("Standard refunds require more than 30 days remaining and no recorded or reported Premium-only use. For technical failures or applicable-law exceptions, select an exception and document the review.", 409);
+    const claim = await db.rpc("worksync_claim_subscription_refund", {
+      p_order: order.order_id,
+      p_reviewer: context.user.id,
+      p_reviewed_unused: body.reviewedUnused,
+      p_support_ticket_ref: supportTicket.ticket_id,
+      p_exception_type: exceptionType,
+      p_exception_reason: exceptionType ? exceptionReason : null,
+      p_usage_evidence: { signals: usage.signals, verified: usage.verified, remaining_days: Math.max(0, Math.ceil(Math.max(0, remainingMs) / 86_400_000)) },
+    });
     if (claim.error) throw new PaymentError("This Premium purchase cannot be refunded or already has a refund request.", 409);
     const row = claim.data?.[0];
     if (!row || row.order_id !== body.orderId) throw new PaymentError("Subscription refund reservation is invalid.");

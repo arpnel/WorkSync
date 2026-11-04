@@ -60,7 +60,10 @@ async function verifyFunding(
 export type ProjectSettlementReviewStatus = "disabled" | "version_unavailable" | "payment_unavailable" | "reviewed_pending" | "completed";
 
 /** Verify and record completed earnings; payout statuses are demo-only and no transfer is sent. */
-export async function reviewProjectPayment(projectId: string): Promise<ProjectSettlementReviewStatus> {
+export async function reviewProjectPayment(
+  projectId: string,
+  beforeSettlement?: () => Promise<void>,
+): Promise<ProjectSettlementReviewStatus> {
   const db = paymentDatabase();
   const version = await db.rpc("worksync_settlement_version");
   if (version.error || version.data !== 3) return "version_unavailable";
@@ -75,6 +78,7 @@ export async function reviewProjectPayment(projectId: string): Promise<ProjectSe
   if (payment.error) throw new PaymentError("Delivery payment unavailable.");
   if (!payment.data) return "payment_unavailable";
   await verifyFunding(db, payment.data);
+  await beforeSettlement?.();
   const result = await db.rpc("worksync_settle_project", {
     p_project: projectId,
     p_payment: payment.data.payment_id,

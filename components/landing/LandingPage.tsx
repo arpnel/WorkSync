@@ -42,6 +42,11 @@ export default function LandingPage() {
   );
   useEffect(() => {
     let active = true;
+    const loadingTimeout = window.setTimeout(() => {
+      if (!active) return;
+      setLoading(false);
+      setServiceError("Freelancer services are taking too long to load.");
+    }, 12_000);
     setLoading(true);
     setServiceError("");
     setRatings(new Map());
@@ -64,6 +69,12 @@ export default function LandingPage() {
           (listing): listing is MarketplaceService =>
             listing.listing_type === "service",
         );
+        if (active) {
+          window.clearTimeout(loadingTimeout);
+          setServiceError("");
+          setServices(serviceListings);
+          setLoading(false);
+        }
         const freelancerIds = serviceListings.flatMap((service) =>
           service.freelancer_id ? [service.freelancer_id] : [],
         );
@@ -80,7 +91,6 @@ export default function LandingPage() {
             : Promise.resolve(new Map<string, GuestServiceIdentity>()),
         ]);
         if (active) {
-          setServices(serviceListings);
           setRatings(serviceRatings);
           setGuestIdentities(publicIdentities);
         }
@@ -94,11 +104,13 @@ export default function LandingPage() {
           );
         }
       } finally {
+        window.clearTimeout(loadingTimeout);
         if (active) setLoading(false);
       }
     })();
     return () => {
       active = false;
+      window.clearTimeout(loadingTimeout);
     };
   }, [serviceAttempt]);
 

@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { WorkspacePageHeader } from "@/components/shared/WorkspacePageHeader";
 
 import { ArrowUpRight, MessageCircle, Plus, Search } from "lucide-react";
@@ -7,8 +8,60 @@ import WorkAnalytics from "@/components/dashboard/WorkAnalytics";
 import ActivityOverview from "@/components/dashboard/ActivityOverview";
 import DashboardSchedule from "@/components/dashboard/DashboardSchedule";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  getCurrentUserRole,
+  type UserRole,
+} from "@/services/marketplace/AccountServices";
 
 function DashboardTools() {
+  const [role, setRole] = useState<UserRole | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const readRole = () => {
+      void getCurrentUserRole()
+        .then((currentRole) => {
+          if (active) setRole(currentRole);
+        })
+        .catch(() => {
+          if (active) setRole(null);
+        });
+    };
+    const onRoleChanged = (event: Event) => {
+      const currentRole = (event as CustomEvent<{ role?: UserRole }>).detail
+        ?.role;
+      if (currentRole === "client" || currentRole === "freelancer")
+        setRole(currentRole);
+      else readRole();
+    };
+
+    readRole();
+    window.addEventListener("account-role-changed", onRoleChanged);
+    return () => {
+      active = false;
+      window.removeEventListener("account-role-changed", onRoleChanged);
+    };
+  }, []);
+
+  const marketplaceAction =
+    role === "freelancer"
+      ? {
+          title: "Find a job",
+          description: "Browse jobs and client opportunities",
+          href: "/home/marketplace?listingType=job",
+        }
+      : role === "client"
+        ? {
+            title: "Hire talent",
+            description: "Find freelancers for your project",
+            href: "/home/marketplace?listingType=freelancer",
+          }
+        : {
+            title: "Browse marketplace",
+            description: "Find your next collaboration",
+            href: "/home/marketplace",
+          };
+
   return (
     <div className="space-y-5">
       <Card>
@@ -25,9 +78,7 @@ function DashboardTools() {
                 Icon: Plus,
               },
               {
-                title: "Browse marketplace",
-                description: "Find your next collaboration",
-                href: "/home/marketplace",
+                ...marketplaceAction,
                 Icon: Search,
               },
               {

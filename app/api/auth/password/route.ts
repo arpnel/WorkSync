@@ -15,6 +15,7 @@ const schema = z
       "change_email_verified",
     ]),
     password: z.string().min(1).max(256).optional(),
+    acceptedTerms: z.boolean().optional(),
     currentPassword: z.string().min(1).max(256).optional(),
     nonce: z.string().trim().min(6).max(12).optional(),
     email: z.string().email().optional(),
@@ -74,6 +75,11 @@ export async function POST(request: Request) {
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
   if (data.action === "signup") {
+    if (data.acceptedTerms !== true)
+      return Response.json(
+        { error: "Agree to the Terms and Conditions and Privacy Policy to create an account." },
+        { status: 400 },
+      );
     if (!data.email)
       return Response.json({ error: "Enter your email address." }, { status: 400 });
     const auth = createClient(url, key, {

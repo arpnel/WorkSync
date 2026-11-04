@@ -55,8 +55,8 @@ function ProfileAssessmentResults({
         Skill assessments
       </h3>
       <p className="text-xs text-muted-foreground">
-        WorkSync knowledge assessments, not external certifications or identity
-        verification.
+        View passed WorkSync category assessments and scores. These results are
+        platform assessments, not external certifications.
       </p>
       {loading ? (
         <div
@@ -88,7 +88,7 @@ function ProfileAssessmentResults({
         ))
       ) : (
         <p className="text-sm text-muted-foreground">
-          No passed assessments to display.
+          Passed category assessments and scores will appear here.
         </p>
       )}
     </section>

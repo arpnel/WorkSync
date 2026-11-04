@@ -98,6 +98,7 @@ const disputesSchema = z
     z.object({
       dispute_id: z.string(),
       project_id: z.string(),
+      milestone_id: z.string().nullable().optional(),
       status: z.string(),
       category: z.string(),
       description: z.string().nullable(),
@@ -113,6 +114,7 @@ const disputePageSchema = z.object({
     z.object({
       dispute_id: z.string(),
       project_id: z.string(),
+      milestone_id: z.string().nullable().optional(),
       status: z.string(),
       category: z.string(),
       description: z.string().nullable(),
@@ -201,93 +203,154 @@ const adminProjectDetailsSchema = z.object({
     })
     .nullable(),
 });
-const analyticsSchema = z.object({
-  counts: z.record(count),
-  completion_rate: z.number().finite().nullable(),
-  average_project_value: z.number().finite().nullable(),
-  average_rating: z.number().finite().nullable(),
-  categories: z.array(
-    z.object({ name: z.string(), jobs: count, services: count }),
-  ),
-  activity: z.array(
-    z.object({ month: z.string(), users: count, projects: count }),
-  ),
-  revenue: z
-    .object({
-      transaction_fees: z.number().finite().nonnegative(),
-      premium_subscriptions: z.number().finite().nonnegative(),
-      total: z.number().finite().nonnegative(),
-      activity: z.array(
-        z.object({
-          month: z.string(),
-          transaction_fees: z.number().finite().nonnegative(),
-          premium_subscriptions: z.number().finite().nonnegative(),
-          project_payments: count,
-          premium_checkouts: count,
-          total: z.number().finite().nonnegative(),
-        }),
-      ),
-    })
-    .nullable()
-    .optional(),
+const analyticsMoney = z.number().finite();
+const analyticsCountMap = z.record(count);
+const adminAnalyticsSchema = z.object({
+  dateRange: z.object({
+    from: z.string(),
+    through: z.string(),
+    environment: z.enum(["all", "live", "test"]),
+  }),
+  earnings: z.object({
+    grossTransactionFees: analyticsMoney.nonnegative(),
+    grossPremiumSubscriptions: analyticsMoney.nonnegative(),
+    transactionFees: analyticsMoney,
+    premiumSubscriptions: analyticsMoney,
+    gross: analyticsMoney.nonnegative(),
+    projectFeeRefunds: analyticsMoney.nonnegative(),
+    premiumRefunds: analyticsMoney.nonnegative(),
+    refunds: analyticsMoney.nonnegative(),
+    net: analyticsMoney,
+    missingFeeSnapshots: count,
+    missingPremiumTaxableSnapshots: count,
+    unknownProjectFeeRefunds: count,
+    partialProjectRefunds: count,
+    activity: z.array(z.object({
+      month: z.string(),
+      transactionFees: analyticsMoney,
+      premiumSubscriptions: analyticsMoney,
+      refunds: analyticsMoney.nonnegative(),
+      net: analyticsMoney,
+    })),
+  }),
+  users: z.object({
+    total: count,
+    newlyRegistered: count,
+    clients: count,
+    freelancers: count,
+    newClients: count,
+    newFreelancers: count,
+    verified: count,
+    unverified: count,
+    premiumSubscribers: count,
+    topClients: z.array(z.object({
+      userId: z.string(),
+      displayName: z.string(),
+      grossPaid: analyticsMoney.nonnegative(),
+      paidPaymentCount: count,
+    })),
+    topFreelancers: z.array(z.object({
+      userId: z.string(),
+      displayName: z.string(),
+      earningsExcludingVat: analyticsMoney.nonnegative(),
+      payoutRecordCount: count,
+    })),
+    activity: z.array(z.object({
+      month: z.string(),
+      users: count,
+      clients: count,
+      freelancers: count,
+    })),
+  }),
+  projects: z.object({
+    created: count,
+    completedInRange: count,
+    active: count,
+    overdue: count,
+    disputed: count,
+    standard: count,
+    milestone: count,
+    paidProjectSalesCount: count,
+    unrankedPaidProjectCount: count,
+    topSellingServiceCategories: z.array(z.object({
+      categoryId: z.string().nullable(),
+      categoryName: z.string(),
+      paidProjects: count,
+      projectValue: analyticsMoney.nonnegative(),
+    })),
+    servicesPostedCount: count,
+    topPostedServiceCategories: z.array(z.object({
+      categoryId: z.string().nullable(),
+      categoryName: z.string(),
+      listingCount: count,
+    })),
+    serviceActivity: z.array(z.object({
+      month: z.string(),
+      posted: count,
+    })),
+    completionRate: analyticsMoney.nullable(),
+    activity: z.array(z.object({
+      month: z.string(),
+      created: count,
+      completed: count,
+    })),
+  }),
+  transactions: z.object({
+    successful: count,
+    failed: count,
+    pending: count,
+    other: count,
+    successfulVolume: analyticsMoney.nonnegative(),
+    pendingVolume: analyticsMoney.nonnegative(),
+    payoutPendingCount: count,
+    payoutPendingAmount: analyticsMoney.nonnegative(),
+    payoutPaidCount: count,
+    payoutPaidAmount: analyticsMoney.nonnegative(),
+    projectPayoutBalanceAvailable: z.boolean(),
+    testWithdrawalsAvailable: z.boolean(),
+    testWithdrawalPendingCount: count,
+    testWithdrawalPendingAmount: analyticsMoney.nonnegative(),
+    testWithdrawalPaidCount: count,
+    testWithdrawalPaidAmount: analyticsMoney.nonnegative(),
+    refundCount: count,
+    refundAmount: analyticsMoney.nonnegative(),
+    statuses: analyticsCountMap,
+    paymentMethods: analyticsCountMap,
+    payoutStatuses: analyticsCountMap,
+    activity: z.array(z.object({
+      month: z.string(),
+      successful: count,
+      failed: count,
+      pending: count,
+    })),
+  }),
+  disputesReports: z.object({
+    disputeTotal: count,
+    openDisputes: count,
+    resolvedDisputes: count,
+    disputeResolutionRate: analyticsMoney.nullable(),
+    averageDisputeResolutionHours: analyticsMoney.nonnegative().nullable(),
+    disputesByStatus: analyticsCountMap,
+    disputesByReason: analyticsCountMap,
+    openDisputesByReason: analyticsCountMap,
+    reportsTotal: count,
+    reportsByStatus: analyticsCountMap,
+    reportsByCategory: analyticsCountMap,
+    unreviewedReportsByCategory: analyticsCountMap,
+    averageReportReviewHours: analyticsMoney.nonnegative().nullable(),
+  }),
 });
-const moderationAnalyticsSchema = z.object({
-  from: z.string(),
-  to: z.string(),
-  status: z.string().nullable(),
-  users: count,
-  listing_reports: count,
-  disputes: count,
-  listing_reports_by_status: z.record(count),
-  disputes_by_status: z.record(count),
-  suspended_accounts: count,
-  hidden_listings: count,
-  audit_actions: count,
+export type AdminAnalyticsResult = z.infer<typeof adminAnalyticsSchema>;
+const contractContextSchema = z.object({
+  final_price: z.number().finite(),
+  delivery_time_days: count,
+  revisions_count: count,
+  terms: z.string().nullable(),
+  status: z.string(),
 });
-const compatibleAnalyticsSchema = z.union([
-  analyticsSchema.transform((value) => ({
-    ...value,
-    revenue: value.revenue ?? null,
-    scope: "platform" as const,
-    moderation: null as null | {
-      reports: Record<string, number>;
-      disputes: Record<string, number>;
-    },
-  })),
-  moderationAnalyticsSchema.transform((value) => ({
-    scope: "moderation" as const,
-    counts: {
-      users: value.users,
-      listing_reports: value.listing_reports,
-      disputes: value.disputes,
-      suspended_accounts: value.suspended_accounts,
-      hidden_listings: value.hidden_listings,
-      audit_actions: value.audit_actions,
-    },
-    completion_rate: null,
-    average_project_value: null,
-    average_rating: null,
-    categories: null,
-    activity: null,
-    revenue: null,
-    moderation: {
-      reports: value.listing_reports_by_status,
-      disputes: value.disputes_by_status,
-    },
-  })),
-]);
-export type AdminAnalyticsResult = z.infer<typeof compatibleAnalyticsSchema>;
 const disputeContextSchema = z.object({
   project: z.object({ title: z.string(), status: z.string() }),
-  contract: z
-    .object({
-      final_price: z.number().finite(),
-      delivery_time_days: count,
-      revisions_count: count,
-      terms: z.string().nullable(),
-      status: z.string(),
-    })
-    .nullable(),
+  contract: contractContextSchema.nullable(),
   dispute: z.object({
     evidence_path: z.string().nullable(),
     resolution: z.string().nullable(),
@@ -318,23 +381,56 @@ const disputeContextSchema = z.object({
       attachment_name: z.string().nullable(),
     }),
   ),
-  revisions: z.array(
-    z.object({
-      revision_id: z.string(),
+});
+const deployedDisputeContextSchema = z.object({
+  project: z.object({
+    title: z.string(),
+    status: z.string(),
+    client_id: z.string().nullable().optional(),
+    freelancer_id: z.string().nullable().optional(),
+  }),
+  contract: contractContextSchema.nullable().optional(),
+  dispute: z.object({
+    evidence_path: z.string().nullable(),
+    resolution: z.string().nullable(),
+  }),
+  milestone: z
+    .object({
+      milestone_id: z.string(),
+      title: z.string(),
       status: z.string(),
-      instructions: z.string(),
-    }),
-  ),
-  messages: z.array(
+    })
+    .nullable(),
+  submissions: z.array(
     z.object({
-      message_id: z.string(),
-      sender_id: z.string(),
-      message: z.string().nullable(),
+      submission_id: z.string(),
+      kind: z.string(),
+      status: z.string(),
       created_at: z.string(),
+      body: z.string().nullable(),
+      link: z.string().nullable(),
+      attachment_path: z.string().nullable(),
+      attachment_name: z.string().nullable(),
     }),
   ),
 });
-export type AdminDisputeContext = z.infer<typeof disputeContextSchema>;
+type DisputeContextLimitation =
+  | "contract"
+  | "participant_names"
+  | "complete_milestone_list";
+export type AdminDisputeParty = {
+  role: string;
+  display_name: string | null;
+  user_id: string | null;
+  profile_id?: string;
+};
+export type AdminDisputeContext = Omit<
+  z.infer<typeof disputeContextSchema>,
+  "parties"
+> & {
+  parties: AdminDisputeParty[];
+  contextLimitations: DisputeContextLimitation[];
+};
 function parseResponse<S extends z.ZodTypeAny>(
   schema: S,
   value: unknown,
@@ -359,6 +455,8 @@ export function parseAdminRecords(value: unknown, rpc: string, offset = 0) {
       status: row.status,
       created_at: row.created_at ?? "",
       owner_id: row.opened_by ?? undefined,
+      disputeMilestoneId: row.milestone_id ?? null,
+      disputeCompletionActionsAvailable: Object.prototype.hasOwnProperty.call(row, "milestone_id"),
       detail: [row.description, row.admin_notes, row.evidence_name]
         .filter(Boolean)
         .join("\n"),
@@ -387,14 +485,62 @@ export function parseAdminRecords(value: unknown, rpc: string, offset = 0) {
   };
 }
 export function parseAdminAnalytics(value: unknown) {
-  return parseResponse(
-    compatibleAnalyticsSchema,
-    value,
-    "worksync_admin_analytics",
-  );
+  return parseResponse(adminAnalyticsSchema, value, "/api/admin/analytics");
 }
-export function parseAdminDisputeContext(value: unknown) {
-  return parseResponse(disputeContextSchema, value, "worksync_dispute_context");
+export function parseAdminDisputeContext(value: unknown): AdminDisputeContext {
+  const current = disputeContextSchema.safeParse(value);
+  if (current.success) {
+    return { ...current.data, contextLimitations: [] };
+  }
+
+  const deployed = deployedDisputeContextSchema.safeParse(value);
+  if (!deployed.success) {
+    throw new Error(
+      "Unable to load admin data: worksync_dispute_context returned an incompatible response. Check the deployed function's response contract.",
+    );
+  }
+  const contractIncluded =
+    typeof value === "object" &&
+    value !== null &&
+    Object.prototype.hasOwnProperty.call(value, "contract");
+
+  const parties: AdminDisputeContext["parties"] = [];
+  if (deployed.data.project.client_id) {
+    parties.push({
+      role: "client",
+      display_name: null,
+      user_id: null,
+      profile_id: deployed.data.project.client_id,
+    });
+  }
+  if (deployed.data.project.freelancer_id) {
+    parties.push({
+      role: "freelancer",
+      display_name: null,
+      user_id: null,
+      profile_id: deployed.data.project.freelancer_id,
+    });
+  }
+
+  return {
+    project: {
+      title: deployed.data.project.title,
+      status: deployed.data.project.status,
+    },
+    contract: deployed.data.contract ?? null,
+    dispute: {
+      evidence_path: deployed.data.dispute.evidence_path,
+      resolution: deployed.data.dispute.resolution,
+    },
+    parties,
+    milestones: deployed.data.milestone ? [deployed.data.milestone] : [],
+    submissions: deployed.data.submissions,
+    contextLimitations: [
+      ...(contractIncluded ? [] : ["contract"]),
+      "participant_names",
+      "complete_milestone_list",
+    ] as DisputeContextLimitation[],
+  };
 }
 export function parseAdminJobMonitoringDetails(value: unknown) {
   return parseResponse(

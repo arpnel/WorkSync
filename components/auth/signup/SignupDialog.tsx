@@ -44,6 +44,7 @@ export function SignupDialog() {
   const [passwordError, setPasswordError] = React.useState("");
   const [confirmPasswordError, setConfirmPasswordError] = React.useState("");
   const [formError, setFormError] = React.useState("");
+  const signupDisabled = !acceptedTerms || loading;
 
   const resetForm = () => {
     setEmail("");
@@ -117,7 +118,11 @@ export function SignupDialog() {
     setLoading(true);
     try {
       const submittedEmail = email.trim().toLowerCase();
-      await createAccount({ email: submittedEmail, password });
+      await createAccount({
+        email: submittedEmail,
+        password,
+        acceptedTerms,
+      });
       resetForm();
       setVerificationEmail(submittedEmail);
       setVerificationDialogOpen(true);
@@ -156,6 +161,61 @@ export function SignupDialog() {
       )}
 
       <form className="space-y-4" onSubmit={handleCreateAccount}>
+        <div className="space-y-1">
+          <div className="flex items-start gap-2 text-sm leading-5">
+            <input
+              id="signup-terms"
+              type="checkbox"
+              required
+              checked={acceptedTerms}
+              onChange={(event) => {
+                setAcceptedTerms(event.target.checked);
+                setTermsError(false);
+              }}
+              aria-label="Agree to the Terms and Conditions and Privacy Policy"
+              aria-invalid={termsError}
+              className="mt-0.5 size-4 shrink-0 accent-primary"
+            />
+            <span
+              className="cursor-pointer"
+              onClick={(event) => {
+                if ((event.target as HTMLElement).closest("button")) return;
+                setAcceptedTerms((accepted) => !accepted);
+                setTermsError(false);
+              }}
+            >
+              I agree to WorkSync&apos;s{" "}
+              <button
+                type="button"
+                className="font-medium text-primary underline underline-offset-2"
+                onClick={() => {
+                  setLegalDocument("terms");
+                  setLegalDialogOpen(true);
+                }}
+              >
+                Terms and Conditions
+              </button>{" "}
+              and{" "}
+              <button
+                type="button"
+                className="font-medium text-primary underline underline-offset-2"
+                onClick={() => {
+                  setLegalDocument("privacy");
+                  setLegalDialogOpen(true);
+                }}
+              >
+                Privacy Policy
+              </button>
+              .
+            </span>
+          </div>
+          {termsError && (
+            <p className="pl-6 text-xs text-destructive" role="alert">
+              Agreement is required before continuing.
+            </p>
+          )}
+        </div>
+
         <Field>
           <FieldLabel htmlFor="signup-email">Email address</FieldLabel>
           <Input
@@ -168,6 +228,7 @@ export function SignupDialog() {
               setEmail(event.target.value);
               setFormError("");
             }}
+            disabled={signupDisabled}
             required
           />
         </Field>
@@ -189,11 +250,13 @@ export function SignupDialog() {
                 setPasswordError("");
                 setFormError("");
               }}
+              disabled={signupDisabled}
               required
             />
             <button
               type="button"
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              disabled={signupDisabled}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
               onClick={() => setShowPassword((show) => !show)}
               aria-label={showPassword ? "Hide password" : "Show password"}
               aria-pressed={showPassword}
@@ -250,11 +313,13 @@ export function SignupDialog() {
                 setConfirmPasswordError("");
                 setFormError("");
               }}
+              disabled={signupDisabled}
               required
             />
             <button
               type="button"
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              disabled={signupDisabled}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
               onClick={() => setShowConfirmPassword((show) => !show)}
               aria-label={
                 showConfirmPassword ? "Hide confirm password" : "Show confirm password"
@@ -273,61 +338,7 @@ export function SignupDialog() {
           )}
         </Field>
 
-        <div className="space-y-1">
-          <div className="flex items-start gap-2 text-sm leading-5">
-            <input
-              id="signup-terms"
-              type="checkbox"
-              checked={acceptedTerms}
-              onChange={(event) => {
-                setAcceptedTerms(event.target.checked);
-                setTermsError(false);
-              }}
-              aria-label="Agree to the Terms and Conditions and Privacy Policy"
-              aria-invalid={termsError}
-              className="mt-0.5 size-4 shrink-0 accent-primary"
-            />
-            <span
-              className="cursor-pointer"
-              onClick={(event) => {
-                if ((event.target as HTMLElement).closest("button")) return;
-                setAcceptedTerms((accepted) => !accepted);
-                setTermsError(false);
-              }}
-            >
-              I agree to WorkSync&apos;s{" "}
-              <button
-                type="button"
-                className="font-medium text-primary underline underline-offset-2"
-                onClick={() => {
-                  setLegalDocument("terms");
-                  setLegalDialogOpen(true);
-                }}
-              >
-                Terms and Conditions
-              </button>{" "}
-              and{" "}
-              <button
-                type="button"
-                className="font-medium text-primary underline underline-offset-2"
-                onClick={() => {
-                  setLegalDocument("privacy");
-                  setLegalDialogOpen(true);
-                }}
-              >
-                Privacy Policy
-              </button>
-              .
-            </span>
-          </div>
-          {termsError && (
-            <p className="pl-6 text-xs text-destructive" role="alert">
-              Agreement is required to create an account.
-            </p>
-          )}
-        </div>
-
-        <Button type="submit" className="w-full" disabled={loading}>
+        <Button type="submit" className="w-full" disabled={signupDisabled}>
           {loading ? "Creating account..." : "Create Account"}
         </Button>
 
@@ -339,6 +350,7 @@ export function SignupDialog() {
 
         <GoogleButton
           loading={loading}
+          disabled={!acceptedTerms}
           text="Continue with Google"
           onClick={handleGoogleSignup}
         />

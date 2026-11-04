@@ -71,3 +71,11 @@ next-env.d.ts
 !/supabase/migrations/20261101000800_worksync_job_project_type.sql
 !/supabase/migrations/20261101000900_worksync_project_participant_read_access.sql
 !/supabase/migrations/20261102073741_free_one_job_application_per_month.sql
+
+# Playwright
+node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/

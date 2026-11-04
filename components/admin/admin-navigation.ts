@@ -1,6 +1,7 @@
 import {
   LayoutDashboard,
   Wallet,
+  CreditCard,
   Briefcase,
   Flag,
   ShieldCheck,
@@ -34,6 +35,12 @@ export const ADMIN_NAV_GROUPS = [
         label: "Transactions",
         icon: Wallet,
         description: "Monitor verified payment activity when connected.",
+      },
+      {
+        href: "/admin/subscriptions",
+        label: "Subscriptions",
+        icon: CreditCard,
+        description: "Review Premium purchases and subscription refunds.",
       },
       {
         href: "/admin/jobs",

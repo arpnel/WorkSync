@@ -269,7 +269,7 @@ export default function AnalyticsPage() {
     <div className="@container mx-auto w-full max-w-[1600px] space-y-6">
       <WorkspacePageHeader
         title="Analytics"
-        description="Freelancer earnings exclude VAT and client transaction fees. Test-mode payments are included; client spending reflects the full checkout total."
+        description="An overview of your project activity and finances over time."
       />
       {!valid ? (
         <p
@@ -331,7 +331,7 @@ export default function AnalyticsPage() {
           >
             <Panel
               title="Project activity"
-              description={`Requests, starts and completions ${trend.length && trend[0].month.length === 10 ? "by day" : "by month"}.`}
+              description="See how your project requests, starts, and completions change over time."
               className="col-span-12 @min-[1000px]:col-span-8"
             >
               {hasActivity ? (
@@ -394,7 +394,7 @@ export default function AnalyticsPage() {
             </Panel>
             <Panel
               title="Current status"
-              description="Requests created in the selected period, grouped by their status today."
+              description="See the current status of requests created during the selected period."
               className="col-span-12 @min-[1000px]:col-span-4"
             >
               {statuses.length ? (
@@ -406,8 +406,8 @@ export default function AnalyticsPage() {
             <Panel
               title={showEarnings ? "Gross earnings over time" : "Client spending over time"}
               description={showEarnings
-                ? "Pre-VAT service earnings by payment date, excluding client transaction fees. Test-mode payments are included."
-                : "Full checkout totals by payment date, including VAT and transaction fees. Test-mode payments are included."}
+                ? "Your gross freelance earnings over the selected period."
+                : "Your total project spending over the selected period."}
               className="col-span-12 @min-[900px]:col-span-6"
             >
               {paymentLoading ? (
@@ -475,7 +475,7 @@ export default function AnalyticsPage() {
             </Panel>
             <Panel
               title="Work by project type"
-              description="Compare standard and milestone requests created in this period."
+              description="Compare the standard and milestone projects created during this period."
               className="col-span-12 @min-[900px]:col-span-6"
             >
               {cohort.length ? (
@@ -522,7 +522,7 @@ export default function AnalyticsPage() {
           </section>
           <Panel
             title="Detailed activity"
-            description="Inspect the records behind the charts. Agreed budgets are contract values, not earnings."
+            description="Explore the project records and monthly totals behind your analytics."
           >
             <Tabs defaultValue="projects">
               <TabsList>

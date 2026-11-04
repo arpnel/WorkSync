@@ -1,13 +1,19 @@
 import { CreateAccountData } from "../../types/auth/signup.types";
 
-export async function createAccount({ email, password }: CreateAccountData) {
+export async function createAccount({ email, password, acceptedTerms }: CreateAccountData) {
   const cleanEmail = email.trim().toLowerCase();
   if (!cleanEmail || !password) throw new Error("INVALID_SIGNUP_DATA");
+  if (!acceptedTerms) throw new Error("AGREEMENT_REQUIRED");
   try {
     const response = await fetch("/api/auth/password", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "signup", email: cleanEmail, password }),
+      body: JSON.stringify({
+        action: "signup",
+        email: cleanEmail,
+        password,
+        acceptedTerms,
+      }),
     });
     const result = await response.json().catch(() => null) as { user?: { id: string }; error?: string } | null;
     if (!response.ok) {

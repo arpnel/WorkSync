@@ -342,14 +342,11 @@ export default function SupportTickets() {
               <DialogTitle className="text-xl">{selected?.subject}</DialogTitle>
               {selected && <AdminStatus tone={selected.status === "resolved" || selected.status === "closed" ? "green" : selected.status === "open" ? "orange" : "blue"}>{selected.status.replaceAll("_", " ")}</AdminStatus>}
             </div>
-            <DialogDescription className="break-words">
-              <span className="break-all">Reference: {selected?.ticket_id}</span>
-            </DialogDescription>
-            {selected && (
-              <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                <span>{selected.category}</span>
-                <span aria-hidden="true">·</span>
-                <span className="break-all">{selected.requester_email}</span>
+            <div className="flex min-w-0 items-center justify-between gap-3">
+              <DialogDescription className="min-w-0 flex-1 break-all">
+                Reference: {selected?.ticket_id}
+              </DialogDescription>
+              {selected && (
                 <Button
                   type="button"
                   variant="outline"
@@ -368,6 +365,13 @@ export default function SupportTickets() {
                 >
                   {copiedReference ? <Check className="size-4" /> : <Copy className="size-4" />}
                 </Button>
+              )}
+            </div>
+            {selected && (
+              <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                <span>{selected.category}</span>
+                <span aria-hidden="true">·</span>
+                <span className="break-all">{selected.requester_email}</span>
               </div>
             )}
           </DialogHeader>

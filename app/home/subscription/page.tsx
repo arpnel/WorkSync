@@ -534,12 +534,6 @@ export default function SubscriptionPage() {
             )}
           </section>
           <section aria-labelledby="payment-history-title" className="space-y-3">
-            <Card className="gap-1 border border-primary/20 bg-primary/5 px-4 py-3 shadow-none ring-0">
-              <p className="text-sm font-semibold">Need a Premium refund?</p>
-              <p className="text-sm text-muted-foreground">
-                Submit a support ticket under Payments to request a refund for a Premium purchase.
-              </p>
-            </Card>
             <div>
               <h2 id="payment-history-title" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Premium payment history

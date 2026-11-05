@@ -646,10 +646,7 @@ export async function getProjectWorkspace(
     joinedFreelancerUserId;
 
   const profileMap = new Map(
-    identities.profiles.map((item) => [
-      item.user_id,
-      item as unknown as Record<string, unknown>,
-    ]),
+    identities.profiles.map((item) => [item.user_id, item]),
   );
 
   const { data: conversation, error: conversationError } = conversationResult;

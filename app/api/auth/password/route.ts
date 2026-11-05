@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { passwordMeetsRequirements } from "@/lib/validation/auth.validation";
+import { getWorkSyncOrigin } from "@/lib/appUrl";
 
 export const runtime = "nodejs";
 
@@ -89,7 +90,7 @@ export async function POST(request: Request) {
       email: data.email.trim().toLowerCase(),
       password: data.password!,
       options: {
-        emailRedirectTo: new URL("/auth/callback", request.url).toString(),
+        emailRedirectTo: new URL("/auth/callback", getWorkSyncOrigin(request.url)).toString(),
         data: {
           role: "client",
         },

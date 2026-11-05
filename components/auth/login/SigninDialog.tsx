@@ -16,13 +16,20 @@ import { ERROR_MESSAGES } from "../constants";
 import { SignupDialog } from "../signup/SignupDialog";
 import { Button } from "@/components/ui/button";
 import { AuthLoadingScreen } from "@/components/auth/AuthLoadingScreen";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export function SigninDialog() {
   const router = useRouter();
 
   const [email, setEmail] = React.useState("");
   const [signup, setSignup] = React.useState(false);
-  const [notice, setNotice] = React.useState("");
+  const [resetEmailDialogOpen, setResetEmailDialogOpen] = React.useState(false);
 
   const [password, setPassword] = React.useState("");
 
@@ -61,9 +68,9 @@ export function SigninDialog() {
   const handleForgotPassword = async () => {
     if (loading) return;
     setFormError("");
-    setNotice("");
+    setEmailError("");
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      showMessage("Enter your email above, then select Forgot Password.");
+      setEmailError("Please enter a valid email address.");
       return;
     }
     setLoading(true);
@@ -71,17 +78,15 @@ export function SigninDialog() {
       const { error } = await supabase.auth.resetPasswordForEmail(
         email.trim(),
         {
-          redirectTo: `${window.location.origin}/reset-password`,
+          redirectTo: `${window.location.origin}/auth/callback?next=%2Freset-password`,
         },
       );
       if (error) throw error;
-      setNotice(
-        "If an account uses this email, you will receive a password reset link.",
-      );
+      setResetEmailDialogOpen(true);
     } catch (cause) {
-      showMessage(
+      setEmailError(
         cause instanceof Error
-          ? cause.message
+          ? getSigninErrorMessage(cause)
           : "Unable to send a reset link. Please try again.",
       );
     } finally {
@@ -186,11 +191,6 @@ export function SigninDialog() {
   return (
     <>
       {signingIn && <AuthLoadingScreen />}
-      {notice && (
-        <p role="status" className="text-sm">
-          {notice}
-        </p>
-      )}
       {formError && (
         <p
           role="alert"
@@ -236,6 +236,25 @@ export function SigninDialog() {
         onSwitchToSignup={handleSwitchToSignup}
         onSubmit={handleSignin}
       />
+      <Dialog open={resetEmailDialogOpen} onOpenChange={setResetEmailDialogOpen}>
+        <DialogContent className="space-y-4 sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Check your email</DialogTitle>
+            <DialogDescription>
+              If an account uses <span className="font-medium text-foreground">{email}</span>,
+              password reset instructions were sent. Check that inbox and its
+              spam folder, then follow the link to choose a new password.
+            </DialogDescription>
+          </DialogHeader>
+          <Button
+            type="button"
+            className="w-full"
+            onClick={() => setResetEmailDialogOpen(false)}
+          >
+            Got it
+          </Button>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

@@ -8,7 +8,28 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordRequirements } from "@/components/auth/PasswordRequirements";
 import { passwordMeetsRequirements } from "@/lib/validation/auth.validation";
-import { updatePasswordOnServer } from "@/services/auth/passwordService";
+
+function isRecoverySession(amr: unknown): boolean {
+  return (
+    Array.isArray(amr) &&
+    amr.some(
+      (entry) =>
+        entry === "recovery" ||
+        (typeof entry === "object" &&
+          entry !== null &&
+          "method" in entry &&
+          entry.method === "recovery"),
+    )
+  );
+}
+
+function hasAuthLinkError(): boolean {
+  const query = new URLSearchParams(window.location.search);
+  const fragment = new URLSearchParams(window.location.hash.slice(1));
+  return [query, fragment].some(
+    (params) => params.has("error") || params.has("error_code"),
+  );
+}
 
 export default function ResetPasswordPage() {
   const [ready, setReady] = useState(false);
@@ -19,15 +40,33 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState("");
   useEffect(() => {
     let active = true;
+    if (hasAuthLinkError()) {
+      setError(
+        "This password reset link is invalid, expired, or already used. Request a new link from sign in.",
+      );
+      return () => {
+        active = false;
+      };
+    }
     void supabase.auth
       .getSession()
-      .then(({ data, error }) => {
+      .then(async ({ data, error }) => {
         if (!active) return;
-        if (error || !data.session)
+        if (error || !data.session) {
           setError(
-            "This reset link is invalid or expired. Request a new link from sign in.",
+            "This password reset link is invalid, expired, or already used. Request a new link from sign in.",
           );
-        else setReady(true);
+          return;
+        }
+        const claims = await supabase.auth.getClaims(data.session.access_token);
+        if (!active) return;
+        if (claims.error || !isRecoverySession(claims.data?.claims?.amr)) {
+          setError(
+            "This password reset link is invalid, expired, or already used. Request a new link from sign in.",
+          );
+          return;
+        }
+        setReady(true);
       })
       .catch(() => {
         if (active)
@@ -45,15 +84,18 @@ export default function ResetPasswordPage() {
     if (password !== confirm) return setError("Passwords do not match.");
     setBusy(true);
     try {
-      await updatePasswordOnServer(password);
+      const { error: updateError } = await supabase.auth.updateUser({ password });
+      if (updateError) throw updateError;
+      await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
       setDone(true);
       setPassword("");
       setConfirm("");
     } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "";
       setError(
-        cause instanceof Error
-          ? cause.message
-          : "Unable to change your password. Please try again.",
+        /expired|invalid.*(token|link)|recovery|otp/i.test(message)
+          ? "This password reset link is invalid, expired, or already used. Request a new link from sign in."
+          : message || "Unable to change your password. Please try again.",
       );
     } finally {
       setBusy(false);
@@ -66,7 +108,7 @@ export default function ResetPasswordPage() {
         <>
           <p role="status">Your password has been updated.</p>
           <Button asChild>
-            <Link href="/home/marketplace">Continue to WorkSync</Link>
+            <Link href="/login">Return to sign in</Link>
           </Button>
         </>
       ) : (

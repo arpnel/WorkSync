@@ -36,7 +36,16 @@ export async function getPostSigninPath(
 export async function completeSignin(href: string): Promise<string> {
   const url = new URL(href);
   const fragment = new URLSearchParams(url.hash.slice(1));
-  if (url.searchParams.has("error") || fragment.has("error")) {
+  const authError =
+    url.searchParams.get("error_description") ??
+    fragment.get("error_description") ??
+    url.searchParams.get("error_code") ??
+    fragment.get("error_code");
+  if (url.searchParams.has("error") || fragment.has("error") || authError) {
+    if (url.searchParams.get("next") === "/reset-password")
+      throw new Error(
+        "This password reset link is invalid, expired, or already used. Request a new link from sign in.",
+      );
     throw new Error(
       "Sign-in was cancelled or the link expired. Please try again.",
     );
@@ -52,6 +61,8 @@ export async function completeSignin(href: string): Promise<string> {
     throw new Error(
       "Unable to complete sign-in. Please request a new link or sign in again.",
     );
+  if (url.searchParams.get("next") === "/reset-password")
+    return "/reset-password";
   return getPostSigninPath(
     data.session.user.id,
     url.searchParams.get("redirectTo") === "/admin",

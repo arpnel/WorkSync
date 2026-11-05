@@ -393,8 +393,8 @@ export function SignupDialog() {
               <span className="break-all font-medium text-foreground">
                 {verificationEmail}
               </span>
-              . Open the link to verify your email and continue to account
-              setup.
+              . Check that inbox and its spam folder, then open the link to
+              verify your email and continue to account setup.
             </DialogDescription>
           </DialogHeader>
           <Button

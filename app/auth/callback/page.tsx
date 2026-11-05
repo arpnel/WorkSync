@@ -12,6 +12,9 @@ export default function AuthCallbackPage() {
   const adminSignin =
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("redirectTo") === "/admin";
+  const passwordReset =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("next") === "/reset-password";
   useEffect(() => {
     let active = true;
     async function finish() {
@@ -35,7 +38,9 @@ export default function AuthCallbackPage() {
   }, []);
   return error ? (
     <main className="mx-auto max-w-md space-y-4 px-6 py-16">
-      <h1 className="text-2xl font-semibold">Unable to sign in</h1>
+      <h1 className="text-2xl font-semibold">
+        {passwordReset ? "Password reset link unavailable" : "Unable to sign in"}
+      </h1>
       <p role="alert" className="text-sm text-destructive">
         {error}
       </p>

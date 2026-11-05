@@ -23,13 +23,27 @@ import {
 } from "@/components/ui/dialog";
 import { StyledSelect } from "@/components/ui/styled-select";
 import type { ProjectWorkspace } from "@/types/project/projectWorkspace";
-import { completeProjectTask, ensureSubmittedPlanTasks, loadProjectTasks, startProjectTask, type PersistedProjectTask } from "@/services/project/projectTaskService";
+import { completeProjectTask, ensureServiceOrderPlanTasks, ensureSubmittedPlanTasks, loadProjectTasks, startProjectTask, type PersistedProjectTask } from "@/services/project/projectTaskService";
 import { loadContractTaskPlanMode } from "@/services/project/projectTaskPlanMetadataService";
+import {
+  addProjectTaskComment,
+  loadProjectTaskComments,
+  subscribeToProjectTaskComments,
+  type ProjectTaskComment as StoredProjectTaskComment,
+} from "@/services/project/projectTaskCommentService";
+import {
+  loadProjectTaskAttachments,
+  openProjectTaskAttachment,
+  subscribeToProjectTaskAttachments,
+  uploadProjectTaskAttachment,
+  PROJECT_TASK_ATTACHMENT_MAX_BYTES,
+  type ProjectTaskAttachment,
+} from "@/services/project/projectTaskAttachmentService";
 import { notifyProjectActivityChanged } from "@/lib/projectRealtime";
 
 type TaskStatus = "To Do" | "In Progress" | "Done";
 type Priority = "High" | "Medium" | "Low";
-type TaskComment = { id: string; author: string; message: string; createdAt: string };
+type TaskComment = { id: string; authorId: string; author: string; message: string; createdAt: string };
 type Task = {
   id: string;
   title: string;
@@ -39,7 +53,7 @@ type Task = {
   deadlineAt?: string;
   priority: Priority;
   comments: TaskComment[];
-  attachments: File[];
+  attachments: ProjectTaskAttachment[];
   milestoneId: string | null;
   workScope: boolean;
   sourceKey?: string;
@@ -81,25 +95,14 @@ function legacyTaskFallback(project: ProjectWorkspace): Task[] {
       milestoneId: null,
       workScope: true,
       sourceStageName: column.name,
-      sourceKey: `${column.id}:${task.id}`,
+      sourceKey: project.applicationId ? `${column.id}:${task.id}` : task.id,
       expectedDays: task.expectedDays,
     })),
   ) ?? [];
   if (submittedPlanTasks.length) return submittedPlanTasks;
 
-  return project.type === "milestone" && project.milestones.length
-    ? project.milestones.map((milestone) => ({
-      id: `milestone-${milestone.id}`,
-      title: milestone.title,
-      description: milestone.description || "Work and review for this agreed milestone.",
-      status: ["approved", "completed"].includes(milestone.status) ? "Done" as TaskStatus : ["active", "in_progress", "revision"].includes(milestone.status) ? "In Progress" as TaskStatus : "To Do" as TaskStatus,
-      dueDate: milestone.dueDate?.slice(0, 10) ?? "",
-      priority: "Medium" as Priority,
-      comments: [],
-      attachments: [],
-      milestoneId: milestone.id,
-      workScope: true,
-    }))
+  return project.type === "milestone"
+    ? []
     : [{ id: "project-work", title: "Project delivery", description: project.description || "Submit the agreed project work and review client feedback.", status: project.status.toLowerCase() === "completed" ? "Done" : "In Progress", dueDate: project.dueDate?.slice(0, 10) ?? "", priority: "High", comments: [], attachments: [], milestoneId: null, workScope: true }];
 }
 
@@ -124,6 +127,27 @@ export function mapPersistedTasksToBoard(tasks: readonly PersistedProjectTask[])
   }));
 }
 
+function mergeSavedTaskProgress(
+  planTasks: readonly Task[],
+  persistedTasks: readonly PersistedProjectTask[],
+): Task[] {
+  const savedByKey = new Map(persistedTasks.map((task) => [task.source_key, task]));
+  return planTasks.map((task) => {
+    const saved = task.sourceKey ? savedByKey.get(task.sourceKey) : undefined;
+    if (!saved) return task;
+    return {
+      ...task,
+      id: saved.task_id,
+      status: saved.boardStatus,
+      dueDate: saved.due_date ?? task.dueDate,
+      deadlineAt: saved.deadline_at ?? undefined,
+      persistedStatus: saved.status,
+      persistedStatusLabel: saved.statusDisplay.label,
+      persisted: true,
+    };
+  });
+}
+
 export function isCurrentTaskBoardResponse(
   responseKey: string,
   currentKey: string,
@@ -135,13 +159,47 @@ export function isCurrentTaskBoardResponse(
 
 export async function loadProjectTaskBoardData(project: ProjectWorkspace): Promise<Omit<TaskBoardLoadState, "key">> {
   try {
+    // Direct service orders save the agreed freelancer plan separately from
+    // the payment milestone schedule. Seed the full task workflow independently
+    // so unassigned plan tasks are not lost or mistaken for payment milestones.
+    if (!project.applicationId && project.projectId && project.proposedPlan) {
+      const planTasks = legacyTaskFallback(project);
+      const expectedTaskCount = planTasks.length;
+      if (project.currentParty === "freelancer") {
+        try {
+          const savedTasks = await ensureServiceOrderPlanTasks(project.projectId);
+          return savedTasks.length
+            ? { status: "versioned", tasks: mapPersistedTasksToBoard(savedTasks) }
+            : { status: "empty", tasks: [], message: "The agreed project plan has no tasks to show." };
+        } catch (cause) {
+          return {
+            status: planTasks.length ? "legacy" : "empty",
+            tasks: planTasks,
+            message: cause instanceof Error ? cause.message : "The agreed task plan could not be saved.",
+          };
+        }
+      }
+      const existingTasks = await loadProjectTasks(project.projectId);
+      if (existingTasks.length >= expectedTaskCount && expectedTaskCount > 0) {
+        return { status: "versioned", tasks: mapPersistedTasksToBoard(existingTasks) };
+      }
+      return {
+        status: planTasks.length ? "legacy" : "empty",
+        tasks: mergeSavedTaskProgress(planTasks, existingTasks),
+        message: planTasks.length ? undefined : "The agreed project plan has no tasks to show.",
+      };
+    }
+
     const metadata = await loadContractTaskPlanMode(project.contractId, project.contractVersion);
     if (metadata.mode === "legacy") {
       if (project.projectId) {
         const existingTasks = await loadProjectTasks(project.projectId);
         if (existingTasks.length) return { status: "versioned", tasks: mapPersistedTasksToBoard(existingTasks) };
       }
-      return { status: "legacy", tasks: legacyTaskFallback(project) };
+      const tasks = legacyTaskFallback(project);
+      return tasks.length
+        ? { status: "legacy", tasks }
+        : { status: "empty", tasks, message: "No agreed project plan tasks are available. Payment milestones are shown separately and do not replace the freelancer's task board." };
     }
     if (metadata.mode !== "versioned" || metadata.stale) {
       return {
@@ -179,6 +237,9 @@ export function ProjectTaskBoard({
 }) {
   const [taskLoad, setTaskLoad] = useState<TaskBoardLoadState>(() => loadingTaskBoardState(""));
   const [selection, setSelection] = useState<{ key: string; id: string } | null>(null);
+  const [commentLoadError, setCommentLoadError] = useState("");
+  const [commentSaving, setCommentSaving] = useState(false);
+  const [attachmentSaving, setAttachmentSaving] = useState(false);
   const loadSequence = useRef(0);
   const projectRef = useRef(project);
   projectRef.current = project;
@@ -207,6 +268,7 @@ export function ProjectTaskBoard({
   const selected = selection?.key === taskKey
     ? tasks.find((task) => task.id === selection.id) ?? null
     : null;
+  const selectedComments = selected?.comments ?? [];
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newDescription, setNewDescription] = useState("");
@@ -215,6 +277,79 @@ export function ProjectTaskBoard({
   const [taskActionError, setTaskActionError] = useState("");
   const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
   const attachmentInput = useRef<HTMLInputElement>(null);
+
+  const selectedCommentKey = selected?.sourceKey ?? (selected?.persisted || selected?.workScope ? selected.id : undefined);
+  useEffect(() => {
+    if (!selected || !project.projectId || !selectedCommentKey) return;
+    let cancelled = false;
+    const refreshComments = async () => {
+      try {
+        const stored = await loadProjectTaskComments(project.projectId!, selectedCommentKey);
+        if (!cancelled) {
+          setCommentLoadError("");
+          updateTaskComments(selected.id, selectedCommentKey, stored);
+        }
+      } catch (cause) {
+        if (!cancelled) setCommentLoadError(cause instanceof Error ? cause.message : "Comments could not be loaded.");
+      }
+    };
+    const refreshAttachments = async () => {
+      try {
+        const stored = await loadProjectTaskAttachments(project.projectId!, selectedCommentKey);
+        if (!cancelled) {
+          setAttachmentError("");
+          updateTaskAttachments(selected.id, selectedCommentKey, stored);
+        }
+      } catch (cause) {
+        if (!cancelled) setAttachmentError(cause instanceof Error ? cause.message : "Attachments could not be loaded.");
+      }
+    };
+    void refreshComments();
+    void refreshAttachments();
+    const unsubscribe = subscribeToProjectTaskComments(project.projectId, selectedCommentKey, () => void refreshComments());
+    const unsubscribeAttachments = subscribeToProjectTaskAttachments(project.projectId, selectedCommentKey, () => void refreshAttachments());
+    return () => { cancelled = true; unsubscribe(); unsubscribeAttachments(); };
+  // The effect tracks the selected task identity and its stable database key.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.projectId, selected?.id, selectedCommentKey]);
+
+  function mapStoredComment(entry: StoredProjectTaskComment): TaskComment {
+    const isCurrentUser = entry.author_id === project.currentUserId;
+    const author = isCurrentUser
+      ? (project.currentParty === "client" ? project.clientName : project.freelancerName)
+      : (project.currentParty === "client" ? project.freelancerName : project.clientName);
+    return { id: entry.comment_id, authorId: entry.author_id, author, message: entry.body, createdAt: entry.created_at };
+  }
+
+  function updateTaskComments(taskId: string, commentKey: string, stored: StoredProjectTaskComment[]) {
+    const comments = stored.map(mapStoredComment);
+    setTaskLoad((current) => current.key === taskKey
+      ? { ...current, tasks: current.tasks.map((task) => task.id === taskId || task.sourceKey === commentKey ? { ...task, comments } : task) }
+      : current);
+  }
+
+  function appendTaskComment(taskId: string, commentKey: string, stored: StoredProjectTaskComment) {
+    const next = mapStoredComment(stored);
+    setTaskLoad((current) => current.key === taskKey
+      ? { ...current, tasks: current.tasks.map((task) => task.id === taskId || task.sourceKey === commentKey
+        ? { ...task, comments: [...task.comments.filter((entry) => entry.id !== next.id), next] }
+        : task) }
+      : current);
+  }
+
+  function updateTaskAttachments(taskId: string, commentKey: string, attachments: ProjectTaskAttachment[]) {
+    setTaskLoad((current) => current.key === taskKey
+      ? { ...current, tasks: current.tasks.map((task) => task.id === taskId || task.sourceKey === commentKey ? { ...task, attachments } : task) }
+      : current);
+  }
+
+  function appendTaskAttachment(taskId: string, commentKey: string, attachment: ProjectTaskAttachment) {
+    setTaskLoad((current) => current.key === taskKey
+      ? { ...current, tasks: current.tasks.map((task) => task.id === taskId || task.sourceKey === commentKey
+        ? { ...task, attachments: [...task.attachments.filter((entry) => entry.attachment_id !== attachment.attachment_id), attachment] }
+        : task) }
+      : current);
+  }
 
   function updateSelected(patch: Partial<Task>) {
     if (!selected) return;
@@ -244,7 +379,9 @@ export function ProjectTaskBoard({
         if (!canMoveTask(task) || !project.projectId || !task.sourceKey) {
           throw new Error("This task is not linked to a saved project plan.");
         }
-        seededTasks = await ensureSubmittedPlanTasks(project.projectId);
+        seededTasks = project.applicationId
+          ? await ensureSubmittedPlanTasks(project.projectId)
+          : await ensureServiceOrderPlanTasks(project.projectId);
         const seededTarget = seededTasks.find((item) => item.source_key === task.sourceKey);
         if (!seededTarget) throw new Error("Could not match this task to the freelancer’s saved application plan.");
         taskDatabaseId = seededTarget.task_id;
@@ -285,32 +422,47 @@ export function ProjectTaskBoard({
     setSelection({ key: taskKey, id: task.id });
   }
 
-  function addComment(event: FormEvent<HTMLFormElement>) {
+  async function addComment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selected || !comment.trim()) return;
-    const next: TaskComment = {
-      id: crypto.randomUUID(),
-      author: project.currentParty === "client" ? project.clientName : project.freelancerName,
-      message: comment.trim(),
-      createdAt: new Date().toISOString(),
-    };
-    updateSelected({ comments: [...selected.comments, next] });
-    setComment("");
+    if (!selected || !project.projectId || !selectedCommentKey || !comment.trim() || commentSaving) return;
+    setCommentLoadError("");
+    setCommentSaving(true);
+    try {
+      const saved = await addProjectTaskComment(project.projectId, selectedCommentKey, comment);
+      appendTaskComment(selected.id, selectedCommentKey, saved);
+      setComment("");
+    } catch (cause) {
+      setCommentLoadError(cause instanceof Error ? cause.message : "Comment could not be sent. Try again.");
+    } finally {
+      setCommentSaving(false);
+    }
   }
 
-  function addAttachment(file: File) {
-    if (!selected) return;
-    updateSelected({ attachments: [...selected.attachments, file] });
+  async function addAttachment(file: File) {
+    if (!selected || project.currentParty !== "freelancer") return;
     setAttachmentError("");
+    if (!project.projectId || !selectedCommentKey) {
+      setAttachmentError("Attach this task to a saved project plan before adding shared files.");
+      return;
+    }
+    if (attachmentSaving) return;
+    setAttachmentSaving(true);
+    try {
+      const attachment = await uploadProjectTaskAttachment(project.projectId, selectedCommentKey, file);
+      appendTaskAttachment(selected.id, selectedCommentKey, attachment);
+    } catch (cause) {
+      setAttachmentError(cause instanceof Error ? cause.message : "The file could not be attached.");
+    } finally {
+      setAttachmentSaving(false);
+    }
   }
 
-  function downloadAttachment(file: File) {
-    const url = URL.createObjectURL(file);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = file.name;
-    anchor.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  async function downloadAttachment(attachment: ProjectTaskAttachment) {
+    try {
+      await openProjectTaskAttachment(attachment.storage_path);
+    } catch (cause) {
+      setAttachmentError(cause instanceof Error ? cause.message : "The file could not be opened.");
+    }
   }
 
   return (
@@ -324,14 +476,15 @@ export function ProjectTaskBoard({
         <div className="flex flex-wrap items-center gap-2">{actions}{visibleLoad.status === "legacy" && <Button size="sm" onClick={() => setAdding((open) => !open)}><Plus className="mr-1.5 h-4 w-4" />Add task</Button>}</div>
       </div>
 
-      <p className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">{visibleLoad.status === "versioned" || visibleLoad.status === "empty" ? "Tasks are loaded from the accepted contract plan. Task progress is saved; task details, comments, and reference attachments remain a local preview. Existing submissions, feedback, and revisions continue to use the project or milestone delivery flow." : project.proposedPlan ? "Tasks are loaded from the freelancer’s submitted application plan. Moving a task to In Progress saves the plan’s task records to this active project." : "These board cards are a UI preview without saved task records. Existing submissions, feedback, and revisions remain saved at project or milestone level."}</p>
+      <p className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">{visibleLoad.status === "versioned" || visibleLoad.status === "empty" ? "Tasks are loaded from the accepted contract plan. Task progress, participant comments, and reference attachments are saved; task detail edits remain a local preview. Existing submissions, feedback, and revisions continue to use the project or milestone delivery flow." : project.proposedPlan ? project.applicationId ? "Tasks are loaded from the freelancer’s submitted application plan. Moving a task to In Progress saves the plan’s task records to this active project." : "Tasks are loaded from the agreed service-order project plan. Progress, comments, and attachments are freelancer workflow records separate from payment milestones." : "These board cards are a UI preview without saved task records. Existing submissions, feedback, and revisions remain saved at project or milestone level."}</p>
       </>}
 
       {visibleLoad.status === "loading" && <p role="status" className="rounded-md border px-3 py-4 text-sm text-muted-foreground">Loading the accepted task plan…</p>}
       {visibleLoad.status === "unknown" && <div role="alert" className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-4 text-sm">{visibleLoad.message}</div>}
       {visibleLoad.status === "error" && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/40 px-3 py-4 text-sm"><span>{visibleLoad.message ?? "Unable to load the task plan."}</span><Button size="sm" variant="outline" onClick={() => void reloadTasks()}>Retry</Button></div>}
       {taskActionError && <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">{taskActionError}</p>}
-      {visibleLoad.status === "empty" && <p role="status" className="rounded-md border border-dashed px-3 py-4 text-sm text-muted-foreground">The accepted plan is versioned, but no persisted tasks were returned.</p>}
+      {visibleLoad.status === "empty" && <p role="status" className="rounded-md border border-dashed px-3 py-4 text-sm text-muted-foreground">{visibleLoad.message ?? "The accepted plan is versioned, but no persisted tasks were returned."}</p>}
+      {visibleLoad.status === "legacy" && visibleLoad.message && <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-3 text-sm text-destructive">{visibleLoad.message}</p>}
 
       {visibleLoad.status === "legacy" && adding && <form onSubmit={addTask} className="grid gap-3 rounded-lg border bg-muted/20 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
         <label className="text-sm">Task title<Input autoFocus required maxLength={120} className="mt-1" value={newTitle} onChange={(event) => setNewTitle(event.target.value)} /></label>
@@ -412,11 +565,11 @@ export function ProjectTaskBoard({
                   </section>
 
                   <section aria-labelledby="task-attachments-heading" className="space-y-3 rounded-lg border border-border/60 bg-card/45 p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2"><Paperclip className="h-4 w-4 text-muted-foreground"/><h3 id="task-attachments-heading" className="text-sm font-semibold">Attachments</h3></div><Button type="button" size="sm" variant="outline" onClick={() => attachmentInput.current?.click()}><Paperclip className="mr-1.5 h-3.5 w-3.5"/>Attach file</Button></div>
-                    <input ref={attachmentInput} type="file" className="sr-only" aria-label="Choose a task attachment" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (!file) return; if (file.size > 1024 * 1024 * 1024) setAttachmentError("Choose a file smaller than 1 GB."); else addAttachment(file); event.currentTarget.value = ""; }} />
+                    <div className="flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2"><Paperclip className="h-4 w-4 text-muted-foreground"/><h3 id="task-attachments-heading" className="text-sm font-semibold">Attachments</h3></div>{project.currentParty === "freelancer" && project.projectId && selectedCommentKey && <Button type="button" size="sm" variant="outline" disabled={attachmentSaving} onClick={() => attachmentInput.current?.click()}><Paperclip className="mr-1.5 h-3.5 w-3.5"/>{attachmentSaving ? "Uploading…" : "Attach file"}</Button>}</div>
+                    {project.currentParty === "freelancer" && project.projectId && selectedCommentKey && <input ref={attachmentInput} type="file" className="sr-only" aria-label="Choose a task attachment" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (!file) return; if (file.size > PROJECT_TASK_ATTACHMENT_MAX_BYTES) setAttachmentError("Choose a file that is 10 MB or smaller."); else void addAttachment(file); event.currentTarget.value = ""; }} />}
                     {attachmentError && <p role="alert" className="text-sm text-destructive">{attachmentError}</p>}
-                    {selected.attachments.length ? <ul className="space-y-2">{selected.attachments.map((file, index) => <li key={`${file.name}-${index}`} className="flex min-w-0 items-center justify-between gap-2 rounded-md border border-border/60 bg-background/60 px-3 py-2 text-sm"><span className="flex min-w-0 items-center gap-2.5"><FileText className="h-4 w-4 shrink-0 text-muted-foreground"/><span className="min-w-0"><span className="block truncate font-medium">{file.name}</span><span className="text-xs text-muted-foreground">{file.type || file.name.split(".").pop()?.toUpperCase() || "Unknown file type"}</span></span></span><Button type="button" size="sm" variant="ghost" onClick={() => downloadAttachment(file)}>Download</Button></li>)}</ul> : <p className="rounded-md bg-background/50 px-3 py-2.5 text-sm text-muted-foreground">No reference files yet. Attach a file to keep it with this task.</p>}
-                    <p className="text-xs text-muted-foreground">Preview only: task attachments stay in this browser and are not saved. They are separate from work submissions.</p>
+                    {selected.attachments.length ? <ul className="space-y-2">{selected.attachments.map((file) => <li key={file.attachment_id} className="flex min-w-0 items-center justify-between gap-2 rounded-md border border-border/60 bg-background/60 px-3 py-2 text-sm"><span className="flex min-w-0 items-center gap-2.5"><FileText className="h-4 w-4 shrink-0 text-muted-foreground"/><span className="min-w-0"><span className="block truncate font-medium">{file.file_name}</span><span className="text-xs text-muted-foreground">{file.content_type || "File"} · {(file.size_bytes / 1024).toFixed(0)} KB</span></span></span><Button type="button" size="sm" variant="ghost" onClick={() => void downloadAttachment(file)}>View / download</Button></li>)}</ul> : <p className="rounded-md bg-background/50 px-3 py-2.5 text-sm text-muted-foreground">{project.currentParty === "freelancer" ? "No reference files yet. Attach a file to keep it with this task." : "No reference files have been attached yet."}</p>}
+                    <p className="text-xs text-muted-foreground">Freelancers can attach files to saved project tasks. Both project participants can view and download them; files are stored privately with this project and are separate from work submissions.</p>
                   </section>
 
                 </main>
@@ -430,14 +583,17 @@ export function ProjectTaskBoard({
                   </section>
                   <section className="space-y-3 border-t pt-4">
                     <div className="flex items-center gap-2"><MessageSquare className="h-4 w-4 text-muted-foreground"/><h3 className="text-sm font-semibold">Comments</h3></div>
-                    <p className="text-xs text-muted-foreground">Preview only: comments are not saved.</p>
+                    <p className="text-xs text-muted-foreground">Comments are shared with both project participants.</p>
+                    {commentLoadError && <p role="alert" className="text-xs text-destructive">{commentLoadError}</p>}
                     <ol className="space-y-3">
-                      {[...selected.comments].sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map((entry) => <li key={entry.id} className="border-b border-border/60 pb-2 last:border-0">
+                      {[...selectedComments].sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map((entry) => <li key={entry.id} className="border-b border-border/60 pb-2 last:border-0">
                         <div className="flex items-center justify-between gap-2"><span className="text-xs font-medium">{entry.author}</span><time className="text-[10px] text-muted-foreground">{new Date(entry.createdAt).toLocaleString()}</time></div><p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{entry.message}</p>
                       </li>)}
-                      {!selected.comments.length && <li className="text-sm text-muted-foreground">No comments yet.</li>}
+                      {!selectedComments.length && <li className="text-sm text-muted-foreground">No comments yet.</li>}
                     </ol>
-                    <form onSubmit={addComment} className="space-y-2"><Textarea aria-label="Add a task comment" maxLength={2000} rows={2} className="resize-y border-border/80 bg-background/80 text-foreground placeholder:text-foreground/50" placeholder="Write a comment…" value={comment} onChange={(event) => setComment(event.target.value)}/><div className="flex justify-end"><Button variant="outline" size="sm" disabled={!comment.trim()}><Check className="mr-1.5 h-4 w-4"/>Add comment</Button></div></form>
+                    {selectedCommentKey && project.projectId
+                      ? <form onSubmit={(event) => void addComment(event)} className="space-y-2"><Textarea aria-label="Add a task comment" maxLength={2000} rows={2} className="resize-y border-border/80 bg-background/80 text-foreground placeholder:text-foreground/50" placeholder="Write a comment…" value={comment} onChange={(event) => setComment(event.target.value)}/><div className="flex justify-end"><Button variant="outline" size="sm" disabled={!comment.trim() || commentSaving}>{commentSaving ? "Sending…" : <><Check className="mr-1.5 h-4 w-4"/>Add comment</>}</Button></div></form>
+                      : <p className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">Comments need a task linked to this project so both participants share the same discussion.</p>}
                   </section>
                 </aside>
               </div>

@@ -776,16 +776,16 @@ export function RequestList({
           <DialogHeader>
             <DialogTitle>Free AI screening limit reached</DialogTitle>
             <DialogDescription>
-              You have used {screeningLimit?.used ?? 5} of{" "}
-              {screeningLimit?.limit ?? 5} free applicant screenings for this
+              You have used {screeningLimit?.used ?? 1} of{" "}
+              {screeningLimit?.limit ?? 1} free applicant screenings for this
               rolling six-month period.
               {screeningLimit?.resetAt &&
                 ` Your next screening becomes available ${new Date(screeningLimit.resetAt).toLocaleDateString()}.`}
             </DialogDescription>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Premium includes unlimited AI skills gap assessments, complete
-            applicant rankings with explanations, unlimited job postings, and
+            Premium includes unlimited AI applicant screenings, complete
+            applicant rankings with explanations, up to 100 active job postings, and
             a 5% transaction fee.
           </p>
           <DialogFooter>

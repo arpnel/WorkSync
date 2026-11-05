@@ -392,12 +392,12 @@ export async function screenApplicant(
       );
     if (quota.allowed !== true)
       throw new ScreeningError(
-        "The Free plan includes five AI screenings every six months. Upgrade to Premium to continue screening applicants.",
+        "The Free plan includes one AI applicant screening every six months. Upgrade to Premium to continue screening applicants.",
         429,
         "FREE_SCREENING_LIMIT_REACHED",
         {
-          used: typeof quota.used === "number" ? quota.used : 5,
-          limit: typeof quota.limit === "number" ? quota.limit : 5,
+          used: typeof quota.used === "number" ? quota.used : 1,
+          limit: typeof quota.limit === "number" ? quota.limit : 1,
           resetAt:
             typeof quota.resetAt === "string" ? quota.resetAt : null,
         },
@@ -445,7 +445,7 @@ export async function screenApplicant(
           ? {
               quota: {
                 used: typeof quota.used === "number" ? quota.used : undefined,
-                limit: typeof quota.limit === "number" ? quota.limit : 5,
+                limit: typeof quota.limit === "number" ? quota.limit : 1,
                 resetAt:
                   typeof quota.resetAt === "string" ? quota.resetAt : null,
               },

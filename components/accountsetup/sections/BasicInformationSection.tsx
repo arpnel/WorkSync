@@ -15,6 +15,7 @@ import {
 import {
   getAccountSetupMunicipalities,
   getAccountSetupProvinces,
+  normalizeAccountSetupLocalityName,
 } from "@/lib/location/account-setup-address";
 
 import { ENGLISH_PROFICIENCY } from "@/constants/account-setup.constants";
@@ -74,14 +75,14 @@ export function BasicInformationSection({
 
   // Filter cities based on what the user types
   const filteredCities = useMemo(() => {
-    const search = values.city.trim().toLowerCase();
+    const search = normalizeAccountSetupLocalityName(values.city);
 
     if (!search) {
       return cities;
     }
 
     return cities.filter((city) =>
-      city.name.toLowerCase().includes(search),
+      normalizeAccountSetupLocalityName(city.name).includes(search),
     );
   }, [cities, values.city]);
 
@@ -275,7 +276,11 @@ export function BasicInformationSection({
             value={values.englishProficiency}
             onValueChange={(value) => handleChange("englishProficiency", value)}
           >
-            <SelectTrigger id="englishProficiency" aria-invalid={!!errors.englishProficiency}>
+            <SelectTrigger
+              id="englishProficiency"
+              aria-invalid={!!errors.englishProficiency}
+              className="h-11 data-[size=default]:h-11"
+            >
               <SelectValue placeholder="Select proficiency" />
             </SelectTrigger>
 

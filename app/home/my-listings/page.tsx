@@ -90,8 +90,21 @@ export default function Page() {
       setArchived([]);
       void loadListings();
     };
+    let refreshTimer: number | undefined;
+    const refreshWhenVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => void loadListings(), 150);
+    };
     window.addEventListener("account-role-changed", onRoleChanged);
-    return () => window.removeEventListener("account-role-changed", onRoleChanged);
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.removeEventListener("account-role-changed", onRoleChanged);
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.clearTimeout(refreshTimer);
+    };
   }, [loadListings]);
 
   /* ==========================================================

@@ -47,15 +47,24 @@ export function ProjectPlanSnapshotPreview({
             <ArrowLeft />
           </Button>
           <h1 className="min-w-0 flex-1 truncate text-base font-semibold">
-            {plan.name}
+            Project plan
           </h1>
         </header>
         <main className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
-          {plan.description && (
-            <p className="mb-6 whitespace-pre-wrap text-sm text-muted-foreground">
-              {plan.description}
+          <section className="mb-6 rounded-xl border bg-card px-4 py-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Project details
             </p>
-          )}
+            <h2 className="mt-1 text-base font-semibold">
+              {plan.name || "Untitled plan"}
+            </h2>
+            <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
+              {plan.description || "No description provided."}
+            </p>
+            <span className="mt-2 inline-flex rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+              {plan.content.columns.length} {plan.content.columns.length === 1 ? "stage" : "stages"}
+            </span>
+          </section>
           <div className="mb-4">
             <h2 className="text-base font-semibold">Planning board</h2>
             <p className="mt-0.5 text-xs text-muted-foreground">

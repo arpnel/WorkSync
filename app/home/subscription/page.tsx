@@ -58,6 +58,15 @@ const dateTimeInManila = (date: Date) => new Intl.DateTimeFormat("en-PH", {
   timeStyle: "short",
   timeZone: "Asia/Manila",
 }).format(date);
+function subtractUtcMonths(date: Date, months: number) {
+  const result = new Date(date);
+  const day = result.getUTCDate();
+  result.setUTCDate(1);
+  result.setUTCMonth(result.getUTCMonth() - months);
+  const lastDay = new Date(Date.UTC(result.getUTCFullYear(), result.getUTCMonth() + 1, 0)).getUTCDate();
+  result.setUTCDate(Math.min(day, lastDay));
+  return result;
+}
 function addBillingPeriod(startedAt: number, period: "monthly" | "yearly") {
   const date = new Date(startedAt);
   const originalDay = date.getUTCDate();
@@ -69,13 +78,13 @@ function addBillingPeriod(startedAt: number, period: "monthly" | "yearly") {
   return date;
 }
 const planFeatures = [
-  ["Kanban board", "1 saved plan", "Unlimited"],
-  ["Job applications", "1 per month", "Unlimited"],
-  ["Active projects", "1 at a time", "Up to 20 concurrent"],
+  ["Project drafts", "1 saved draft", "Unlimited"],
+  ["Job applications", "1 every 3 months", "Unlimited"],
+  ["Hiring Requests", "1 to a freelancer every 3 months", "Unlimited"],
   ["Active job postings", "1 listing total", "Up to 100 listings"],
-  ["AI skills gap assessments", "1 every 6 months", "Unlimited"],
+  ["AI applicant screenings", "1 every 6 months", "Unlimited"],
   ["Transaction fee", "10% per job", "5% reduced fee"],
-  ["Support", "Standard Email", "24/7 Priority Support"],
+  ["Support", "Standard email support", "24/7 priority support"],
 ] as const;
 
 export default function SubscriptionPage() {
@@ -84,7 +93,10 @@ export default function SubscriptionPage() {
   const [assignment, setAssignment] = useState<Assignment | null>(null);
   const [paymentHistory, setPaymentHistory] = useState<PremiumPayment[]>([]);
   const [paymentHistoryError, setPaymentHistoryError] = useState("");
-  const [usage, setUsage] = useState<{ active: number; activeProjects: number | null }>({ active: 0, activeProjects: null });
+  const [usage, setUsage] = useState<{
+    active: number;
+    applications: number | null;
+  }>({ active: 0, applications: null });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(false);
@@ -157,6 +169,7 @@ export default function SubscriptionPage() {
         .from("listing_submissions")
         .select("submission_id", { count: "exact", head: true })
         .eq("owner_id", userId)
+        .eq("listing_type", "job")
         .eq("status", "approved")
         .is("archived_at", null);
       const freelancerProfile = supabase
@@ -169,20 +182,23 @@ export default function SubscriptionPage() {
         .select("display_name,first_name,last_name")
         .eq("user_id", userId)
         .maybeSingle();
-      const [active, freelancer, profile] = await Promise.all([activeListings, freelancerProfile, buyerProfile]);
+      const [active, freelancer, profile] = await Promise.all([
+        activeListings,
+        freelancerProfile,
+        buyerProfile,
+      ]);
       if (active.error)
         throw new Error(
           "Your subscription usage could not be loaded. Please try again.",
         );
-      let activeProjects: number | null = null;
-      if (!freelancer.error && freelancer.data?.freelancer_id) {
-        const projects = await supabase
-          .from("projects")
-          .select("project_id", { count: "exact", head: true })
-          .eq("freelancer_id", freelancer.data.freelancer_id)
-          .in("status", ["active", "revision", "in_progress"]);
-        if (!projects.error) activeProjects = projects.count ?? 0;
-      }
+      const quotaWindowStart = subtractUtcMonths(new Date(), 3).toISOString();
+      const applications = freelancer.data?.freelancer_id
+        ? await supabase
+            .from("job_applications")
+            .select("application_id", { count: "exact", head: true })
+            .eq("freelancer_id", freelancer.data.freelancer_id)
+            .gt("created_at", quotaWindowStart)
+        : { count: 0, error: null };
       setPlans((planResult.data ?? []) as Plan[]);
       setAssignment(activeAssignment);
       setPaymentHistory(historyResult.payments);
@@ -203,7 +219,7 @@ export default function SubscriptionPage() {
         window.dispatchEvent(new Event("worksync:subscription-updated"));
       setUsage({
         active: active.count ?? 0,
-        activeProjects,
+        applications: freelancer.error || applications.error ? null : applications.count ?? 0,
       });
     } catch (cause) {
       setError(
@@ -382,6 +398,8 @@ export default function SubscriptionPage() {
   const current = plans.find((item) => item.plan_code === plan);
   const offer = plans.find((item) => item.plan_code === "pro") ?? current;
   const activeLimit = current?.active_listing_limit;
+  const hasUnlimitedJobPostingAllowance =
+    plan === "pro" && activeLimit != null && activeLimit > 100_000;
   const hasActivePremium = plan === "pro" && assignment;
   const eligibleForTrial =
     billingPeriod === "monthly" &&
@@ -496,7 +514,6 @@ export default function SubscriptionPage() {
               <Card className="gap-3 p-4 sm:p-5">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-sm font-medium">Extend plan</p>
-                  <span className="rounded border px-2 py-0.5 text-[10px] text-muted-foreground">Manual</span>
                 </div>
                 <div className="grid grid-cols-2 rounded-md border bg-background p-1 text-xs">
                   <button type="button" aria-pressed={billingPeriod === "monthly"} onClick={() => setBillingPeriod("monthly")} className={`rounded px-2 py-1.5 font-medium ${billingPeriod === "monthly" ? "bg-muted" : "text-muted-foreground"}`}>Monthly</button>
@@ -579,46 +596,39 @@ export default function SubscriptionPage() {
                   Usage and allowances
                 </h2>
               </div>
-              <p className="text-xs text-muted-foreground">Approved jobs and services count together</p>
+              <p className="text-xs text-muted-foreground">Approved job postings count toward this allowance</p>
             </div>
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-              {plan === "pro" ? (
-                <Card className="gap-0 p-5 sm:p-6">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Active listings</p>
-                      <p className="mt-3 text-2xl font-semibold">Unlimited</p>
-                    </div>
-                    <span className="rounded border border-primary/30 bg-primary/10 px-2 py-1 text-[10px] font-semibold text-primary">Unlimited</span>
-                  </div>
-                  <p className="mt-2 text-xs text-muted-foreground">{usage.active} active jobs and services.</p>
-                </Card>
-              ) : (
-                <UsageCard
-                  title="Active listings"
-                  value={`${usage.active} / ${activeLimit ?? "—"}`}
-                  caption={`${activeLimit == null ? 0 : Math.max(0, activeLimit - usage.active)} listing slots remaining`}
-                  progress={activePercent}
-                  indicator={`${Math.round(activePercent)}%`}
-                />
-              )}
               <UsageCard
-                title="Active projects"
-                value={`${usage.activeProjects ?? 0} / ${plan === "pro" ? 20 : 1}`}
-                caption={usage.activeProjects == null ? "Project usage unavailable" : `${Math.max(0, (plan === "pro" ? 20 : 1) - usage.activeProjects)} workspace slots open`}
-                progress={usage.activeProjects == null ? 0 : Math.min(100, usage.activeProjects / (plan === "pro" ? 20 : 1) * 100)}
-                indicator={usage.activeProjects == null ? undefined : `${Math.round(Math.min(100, usage.activeProjects / (plan === "pro" ? 20 : 1) * 100))}%`}
+                title="Active job postings"
+                value={hasUnlimitedJobPostingAllowance ? "Unlimited" : `${usage.active} / ${activeLimit ?? "—"}`}
+                caption={hasUnlimitedJobPostingAllowance
+                  ? `${usage.active} active job posting${usage.active === 1 ? "" : "s"}`
+                  : `${activeLimit == null ? 0 : Math.max(0, activeLimit - usage.active)} job-posting slots remaining`}
+                progress={activePercent}
+                indicator={hasUnlimitedJobPostingAllowance ? "Unlimited" : `${Math.round(activePercent)}%`}
               />
               <Card className="gap-0 p-5 sm:p-6">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">AI skills assessment</p>
+                    <p className="text-sm font-medium text-muted-foreground">AI applicant screening</p>
                     <p className="mt-3 text-2xl font-semibold">{plan === "pro" ? "Unlimited" : "1 every 6 months"}</p>
                   </div>
                   <span className="rounded border border-primary/30 bg-primary/10 px-2 py-1 text-[10px] font-semibold text-primary">{plan === "pro" ? "Unlimited" : "Free tier"}</span>
                 </div>
-                <p className="mt-2 text-xs text-muted-foreground">AI diagnostic skill match testing.</p>
+                <p className="mt-2 text-xs text-muted-foreground">Screen job applicants with AI powered rankings and insights.</p>
               </Card>
+              <UsageCard
+                title="Job applications"
+                value={plan === "pro" ? "Unlimited" : `${usage.applications ?? "—"} / 1`}
+                caption={usage.applications == null
+                  ? "Application usage unavailable"
+                  : plan === "pro"
+                    ? `${usage.applications} applications in the last 3 months`
+                    : `${usage.applications} of 1 used in the last 3 months`}
+                progress={usage.applications == null ? 0 : Math.min(100, usage.applications * 100)}
+                indicator={plan === "pro" ? "Unlimited" : usage.applications == null ? undefined : `${Math.min(100, usage.applications * 100)}%`}
+              />
             </div>
           </section>
 
@@ -708,7 +718,7 @@ export default function SubscriptionPage() {
             <Button type="button" variant="outline" disabled={acting} onClick={() => setCheckoutDialogOpen(false)}>Cancel</Button>
             <Button type="button" disabled={acting || !checkoutBreakdown} onClick={() => void renew()}>
               {acting ? <LoaderCircle className="size-4 animate-spin" /> : <Crown className="size-4" />}
-              {acting ? "Opening PayMongo..." : "Checkout"}
+              {acting ? "Loading..." : "Checkout"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -754,7 +764,9 @@ function UsageCard({
     <Card className="gap-0 p-5 sm:p-6">
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm font-medium text-muted-foreground">{title}</p>
-        {indicator && <span className="text-xs text-muted-foreground">{indicator}</span>}
+        {indicator && (indicator === "Unlimited"
+          ? <span className="rounded border border-primary/30 bg-primary/10 px-2 py-1 text-[10px] font-semibold text-primary">{indicator}</span>
+          : <span className="text-xs text-muted-foreground">{indicator}</span>)}
       </div>
       <p className="mt-3 text-2xl font-semibold tracking-tight">{value}</p>
       <Progress

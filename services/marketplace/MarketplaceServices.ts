@@ -525,7 +525,24 @@ async function getServices(
   const { data, error } = await request;
 
   if (error) {
-    console.error("Failed to load services:", error);
+    // Keep the PostgREST error useful in browsers and monitoring tools that
+    // serialize Error instances as `{}`. Supabase errors are Error subclasses,
+    // whose standard fields are commonly non-enumerable.
+    const serviceReadError = {
+      name: error.name || "SupabaseError",
+      code: error.code || "unknown",
+      message: error.message || "Unknown Supabase error",
+      details: error.details || null,
+      hint: error.hint || null,
+      status: "status" in error ? error.status : null,
+      statusText: "statusText" in error ? error.statusText : null,
+      query: {
+        table: SERVICES_TABLE,
+        guest: query.guest ?? null,
+        skillFilter: Boolean(query.skillId),
+      },
+    };
+    console.error("Failed to load services:", serviceReadError);
 
     throw error;
   }
@@ -883,7 +900,10 @@ async function fetchMarketplaceServices(
 ========================================================== */
 
 export function getMyMarketplaceListings(): Promise<MarketplaceItem[]> {
-  return readPageCache("my-listings", fetchMyMarketplaceListings);
+  // Moderation status can change while the owner has this page open. Keep the
+  // listing rows cached by getMarketplaceServices, but always reload their
+  // submission state so an approved listing no longer shows an old AI notice.
+  return fetchMyMarketplaceListings();
 }
 async function fetchMyMarketplaceListings(): Promise<MarketplaceItem[]> {
   const {

@@ -1,5 +1,5 @@
 import {
-  getAccountSetupMunicipalities,
+  findAccountSetupMunicipality,
   getAccountSetupProvinces,
 } from "@/lib/location/account-setup-address";
 import {
@@ -55,13 +55,12 @@ export function validateClientSetup(
     (p) => p.name.toLowerCase() === values.province.trim().toLowerCase(),
   );
   if (!province) errors.province = "Choose a province from the list.";
+  const city = province
+    ? findAccountSetupMunicipality(province.psgcCode, values.city)
+    : undefined;
   if (!province) {
     errors.city = "Choose a province first.";
-  } else if (
-    !getAccountSetupMunicipalities(province.psgcCode).some(
-      (c) => c.name.toLowerCase() === values.city.trim().toLowerCase(),
-    )
-  ) {
+  } else if (!city) {
     errors.city = "Choose a city or municipality in your selected province.";
   }
   if (
@@ -87,7 +86,7 @@ export function validateClientSetup(
       lastName: values.lastName.trim(),
       display_name: values.display_name.trim(),
       province: values.province.trim(),
-      city: values.city.trim(),
+      city: city?.name ?? values.city.trim(),
       shortBio: values.shortBio.trim(),
     },
   };

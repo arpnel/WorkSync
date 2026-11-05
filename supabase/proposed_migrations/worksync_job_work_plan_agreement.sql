@@ -267,26 +267,26 @@ language plpgsql
 set search_path = ''
 as $$
 declare
-  application_id uuid;
+  target_application_id uuid;
   application_status text;
   work_plan_agreement public.job_basic_terms_agreements;
 begin
-  application_id := coalesce(
+  target_application_id := coalesce(
     new.application_id,
     (select service_order.application_id
      from public.service_orders as service_order
      where service_order.order_id = new.order_id)
   );
-  if application_id is null then return new; end if;
+  if target_application_id is null then return new; end if;
 
   select application.status::text into application_status
   from public.job_applications as application
-  where application.application_id = application_id;
+  where application.application_id = target_application_id;
   if application_status is distinct from 'accepted' then return new; end if;
 
   select * into work_plan_agreement
   from public.job_basic_terms_agreements as agreement
-  where agreement.application_id = application_id;
+  where agreement.application_id = target_application_id;
   if work_plan_agreement.terms is null
      or work_plan_agreement.client_agreed_at is null
      or work_plan_agreement.freelancer_agreed_at is null

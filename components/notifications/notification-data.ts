@@ -87,41 +87,99 @@ export async function getProjectNotificationHref(
 
   const order = await supabase
     .from("service_orders")
-    .select("order_id,services(service_type)")
+    .select("order_id,application_id,job_id,status,services(service_type)")
     .eq("order_id", relatedId)
     .maybeSingle();
   if (order.error) throw order.error;
   let orderId = order.data?.order_id ?? null;
+  let applicationId = order.data?.application_id ?? null;
+  let jobId = order.data?.job_id ?? null;
+  let orderStatus = order.data?.status ?? null;
   const service = Array.isArray(order.data?.services)
     ? order.data.services[0]
     : order.data?.services;
-  let projectType = service?.service_type;
+  let serviceType = service?.service_type;
+  let projectType: string | null = null;
+  let hasMilestones = false;
 
   if (!orderId) {
     const project = await supabase
       .from("projects")
-      .select("order_id")
+      .select("order_id,status,project_type,milestones!milestones_project_id_fkey(milestone_id)")
       .eq("project_id", relatedId)
       .maybeSingle();
     if (project.error) throw project.error;
     orderId = project.data?.order_id ?? null;
+    projectType = project.data?.project_type ?? null;
+    hasMilestones = Array.isArray(project.data?.milestones) && project.data.milestones.length > 0;
   }
   if (!orderId) return null;
-  if (!projectType) {
+
+  const project = await supabase
+    .from("projects")
+    .select("status,project_type,milestones!milestones_project_id_fkey(milestone_id)")
+    .eq("order_id", orderId)
+    .maybeSingle();
+  if (project.error) throw project.error;
+  const projectStatus = String(project.data?.status ?? "").toLowerCase();
+  projectType = project.data?.project_type ?? projectType;
+  hasMilestones ||= Array.isArray(project.data?.milestones) && project.data.milestones.length > 0;
+
+  if (!order.data) {
     const linkedOrder = await supabase
       .from("service_orders")
-      .select("services(service_type)")
+      .select("application_id,job_id,status,services(service_type)")
       .eq("order_id", orderId)
       .maybeSingle();
     if (linkedOrder.error) throw linkedOrder.error;
+    applicationId = linkedOrder.data?.application_id ?? null;
+    jobId = linkedOrder.data?.job_id ?? null;
+    orderStatus = linkedOrder.data?.status ?? orderStatus;
     const linkedService = Array.isArray(linkedOrder.data?.services)
       ? linkedOrder.data.services[0]
       : linkedOrder.data?.services;
-    projectType = linkedService?.service_type;
+    serviceType = linkedService?.service_type;
   }
+
+  if (applicationId) {
+    const application = await supabase
+      .from("job_applications")
+      .select("status")
+      .eq("application_id", applicationId)
+      .maybeSingle();
+    const currentOrderStatus = String(orderStatus ?? "").toLowerCase();
+    const activeOrClosed = ["active", "in_progress", "revision", "converted", "completed", "cancelled", "canceled", "rejected"];
+    const discussionStatus = ["accepted", "negotiating", "in_discussion"];
+    const isApplicationDiscussion =
+      discussionStatus.includes(currentOrderStatus) ||
+      discussionStatus.includes(String(application.data?.status ?? "").toLowerCase());
+    const projectHasMovedOn =
+      activeOrClosed.includes(currentOrderStatus) ||
+      activeOrClosed.includes(projectStatus);
+    if (!application.error && isApplicationDiscussion && !projectHasMovedOn) {
+      return `/home/projects/create-contract/${encodeURIComponent(applicationId)}`;
+    }
+  }
+
+  let jobType: string | null = null;
+  if (projectType !== "milestone" && applicationId && jobId) {
+    const job = await supabase
+      .from("jobs")
+      .select("project_type")
+      .eq("job_id", jobId)
+      .maybeSingle();
+    if (job.error) throw job.error;
+    jobType = job.data?.project_type ?? null;
+  }
+
+  const isMilestoneProject =
+    hasMilestones ||
+    projectType === "milestone" ||
+    serviceType === "milestone" ||
+    jobType === "milestone";
   const href =
     "/home/projects/" +
-    (projectType === "milestone" ? "milestone" : "standard") +
+    (isMilestoneProject ? "milestone" : "standard") +
     "/" +
     encodeURIComponent(orderId);
   return /contract|agreement/.test(normalizedType)

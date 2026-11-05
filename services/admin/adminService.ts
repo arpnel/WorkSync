@@ -1,4 +1,5 @@
 import { ADMIN_RECORD_MODULES, type AdminModule } from "./adminModules";
+import { z } from "zod";
 export type { AdminModule } from "./adminModules";
 import { platformAction } from "@/services/platform/platformService";
 import { clearProjectReadCache } from "@/lib/projectReadCache";
@@ -133,6 +134,48 @@ export interface AdminResult {
   hasNext: boolean;
   stats?: Record<string, number>;
   total?: number;
+}
+
+const adminDiditIdentitySchema = z.object({
+  identity: z
+    .object({
+      fullName: z.string().nullable(),
+      documentType: z.string().nullable(),
+      issuingCountry: z.string().nullable(),
+      documentStatus: z.string(),
+      livenessStatuses: z.array(z.string()),
+      faceMatchStatuses: z.array(z.string()),
+      environment: z.enum(["sandbox", "live"]),
+    })
+    .nullable(),
+  simulated: z.boolean(),
+});
+export type AdminDiditIdentity = z.infer<typeof adminDiditIdentitySchema>;
+
+export async function getAdminDiditIdentity(
+  requestId: string,
+): Promise<AdminDiditIdentity> {
+  const {
+    data: { session },
+    error,
+  } = await supabase.auth.getSession();
+  if (error) throw error;
+  if (!session) throw new Error("Sign in to view verification evidence.");
+  const response = await fetch(
+    `/api/admin/verifications/${encodeURIComponent(requestId)}`,
+    {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+      cache: "no-store",
+    },
+  );
+  const body = await response.json().catch(() => null);
+  if (!response.ok)
+    throw new Error(
+      typeof body?.error === "string"
+        ? body.error
+        : "Didit identity evidence could not be loaded.",
+    );
+  return adminDiditIdentitySchema.parse(body);
 }
 
 export type AdminQuickActionCounts = {

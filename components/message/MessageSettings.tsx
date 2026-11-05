@@ -45,12 +45,6 @@ const groups: {
         label: "Show message previews",
         description: "Display message text snippets in your conversation list.",
       },
-      {
-        key: "typingIndicators",
-        label: "Typing indicators",
-        description:
-          "Let the other person know when you are typing in a conversation.",
-      },
     ],
   },
   {
@@ -66,7 +60,7 @@ const groups: {
 ];
 
 export default function MessageSettings() {
-  const { settings, ready, saving, error, update } =
+  const { settings, ready, error, update } =
     useMessageAccountSettings();
 
   return (
@@ -99,7 +93,7 @@ export default function MessageSettings() {
                   <Switch
                     className="shrink-0"
                     checked={settings[key]}
-                    disabled={!ready || saving}
+                    disabled={!ready}
                     aria-labelledby={`message-setting-${key}`}
                     aria-describedby={`message-setting-description-${key}`}
                     onCheckedChange={(checked) => void update({ [key]: checked })}
@@ -112,11 +106,6 @@ export default function MessageSettings() {
         {error && (
           <p role="alert" className="text-sm text-destructive">
             {error}
-          </p>
-        )}
-        {saving && (
-          <p role="status" className="text-sm text-muted-foreground">
-            Saving message preferences...
           </p>
         )}
       </CardContent>

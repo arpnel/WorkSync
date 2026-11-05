@@ -93,7 +93,7 @@ export default function AdminHeader() {
       <Badge variant="secondary" className="ml-auto rounded-full px-3 py-1">
         Admin workspace
       </Badge>
-      <DropdownMenu>
+      <DropdownMenu modal={false}>
         <DropdownMenuTrigger asChild>
           <button
             type="button"

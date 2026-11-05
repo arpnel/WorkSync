@@ -47,10 +47,14 @@ export function ProjectPlanProposalAttachment({
   value,
   onChange,
   showAttachedEditor = true,
+  showAttachedSummary = true,
+  toolbar = false,
 }: {
   value: ProjectPlanSnapshot | null;
   onChange: (plan: ProjectPlanSnapshot | null) => void;
   showAttachedEditor?: boolean;
+  showAttachedSummary?: boolean;
+  toolbar?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"choose" | "selected" | "attached">(
@@ -148,18 +152,19 @@ export function ProjectPlanProposalAttachment({
   const attachedTaskCount = value ? taskCount(value) : 0;
 
   return (
-    <div className="space-y-3">
+    <div className={toolbar ? "contents" : "space-y-3"}>
       <Button
         type="button"
         size="sm"
         variant="outline"
+        className={toolbar ? "shrink-0" : undefined}
         onClick={() => void openPicker()}
       >
         <Paperclip />{" "}
         {value ? "Choose a different plan" : "Attach a project plan"}
       </Button>
 
-      {value && (
+      {value && showAttachedSummary && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3">
           <div className="min-w-0">
             <p className="truncate text-sm font-medium">{value.name}</p>

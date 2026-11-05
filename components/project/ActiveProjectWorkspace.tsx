@@ -129,7 +129,11 @@ export function ActiveProjectWorkspace({
               : <Card>
                   <CardHeader className="pb-2"><CardTitle className="text-base">Milestones and submissions</CardTitle></CardHeader>
                   <CardContent className="divide-y p-4 pt-0 sm:p-6 sm:pt-0">
-                    {project.milestones.map((milestone, index) => <TaskSubmissionPanel key={milestone.id} embedded project={project} taskTitle={milestone.title} milestoneNumber={index + 1} milestoneId={milestone.id} milestoneAmount={milestone.amount} paid={paid} payment={payment} onRefresh={onRefresh} />)}
+                    {project.milestones.length > 0
+                      ? project.milestones.map((milestone, index) => <TaskSubmissionPanel key={milestone.id} embedded project={project} taskTitle={milestone.title} milestoneNumber={index + 1} milestoneId={milestone.id} milestoneAmount={milestone.amount} paid={paid} payment={payment} onRefresh={onRefresh} />)
+                      : <p role="status" className="rounded-lg border border-dashed bg-muted/20 px-4 py-5 text-sm text-muted-foreground">
+                          This project&#39;s milestone submission areas are unavailable. Refresh the project, and contact support if they still do not appear.
+                        </p>}
                   </CardContent>
                 </Card>}
             <RecentProjectActivity project={project} />
@@ -140,7 +144,7 @@ export function ActiveProjectWorkspace({
             <ProjectTaskBoard key={project.projectId} project={project} actions={<>
               {project.projectId && <ProjectMeetingsDialog projectId={project.projectId} active={!completed} />}
               <Dialog open={resolutionOpen} onOpenChange={setResolutionOpen}>
-                <DialogTrigger asChild><Button variant="outline" size="sm">Cancellation &amp; disputes</Button></DialogTrigger>
+                <DialogTrigger asChild><Button variant="outline" size="sm" disabled={completed}>Cancellation &amp; disputes</Button></DialogTrigger>
                 <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-3xl"><DialogHeader><DialogTitle>Project resolution</DialogTitle><DialogDescription>Manage cancellation requests, disputes, and their history.</DialogDescription></DialogHeader><ProjectResolutionPanel orderStatus={project.orderStatus} orderId={project.orderId} projectId={project.projectId} status={project.status} userId={project.currentUserId} milestones={project.milestones} onRefresh={onRefresh} /></DialogContent>
               </Dialog>
             </>} />
@@ -155,7 +159,7 @@ export function ActiveProjectWorkspace({
             <CardContent className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
               <ProjectMeetingsDialog projectId={project.projectId} active={!completed} buttonClassName="w-full" />
               <Dialog open={resolutionOpen} onOpenChange={setResolutionOpen}>
-                <DialogTrigger asChild><Button variant="outline" size="sm" className="w-full justify-center gap-2"><Shield className="size-4" />Cancellation &amp; disputes</Button></DialogTrigger>
+                <DialogTrigger asChild><Button variant="outline" size="sm" className="w-full justify-center gap-2" disabled={completed}><Shield className="size-4" />Cancellation &amp; disputes</Button></DialogTrigger>
                 <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-3xl"><DialogHeader><DialogTitle>Project resolution</DialogTitle><DialogDescription>Manage cancellation requests, disputes, and their history.</DialogDescription></DialogHeader><ProjectResolutionPanel orderStatus={project.orderStatus} orderId={project.orderId} projectId={project.projectId} status={project.status} userId={project.currentUserId} milestones={project.milestones} onRefresh={onRefresh} /></DialogContent>
               </Dialog>
             </CardContent>

@@ -29,7 +29,7 @@ export function SubscriptionLimitDialogHost() {
         </DialogHeader>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => setMessage("")}>Close</Button>
-          <Button asChild><Link href="/home/offers" onClick={() => setMessage("")}>View Premium plans</Link></Button>
+          <Button asChild><Link href="/home/offers" onClick={() => setMessage("")}>Buy Premium</Link></Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

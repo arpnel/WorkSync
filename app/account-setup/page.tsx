@@ -21,6 +21,7 @@ export default function AccountSetupPage() {
       <div className="grid w-full gap-6 sm:grid-cols-2">
         <AccountTypeCard
           icon={Briefcase}
+          role="Client"
           title="Hire Talent"
           description="Find skilled freelancers and hire professionals for your projects."
           onClick={() => router.push("/account-setup/client")}
@@ -28,6 +29,7 @@ export default function AccountSetupPage() {
 
         <AccountTypeCard
           icon={Laptop}
+          role="Freelancer"
           title="Offer Services"
           description="Create services, build your freelancer profile, and earn from your skills."
           onClick={() => router.push("/account-setup/freelancer")}

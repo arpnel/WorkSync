@@ -23,3 +23,29 @@ export function getAccountSetupMunicipalities(
 ): readonly PHMunicipality[] {
   return getMunicipalitiesByProvince(provinceCode);
 }
+
+export function normalizeAccountSetupLocalityName(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .replace(/^(?:city|municipality)\s+of\s+/i, "")
+    .replace(/\s+(?:city|municipality)$/i, "")
+    .toLocaleLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+export function findAccountSetupMunicipality(
+  provinceCode: string,
+  name: string,
+): PHMunicipality | undefined {
+  const normalizedName = normalizeAccountSetupLocalityName(name);
+  if (!normalizedName) return undefined;
+
+  return getAccountSetupMunicipalities(provinceCode).find(
+    (municipality) =>
+      normalizeAccountSetupLocalityName(municipality.name) === normalizedName,
+  );
+}

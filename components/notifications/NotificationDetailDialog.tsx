@@ -24,6 +24,7 @@ import { respondToServiceRequest } from "@/services/project/projectService";
 import { listMyAssessments } from "@/services/assessments/assessmentService";
 import { markNotificationUnread } from "@/services/notification/notificationService";
 import type { NotificationRecord } from "@/services/notification/notificationService";
+import { getProjectNotificationHref } from "./notification-data";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -326,13 +327,17 @@ export function NotificationDetailDialog({
           const project = await supabase
             .from("projects")
             .select(
-              "project_id,order_id,client_id,freelancer_id,title,description,budget,status,due_date,milestones!milestones_project_id_fkey(milestone_id,title,status,due_date,display_order)",
+              "project_id,order_id,client_id,freelancer_id,title,description,budget,status,due_date,project_type,milestones!milestones_project_id_fkey(milestone_id,title,status,due_date,display_order)",
             )
             .eq("project_id", id)
             .maybeSingle();
           if (project.error) throw project.error;
           if (!project.data) return {};
           const p = project.data;
+          const projectHref = await getProjectNotificationHref(
+            type,
+            p.order_id || p.project_id,
+          );
           const identities = await getPublicIdentities({
             clientIds: [p.client_id],
             freelancerIds: [p.freelancer_id],
@@ -364,11 +369,18 @@ export function NotificationDetailDialog({
                   }))
               : [],
             status: p.status,
-            href: "/home/projects/standard/" + encodeURIComponent(p.order_id),
+            href: projectHref ??
+              "/home/projects/" +
+              (p.project_type === "milestone" || (Array.isArray(p.milestones) && p.milestones.length > 0)
+                ? "milestone"
+                : "standard") +
+              "/" +
+              encodeURIComponent(p.order_id),
             action: "View Project",
           };
         }
         const order = result.data;
+        const projectHref = await getProjectNotificationHref(type, id);
         const service = Array.isArray(order.services)
           ? order.services[0]
           : order.services;
@@ -464,7 +476,7 @@ export function NotificationDetailDialog({
           status: project?.status || order.status,
           ...disputeDetail,
           requestPending: isRequest && order.status === "pending",
-          href:
+          href: projectHref ??
             "/home/projects/" +
             (isMilestoneProject ? "milestone" : "standard") +
             "/" +

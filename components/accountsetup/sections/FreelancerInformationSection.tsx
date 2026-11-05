@@ -82,7 +82,7 @@ export function FreelancerInformationSection({
 
         <div className="space-y-2">
           <Label htmlFor="yearsOfExperience">
-            Years of Experience <span className="text-destructive">*</span>
+            Years of Experience
           </Label>
 
           <Input
@@ -194,7 +194,7 @@ export function FreelancerInformationSection({
             placeholder="yourportfolio.dev"
           />
           <p className="text-xs text-muted-foreground">
-            Add any portfolio domain, such as yourportfolio.dev or opreko.website. You can enter it with or without https://.
+            Add any portfolio domain, such as yourportfolio.dev or opreko.website.
           </p>
           {errors.portfolioWebsite && (
             <p className="text-xs text-destructive">{errors.portfolioWebsite}</p>

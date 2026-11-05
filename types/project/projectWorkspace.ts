@@ -40,6 +40,7 @@ export interface ProjectWorkspace {
   applicationId: string | null;
   proposedPlan: ProjectPlanSnapshotData | null;
   currentUserId: string;
+  currentUserAvatarUrl: string | null;
   currentParty: "client" | "freelancer";
   contractId: string | null;
   /** Contract version observed in the same query as the workspace contract row. */

@@ -45,8 +45,8 @@ insert into public.subscription_plans (
   updated_at
 )
 values
-  ('free', 'Free', 3, 3, 3, 3, 3, 0, now()),
-  ('pro', 'Premium', 30, 30, 20, 20, 20, 999.99, now())
+  ('free', 'Free', 3, 3, 1, 3, 1, 0, now()),
+  ('pro', 'Premium', 30, 30, 100, 20, 100, 999.99, now())
 on conflict (plan_code) do update set
   display_name = excluded.display_name,
   monthly_job_limit = excluded.monthly_job_limit,

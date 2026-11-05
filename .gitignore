@@ -61,6 +61,9 @@ next-env.d.ts
 !/supabase/migrations/202610290002_fix_worksync_job_agreement_conversation_id_ambiguity.sql
 
 /docs/
+!/docs/
+/docs/*
+!/docs/didit-account-setup.md
 
 !/supabase/migrations/20261028224549_worksync_contract_workflow_replacement.sql
 !/supabase/migrations/20261029154101_encrypted_freelancer_tin.sql

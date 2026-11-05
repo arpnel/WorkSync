@@ -8,7 +8,7 @@ import { ListingActions } from "@/components/marketplace/ListingActions";
 import { FreelancerAvailability } from "@/components/marketplace/FreelancerAvailability";
 import { useFreelancerAvailability } from "@/hooks/useFreelancerAvailability";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { AlertTriangle, Bookmark, Share2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -37,13 +37,9 @@ import {
   EMPLOYMENT_PREFERENCES,
   ENGLISH_PROFICIENCY,
 } from "@/constants/account-setup.constants";
-import {
-  getJobCategories,
-  type Category,
-} from "@/services/serviceP/categoryService";
-
 import ServiceReviews from "@/components/detailedservice/ServiceReviews";
 import ServiceRelatedWork from "@/components/detailedservice/ServiceRelatedWork";
+import { openSubscriptionLimitDialog } from "@/services/subscriptions/subscriptionLimitDialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -215,37 +211,6 @@ export default function MarketplaceServiceDetails({
   const [projectDeliveryDate, setProjectDeliveryDate] = useState("");
   const [projectRevisions, setProjectRevisions] = useState("");
   const [projectCategoryId, setProjectCategoryId] = useState("");
-  const [projectCategoryText, setProjectCategoryText] = useState("");
-  const [isCustomRequest, setIsCustomRequest] = useState(false);
-  const [categoryOpen, setCategoryOpen] = useState(false);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const categoryRef = useRef<HTMLDivElement>(null);
-  const categoryMatches = useMemo(() => {
-    const query = projectCategoryText.trim().toLowerCase();
-    return (query
-      ? categories.filter((category) =>
-          category.name.toLowerCase().includes(query),
-        )
-      : categories
-    )
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .slice(0, 20);
-  }, [categories, projectCategoryText]);
-
-  useEffect(() => {
-    void getJobCategories()
-      .then(setCategories)
-      .catch((error) => console.error("Failed to load job categories:", error));
-  }, []);
-
-  useEffect(() => {
-    const closeCategory = (event: MouseEvent) => {
-      if (!categoryRef.current?.contains(event.target as Node))
-        setCategoryOpen(false);
-    };
-    document.addEventListener("mousedown", closeCategory);
-    return () => document.removeEventListener("mousedown", closeCategory);
-  }, []);
   /* ==========================================================
      LOAD CURRENT USER ROLE + LISTEN FOR ROLE CHANGES
   ========================================================== */
@@ -355,7 +320,7 @@ export default function MarketplaceServiceDetails({
      SERVICE ACTION
   ========================================================== */
 
-  async function handleServiceAction(customRequest = false) {
+  async function handleServiceAction() {
     if (guest) {
       setSignup(true);
       return;
@@ -401,9 +366,6 @@ export default function MarketplaceServiceDetails({
     setProjectDeliveryDate(localDateString(defaultDeliveryDate));
     setProjectRevisions(String(service.revisions_count));
     setProjectCategoryId(service.category_id);
-    setProjectCategoryText(service.category?.name ?? "");
-    setIsCustomRequest(customRequest);
-    setCategoryOpen(false);
     setActionError(null);
     setShowPurchaseDialog(true);
   }
@@ -480,20 +442,22 @@ export default function MarketplaceServiceDetails({
           deliveryTimeDays,
           revisionsCount: Number(projectRevisions),
           categoryId: projectCategoryId,
-          categoryName:
-            categories.find((category) => category.id === projectCategoryId)
-              ?.name ?? service.category?.name ?? "",
+          categoryName: service.category?.name ?? "",
         },
       );
       setShowPurchaseDialog(false);
       setActionSuccess("Your service request has been submitted successfully.");
     } catch (error) {
       console.error("Failed to purchase service:", error);
-      setActionError(
-        error instanceof Error
-          ? error.message
-          : "Failed to submit service request.",
-      );
+      if (openSubscriptionLimitDialog(error)) {
+        setShowPurchaseDialog(false);
+      } else {
+        setActionError(
+          error instanceof Error
+            ? error.message
+            : "Failed to submit service request.",
+        );
+      }
     } finally {
       setActionLoading(false);
     }
@@ -904,15 +868,6 @@ export default function MarketplaceServiceDetails({
                     </div>
                   )}
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="mt-4 w-full"
-                  onClick={() => void handleServiceAction(true)}
-                  disabled={actionLoading || available === false}
-                >
-                  Custom request
-                </Button>
                 <div className="mt-3 grid grid-cols-3 gap-2">
                   <div>
                     <ListingActions kind="service" id={service.service_id} buttonVariant="outline" buttonClassName="w-full" onRequireAccount={guest ? () => setSignup(true) : undefined} />
@@ -1046,54 +1001,6 @@ export default function MarketplaceServiceDetails({
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-6 py-2">
-            {isCustomRequest && (
-              <div ref={categoryRef} className="grid gap-3">
-                <Label htmlFor="project-category">Type of work</Label>
-                <div className="relative">
-                  <Input
-                    id="project-category"
-                    value={projectCategoryText}
-                    placeholder="Search for a category..."
-                    autoComplete="off"
-                    onFocus={() => setCategoryOpen(true)}
-                    onChange={(event) => {
-                      setProjectCategoryText(event.target.value);
-                      setProjectCategoryId("");
-                      setCategoryOpen(true);
-                    }}
-                  />
-                  {categoryOpen && (
-                    <div className="absolute z-30 mt-2 w-full overflow-hidden rounded-lg border bg-background shadow-lg">
-                      <div className="max-h-60 overflow-y-auto py-1">
-                        {categoryMatches.length ? (
-                          categoryMatches.map((category) => (
-                            <button
-                              key={category.id}
-                              type="button"
-                              className="flex w-full px-4 py-2 text-left text-sm hover:bg-muted"
-                              onClick={() => {
-                                setProjectCategoryId(category.id);
-                                setProjectCategoryText(category.name);
-                                setCategoryOpen(false);
-                              }}
-                            >
-                              {category.name}
-                            </button>
-                          ))
-                        ) : (
-                          <p className="px-4 py-3 text-sm text-muted-foreground">
-                            No categories found.
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Choose the type of work for this custom request.
-                </p>
-              </div>
-            )}
             <div className="grid gap-3">
               <Label htmlFor="project-title">Project title</Label>
               <Input
@@ -1141,6 +1048,7 @@ export default function MarketplaceServiceDetails({
                   type="date"
                   min={localDateString(new Date())}
                   value={projectDeliveryDate}
+                  onClick={(event) => { try { event.currentTarget.showPicker(); } catch { event.currentTarget.focus(); } }}
                   onChange={(event) => setProjectDeliveryDate(event.target.value)}
                 />
               </div>
@@ -1170,7 +1078,6 @@ export default function MarketplaceServiceDetails({
             <Button
               disabled={
                 actionLoading ||
-                (isCustomRequest && !projectCategoryId) ||
                 !projectTitle.trim() ||
                 !projectDescription.trim()
               }

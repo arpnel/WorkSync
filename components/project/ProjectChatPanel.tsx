@@ -178,7 +178,7 @@ export function ProjectChatPanel({
       <CardContent className="flex min-h-0 flex-1 flex-col p-0">
         <div
           ref={messagesViewportRef}
-          className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4"
+          className="themed-scrollbar flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto overscroll-contain p-4"
         >
           {hasOlderMessages && onLoadOlderMessages && (
             <div className="flex justify-center">
@@ -259,7 +259,7 @@ export function ProjectChatPanel({
               </div>
             ))
           ) : (
-            <div className="flex h-full min-h-64 items-center justify-center text-sm text-muted-foreground">
+            <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">
               No messages yet.
             </div>
           )}

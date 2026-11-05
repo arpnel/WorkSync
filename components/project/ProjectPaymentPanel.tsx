@@ -157,11 +157,6 @@ export function PaymentPanel({
       <CardHeader className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
         <CardTitle>Project payment</CardTitle>
         <div className="flex items-center gap-2">
-          {payment?.mode === "test" && (
-            <Badge variant="outline" className="text-xs">
-              Test mode
-            </Badge>
-          )}
           <Badge variant={payment?.status === "paid" ? "default" : "secondary"}>
             {statusLabel}
           </Badge>

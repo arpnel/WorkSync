@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 
@@ -18,16 +18,28 @@ import { ProjectWorkspaceHeader } from "@/components/project/ProjectWorkspaceHea
 import { CancelledProjectWorkspace } from "@/components/project/CancelledProjectWorkspace";
 import { useProjectWorkspace } from "@/hooks/project/useProjectWorkspace";
 import { JobAgreementWizard } from "@/components/project/JobAgreementWizard";
+import { JobContractCancellationPanel } from "@/components/project/JobContractCancellationPanel";
+import { ServiceOrderContractCancellationPanel } from "@/components/project/ServiceOrderContractCancellationPanel";
 import { deleteContractCreationDraft } from "@/services/project/contractCreationDraftService";
 import { activateConfirmedProjectAgreement, saveContractVersionForAgreement } from "@/services/project/projectWorkspaceService";
 import { sendConversationMessage } from "@/services/message/messageService";
 import { openSubscriptionLimitDialog } from "@/services/subscriptions/subscriptionLimitDialog";
 import {
   agreeToJobBasicTerms,
+  agreeToServiceOrderBasicTerms,
   getJobBasicTermsAgreement,
+  getServiceOrderBasicTermsAgreement,
   type JobBasicTerms,
   type JobBasicTermsAgreement,
 } from "@/services/project/jobBasicTermsAgreementService";
+import {
+  agreeToServiceOrderWorkPlan,
+  agreeToJobWorkPlan,
+  getServiceOrderWorkPlanAgreement,
+  getJobWorkPlanAgreement,
+  type JobWorkPlanAgreement,
+} from "@/services/project/jobWorkPlanAgreementService";
+import type { ProjectPlanSnapshotData } from "@/services/project/projectPlanSnapshot";
 
 export function StandardProjectWorkspace({
   serviceOrderId,
@@ -41,7 +53,13 @@ export function StandardProjectWorkspace({
   const [activationError, setActivationError] = useState("");
   const activationAttemptedFor = useRef<string | null>(null);
   const [basicAgreementLoading, setBasicAgreementLoading] = useState(false);
+  const [contractCancellationLocked, setContractCancellationLocked] = useState(false);
   const [basicAgreement, setBasicAgreement] = useState<(JobBasicTermsAgreement & {
+    currentParty: "client" | "freelancer";
+    updating: boolean;
+    error?: string;
+  }) | null>(null);
+  const [workPlanAgreement, setWorkPlanAgreement] = useState<(JobWorkPlanAgreement & {
     currentParty: "client" | "freelancer";
     updating: boolean;
     error?: string;
@@ -64,6 +82,12 @@ export function StandardProjectWorkspace({
     respondToAgreementItem,
     saveAgreementItem,
   } = useProjectWorkspace(serviceOrderId);
+  const workPlanFallbackPlanRef = useRef(workspace?.proposedPlan ?? null);
+  workPlanFallbackPlanRef.current = workspace?.proposedPlan ?? null;
+  const handleServiceOrderCancellationState = useCallback((locked: boolean, accepted?: boolean) => {
+    setContractCancellationLocked(locked);
+    if (accepted) void refresh();
+  }, [refresh]);
   useEffect(() => {
     if (workspace?.type === "milestone") router.replace(`/home/projects/milestone/${serviceOrderId}`);
   }, [router, serviceOrderId, workspace?.type]);
@@ -90,19 +114,24 @@ export function StandardProjectWorkspace({
       });
   }, [workspace?.contractId, workspace?.orderId, workspace?.clientSignedAt, workspace?.freelancerSignedAt, workspace?.contractStatus, refresh]);
   const basicTermsApplicationId = workspace?.applicationId ?? null;
+  const basicTermsOrderId = basicTermsApplicationId ? null : workspace?.orderId ?? null;
   const basicTermsCurrentParty = workspace?.currentParty;
 
   useEffect(() => {
     const applicationId = basicTermsApplicationId;
-    if (!applicationId || !basicTermsCurrentParty) {
+    const orderId = basicTermsOrderId;
+    if ((!applicationId && !orderId) || !basicTermsCurrentParty) {
       setBasicAgreement(null);
       setBasicAgreementLoading(false);
+      setWorkPlanAgreement(null);
       return;
     }
     let active = true;
     const refresh = async () => {
       try {
-        const saved = await getJobBasicTermsAgreement(applicationId);
+        const saved = applicationId
+          ? await getJobBasicTermsAgreement(applicationId)
+          : await getServiceOrderBasicTermsAgreement(orderId!);
         if (active) setBasicAgreement({
           ...saved,
           currentParty: basicTermsCurrentParty,
@@ -123,9 +152,33 @@ export function StandardProjectWorkspace({
       } finally {
         if (active) setBasicAgreementLoading(false);
       }
+      try {
+        const saved = applicationId
+          ? await getJobWorkPlanAgreement(applicationId)
+          : await getServiceOrderWorkPlanAgreement(orderId!);
+        if (active) setWorkPlanAgreement({
+          ...saved,
+          currentParty: basicTermsCurrentParty,
+          updating: false,
+        });
+      } catch (cause) {
+        if (active) setWorkPlanAgreement({
+          plan: workPlanFallbackPlanRef.current,
+          previousPlan: null,
+          changedBy: null,
+          clientAgreed: false,
+          freelancerAgreed: false,
+          hasPlanAgreement: false,
+          currentParty: basicTermsCurrentParty,
+          updating: false,
+          error: cause instanceof Error ? cause.message : "Work plan agreement could not be loaded.",
+        });
+      }
     };
     const channel = supabase
-      .channel(`job-agreement-updates:${applicationId}`)
+      .channel(applicationId
+        ? `job-agreement-updates:${applicationId}`
+        : `job-agreement-updates:order:${orderId}`)
       .on("broadcast", { event: "agreement-updated" }, () => void refresh())
       .subscribe();
     agreementUpdates.current = channel;
@@ -136,13 +189,15 @@ export function StandardProjectWorkspace({
       if (agreementUpdates.current === channel) agreementUpdates.current = null;
       void supabase.removeChannel(channel);
     };
-  }, [basicTermsApplicationId, basicTermsCurrentParty]);
+  }, [basicTermsApplicationId, basicTermsOrderId, basicTermsCurrentParty]);
 
   const agreeToBasics = async (terms: JobBasicTerms) => {
-    if (!workspace?.applicationId) throw new Error("Application details are unavailable.");
+    if (!workspace) throw new Error("Contract details are unavailable.");
     setBasicAgreement((current) => current ? { ...current, updating: true } : current);
     try {
-      const saved = await agreeToJobBasicTerms(workspace.applicationId, terms);
+      const saved = workspace.applicationId
+        ? await agreeToJobBasicTerms(workspace.applicationId, terms)
+        : await agreeToServiceOrderBasicTerms(workspace.orderId, terms);
       setBasicAgreement({ ...saved, currentParty: workspace.currentParty, updating: false });
       void agreementUpdates.current?.send({
         type: "broadcast",
@@ -152,6 +207,30 @@ export function StandardProjectWorkspace({
       return saved;
     } catch (cause) {
       setBasicAgreement((current) => current ? { ...current, updating: false } : current);
+      throw cause;
+    }
+  };
+
+  const agreeToWorkPlan = async (plan: ProjectPlanSnapshotData) => {
+    if (!workspace) throw new Error("Project details are unavailable.");
+    setWorkPlanAgreement((current) => current ? { ...current, updating: true, error: undefined } : current);
+    try {
+      const saved = workspace.applicationId
+        ? await agreeToJobWorkPlan(workspace.applicationId, plan)
+        : await agreeToServiceOrderWorkPlan(workspace.orderId, plan);
+      setWorkPlanAgreement({ ...saved, currentParty: workspace.currentParty, updating: false });
+      void agreementUpdates.current?.send({
+        type: "broadcast",
+        event: "agreement-updated",
+        payload: { kind: "work-plan" },
+      });
+      return saved;
+    } catch (cause) {
+      setWorkPlanAgreement((current) => current ? {
+        ...current,
+        updating: false,
+        error: cause instanceof Error ? cause.message : "Unable to save the work plan agreement.",
+      } : current);
       throw cause;
     }
   };
@@ -205,18 +284,30 @@ export function StandardProjectWorkspace({
   const hasPastMilestoneDate = workspace.milestones.some(
     (milestone) => milestone.dueDate && milestone.dueDate.slice(0, 10) < todayKey,
   );
-  if (isPendingAgreement && workspace.applicationId && basicAgreementLoading) {
+  if (isPendingAgreement && basicAgreementLoading) {
     return <ContentSkeleton label="Loading agreement approvals" variant="workspace" />;
   }
   const bothBasicPartiesAgreed = Boolean(
     basicAgreement?.clientAgreed && basicAgreement?.freelancerAgreed,
   );
-  if (isPendingAgreement && (!showExistingAgreement || (workspace.applicationId && !bothBasicPartiesAgreed))) {
+  if (isPendingAgreement && (!showExistingAgreement || !bothBasicPartiesAgreed)) {
     return <JobAgreementWizard
       clientName={workspace.clientName}
       freelancerName={workspace.freelancerName}
       draftKey={`worksync:contract-draft:${workspace.currentUserId}:${workspace.applicationId ?? workspace.contractId ?? workspace.orderId}`}
       draftUserId={workspace.currentUserId}
+      busy={updatingAgreement || contractCancellationLocked}
+      contractDetailsFooter={workspace.applicationId ? <JobContractCancellationPanel
+        applicationId={workspace.applicationId}
+        currentUserId={workspace.currentUserId}
+        otherParticipantName={workspace.currentParty === "client" ? workspace.freelancerName : workspace.clientName}
+        onStateChange={setContractCancellationLocked}
+      /> : <ServiceOrderContractCancellationPanel
+        orderId={workspace.orderId}
+        currentUserId={workspace.currentUserId}
+        otherParticipantName={workspace.currentParty === "client" ? workspace.freelancerName : workspace.clientName}
+        onStateChange={handleServiceOrderCancellationState}
+      />}
       initial={{
         title: workspace.title,
         description: workspace.description,
@@ -225,8 +316,8 @@ export function StandardProjectWorkspace({
         revisions: workspace.revisions,
         deadline: workspace.dueDate,
         startDate: workspace.startDate,
-        plan: workspace.proposedPlan,
-        planSource: workspace.proposedPlan ? "Submitted application plan" : "No plan selected",
+         plan: workPlanAgreement?.plan ?? workspace.proposedPlan,
+         planSource: workPlanAgreement?.hasPlanAgreement ? "Agreed work plan" : workspace.proposedPlan ? "Submitted application plan" : "No plan selected",
       }}
       onBack={() => router.push("/home/projects")}
       agreementStatus={{
@@ -237,7 +328,7 @@ export function StandardProjectWorkspace({
         hasPastMilestoneDate,
         updating: updatingAgreement,
       }}
-      basicAgreementStatus={workspace.applicationId ? basicAgreement ?? {
+      basicAgreementStatus={workspace.applicationId || workspace.orderId ? basicAgreement ?? {
         currentParty: workspace.currentParty,
         clientAgreed: false,
         freelancerAgreed: false,
@@ -246,9 +337,10 @@ export function StandardProjectWorkspace({
         changedFields: [],
         changedBy: null,
         updating: basicAgreementLoading,
-        error: "Refresh the project to load agreement status.",
       } : undefined}
-      onAgreeBasics={workspace.applicationId ? agreeToBasics : undefined}
+      onAgreeBasics={workspace.applicationId || workspace.orderId ? agreeToBasics : undefined}
+      workPlanAgreementStatus={workPlanAgreement ?? undefined}
+      onAgreeWorkPlan={agreeToWorkPlan}
       onAgree={async () => {
         const saved = await respondToAgreement(true);
         if (saved) setShowExistingAgreement(true);

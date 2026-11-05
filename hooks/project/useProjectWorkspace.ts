@@ -267,7 +267,7 @@ export function useProjectWorkspace(serviceOrderId: string) {
       id: messageId,
       senderId: workspace.currentUserId,
       senderName: "You",
-      senderAvatarUrl: null,
+      senderAvatarUrl: workspace.currentUserAvatarUrl,
       message: content || attachment?.name || "Attachment",
       attachmentUrl: null,
       attachmentType: attachment?.type || null,

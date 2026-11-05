@@ -10,6 +10,7 @@ export default function LoginPage() {
       <Link href="/">Back to WorkSync</Link>
       <Dialog open>
         <DialogContent
+          className="auth-dialog-content"
           showCloseButton={false}
           onEscapeKeyDown={(e) => e.preventDefault()}
           onPointerDownOutside={(e) => e.preventDefault()}

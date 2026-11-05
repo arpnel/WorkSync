@@ -13,10 +13,13 @@ export interface JobWorkPlanAgreement {
   hasPlanAgreement: boolean;
 }
 
-function explainError(error: { code?: string; message: string }): Error {
+function explainError(
+  error: { code?: string; message: string },
+  migrationPath = "supabase/proposed_migrations/worksync_job_work_plan_agreement.sql",
+): Error {
   if (error.code === "PGRST202" || /Could not find the function .*schema cache/i.test(error.message)) {
     return new Error(
-      "The work plan agreement database change is not installed. Apply supabase/proposed_migrations/worksync_job_work_plan_agreement.sql after the basic terms agreement migration, then reload the Supabase API schema cache.",
+      `The work plan agreement database change is not installed. Apply ${migrationPath}, then reload the Supabase API schema cache.`,
     );
   }
   return new Error(error.message);
@@ -100,5 +103,34 @@ export async function agreeToJobWorkPlan(
     { p_application: applicationId, p_plan: validatedPlan.data },
   );
   if (error) throw explainError(error);
+  return parseAgreement(data);
+}
+
+const SERVICE_ORDER_WORK_PLAN_MIGRATION =
+  "supabase/proposed_migrations/worksync_service_order_work_plan_agreement.sql after worksync_service_order_basic_terms_agreement.sql";
+
+export async function getServiceOrderWorkPlanAgreement(
+  orderId: string,
+): Promise<JobWorkPlanAgreement> {
+  const { data, error } = await supabase.rpc(
+    "worksync_get_service_order_work_plan_agreement",
+    { p_order: orderId },
+  );
+  if (error) throw explainError(error, SERVICE_ORDER_WORK_PLAN_MIGRATION);
+  return parseAgreement(data);
+}
+
+export async function agreeToServiceOrderWorkPlan(
+  orderId: string,
+  plan: ProjectPlanSnapshotData,
+): Promise<JobWorkPlanAgreement> {
+  const validatedPlan = projectPlanSnapshotSchema.safeParse(normalizeOptionalTaskFields(plan));
+  if (!validatedPlan.success)
+    throw new Error(validatedPlan.error.issues[0]?.message ?? "Check the work plan details.");
+  const { data, error } = await supabase.rpc(
+    "worksync_agree_service_order_work_plan",
+    { p_order: orderId, p_plan: validatedPlan.data },
+  );
+  if (error) throw explainError(error, SERVICE_ORDER_WORK_PLAN_MIGRATION);
   return parseAgreement(data);
 }

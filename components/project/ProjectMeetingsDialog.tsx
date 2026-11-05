@@ -24,7 +24,7 @@ export function ProjectMeetingsDialog({
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className={buttonClassName}>
+        <Button variant="outline" size="sm" className={buttonClassName} disabled={!active}>
           <CalendarDays className="h-4 w-4" />
           Meetings
         </Button>

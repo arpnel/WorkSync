@@ -9,7 +9,6 @@ import {
   Copy,
   Eye,
   GripVertical,
-  Info,
   LayoutGrid,
   List,
   MoreHorizontal,
@@ -18,7 +17,6 @@ import {
   Plus,
   Search,
   Trash2,
-  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { openSubscriptionLimitDialog } from "@/services/subscriptions/subscriptionLimitDialog";
@@ -123,7 +121,6 @@ export default function ProjectPlansLibrary() {
   const [editing, setEditing] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(true);
-  const [showPlanningHint, setShowPlanningHint] = useState(true);
   const [draggingStageId, setDraggingStageId] = useState<string | null>(null);
   const [dropTargetStageId, setDropTargetStageId] = useState<string | null>(
     null,
@@ -613,9 +610,12 @@ export default function ProjectPlansLibrary() {
             <ArrowLeft />
           </Button>
           <div className="min-w-0 flex-1">
-            <h1 className="px-2 text-lg font-semibold sm:text-xl">
+            <h1 className="px-2 text-xl font-bold sm:text-2xl">
               Project planner
             </h1>
+            <p className="px-2 text-xs text-muted-foreground">
+              Arrange stages in the order work typically unfolds.
+            </p>
           </div>
           {editing && (
             <Button
@@ -639,40 +639,26 @@ export default function ProjectPlansLibrary() {
         </header>
 
         {!(editing && !previewing) && (
-          <div className="space-y-1 px-1">
-            <h2 className="text-xl font-semibold">
+          <div className="rounded-xl border bg-card px-4 py-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Project details
+            </p>
+            <h2 className="mt-1 text-base font-semibold">
               {draft.name || "Untitled plan"}
             </h2>
-            {draft.description && (
-              <p className="text-sm text-muted-foreground">
-                {draft.description}
-              </p>
-            )}
-          </div>
-        )}
-
-        {editing && !previewing && showPlanningHint && (
-          <div className="flex items-center gap-2 rounded-lg bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
-            <Info className="size-4 shrink-0 text-primary" aria-hidden="true" />
-            <p className="min-w-0 flex-1">
-              Create your task structure here. You can set actual deadlines and
-              assignments when you use this plan for a project.
+            <p className="mt-1 text-sm text-muted-foreground">
+              {draft.description || "No description provided."}
             </p>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Dismiss planning guidance"
-              onClick={() => setShowPlanningHint(false)}
-            >
-              <X className="size-4" />
-            </Button>
+            <span className="mt-2 inline-flex rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+              {draft.content.columns.length} {draft.content.columns.length === 1 ? "stage" : "stages"}
+            </span>
           </div>
         )}
 
         {editing && !previewing && (
           <div className="rounded-xl bg-muted/25 px-4 py-3">
             <label className="block text-sm font-medium" htmlFor="project-plan-name">
-              Project plan name
+              Project name
             </label>
             <Input
               id="project-plan-name"
@@ -709,36 +695,36 @@ export default function ProjectPlansLibrary() {
               />
             </button>
             {detailsOpen && (
-              <Textarea
-                aria-label="Plan purpose and description"
-                maxLength={2000}
-                value={draft.description}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    description: event.target.value,
-                  }))
-                }
-                placeholder="Describe the kind of work this template can organize."
-                className="mt-3 min-h-20 resize-y bg-background"
-              />
+              <div className="mt-3">
+                <label className="block text-sm font-medium" htmlFor="project-plan-description">
+                  Project description
+                </label>
+                <Textarea
+                  id="project-plan-description"
+                  aria-label="Project description"
+                  maxLength={2000}
+                  value={draft.description}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      description: event.target.value,
+                    }))
+                  }
+                  placeholder="Describe the kind of work this template can organize."
+                  className="mt-2 min-h-20 resize-y bg-background"
+                />
+              </div>
             )}
           </section>
         )}
 
-        <div className="flex flex-wrap items-end justify-between gap-3 px-1">
-          <div>
-            <h2 className="text-base font-semibold">Planning board</h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Arrange stages in the order work typically unfolds.
-            </p>
-          </div>
-          {editing && !previewing && (
+        {editing && !previewing && (
+          <div className="flex justify-end px-1">
             <Button variant="outline" size="sm" onClick={addColumn}>
               <Plus /> Add stage
             </Button>
-          )}
-        </div>
+          </div>
+        )}
         <section
           aria-label="Project plan stages"
           className="-mx-4 min-w-0 overflow-x-auto px-4 pb-4 sm:-mx-5 sm:px-5 lg:-mx-6 lg:px-6"

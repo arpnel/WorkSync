@@ -222,6 +222,16 @@ export async function ensureSubmittedPlanTasks(projectId: string): Promise<Persi
   return mapProjectTaskRows(data, projectId);
 }
 
+/** Persists a direct service order's agreed board tasks without linking them to payment milestones. */
+export async function ensureServiceOrderPlanTasks(projectId: string): Promise<PersistedProjectTask[]> {
+  if (!UUID_PATTERN.test(projectId)) throw new ProjectTaskDataError("projectId must be a UUID.");
+  const { data, error } = await supabase.rpc("worksync_seed_service_order_plan_tasks", {
+    p_project_id: projectId,
+  });
+  if (error) throw databaseError(error);
+  return mapProjectTaskRows(data, projectId);
+}
+
 /** Strictly maps and deterministically orders rows; malformed rows fail the whole read. */
 export function mapProjectTaskRows(rows: unknown, projectId: string): PersistedProjectTask[] {
   if (!UUID_PATTERN.test(projectId)) throw new ProjectTaskDataError("projectId must be a UUID.");

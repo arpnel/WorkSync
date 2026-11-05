@@ -259,7 +259,7 @@ export function ProjectResolutionPanel({
               <DialogDescription>
                 {mode === "dispute"
                   ? "Tell us what happened and what would help resolve it. Delivery decisions and automatic release eligibility pause while the dispute is open."
-                  : "Signed work requires the other participant’s approval to cancel. Requesting cancellation pauses delivery decisions and automatic release eligibility. After acceptance, eligible uncommitted funds are refunded when automatic settlement is enabled. Already reserved transfers and refund exceptions require support."}
+                  : "Signed work requires the other participant’s approval to cancel."}
               </DialogDescription>
             </DialogHeader>
             <form

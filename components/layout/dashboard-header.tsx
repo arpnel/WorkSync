@@ -494,7 +494,7 @@ export function DashboardHeader() {
               PROFILE
           ================================================= */}
 
-          <DropdownMenu>
+          <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
               <button
                 className="

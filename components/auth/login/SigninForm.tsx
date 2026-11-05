@@ -3,6 +3,7 @@
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { InputErrorMessage } from "@/components/auth/InputErrorMessage";
 
 import { PasswordField, GoogleButton } from "../";
 
@@ -31,23 +32,26 @@ export function SigninForm({
     return (
         <form
             className="space-y-5 pt-4"
+            noValidate
             onSubmit={onSubmit}
         >
             <Field data-invalid={!!emailError}>
-                <FieldLabel>Email</FieldLabel>
+                <FieldLabel htmlFor="signin-email">Email</FieldLabel>
 
                 <Input
+                    id="signin-email"
                     type="email"
                     autoComplete="email"
                     required
                     value={email}
                     aria-invalid={!!emailError}
+                    aria-describedby={emailError ? "signin-email-error" : undefined}
                     onChange={(e) =>
                         onEmailChange(e.target.value)
                     }
                 />
                 {emailError && (
-                    <p className="text-sm text-destructive" role="alert">{emailError}</p>
+                    <InputErrorMessage id="signin-email-error">{emailError}</InputErrorMessage>
                 )}
             </Field>
 

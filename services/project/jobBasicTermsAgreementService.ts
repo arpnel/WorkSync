@@ -18,10 +18,13 @@ export interface JobBasicTermsAgreement {
   freelancerAgreed: boolean;
 }
 
-function explainRpcError(error: { code?: string; message: string }): Error {
+function explainRpcError(
+  error: { code?: string; message: string },
+  migrationPath = "supabase/proposed_migrations/worksync_job_basic_terms_agreement.sql",
+): Error {
   if (error.code === "PGRST202" || /Could not find the function .*schema cache/i.test(error.message)) {
     return new Error(
-      "The basic terms agreement database migration is not installed. Apply supabase/proposed_migrations/worksync_job_basic_terms_agreement.sql, then reload the Supabase API schema cache.",
+      `The basic terms agreement database migration is not installed. Apply ${migrationPath}, then reload the Supabase API schema cache.`,
     );
   }
   return new Error(error.message);
@@ -89,5 +92,34 @@ export async function agreeToJobBasicTerms(
     { p_application: applicationId, p_terms: terms },
   );
   if (error) throw explainRpcError(error);
+  return parseAgreement(data);
+}
+
+export async function getServiceOrderBasicTermsAgreement(
+  orderId: string,
+): Promise<JobBasicTermsAgreement> {
+  const { data, error } = await supabase.rpc(
+    "worksync_get_service_order_basic_terms_agreement",
+    { p_order: orderId },
+  );
+  if (error) throw explainRpcError(
+    error,
+    "supabase/proposed_migrations/worksync_service_order_basic_terms_agreement.sql",
+  );
+  return parseAgreement(data);
+}
+
+export async function agreeToServiceOrderBasicTerms(
+  orderId: string,
+  terms: JobBasicTerms,
+): Promise<JobBasicTermsAgreement> {
+  const { data, error } = await supabase.rpc(
+    "worksync_agree_service_order_basic_terms",
+    { p_order: orderId, p_terms: terms },
+  );
+  if (error) throw explainRpcError(
+    error,
+    "supabase/proposed_migrations/worksync_service_order_basic_terms_agreement.sql",
+  );
   return parseAgreement(data);
 }

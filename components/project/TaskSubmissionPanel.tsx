@@ -131,6 +131,8 @@ export function TaskSubmissionPanel({
   const canSubmit = project.currentParty === "freelancer" && active && paid &&
     (project.type !== "milestone" || currentMilestone?.id === milestoneId);
   const ownReview = history?.reviews.some((review) => review.reviewer_role === project.currentParty) ?? false;
+  const clientReview = history?.reviews.find((review) => review.reviewer_role === "client");
+  const freelancerReview = history?.reviews.find((review) => review.reviewer_role === "freelancer");
   const projectReviewScope = project.type === "standard" || project.milestones.at(-1)?.id === milestoneId;
   const milestonePayout = milestoneId
     ? payment?.payouts?.find((payout) => payout.milestone_id === milestoneId) ?? null
@@ -289,27 +291,42 @@ export function TaskSubmissionPanel({
         })}
       </ol>
 
-      {project.status.toLowerCase() === "completed" && projectReviewScope && history && !ownReview && <form className="space-y-3 border-t pt-4" onSubmit={(event) => {
-        event.preventDefault();
-        if (busy) return;
-        setBusy(true);
-        setError("");
-        void leaveProjectReview(project.projectId!, Number(rating), projectReviewComment)
-          .then(async () => {
-            setNotice("Project review published.");
-            clearProjectReadCache();
-            await load();
-            await onRefresh();
-          })
-          .catch((cause) => setError(cause instanceof Error ? cause.message : "Unable to publish review."))
-          .finally(() => setBusy(false));
-      }}>
-        <h4 className="text-sm font-semibold">Review this project</h4>
+      {project.status.toLowerCase() === "completed" && projectReviewScope && history && <section aria-label="Project reviews" className="space-y-3 border-t pt-4">
+        <h4 className="text-sm font-semibold">Project reviews</h4>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {([
+            { role: "client" as const, name: project.clientName, review: clientReview },
+            { role: "freelancer" as const, name: project.freelancerName, review: freelancerReview },
+          ]).map(({ role, name, review }) => <div key={role} className="rounded-md border bg-muted/20 p-3 text-sm">
+            <p className="font-medium">{role === "client" ? "Client review" : "Freelancer review"}</p>
+            <p className="text-xs text-muted-foreground">{name}</p>
+            {review
+              ? <><p className="mt-2">{review.rating}/5</p>{review.comment && <p className="mt-1 whitespace-pre-wrap text-muted-foreground">{review.comment}</p>}</>
+              : <p className="mt-2 text-xs text-muted-foreground">{role === project.currentParty ? "Your review is ready to submit." : "Awaiting their review."}</p>}
+          </div>)}
+        </div>
+        {!ownReview && <form className="space-y-3" onSubmit={(event) => {
+          event.preventDefault();
+          if (busy) return;
+          setBusy(true);
+          setError("");
+          void leaveProjectReview(project.projectId!, Number(rating), projectReviewComment)
+            .then(async () => {
+              setNotice("Project review published.");
+              clearProjectReadCache();
+              await load();
+              await onRefresh();
+            })
+            .catch((cause) => setError(cause instanceof Error ? cause.message : "Unable to publish review."))
+            .finally(() => setBusy(false));
+        }}>
+        <h4 className="text-sm font-semibold">{project.currentParty === "freelancer" ? `Review ${project.clientName}` : `Review ${project.freelancerName}`}</h4>
+        <p className="text-xs text-muted-foreground">Share your feedback about your project partner.</p>
         <label className="block text-sm">Rating<StyledSelect className="ml-2 rounded-md border bg-background p-2" value={rating} onChange={(event) => setRating(event.target.value)}>{[5, 4, 3, 2, 1].map((score) => <option key={score} value={score}>{score} stars</option>)}</StyledSelect></label>
         <label className="block text-sm">Comment<Textarea maxLength={5000} value={projectReviewComment} onChange={(event) => setProjectReviewComment(event.target.value)} /></label>
         <Button disabled={busy}>Publish review</Button>
-      </form>}
-      {projectReviewScope && history?.reviews.map((review) => <div key={review.review_id} className="border-t pt-3 text-sm"><strong className="capitalize">{review.reviewer_role} review · {review.rating}/5</strong><p>{review.comment}</p></div>)}
+        </form>}
+      </section>}
 
       <Dialog open={!!reviewing} onOpenChange={(open) => { if (!open && !busy) setReviewing(null); }}>
         <DialogContent><DialogHeader><DialogTitle>{reviewing?.action === "approve" ? "Approve this delivery?" : "Request a revision"}</DialogTitle><DialogDescription>{reviewing?.action === "approve" ? "Approval uses the existing WorkSync review and settlement rules." : "Describe changes within the agreed scope. The existing revision allowance applies."}</DialogDescription></DialogHeader>

@@ -11,6 +11,10 @@ import { SUPABASE_MAX_FILE_BYTES } from "@/lib/storage/supabaseStorage";
 import { createSignedUrlMap } from "@/services/storage/signedUrlBatch";
 import { projectPlanSnapshotSchema } from "@/services/project/projectPlanSnapshot";
 import { getPublicIdentities } from "@/services/profile/publicIdentityService";
+import {
+  getJobWorkPlanAgreement,
+  getServiceOrderWorkPlanAgreement,
+} from "@/services/project/jobWorkPlanAgreementService";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type {
   ProjectWorkspace,
@@ -453,7 +457,11 @@ function displayName(
     .filter(Boolean)
     .join(" ")
     .trim();
-  return display || full || fallback;
+  const genericNames = new Set(["client", "freelancer", "user", "unknown"]);
+  return (display && !genericNames.has(display.toLocaleLowerCase()) ? display : "")
+    || full
+    || display
+    || fallback;
 }
 async function currentUserId(): Promise<string> {
   const {
@@ -572,8 +580,10 @@ export async function getProjectWorkspace(
   }
   const client = record(row.client_profiles);
   const freelancer = record(row.freelancer_profiles);
-  const clientUserId = text(client?.user_id);
-  const freelancerUserId = text(freelancer?.user_id);
+  const joinedClientUserId = text(client?.user_id);
+  const joinedFreelancerUserId = text(freelancer?.user_id);
+  const clientProfileId = text(row.client_id);
+  const freelancerProfileId = text(row.freelancer_id);
   const activeRoleOwnsOrder =
     account.profileId != null &&
     (account.role === "client"
@@ -581,8 +591,23 @@ export async function getProjectWorkspace(
       : row.freelancer_id === account.profileId);
   if (!activeRoleOwnsOrder)
     throw new Error("This project is not part of your active account role.");
+
+  // The active freelancer board uses the mutually agreed plan, which may have
+  // changed after the original job application was submitted. Direct service
+  // orders have no application proposal, so read their saved plan agreement.
+  try {
+    const acceptedWorkPlan = applicationId
+      ? await getJobWorkPlanAgreement(applicationId)
+      : await getServiceOrderWorkPlanAgreement(serviceOrderId);
+    if (acceptedWorkPlan.clientAgreed && acceptedWorkPlan.freelancerAgreed) {
+      proposedPlan = acceptedWorkPlan.plan ?? proposedPlan;
+    }
+  } catch (planError) {
+    console.warn("Accepted project work plan is unavailable:", planError instanceof Error ? planError.message : planError);
+  }
+
   const categoryId = requestCategoryId || text(service?.category_id);
-  const participantIds = [clientUserId, freelancerUserId].filter(Boolean);
+  const participantIds = [...new Set([joinedClientUserId, joinedFreelancerUserId, userId].filter(Boolean))];
   const [categoryResult, identities, conversationResult] =
     await Promise.all([
       categoryId
@@ -592,7 +617,11 @@ export async function getProjectWorkspace(
             .eq("id", categoryId)
             .maybeSingle()
         : Promise.resolve({ data: null, error: null }),
-      getPublicIdentities({ userIds: participantIds }),
+      getPublicIdentities({
+        userIds: participantIds,
+        clientIds: clientProfileId ? [clientProfileId] : [],
+        freelancerIds: freelancerProfileId ? [freelancerProfileId] : [],
+      }),
       supabase
         .from("conversations")
         .select("conversation_id")
@@ -605,6 +634,13 @@ export async function getProjectWorkspace(
       categoryResult.error.message,
     );
   }
+
+  const clientUserId =
+    identities.clients.find((identity) => identity.client_id === clientProfileId)?.user_id ||
+    joinedClientUserId;
+  const freelancerUserId =
+    identities.freelancers.find((identity) => identity.freelancer_id === freelancerProfileId)?.user_id ||
+    joinedFreelancerUserId;
 
   const profileMap = new Map(
     identities.profiles.map((item) => [
@@ -690,6 +726,20 @@ export async function getProjectWorkspace(
     if (!Array.isArray(draft.data))
       throw new Error("Invalid draft milestone response.");
     milestoneRows = records(draft.data);
+  } else if (projectType === "milestone" && text(project?.project_id)) {
+    // Fetch active milestones directly so an empty nested relationship cannot
+    // silently hide the submission areas from a project participant.
+    const activeMilestones = await supabase
+      .from("milestones")
+      .select("milestone_id,title,description,amount,due_date,status,display_order")
+      .eq("project_id", text(project?.project_id))
+      .order("display_order", { ascending: true });
+    if (activeMilestones.error)
+      throw new Error(
+        "Unable to load the project's milestone submission areas: " +
+          activeMilestones.error.message,
+      );
+    milestoneRows = records(activeMilestones.data);
   }
   const milestones: WorkspaceMilestone[] = milestoneRows
     .map((milestone) => ({
@@ -715,6 +765,7 @@ export async function getProjectWorkspace(
     applicationId,
     proposedPlan,
     currentUserId: userId,
+    currentUserAvatarUrl: text(profileMap.get(userId)?.avatar_url) || null,
     currentParty: userId === clientUserId ? "client" : "freelancer",
     contractId: contractId || null,
     contractVersion:
@@ -796,13 +847,9 @@ export async function getOlderProjectMessages(
   if (!rows.length) return { messages: [], hasOlderMessages: false };
 
   const senderIds = [...new Set(rows.map((message) => message.sender_id))];
-  const profilesResult = await supabase
-    .from("profiles")
-    .select("user_id, display_name, first_name, last_name, avatar_url")
-    .in("user_id", senderIds);
-  if (profilesResult.error) throw new Error(profilesResult.error.message);
+  const identities = await getPublicIdentities({ userIds: senderIds });
   const profileMap = new Map(
-    (profilesResult.data ?? []).map((profile) => [profile.user_id, profile]),
+    identities.profiles.map((profile) => [profile.user_id, profile]),
   );
   const attachments = await messageAttachmentUrls(rows);
 
@@ -850,13 +897,9 @@ export async function getProjectConversationMessages(
   if (!data?.length) return [];
 
   const senderIds = [...new Set(data.map((message) => message.sender_id))];
-  const profilesResult = await supabase
-    .from("profiles")
-    .select("user_id, display_name, first_name, last_name, avatar_url")
-    .in("user_id", senderIds);
-  if (profilesResult.error) throw new Error(profilesResult.error.message);
+  const identities = await getPublicIdentities({ userIds: senderIds });
   const profileMap = new Map(
-    (profilesResult.data ?? []).map((profile) => [profile.user_id, profile]),
+    identities.profiles.map((profile) => [profile.user_id, profile]),
   );
   const attachments = await messageAttachmentUrls(data);
 

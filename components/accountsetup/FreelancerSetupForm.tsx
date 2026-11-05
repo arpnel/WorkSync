@@ -12,7 +12,7 @@ import FreelancerTaxDeclaration, { type FreelancerTaxDeclarationHandle } from "@
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, ChevronRight, FileText, Lock } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, CheckCircle2, ChevronRight, FileText, Lock } from "lucide-react";
 import { validateFreelancerSetup } from "@/lib/validation/account-setup.validation";
 import type { FreelancerSetupValues } from "@/types/account-setup.types";
 import { supabase } from "@/lib/supabaseClient";
@@ -275,8 +275,14 @@ export function FreelancerSetupForm() {
         </header>
         <div className="space-y-3 rounded-xl border bg-background/40 p-4 sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <label htmlFor="setup-tin" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Taxpayer Identification Number (TIN) <span className="text-destructive">*</span></label>
-            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-500"><Lock className="size-3" /> Mandatory</span>
+            <label htmlFor="setup-tin" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Taxpayer Identification Number (TIN) {!tinSaved && <span className="text-destructive">*</span>}</label>
+            {tinSaved ? (
+              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                <CheckCircle2 className="size-3.5" aria-hidden="true" /> Saved
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-500"><Lock className="size-3" /> Mandatory</span>
+            )}
           </div>
           <div className="relative">
             <FileText className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -290,12 +296,13 @@ export function FreelancerSetupForm() {
               aria-invalid={Boolean(tinError)}
               onChange={(event) => { setTin(formatTinInput(event.target.value)); setTinError(""); }}
               disabled={tinSaved}
-              className={`flex h-11 w-full rounded-xl border bg-card py-2 pl-10 pr-3 font-mono text-sm outline-none transition-colors focus-visible:border-emerald-500 focus-visible:ring-1 focus-visible:ring-emerald-500 ${tinError ? "border-destructive" : "border-input"}`}
-              placeholder="000-000-000-000"
+              className={`flex h-11 w-full rounded-xl border bg-card py-2 pl-10 pr-3 font-mono text-sm outline-none transition-colors focus-visible:border-emerald-500 focus-visible:ring-1 focus-visible:ring-emerald-500 ${tinError ? "border-destructive" : tinSaved ? "border-emerald-500/50 bg-emerald-500/5 placeholder:text-emerald-700 dark:placeholder:text-emerald-300" : "border-input"}`}
+              placeholder={tinSaved ? "TIN saved securely" : "000-000-000-000"}
+              aria-describedby={tinSaved ? "setup-tin-saved" : undefined}
             />
           </div>
           <p className="text-xs text-muted-foreground">Enter your 9 or 12 digit BIR-issued individual or business Tax Identification Number.</p>
-          {tinSaved && <p className="text-xs text-muted-foreground">Your TIN has already been submitted and saved. You do not need to submit it again.</p>}
+          {tinSaved && <p id="setup-tin-saved" role="status" className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400"><CheckCircle2 className="size-3.5 shrink-0" aria-hidden="true" />Your TIN is saved securely and hidden for your privacy. You do not need to submit it again.</p>}
           {tinError && <p role="alert" className="text-xs text-destructive">{tinError}</p>}
         </div>
         <p className="rounded-xl border border-amber-400 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">

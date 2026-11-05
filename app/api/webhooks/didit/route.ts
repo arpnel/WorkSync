@@ -1,5 +1,6 @@
 import {
   VerificationError,
+  getDiditEnvironment,
   verifyDiditWebhook,
 } from "@/lib/verification/didit";
 import {
@@ -17,11 +18,18 @@ export async function POST(request: Request) {
       raw,
       request.headers.get("x-signature-v2"),
       request.headers.get("x-timestamp"),
+      Date.now(),
+      request.headers.get("x-signature-v2-previous"),
     );
-    if (request.headers.get("x-didit-test-webhook") === "true")
-      return Response.json({ received: true });
     if (!body || typeof body !== "object" || !("webhook_type" in body))
       throw new VerificationError("Invalid webhook.", 400);
+    if (!("environment" in body) || body.environment !== getDiditEnvironment())
+      throw new VerificationError(
+        "Verification event environment does not match this application.",
+        409,
+      );
+    if (request.headers.get("x-didit-test-webhook") === "true")
+      return Response.json({ received: true });
     if (body.webhook_type !== "status.updated")
       return Response.json({ received: true });
     const event = eventSchema.safeParse(body);

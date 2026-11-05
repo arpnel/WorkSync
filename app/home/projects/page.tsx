@@ -70,6 +70,7 @@ function ProjectsPage() {
 
     return {
       ...project,
+      applicationId: discussion.applicationId,
       title: discussion.jobTitle,
       requestDescription: discussion.jobDescription || project.requestDescription,
       requestCategoryName: discussion.categoryName || project.requestCategoryName,

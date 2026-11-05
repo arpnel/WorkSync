@@ -40,11 +40,13 @@ import {
   getAdminJobMonitoringDetails,
   getAdminProjectDetails,
   getAdminRecords,
+  getAdminDiditIdentity,
   reviewAdminRecord,
   getAdminReportDetails,
   type AdminModule,
   type AdminResult,
   type AdminRow,
+  type AdminDiditIdentity,
 } from "@/services/admin/adminService";
 
 type AdminJobMonitoringDetails = Awaited<
@@ -235,6 +237,9 @@ export default function AdminRecords({
   const [projectDetailsLoading, setProjectDetailsLoading] = useState(false);
   const [reportDetails, setReportDetails] = useState<AdminReportDetails | null>(null);
   const [reportDetailsLoading, setReportDetailsLoading] = useState(false);
+  const [diditIdentity, setDiditIdentity] = useState<AdminDiditIdentity | null>(null);
+  const [diditIdentityError, setDiditIdentityError] = useState("");
+  const [diditIdentityLoading, setDiditIdentityLoading] = useState(false);
   const [projectDescriptionOpen, setProjectDescriptionOpen] = useState(false);
   const [proposalApplicant, setProposalApplicant] = useState<
     AdminJobMonitoringDetails["applicants"][number] | null
@@ -285,6 +290,36 @@ export default function AdminRecords({
       })
       .finally(() => {
         if (current) setJobDetailsLoading(false);
+      });
+    return () => {
+      current = false;
+    };
+  }, [module, selected]);
+  useEffect(() => {
+    if (module !== "verification" || !selected) {
+      setDiditIdentity(null);
+      setDiditIdentityError("");
+      setDiditIdentityLoading(false);
+      return;
+    }
+    let current = true;
+    setDiditIdentity(null);
+    setDiditIdentityError("");
+    setDiditIdentityLoading(true);
+    void getAdminDiditIdentity(selected.id)
+      .then((details) => {
+        if (current) setDiditIdentity(details);
+      })
+      .catch((cause) => {
+        if (current)
+          setDiditIdentityError(
+            cause instanceof Error
+              ? cause.message
+              : "Didit identity evidence could not be loaded.",
+          );
+      })
+      .finally(() => {
+        if (current) setDiditIdentityLoading(false);
       });
     return () => {
       current = false;
@@ -1968,6 +2003,52 @@ export default function AdminRecords({
                   <dd className="mt-1 font-medium">{verificationDetail(selected.detail, "Reviewed")}</dd>
                 </div>
               </dl>
+              <div className="mt-4 border-t pt-4">
+                <h4 className="text-sm font-semibold">Identity details from Didit</h4>
+                {diditIdentityLoading ? (
+                  <p className="mt-2 text-sm text-muted-foreground">Loading provider result…</p>
+                ) : diditIdentityError ? (
+                  <p className="mt-2 text-sm text-destructive">{diditIdentityError}</p>
+                ) : diditIdentity?.identity ? (
+                  <>
+                    {diditIdentity.simulated && (
+                      <p className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                        Sandbox result: identity details are simulated test data.
+                      </p>
+                    )}
+                    <dl className="mt-3 grid gap-x-5 gap-y-3 text-sm sm:grid-cols-2">
+                      <div>
+                        <dt className="text-muted-foreground">Name on ID</dt>
+                        <dd className="mt-1 font-medium">{diditIdentity.identity.fullName ?? "Not returned by Didit"}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-muted-foreground">Document type</dt>
+                        <dd className="mt-1 font-medium">{diditIdentity.identity.documentType ?? "Not returned by Didit"}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-muted-foreground">Issuing country</dt>
+                        <dd className="mt-1 font-medium">{diditIdentity.identity.issuingCountry ?? "Not returned by Didit"}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-muted-foreground">ID document check</dt>
+                        <dd className="mt-1 font-medium">{diditIdentity.identity.documentStatus}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-muted-foreground">Liveness check</dt>
+                        <dd className="mt-1 font-medium">{diditIdentity.identity.livenessStatuses.join(", ") || "Not included in this workflow"}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-muted-foreground">Face match</dt>
+                        <dd className="mt-1 font-medium">{diditIdentity.identity.faceMatchStatuses.join(", ") || "Not included in this workflow"}</dd>
+                      </div>
+                    </dl>
+                  </>
+                ) : (
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Didit identity details are available only for the current approved document verification.
+                  </p>
+                )}
+              </div>
             </section>
           )}
           {selected?.owner_id && module !== "jobs" && module !== "services" && module !== "reports" && module !== "disputes" && (

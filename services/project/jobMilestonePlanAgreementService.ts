@@ -62,3 +62,44 @@ export async function agreeToJobMilestonePlan(
   if (error) throw explainError(error);
   return parse(data);
 }
+
+const SERVICE_ORDER_MILESTONE_MIGRATION =
+  "supabase/proposed_migrations/worksync_service_order_milestone_plan_agreement.sql after worksync_service_order_basic_terms_agreement.sql and worksync_service_order_work_plan_agreement.sql";
+
+export async function getServiceOrderMilestonePlanAgreement(
+  orderId: string,
+): Promise<JobMilestonePlanAgreement> {
+  const { data, error } = await supabase.rpc(
+    "worksync_get_service_order_milestone_plan_agreement",
+    { p_order: orderId },
+  );
+  if (error) {
+    if (error.code === "PGRST202" || /Could not find the function .*schema cache/i.test(error.message)) {
+      throw new Error(`The milestone agreement database change is not installed. Apply ${SERVICE_ORDER_MILESTONE_MIGRATION}, then reload the Supabase API schema cache.`);
+    }
+    throw new Error(error.message);
+  }
+  return parse(data);
+}
+
+export async function agreeToServiceOrderMilestonePlan(
+  orderId: string,
+  milestones: readonly ContractVersionMilestoneInput[],
+): Promise<JobMilestonePlanAgreement> {
+  const { data, error } = await supabase.rpc(
+    "worksync_agree_service_order_milestone_plan",
+    {
+      p_order: orderId,
+      p_milestones: milestones.map(({ id, title, description, amount, dueDate, displayOrder, taskIds }) => ({
+        id, title, description, amount, dueDate, displayOrder, taskIds: taskIds ?? [],
+      })),
+    },
+  );
+  if (error) {
+    if (error.code === "PGRST202" || /Could not find the function .*schema cache/i.test(error.message)) {
+      throw new Error(`The milestone agreement database change is not installed. Apply ${SERVICE_ORDER_MILESTONE_MIGRATION}, then reload the Supabase API schema cache.`);
+    }
+    throw new Error(error.message);
+  }
+  return parse(data);
+}

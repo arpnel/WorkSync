@@ -55,6 +55,14 @@ function ThemeHotkey() {
         return
       }
 
+      if (
+        document.querySelector(
+          '[role="dialog"][data-state="open"], [role="menu"][data-state="open"], [role="listbox"][data-state="open"]',
+        )
+      ) {
+        return
+      }
+
       setTheme(resolvedTheme === "dark" ? "light" : "dark")
     }
 

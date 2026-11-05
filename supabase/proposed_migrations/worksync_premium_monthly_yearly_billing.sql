@@ -14,9 +14,9 @@ set display_name = 'Premium',
     provisional_annual_price = 2990.00,
     monthly_job_limit = 2147483647,
     monthly_service_limit = 2147483647,
-    active_job_limit = 2147483647,
+    active_job_limit = 100,
     active_service_limit = 2147483647,
-    active_listing_limit = 2147483647
+    active_listing_limit = 100
 where plan_code = 'pro';
 
 update public.subscription_plans

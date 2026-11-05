@@ -2,10 +2,13 @@ import "server-only";
 import { createClient, type User } from "@supabase/supabase-js";
 import { z } from "zod";
 import {
-  DIDIT_WORKFLOW_ID,
   VerificationError,
+  assertDiditDatabaseEnvironment,
   decisionSchema,
   diditRequest,
+  getDiditEnvironment,
+  getDiditWorkflowId,
+  hasDiditSessionConfig,
   verificationStatusFor,
   verificationUrl,
 } from "@/lib/verification/didit";
@@ -19,7 +22,8 @@ import {
 // app_metadata is admin-writable; NEVER read a decision from user_metadata.
 const stateSchema = z.object({
   session_id: z.string().uuid(),
-  workflow_id: z.literal(DIDIT_WORKFLOW_ID),
+  workflow_id: z.string().uuid(),
+  environment: z.enum(["live", "sandbox"]).optional(),
   url: z.string(),
   status: z.string(),
   verified: z.boolean(),
@@ -30,9 +34,17 @@ const stateSchema = z.object({
 type State = z.infer<typeof stateSchema>;
 function stateOf(user: User): State | null {
   const parsed = stateSchema.safeParse(user.app_metadata?.worksync_didit);
-  return parsed.success ? parsed.data : null;
+  if (!parsed.success) return null;
+  const environment = parsed.data.environment ?? "live";
+  if (
+    environment !== getDiditEnvironment() ||
+    parsed.data.workflow_id !== getDiditWorkflowId()
+  )
+    return null;
+  return { ...parsed.data, environment };
 }
 function admin() {
+  assertDiditDatabaseEnvironment();
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY)
     throw new VerificationError("Identity verification is not configured.");
   return createClient(
@@ -86,7 +98,7 @@ async function decisionFor(userId: string, state: State) {
     !parsed.success ||
     parsed.data.vendor_data !== userId ||
     parsed.data.session_id !== state.session_id ||
-    parsed.data.workflow_id !== DIDIT_WORKFLOW_ID
+    parsed.data.workflow_id !== getDiditWorkflowId()
   )
     throw new VerificationError(
       "Verification session does not match this account.",
@@ -94,17 +106,79 @@ async function decisionFor(userId: string, state: State) {
     );
   return parsed.data;
 }
+export async function getAdminDiditIdentity(
+  requestId: string,
+  expectedUserId: string,
+) {
+  const db = admin();
+  const { data: request, error } = await db
+    .from("verification_requests")
+    .select(
+      "user_id,provider,provider_session_id,workflow_id,status,is_current",
+    )
+    .eq("request_id", requestId)
+    .maybeSingle();
+  if (error)
+    throw new VerificationError("Verification details could not be loaded.");
+  if (
+    !request ||
+    request.user_id !== expectedUserId ||
+    request.provider !== "didit" ||
+    request.status !== "approved" ||
+    request.is_current !== true
+  )
+    return null;
+
+  const user = await freshUser(expectedUserId);
+  const state = stateOf(user);
+  if (
+    !state ||
+    state.session_id !== request.provider_session_id ||
+    state.workflow_id !== request.workflow_id
+  )
+    return null;
+
+  const decision = await decisionFor(expectedUserId, state);
+  if (decision.status !== "Approved") return null;
+  const idResult = decision.id_verifications?.find(
+    (item) =>
+      item.status === "Approved" &&
+      (!item.verification_method || item.verification_method === "document"),
+  );
+  if (!idResult) return null;
+
+  return {
+    fullName: idResult.full_name?.trim() || null,
+    documentType: idResult.document_type?.trim() || null,
+    issuingCountry:
+      idResult.issuing_state_name?.trim() ||
+      idResult.issuing_state?.trim() ||
+      null,
+    documentStatus: idResult.status,
+    livenessStatuses: (decision.liveness_checks ?? []).map(
+      (item) => item.status,
+    ),
+    faceMatchStatuses: (decision.face_matches ?? []).map(
+      (item) => item.status,
+    ),
+    environment: state.environment,
+  };
+}
 export async function getVerification(user: User) {
   const state = stateOf(user);
   if (!state)
     return {
       status: "Not Started",
       verified: false,
-      canStart: !!process.env.DIDIT_API_KEY,
+      canStart: hasDiditSessionConfig(),
     };
   const request = await findVerificationRequest(admin(), user.id, state);
   if (request?.status === "revoked")
-    return { status: "Revoked", verified: false, canStart: !!process.env.DIDIT_API_KEY };
+    return {
+      status: "Revoked",
+      verified: false,
+      canStart: hasDiditSessionConfig(),
+    };
   const decision = await decisionFor(user.id, state);
   // A browser callback/poll can show progress, but only the signed webhook
   // can grant verified status. Revocation is reflected immediately on reads.
@@ -114,7 +188,7 @@ export async function getVerification(user: User) {
       request?.is_current === true &&
       request.status === "approved" &&
       verificationStatusFor(decision).profileStatus === "approved",
-    canStart: true,
+    canStart: hasDiditSessionConfig(),
   };
 }
 const running = new Map<string, Promise<unknown>>();
@@ -132,11 +206,24 @@ async function serial<T>(key: string, operation: () => Promise<T>): Promise<T> {
 }
 export function startVerification(userId: string) {
   return serial(userId, async () => {
+    const environment = getDiditEnvironment();
+    const workflowId = getDiditWorkflowId();
+    if (!hasDiditSessionConfig())
+      throw new VerificationError(
+        "Identity verification is not fully configured for the selected environment.",
+      );
     const user = await freshUser(userId);
     let state = stateOf(user);
     if (state) {
-      const previousRequest = await findVerificationRequest(admin(), user.id, state);
-      if (previousRequest?.status === "revoked" && !previousRequest.is_current) {
+      const previousRequest = await findVerificationRequest(
+        admin(),
+        user.id,
+        state,
+      );
+      if (
+        previousRequest?.status === "revoked" &&
+        !previousRequest.is_current
+      ) {
         state = null;
       } else {
         await ensureVerificationRequest(admin(), user.id, state);
@@ -156,9 +243,12 @@ export function startVerification(userId: string) {
             409,
           );
         if (
-          ["Not Started", "In Progress", "Awaiting User", "Resubmitted"].includes(
-            decision.status,
-          )
+          [
+            "Not Started",
+            "In Progress",
+            "Awaiting User",
+            "Resubmitted",
+          ].includes(decision.status)
         )
           return {
             url: verificationUrl(state.url),
@@ -201,7 +291,7 @@ export function startVerification(userId: string) {
       .object({ session_id: z.string().uuid(), url: z.string() })
       .parse(
         await diditRequest("session/", {
-          workflow_id: DIDIT_WORKFLOW_ID,
+          workflow_id: workflowId,
           vendor_data: user.id,
           ...(callback ? { callback } : {}),
         }),
@@ -209,7 +299,8 @@ export function startVerification(userId: string) {
     const url = verificationUrl(session.url);
     const nextState: State = {
       session_id: session.session_id,
-      workflow_id: DIDIT_WORKFLOW_ID,
+      workflow_id: workflowId,
+      environment,
       url,
       status: "Not Started",
       verified: false,
@@ -238,7 +329,7 @@ export const eventSchema = z.object({
   workflow_id: z.string().uuid().optional(),
   timestamp: z.number().finite().int().nonnegative(),
   created_at: z.number().finite().int().nonnegative().optional(),
-  environment: z.enum(["live", "sandbox"]).optional(),
+  environment: z.enum(["live", "sandbox"]),
   sandbox_scenario: z.unknown().optional(),
 });
 export async function applyVerificationEvent(
@@ -247,22 +338,39 @@ export async function applyVerificationEvent(
   event = eventSchema.parse(event);
   if (event.webhook_type !== "status.updated")
     throw new VerificationError("Unsupported verification event.", 400);
+  if (event.environment !== getDiditEnvironment())
+    throw new VerificationError(
+      "Verification event environment does not match this application.",
+      409,
+    );
   return serial(event.vendor_data, async () => {
     let user = await freshUser(event.vendor_data);
     let state = stateOf(user);
     if (
       !state ||
       state.session_id !== event.session_id ||
-      (event.workflow_id && event.workflow_id !== DIDIT_WORKFLOW_ID)
+      state.environment !== event.environment ||
+      (event.workflow_id && event.workflow_id !== getDiditWorkflowId())
     )
       throw new VerificationError(
         "Unknown or mismatched verification session.",
         409,
       );
-    const storedRequest = await findVerificationRequest(admin(), user.id, state);
-    if (storedRequest?.status === "revoked" || storedRequest?.is_current === false)
+    const storedRequest = await findVerificationRequest(
+      admin(),
+      user.id,
+      state,
+    );
+    if (
+      storedRequest?.status === "revoked" ||
+      storedRequest?.is_current === false
+    )
       return;
-    if ((state.last_event_at ?? 0) > (event.created_at ?? event.timestamp))
+    const eventTime = event.created_at ?? event.timestamp;
+    if (
+      state.last_event_id === event.event_id ||
+      (state.last_event_at ?? 0) > eventTime
+    )
       return;
     const decision = await decisionFor(user.id, state);
     // Re-read after the network call so an old session cannot replace a new one.
@@ -271,13 +379,12 @@ export async function applyVerificationEvent(
     if (
       !state ||
       state.session_id !== event.session_id ||
-      (state.last_event_at ?? 0) > (event.created_at ?? event.timestamp)
+      state.environment !== event.environment ||
+      state.last_event_id === event.event_id ||
+      (state.last_event_at ?? 0) > eventTime
     )
       return;
-    const mapped = verificationStatusFor(
-      decision,
-      event.environment !== "sandbox" && !event.sandbox_scenario,
-    );
+    const mapped = verificationStatusFor(decision);
     await persistVerificationResult(
       admin(),
       user.id,

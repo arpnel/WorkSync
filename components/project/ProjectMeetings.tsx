@@ -236,6 +236,13 @@ export default function ProjectMeetings({
                   required
                   min={minimumStart()}
                   value={start}
+                  onClick={(event) => {
+                    try {
+                      event.currentTarget.showPicker();
+                    } catch {
+                      event.currentTarget.focus();
+                    }
+                  }}
                   onChange={(e) => setStart(e.target.value)}
                 />
               </label>

@@ -1,34 +1,30 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Crown, Headphones, Infinity, Percent, Sparkles, X, Zap } from "lucide-react";
+import { Check, Crown, Headphones, Infinity, Percent, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { usePremiumStatus } from "@/hooks/usePremiumStatus";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 
 const freeFeatures = [
-  { icon: Check, label: "1 saved Kanban board project plan" },
-  { icon: Check, label: "1 job application per month" },
-  { icon: Check, label: "1 active project at a time" },
-  { icon: Check, label: "1 active job posting" },
-  { icon: X, label: "Boosted job postings not included" },
-  { icon: Sparkles, label: "1 AI skills gap assessment every 6 months" },
-  { icon: Check, label: "Top 5 applicant rankings with score ratings" },
-  { icon: Percent, label: "10% transaction fee per transaction" },
-  { icon: Headphones, label: "Standard support" },
+  { icon: Check, label: "1 saved project draft" },
+  { icon: Check, label: "1 job application every 3 months" },
+  { icon: Check, label: "1 hiring request to a freelancer every 3 months" },
+  { icon: Check, label: "1 active job posting total" },
+  { icon: Sparkles, label: "1 AI applicant screening every 6 months" },
+  { icon: Percent, label: "10% transaction fee per job" },
+  { icon: Headphones, label: "Standard email support" },
 ];
 
 const premiumFeatures = [
-  { icon: Infinity, label: "Unlimited Kanban board project plans" },
+  { icon: Infinity, label: "Unlimited project drafts" },
   { icon: Infinity, label: "Unlimited job applications" },
-  { icon: Check, label: "Up to 20 active projects at a time" },
-  { icon: Infinity, label: "Unlimited active job postings" },
-  { icon: Zap, label: "Boosted job postings included" },
-  { icon: Sparkles, label: "Unlimited AI skills gap assessments" },
-  { icon: Sparkles, label: "Full applicant rankings with detailed explanations" },
-  { icon: Percent, label: "5% transaction fee per transaction" },
-  { icon: Headphones, label: "Top priority support" },
+  { icon: Infinity, label: "Unlimited hiring requests" },
+  { icon: Check, label: "Up to 100 active job postings" },
+  { icon: Sparkles, label: "Unlimited AI applicant screenings" },
+  { icon: Percent, label: "5% transaction fee per job" },
+  { icon: Headphones, label: "24/7 priority support" },
 ];
 
 export default function OffersPage() {
@@ -91,7 +87,7 @@ export default function OffersPage() {
           <div>
             <h2 className="font-semibold">Free</h2>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-              Essential tools to start your Kanban board project plan and land initial gigs.
+              Essential tools to save a project draft and land initial gigs.
             </p>
           </div>
           <p className="mt-6 text-3xl font-bold tracking-tight">

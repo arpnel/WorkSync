@@ -41,7 +41,7 @@ export default function HeroSection() {
                             <ChevronRight className="opacity-50" />
                           </Button>
                         </DialogTrigger>
-                        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
+                        <DialogContent className="auth-dialog-content max-h-[90dvh] overflow-y-auto sm:max-w-md">
                           <DialogTitle className="sr-only">
                             Create your account
                           </DialogTitle>

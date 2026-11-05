@@ -21,9 +21,10 @@ type RequestRow = {
   provider_status: string;
   is_current: boolean;
   verified_at: string | null;
+  updated_at: string | null;
 };
 const columns =
-  "request_id,user_id,provider,provider_session_id,workflow_id,status,provider_status,is_current,verified_at";
+  "request_id,user_id,provider,provider_session_id,workflow_id,status,provider_status,is_current,verified_at,updated_at";
 function failure(stage: string, code?: string): never {
   // Only diagnostic stage and database code; never payloads or database detail text.
   console.error("Didit persistence failed", { stage, code: code ?? "unknown" });
@@ -154,11 +155,12 @@ export async function persistVerificationResult(
       ? !row.verified_at
       : row.verified_at !== null)
   ) {
-    const updated = await db
+    let updateQuery = db
       .from("verification_requests")
       .update({
         status: result.requestStatus,
         provider_status: providerStatus,
+        updated_at: new Date().toISOString(),
         verified_at:
           result.requestStatus === "approved"
             ? (row.verified_at ?? new Date().toISOString())
@@ -167,8 +169,12 @@ export async function persistVerificationResult(
       .eq("provider_session_id", session.session_id)
       .eq("user_id", userId)
       .eq("provider", "didit")
-      .eq("is_current", true)
-      .select("request_id");
+      .eq("is_current", true);
+    // Compare-and-set against the exact row version read above. If another
+    // webhook updated it first, fail so Didit can retry against fresh state.
+    if (row.updated_at)
+      updateQuery = updateQuery.eq("updated_at", row.updated_at);
+    const updated = await updateQuery.select("request_id");
     if (updated.error) failure("request_update", updated.error.code);
     if (!updated.data?.length)
       throw new VerificationError(

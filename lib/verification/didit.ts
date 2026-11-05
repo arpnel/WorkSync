@@ -2,7 +2,8 @@ import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 
-export const DIDIT_WORKFLOW_ID = "b093dd10-8d6b-4282-82cd-424c6a8ae92a";
+export type DiditEnvironment = "sandbox" | "live";
+
 export class VerificationError extends Error {
   constructor(
     message: string,
@@ -10,6 +11,70 @@ export class VerificationError extends Error {
   ) {
     super(message);
   }
+}
+
+export function getDiditEnvironment(): DiditEnvironment {
+  const environment = process.env.DIDIT_ENVIRONMENT;
+  if (environment === "sandbox" || environment === "live") return environment;
+  throw new VerificationError(
+    "Identity verification environment is not configured.",
+  );
+}
+
+function diditVariable(suffix: "API_KEY" | "WORKFLOW_ID" | "WEBHOOK_SECRET") {
+  const environment = getDiditEnvironment();
+  const prefix = environment === "sandbox" ? "DIDIT_SANDBOX" : "DIDIT_LIVE";
+  return process.env[`${prefix}_${suffix}`];
+}
+
+export function getDiditWorkflowId() {
+  const workflowId = diditVariable("WORKFLOW_ID");
+  if (!workflowId || !z.string().uuid().safeParse(workflowId).success)
+    throw new VerificationError(
+      "Identity verification is not configured for the selected environment.",
+    );
+  return workflowId;
+}
+
+export function hasDiditSessionConfig() {
+  try {
+    return (
+      !!diditVariable("API_KEY") &&
+      !!getDiditWorkflowId() &&
+      !!diditVariable("WEBHOOK_SECRET")
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function assertDiditDatabaseEnvironment() {
+  if (getDiditEnvironment() !== "sandbox") return;
+
+  const configuredProjectRef = process.env.DIDIT_SANDBOX_SUPABASE_PROJECT_REF;
+  let connectedProjectRef: string | null = null;
+  try {
+    const hostname = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "")
+      .hostname;
+    if (hostname.endsWith(".supabase.co")) {
+      connectedProjectRef = hostname.slice(0, -".supabase.co".length);
+    } else if (["localhost", "127.0.0.1", "::1"].includes(hostname)) {
+      connectedProjectRef = "local";
+    }
+  } catch {
+    // Fail closed below when the configured database URL is missing or invalid.
+  }
+
+  if (
+    process.env.VERCEL_ENV === "production" ||
+    !configuredProjectRef ||
+    connectedProjectRef !== configuredProjectRef ||
+    !connectedProjectRef
+  )
+    throw new VerificationError(
+      "Sandbox verification requires a matching Supabase project reference and a nonproduction deployment.",
+      503,
+    );
 }
 export const diditStatus = z.enum([
   "Not Started",
@@ -34,9 +99,15 @@ export const decisionSchema = z.object({
       z.object({
         status: z.string(),
         verification_method: z.string().nullish(),
+        document_type: z.string().nullish(),
+        issuing_state: z.string().nullish(),
+        issuing_state_name: z.string().nullish(),
+        full_name: z.string().nullish(),
       }),
     )
     .nullish(),
+  liveness_checks: z.array(z.object({ status: z.string() })).nullish(),
+  face_matches: z.array(z.object({ status: z.string() })).nullish(),
 });
 export type DiditDecision = z.infer<typeof decisionSchema>;
 export function hasApprovedDocument(decision: DiditDecision) {
@@ -69,7 +140,7 @@ export async function diditRequest(
   const operation = path.endsWith("/decision/")
     ? "decision_lookup"
     : "session_create";
-  const key = process.env.DIDIT_API_KEY;
+  const key = diditVariable("API_KEY");
   if (!key)
     throw new VerificationError(
       "Identity verification is not available yet. Please try again later.",
@@ -105,7 +176,9 @@ export async function diditRequest(
       providerFields: providerError.fields,
     });
     const operationLabel =
-      operation === "session_create" ? "session creation" : "session status check";
+      operation === "session_create"
+        ? "session creation"
+        : "session status check";
     const providerDetail = [
       `HTTP ${response.status}`,
       providerError.code ? `code ${providerError.code}` : null,
@@ -207,14 +280,19 @@ export function verifyDiditWebhook(
   signature: string | null,
   timestamp: string | null,
   now = Date.now(),
+  previousSignature: string | null = null,
 ) {
-  const secret = process.env.DIDIT_WEBHOOK_SECRET;
+  const environment = getDiditEnvironment();
+  const prefix = environment === "sandbox" ? "DIDIT_SANDBOX" : "DIDIT_LIVE";
+  const secret = process.env[`${prefix}_WEBHOOK_SECRET`];
+  const previousSecret = process.env[`${prefix}_WEBHOOK_SECRET_PREVIOUS`];
   if (!secret)
     throw new VerificationError("Verification webhook is not configured.");
   if (
     !/^\d+$/.test(timestamp ?? "") ||
     Math.abs(now / 1000 - Number(timestamp)) > 300 ||
-    !/^[a-f\d]{64}$/i.test(signature ?? "")
+    (!/^[a-f\d]{64}$/i.test(signature ?? "") &&
+      !/^[a-f\d]{64}$/i.test(previousSignature ?? ""))
   )
     throw new VerificationError("Invalid webhook signature.", 401);
   let body: unknown;
@@ -236,7 +314,19 @@ export function verifyDiditWebhook(
   const expected = createHmac("sha256", secret)
     .update(canonicalJson(body), "utf8")
     .digest();
-  if (!timingSafeEqual(expected, Buffer.from(signature!, "hex")))
+  const currentMatches =
+    /^[a-f\d]{64}$/i.test(signature ?? "") &&
+    timingSafeEqual(expected, Buffer.from(signature!, "hex"));
+  const previousMatches =
+    !!previousSecret &&
+    /^[a-f\d]{64}$/i.test(previousSignature ?? "") &&
+    timingSafeEqual(
+      createHmac("sha256", previousSecret)
+        .update(canonicalJson(body), "utf8")
+        .digest(),
+      Buffer.from(previousSignature!, "hex"),
+    );
+  if (!currentMatches && !previousMatches)
     throw new VerificationError("Invalid webhook signature.", 401);
   return body;
 }

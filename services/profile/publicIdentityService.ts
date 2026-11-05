@@ -114,12 +114,16 @@ export function identityName(
   profile: PublicIdentity | undefined,
   fallback: string,
 ) {
-  return (
-    profile?.display_name?.trim() ||
-    [profile?.first_name, profile?.last_name]
-      .filter(Boolean)
-      .join(" ")
-      .trim() ||
-    fallback
-  );
+  const displayName = profile?.display_name?.trim() ?? "";
+  const fullName = [profile?.first_name, profile?.last_name]
+    .map((part) => part?.trim())
+    .filter(Boolean)
+    .join(" ");
+  const genericNames = new Set(["client", "freelancer", "user", "unknown"]);
+
+  // Setup flows can leave a role placeholder in display_name while the
+  // profile's actual first and last name are already populated.
+  if (displayName && !genericNames.has(displayName.toLocaleLowerCase()))
+    return displayName;
+  return fullName || displayName || fallback;
 }

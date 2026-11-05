@@ -830,9 +830,8 @@ export default function AdminTransactions({ mode = "payments" }: { mode?: "payme
                 <section className="space-y-3 rounded-xl border p-4">
                   <SectionHeading icon={<CreditCard className="size-3.5" />}>Payment information</SectionHeading>
                   <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-                    <Detail label="Provider / environment">
-                      <span className="mr-2 font-semibold">{selected.provider || "Provider not recorded"}</span>
-                      <Badge variant="outline">{selected.livemode == null ? "Environment unknown" : selected.livemode ? "Live mode" : "Test mode"}</Badge>
+                    <Detail label="Payment provider">
+                      <span className="font-semibold">{selected.provider || "Provider not recorded"}</span>
                     </Detail>
                     <Detail label="Payment method">
                       <Badge variant="outline" className="mr-2">{selected.payment_method?.toUpperCase() || "N/A"}</Badge>

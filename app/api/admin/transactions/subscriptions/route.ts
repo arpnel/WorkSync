@@ -13,55 +13,86 @@ const json = (data: unknown, status = 200) =>
 type AdminDatabase = Awaited<ReturnType<typeof paymentUser>>["db"];
 type PremiumUsageEvidence = { signals: string[]; verified: boolean };
 
+function hasRollingThreeMonthOverage(
+  timestamps: Array<string | null | undefined>,
+  eligibleFrom: number,
+) {
+  const ordered = timestamps
+    .map((value) => Date.parse(value ?? ""))
+    .filter(Number.isFinite)
+    .sort((left, right) => left - right);
+  return ordered.some((timestamp, index) => {
+    if (index === 0 || timestamp < eligibleFrom) return false;
+    const prior = new Date(ordered[index - 1]);
+    const day = prior.getUTCDate();
+    prior.setUTCDate(1);
+    prior.setUTCMonth(prior.getUTCMonth() + 3);
+    const lastDay = new Date(Date.UTC(prior.getUTCFullYear(), prior.getUTCMonth() + 1, 0)).getUTCDate();
+    prior.setUTCDate(Math.min(day, lastDay));
+    return timestamp < prior.getTime();
+  });
+}
+
 async function premiumUsageEvidence(
   db: AdminDatabase,
   userId: string,
   paidAt: string | null,
 ): Promise<PremiumUsageEvidence> {
   if (!paidAt) return { signals: [], verified: false };
-  const since = new Date(paidAt).toISOString();
+  const purchaseTime = Date.parse(paidAt);
+  const since = new Date(purchaseTime).toISOString();
+  const evidenceStart = new Date(purchaseTime - 3 * 31 * 86_400_000).toISOString();
   const sixMonthsAgo = new Date(Date.now() - 183 * 86_400_000).toISOString();
   const sixMonthStart = since > sixMonthsAgo ? since : sixMonthsAgo;
-  const [plans, attempts, freelancer, client] = await Promise.all([
+  const [plans, freelancer, client] = await Promise.all([
     db.from("project_plans").select("plan_id").eq("owner_id", userId).gte("created_at", since).limit(2),
-    db.from("skill_assessment_attempts").select("attempt_id").eq("user_id", userId).gte("started_at", sixMonthStart).limit(2),
     db.from("freelancer_profiles").select("freelancer_id").eq("user_id", userId).maybeSingle(),
     db.from("client_profiles").select("client_id").eq("user_id", userId).maybeSingle(),
   ]);
-  let verified = !plans.error && !attempts.error && !freelancer.error && !client.error;
+  let verified = !plans.error && !freelancer.error && !client.error;
   const signals: string[] = [];
   if ((plans.data?.length ?? 0) > 1) signals.push("More than one project plan created since purchase");
-  if ((attempts.data?.length ?? 0) > 1) signals.push("More than one skills assessment started in the last six months");
 
   if (freelancer.data?.freelancer_id) {
     const freelancerId = freelancer.data.freelancer_id;
-    const [applications, projects] = await Promise.all([
-      db.from("job_applications").select("application_id,created_at").eq("freelancer_id", freelancerId).gte("created_at", since).order("created_at").limit(1000),
-      db.from("projects").select("project_id").eq("freelancer_id", freelancerId).in("status", ["active", "revision", "in_progress"]).gte("created_at", since).limit(2),
-    ]);
-    verified = verified && !applications.error && !projects.error;
-    const byMonth = new Map<string, number>();
-    for (const application of applications.data ?? []) {
-      const month = String(application.created_at).slice(0, 7);
-      byMonth.set(month, (byMonth.get(month) ?? 0) + 1);
-    }
-    if ([...byMonth.values()].some((count) => count > 1)) signals.push("More than one job application in a calendar month since purchase");
-    if ((projects.data?.length ?? 0) > 1) signals.push("More than one active project started since purchase");
+    const applications = await db.from("job_applications")
+      .select("application_id,created_at")
+      .eq("freelancer_id", freelancerId)
+      .gte("created_at", evidenceStart)
+      .order("created_at")
+      .limit(1000);
+    verified = verified && !applications.error;
+    if ((applications.data?.length ?? 0) >= 1000) verified = false;
+    if (hasRollingThreeMonthOverage(
+      (applications.data ?? []).map((application) => application.created_at),
+      purchaseTime,
+    )) signals.push("More than one job application in a rolling three-month period since purchase");
   }
 
   if (client.data?.client_id) {
-    const jobs = await db.from("jobs").select("job_id").eq("client_id", client.data.client_id).limit(1000);
-    if (jobs.error) verified = false;
-    else if (jobs.data?.length) {
-      const applications = await db.from("job_applications").select("application_id").in("job_id", jobs.data.map((job) => job.job_id)).limit(2000);
-      if (applications.error) verified = false;
-      else if (applications.data?.length) {
-        const screenings = await db.from("screening_results").select("screening_id").in("application_id", applications.data.map((application) => application.application_id)).gte("screened_at", sixMonthStart).limit(6);
-        if (screenings.error) verified = false;
-        else if ((screenings.data?.length ?? 0) > 5) signals.push("More than five applicant screenings in the last six months");
-      }
-    }
+    const requests = await db.from("service_orders")
+      .select("order_id,created_at")
+      .eq("client_id", client.data.client_id)
+      .not("service_id", "is", null)
+      .gte("created_at", evidenceStart)
+      .order("created_at")
+      .limit(1000);
+    if (requests.error || (requests.data?.length ?? 0) >= 1000) verified = false;
+    else if (hasRollingThreeMonthOverage(
+      (requests.data ?? []).map((request) => request.created_at),
+      purchaseTime,
+    )) signals.push("More than one Hiring Request in a rolling three-month period since purchase");
   }
+
+  const screeningUsage = await db
+    .from("applicant_screening_reservations")
+    .select("reservation_id")
+    .eq("owner_user_id", userId)
+    .gte("completed_at", sixMonthStart)
+    .limit(2);
+  if (screeningUsage.error) verified = false;
+  else if ((screeningUsage.data?.length ?? 0) > 1)
+    signals.push("More than one AI applicant screening in the last six months");
   return { signals, verified };
 }
 
@@ -80,41 +111,24 @@ async function premiumUsageEvidenceForOrders(
     return evidence;
   }
   const userIds = [...new Set(orders.map((row) => row.user_id))];
-  const [plans, attempts, freelancers, clients] = await Promise.all([
+  const [plans, freelancers, clients, screenings] = await Promise.all([
     db.from("project_plans").select("plan_id,owner_id,created_at").in("owner_id", userIds).gte("created_at", earliest).limit(1000),
-    db.from("skill_assessment_attempts").select("attempt_id,user_id,started_at").in("user_id", userIds).gte("started_at", earliest).limit(1000),
     db.from("freelancer_profiles").select("user_id,freelancer_id").in("user_id", userIds),
     db.from("client_profiles").select("user_id,client_id").in("user_id", userIds),
+    db.from("applicant_screening_reservations").select("reservation_id,owner_user_id,completed_at").in("owner_user_id", userIds).gte("completed_at", earliest).limit(1000),
   ]);
-  let verified = !plans.error && !attempts.error && !freelancers.error && !clients.error && (plans.data?.length ?? 0) < 1000 && (attempts.data?.length ?? 0) < 1000;
+  let verified = !plans.error && !freelancers.error && !clients.error && !screenings.error && (plans.data?.length ?? 0) < 1000 && (screenings.data?.length ?? 0) < 1000;
   const freelancerIds = (freelancers.data ?? []).map((row) => row.freelancer_id);
   const clientIds = (clients.data ?? []).map((row) => row.client_id);
-  const [applications, projects, jobs] = await Promise.all([
-    freelancerIds.length ? db.from("job_applications").select("application_id,freelancer_id,created_at").in("freelancer_id", freelancerIds).gte("created_at", earliest).limit(1000) : Promise.resolve({ data: [], error: null }),
-    freelancerIds.length ? db.from("projects").select("project_id,freelancer_id,created_at").in("freelancer_id", freelancerIds).in("status", ["active", "revision", "in_progress"]).gte("created_at", earliest).limit(1000) : Promise.resolve({ data: [], error: null }),
-    clientIds.length ? db.from("jobs").select("job_id,client_id").in("client_id", clientIds).limit(1000) : Promise.resolve({ data: [], error: null }),
+  const evidenceStart = new Date(Date.parse(earliest) - 3 * 31 * 86_400_000).toISOString();
+  const [applications, hiringRequests] = await Promise.all([
+    freelancerIds.length ? db.from("job_applications").select("application_id,freelancer_id,created_at").in("freelancer_id", freelancerIds).gte("created_at", evidenceStart).limit(1000) : Promise.resolve({ data: [], error: null }),
+    clientIds.length ? db.from("service_orders").select("order_id,client_id,created_at").in("client_id", clientIds).not("service_id", "is", null).gte("created_at", evidenceStart).limit(1000) : Promise.resolve({ data: [], error: null }),
   ]);
-  verified = verified && !applications.error && !projects.error && !jobs.error && (applications.data?.length ?? 0) < 1000 && (projects.data?.length ?? 0) < 1000 && (jobs.data?.length ?? 0) < 1000;
-  const jobIds = (jobs.data ?? []).map((row) => row.job_id);
-  const clientApplications = jobIds.length
-    ? await db.from("job_applications").select("application_id,job_id").in("job_id", jobIds).limit(2000)
-    : { data: [], error: null };
-  const applicationIds = (clientApplications.data ?? []).map((row) => row.application_id);
-  const screenings = applicationIds.length
-    ? await db.from("screening_results").select("screening_id,application_id,screened_at").in("application_id", applicationIds).gte("screened_at", earliest).limit(1000)
-    : { data: [], error: null };
-  verified = verified && !clientApplications.error && !screenings.error && (clientApplications.data?.length ?? 0) < 2000 && (screenings.data?.length ?? 0) < 1000;
+  verified = verified && !applications.error && !hiringRequests.error && (applications.data?.length ?? 0) < 1000 && (hiringRequests.data?.length ?? 0) < 1000;
 
   const freelancerByUser = new Map((freelancers.data ?? []).map((row) => [row.user_id, row.freelancer_id]));
   const clientByUser = new Map((clients.data ?? []).map((row) => [row.user_id, row.client_id]));
-  const clientByJob = new Map((jobs.data ?? []).map((row) => [row.job_id, row.client_id]));
-  const jobByApplication = new Map((clientApplications.data ?? []).map((row) => [row.application_id, row.job_id]));
-  const screensByApplication = new Map<string, Array<{ screened_at: string | null }>>();
-  for (const screen of screenings.data ?? []) {
-    const rows = screensByApplication.get(screen.application_id) ?? [];
-    rows.push(screen);
-    screensByApplication.set(screen.application_id, rows);
-  }
   const day = 86_400_000;
   for (const row of orders) {
     const purchaseTime = Date.parse(sinceByOrder.get(row.order_id) ?? "");
@@ -126,27 +140,19 @@ async function premiumUsageEvidenceForOrders(
     const signals: string[] = [];
     if ((plans.data ?? []).filter((item) => item.owner_id === row.user_id && Date.parse(item.created_at) >= purchaseTime).length > 1)
       signals.push("More than one project plan created since purchase");
-    if ((attempts.data ?? []).filter((item) => item.user_id === row.user_id && Date.parse(item.started_at) >= sixMonthStart).length > 1)
-      signals.push("More than one skills assessment started in the last six months");
+    if ((screenings.data ?? []).filter((item) => item.owner_user_id === row.user_id && item.completed_at && Date.parse(item.completed_at) >= sixMonthStart).length > 1)
+      signals.push("More than one AI applicant screening in the last six months");
     const freelancerId = freelancerByUser.get(row.user_id);
     if (freelancerId) {
-      const byMonth = new Map<string, number>();
-      for (const application of applications.data ?? []) {
-        if (application.freelancer_id !== freelancerId || Date.parse(application.created_at) < purchaseTime) continue;
-        const month = String(application.created_at).slice(0, 7);
-        byMonth.set(month, (byMonth.get(month) ?? 0) + 1);
-      }
-      if ([...byMonth.values()].some((count) => count > 1)) signals.push("More than one job application in a calendar month since purchase");
-      if ((projects.data ?? []).filter((project) => project.freelancer_id === freelancerId && Date.parse(project.created_at) >= purchaseTime).length > 1)
-        signals.push("More than one active project started since purchase");
+      const userApplications = (applications.data ?? []).filter((application) => application.freelancer_id === freelancerId);
+      if (hasRollingThreeMonthOverage(userApplications.map((application) => application.created_at), purchaseTime))
+        signals.push("More than one job application in a rolling three-month period since purchase");
     }
     const clientId = clientByUser.get(row.user_id);
     if (clientId) {
-      const screeningCount = (screenings.data ?? []).filter((screen) => {
-        const jobId = jobByApplication.get(screen.application_id);
-        return jobId && clientByJob.get(jobId) === clientId && screen.screened_at && Date.parse(screen.screened_at) >= sixMonthStart;
-      }).length;
-      if (screeningCount > 5) signals.push("More than five applicant screenings in the last six months");
+      const userRequests = (hiringRequests.data ?? []).filter((request) => request.client_id === clientId);
+      if (hasRollingThreeMonthOverage(userRequests.map((request) => request.created_at), purchaseTime))
+        signals.push("More than one Hiring Request in a rolling three-month period since purchase");
     }
     evidence.set(row.order_id, { signals, verified });
   }

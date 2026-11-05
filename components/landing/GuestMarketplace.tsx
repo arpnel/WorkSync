@@ -251,7 +251,7 @@ export default function GuestMarketplace() {
         </DialogContent>
       </Dialog>
       <Dialog open={auth} onOpenChange={setAuth}>
-        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-sm">
+        <DialogContent className="auth-dialog-content max-h-[90dvh] overflow-y-auto sm:max-w-sm">
           <DialogTitle className="sr-only">Sign in to WorkSync</DialogTitle>
           <SigninDialog />
         </DialogContent>

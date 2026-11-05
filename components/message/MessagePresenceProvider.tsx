@@ -4,6 +4,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -20,6 +21,8 @@ export function MessagePresenceProvider({ children }: { children: ReactNode }) {
   const { settings, ready } = useMessageAccountSettings();
   const [userId, setUserId] = useState<string | null>(null);
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
+  const [presenceEnabled, setPresenceEnabled] = useState(false);
+  const previousActiveStatus = useRef<boolean | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -36,7 +39,25 @@ export function MessagePresenceProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!userId || !ready || !settings.activeStatus) {
+    if (!ready) return;
+    if (previousActiveStatus.current === null) {
+      previousActiveStatus.current = settings.activeStatus;
+      setPresenceEnabled(settings.activeStatus);
+      return;
+    }
+
+    previousActiveStatus.current = settings.activeStatus;
+    if (!settings.activeStatus) {
+      setPresenceEnabled(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => setPresenceEnabled(true), 5000);
+    return () => window.clearTimeout(timer);
+  }, [ready, settings.activeStatus]);
+
+  useEffect(() => {
+    if (!userId || !ready || !presenceEnabled) {
       setOnlineUserIds([]);
       return;
     }
@@ -118,10 +139,10 @@ export function MessagePresenceProvider({ children }: { children: ReactNode }) {
       void supabase.removeChannel(membershipChannel);
       channels.forEach((channel) => void supabase.removeChannel(channel));
     };
-  }, [userId, ready, settings.activeStatus]);
+  }, [userId, ready, presenceEnabled]);
 
   const visibleOnlineUserIds =
-    ready && settings.activeStatus ? new Set(onlineUserIds) : new Set<string>();
+    ready && presenceEnabled ? new Set(onlineUserIds) : new Set<string>();
   return (
     <MessagePresenceContext.Provider value={visibleOnlineUserIds}>
       {children}

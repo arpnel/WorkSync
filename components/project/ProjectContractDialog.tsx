@@ -50,8 +50,8 @@ export function ProjectContractDialog({
             </header>
             <section className="grid gap-3 sm:grid-cols-3">
               <div className="rounded-xl border p-4"><div className="flex items-center gap-2 text-xs font-medium text-muted-foreground"><Wallet className="h-4 w-4" />Agreed amount</div><p className="mt-2 text-xl font-semibold">PHP {project.budget.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</p></div>
-              <div className="rounded-xl border p-4"><div className="flex items-center gap-2 text-xs font-medium text-muted-foreground"><CalendarDays className="h-4 w-4" />Delivery period</div><p className="mt-2 font-semibold">{project.deliveryDays == null ? "Not set" : `${project.deliveryDays} days`}</p></div>
-              <div className="rounded-xl border p-4"><div className="flex items-center gap-2 text-xs font-medium text-muted-foreground"><RotateCcw className="h-4 w-4" />Revisions</div><p className="mt-2 font-semibold">{project.revisions == null ? "Not set" : project.revisions}</p></div>
+              <div className="rounded-xl border p-4"><div className="flex items-center gap-2 text-xs font-medium text-muted-foreground"><CalendarDays className="h-4 w-4" />Delivery period</div><p className="mt-2 text-xl font-semibold">{project.deliveryDays == null ? "Not set" : `${project.deliveryDays} days`}</p></div>
+              <div className="rounded-xl border p-4"><div className="flex items-center gap-2 text-xs font-medium text-muted-foreground"><RotateCcw className="h-4 w-4" />Revisions</div><p className="mt-2 text-xl font-semibold">{project.revisions == null ? "Not set" : project.revisions}</p></div>
             </section>
             <section className="space-y-3">
               <h3 className="flex items-center gap-2 font-semibold"><UserRound className="h-4 w-4 text-primary" />People & scope</h3>

@@ -7,7 +7,7 @@ export class FreeScreeningLimitError extends Error {
     public limit: number,
     public resetAt: string | null,
   ) {
-    super("The Free plan includes five AI screenings every six months.");
+    super("The Free plan includes one AI applicant screening every six months.");
   }
 }
 
@@ -38,8 +38,8 @@ export async function requestApplicantScreening(
   const data = await response.json().catch(() => null);
   if (data?.code === "FREE_SCREENING_LIMIT_REACHED")
     throw new FreeScreeningLimitError(
-      typeof data.used === "number" ? data.used : 5,
-      typeof data.limit === "number" ? data.limit : 5,
+      typeof data.used === "number" ? data.used : 1,
+      typeof data.limit === "number" ? data.limit : 1,
       typeof data.resetAt === "string" ? data.resetAt : null,
     );
   if (!response.ok || !data?.screening)

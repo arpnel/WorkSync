@@ -350,9 +350,16 @@ export default function CreateContractPage() {
       })
       .subscribe();
     agreementUpdateChannel.current = channel;
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refreshAgreementState();
+    };
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => {
       if (agreementUpdateChannel.current === channel) agreementUpdateChannel.current = null;
       void supabase.removeChannel(channel);
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, [applicationId, refreshAgreementState, request]);
 

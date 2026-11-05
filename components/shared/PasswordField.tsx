@@ -6,6 +6,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PasswordRequirements } from "@/components/auth/PasswordRequirements";
+import { InputErrorMessage } from "@/components/auth/InputErrorMessage";
 
 interface PasswordFieldProps {
   label: string;
@@ -31,16 +32,18 @@ export function PasswordField({
 }: PasswordFieldProps) {
   const [value, setValue] = React.useState("");
   return (
-    <Field>
-      <FieldLabel>{label}</FieldLabel>
+    <Field data-invalid={!!error}>
+      <FieldLabel htmlFor={`${name}-password`}>{label}</FieldLabel>
 
       <div className="relative">
         <Input
+          id={`${name}-password`}
           name={name}
           type={showPassword ? "text" : "password"}
           className="pr-10"
           required
           aria-invalid={!!error}
+          aria-describedby={error ? `${name}-password-error` : undefined}
           onChange={(event) => {
             setValue(event.target.value);
             onChange?.(event);
@@ -64,9 +67,7 @@ export function PasswordField({
       {showRequirements && <PasswordRequirements password={value} />}
 
       {error && (
-        <div className="mt-2 flex items-center gap-2 text-red-500 text-sm">
-          {error}
-        </div>
+        <InputErrorMessage id={`${name}-password-error`}>{error}</InputErrorMessage>
       )}
     </Field>
   );

@@ -101,8 +101,8 @@ const FreelancerTaxDeclaration = forwardRef<FreelancerTaxDeclarationHandle, { em
   return <section className={embedded || setupMode ? "space-y-4" : "space-y-4 border-t pt-5"}>
     {!embedded && <div><h3 className="font-semibold">BIR sworn declaration</h3><p className="mt-1 text-sm text-muted-foreground">{setupMode ? "For tax year 2026." : "Submit the BIR-received sworn declaration for tax year 2026. Its tax year is separate from the date the document was signed or prepared."}</p></div>}
     {rows.map((row) => <article key={row.declaration_id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-3 text-sm">
-      <div className="flex min-w-0 items-start gap-3">
-        <span className={`mt-0.5 grid size-8 shrink-0 place-items-center rounded-full border ${declarationStatusClass(row.status)}`}>{declarationStatusIcon(row.status)}</span>
+      <div className="flex min-w-0 flex-1 items-start gap-3">
+        <span className={`mt-0.5 grid size-7 shrink-0 place-items-center rounded-full border ${declarationStatusClass(row.status)}`}>{declarationStatusIcon(row.status)}</span>
         <div className="min-w-0">
           <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${declarationStatusClass(row.status)}`}>{declarationStatusLabel(row.status)}</span>
           <p className="mt-1 font-medium">{row.tax_year} BIR sworn declaration ({thresholdLabel(row.reported_threshold_status)})</p>
@@ -110,7 +110,7 @@ const FreelancerTaxDeclaration = forwardRef<FreelancerTaxDeclarationHandle, { em
           {row.review_notes && <p className="mt-2 text-sm text-muted-foreground">Review note: {row.review_notes}</p>}
         </div>
       </div>
-      {row.document_url && <Button asChild type="button" size="sm" variant="outline"><a href={row.document_url} target="_blank" rel="noreferrer"><FileText className="mr-2 size-4" />View document</a></Button>}
+      {row.document_url && <Button asChild type="button" size="sm" variant="outline" className="shrink-0"><a href={row.document_url} target="_blank" rel="noreferrer"><FileText className="mr-2 size-4" />View document</a></Button>}
     </article>)}
     <div className="space-y-4">
       <div className="space-y-2"><Label htmlFor="tax-declaration-threshold">Expected annual marketplace remittances</Label><StyledSelect id="tax-declaration-threshold" className="h-10 w-full rounded-lg border bg-background px-3 text-sm" value={thresholdStatus} onChange={(event) => setThresholdStatus(event.target.value)}><option value="not_exceeding">PHP 500,000 or less</option><option value="exceeded">Over PHP 500,000</option></StyledSelect></div>
@@ -139,10 +139,8 @@ const FreelancerTaxDeclaration = forwardRef<FreelancerTaxDeclarationHandle, { em
       </div>
       {(!hideSubmitButton || hasBlockingRecord) && <div className="space-y-3">
         {!hasBlockingRecord && !setupMode && !hideSubmitButton && <p className="text-sm text-muted-foreground">The document must cover tax year 2026. It may have been signed earlier.</p>}
-        {blockingDeclaration && <p role="status" className={`rounded-lg border p-3 text-sm ${declarationStatusClass(blockingDeclaration.status)}`}>
-          {blockingDeclaration.status === "accepted"
-            ? "Your 2026 declaration is approved. A replacement may be submitted if it is revoked."
-            : "Your 2026 declaration is awaiting review. Submit a corrected version if it is rejected."}
+        {blockingDeclaration && blockingDeclaration.status !== "accepted" && <p role="status" className={`rounded-lg border p-3 text-sm ${declarationStatusClass(blockingDeclaration.status)}`}>
+          Your 2026 declaration is awaiting review. Submit a corrected version if it is rejected.
         </p>}
         {!hideSubmitButton && <Button type="button" disabled={!canSubmit} onClick={() => void submit().catch(() => undefined)}>{busy ? "Submitting…" : "Submit for review"}</Button>}
       </div>}

@@ -89,6 +89,9 @@ export default function ModerationPage() {
   const [explanation, setExplanation] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const pageError = error.toLowerCase().includes("owner has reached the active listing limit")
+    ? ""
+    : error;
 
   useEffect(() => {
     let current = true;
@@ -349,12 +352,12 @@ export default function ModerationPage() {
           </div>
         </div>
       </AdminFilterPanel>
-      {error && (
+      {pageError && (
         <p
           role="alert"
           className="rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive"
         >
-          {error}
+          {pageError}
         </p>
       )}
       <Card className="min-w-0 gap-0 rounded-xl border shadow-none">

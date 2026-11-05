@@ -106,7 +106,7 @@ export const HeroHeader = () => {
                           Login
                         </Button>
                       </DialogTrigger>
-                      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
+                      <DialogContent className="auth-dialog-content max-h-[90dvh] overflow-y-auto sm:max-w-md">
                         <SigninDialog />
                       </DialogContent>
                     </Dialog>
@@ -114,7 +114,7 @@ export const HeroHeader = () => {
                       <DialogTrigger asChild>
                         <Button size="sm">Sign Up</Button>
                       </DialogTrigger>
-                      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
+                      <DialogContent className="auth-dialog-content max-h-[90dvh] overflow-y-auto sm:max-w-md">
                         <SignupDialog />
                       </DialogContent>
                     </Dialog>

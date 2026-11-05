@@ -645,8 +645,10 @@ export async function getProjectWorkspace(
     identities.freelancers.find((identity) => identity.freelancer_id === freelancerProfileId)?.user_id ||
     joinedFreelancerUserId;
 
-  const profileMap = new Map(
-    identities.profiles.map((item) => [item.user_id, item]),
+  const profileMap = new Map<string, PublicIdentity>(
+    identities.profiles.map(
+      (item): [string, PublicIdentity] => [item.user_id, item],
+    ),
   );
 
   const { data: conversation, error: conversationError } = conversationResult;
@@ -848,8 +850,10 @@ export async function getOlderProjectMessages(
 
   const senderIds = [...new Set(rows.map((message) => message.sender_id))];
   const identities = await getPublicIdentities({ userIds: senderIds });
-  const profileMap = new Map(
-    identities.profiles.map((profile) => [profile.user_id, profile]),
+  const profileMap = new Map<string, PublicIdentity>(
+    identities.profiles.map(
+      (profile): [string, PublicIdentity] => [profile.user_id, profile],
+    ),
   );
   const attachments = await messageAttachmentUrls(rows);
 
@@ -898,8 +902,10 @@ export async function getProjectConversationMessages(
 
   const senderIds = [...new Set(data.map((message) => message.sender_id))];
   const identities = await getPublicIdentities({ userIds: senderIds });
-  const profileMap = new Map(
-    identities.profiles.map((profile) => [profile.user_id, profile]),
+  const profileMap = new Map<string, PublicIdentity>(
+    identities.profiles.map(
+      (profile): [string, PublicIdentity] => [profile.user_id, profile],
+    ),
   );
   const attachments = await messageAttachmentUrls(data);
 

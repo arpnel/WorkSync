@@ -16,21 +16,12 @@ import { ERROR_MESSAGES } from "../constants";
 import { SignupDialog } from "../signup/SignupDialog";
 import { Button } from "@/components/ui/button";
 import { AuthLoadingScreen } from "@/components/auth/AuthLoadingScreen";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 
 export function SigninDialog() {
   const router = useRouter();
 
   const [email, setEmail] = React.useState("");
   const [signup, setSignup] = React.useState(false);
-  const [resetEmailDialogOpen, setResetEmailDialogOpen] = React.useState(false);
-
   const [password, setPassword] = React.useState("");
 
   const [loading, setLoading] = React.useState(false);
@@ -63,35 +54,6 @@ export function SigninDialog() {
     setPasswordError("");
     setEmailError("");
     setShowPassword(false);
-  };
-
-  const handleForgotPassword = async () => {
-    if (loading) return;
-    setFormError("");
-    setEmailError("");
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      setEmailError("Please enter a valid email address.");
-      return;
-    }
-    setLoading(true);
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(
-        email.trim(),
-        {
-          redirectTo: `${window.location.origin}/auth/callback?next=%2Freset-password`,
-        },
-      );
-      if (error) throw error;
-      setResetEmailDialogOpen(true);
-    } catch (cause) {
-      setEmailError(
-        cause instanceof Error
-          ? getSigninErrorMessage(cause)
-          : "Unable to send a reset link. Please try again.",
-      );
-    } finally {
-      setLoading(false);
-    }
   };
 
   const handleGoogleSignin = async () => {
@@ -231,30 +193,10 @@ export function SigninDialog() {
           }
         }}
         onTogglePassword={() => setShowPassword((prev) => !prev)}
-        onForgotPassword={handleForgotPassword}
         onGoogle={handleGoogleSignin}
         onSwitchToSignup={handleSwitchToSignup}
         onSubmit={handleSignin}
       />
-      <Dialog open={resetEmailDialogOpen} onOpenChange={setResetEmailDialogOpen}>
-        <DialogContent className="space-y-4 sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Check your email</DialogTitle>
-            <DialogDescription>
-              If an account uses <span className="font-medium text-foreground">{email}</span>,
-              password reset instructions were sent. Check that inbox and its
-              spam folder, then follow the link to choose a new password.
-            </DialogDescription>
-          </DialogHeader>
-          <Button
-            type="button"
-            className="w-full"
-            onClick={() => setResetEmailDialogOpen(false)}
-          >
-            Got it
-          </Button>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }

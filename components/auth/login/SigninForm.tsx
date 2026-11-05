@@ -21,8 +21,6 @@ export function SigninForm({
 
     onTogglePassword,
 
-    onForgotPassword,
-
     onGoogle,
 
     onSwitchToSignup,
@@ -65,16 +63,6 @@ export function SigninForm({
                     onPasswordChange(e.target.value)
                 }
             />
-
-            <div className="flex justify-end">
-                <button
-                    type="button"
-                    onClick={onForgotPassword}
-                    className="text-sm text-primary hover:underline"
-                >
-                    Forgot Password?
-                </button>
-            </div>
 
             <Button
                 type="submit"

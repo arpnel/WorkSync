@@ -25,8 +25,6 @@ export interface SigninFormProps {
 
   onTogglePassword: () => void;
 
-  onForgotPassword: () => void;
-
   onGoogle: () => void;
 
   // NEW

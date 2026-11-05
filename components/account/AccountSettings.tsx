@@ -105,8 +105,6 @@ export default function AccountSettings() {
         if (!passwordNonce.trim()) throw new Error("Enter the verification code sent to your current email.");
         await updatePasswordOnServer(password, undefined, passwordNonce.trim());
         setHasPasswordCredential(true);
-        setEmailNonce("");
-        setEmailCodeSent(false);
       }
       setCurrentPassword("");
       setPassword("");

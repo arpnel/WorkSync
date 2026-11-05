@@ -10,7 +10,10 @@ import { traceProjectFlow } from "@/services/project/projectFlowDiagnostics";
 import { SUPABASE_MAX_FILE_BYTES } from "@/lib/storage/supabaseStorage";
 import { createSignedUrlMap } from "@/services/storage/signedUrlBatch";
 import { projectPlanSnapshotSchema } from "@/services/project/projectPlanSnapshot";
-import { getPublicIdentities } from "@/services/profile/publicIdentityService";
+import {
+  getPublicIdentities,
+  type PublicIdentity,
+} from "@/services/profile/publicIdentityService";
 import {
   getJobWorkPlanAgreement,
   getServiceOrderWorkPlanAgreement,
@@ -449,11 +452,11 @@ function numeric(value: unknown, fallback = 0): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 function displayName(
-  profile: Record<string, unknown> | null,
+  profile: PublicIdentity | null,
   fallback: string,
 ): string {
-  const display = text(profile?.display_name).trim();
-  const full = [text(profile?.first_name), text(profile?.last_name)]
+  const display = profile?.display_name?.trim() ?? "";
+  const full = [profile?.first_name ?? "", profile?.last_name ?? ""]
     .filter(Boolean)
     .join(" ")
     .trim();

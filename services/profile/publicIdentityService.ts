@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabaseClient";
+﻿import { supabase } from "@/lib/supabaseClient";
 export interface PublicIdentity {
   user_id: string;
   display_name: string | null;
@@ -111,7 +111,7 @@ export async function getPublicIdentities(input: {
   return result;
 }
 export function identityName(
-  profile: PublicIdentity | undefined,
+  profile: Pick<PublicIdentity, "display_name" | "first_name" | "last_name"> | undefined,
   fallback: string,
 ) {
   const displayName = profile?.display_name?.trim() ?? "";
@@ -127,3 +127,4 @@ export function identityName(
     return displayName;
   return fullName || displayName || fallback;
 }
+

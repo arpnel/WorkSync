@@ -47,7 +47,9 @@ const recordsSchema = z
           })
           .transform(({ report: r }) => ({
             id: r.report_id,
-            title: r.listing_type + " report: " + r.reason,
+            title: r.reason
+              .replaceAll("_", " ")
+              .replace(/^./, (letter) => letter.toUpperCase()),
             status: r.status,
             created_at: r.created_at ?? "",
             owner_id: r.owner_id ?? undefined,
@@ -78,6 +80,8 @@ const recordsSchema = z
             status: "recorded",
             created_at: a.created_at ?? "",
             owner_id: a.admin_id ?? undefined,
+            target_id: a.target_id ?? undefined,
+            audit_details: a.details,
             detail: [
               "Admin: " + (a.admin_id ?? ""),
               "Target: " + (a.target_id ?? ""),
@@ -176,6 +180,7 @@ const adminProjectDetailsSchema = z.object({
       finalPrice: z.union([z.number(), z.string()]).nullable(),
       deliveryDays: z.number().nullable(),
       revisions: z.number().nullable(),
+      terms: z.string().nullable(),
       createdAt: z.string().nullable(),
       updatedAt: z.string().nullable(),
       clientSignedAt: z.string().nullable(),
@@ -451,7 +456,10 @@ export function parseAdminRecords(value: unknown, rpc: string, offset = 0) {
     const result = page ? page.rows : parseResponse(disputesSchema, value, rpc);
     const rows = result.map((row) => ({
       id: row.dispute_id,
-      title: `${row.category} — Project ${row.project_id}`,
+      title: row.category
+        .replaceAll("_", " ")
+        .replace(/\s+dispute$/i, "")
+        .replace(/\b\w/g, (letter) => letter.toUpperCase()),
       status: row.status,
       created_at: row.created_at ?? "",
       owner_id: row.opened_by ?? undefined,

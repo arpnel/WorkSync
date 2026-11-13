@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -34,7 +34,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Check, Copy, Download, Search, SlidersHorizontal, X } from "lucide-react";
+import { Check, Copy, Download, Search, SlidersHorizontal } from "lucide-react";
 
 type Ticket = {
   ticket_id: string;
@@ -106,6 +106,11 @@ export default function SupportTickets() {
     })
     .sort((a, b) => sort === "oldest" ? a.created_at.localeCompare(b.created_at) : sort === "name" ? a.subject.localeCompare(b.subject) : b.created_at.localeCompare(a.created_at));
   const pageCount = Math.max(1, Math.ceil(visible.length / pageSize));
+  const pageNumbers = pageCount <= 7
+    ? Array.from({ length: pageCount }, (_, index) => index + 1)
+    : [...new Set([1, page, page + 1, page + 2, pageCount])]
+        .filter((number) => number >= 1 && number <= pageCount)
+        .sort((a, b) => a - b);
   const visiblePage = visible.slice(page * pageSize, (page + 1) * pageSize);
   const ticketCounts = rows.reduce<Record<string, number>>((counts, ticket) => {
     counts[ticket.status] = (counts[ticket.status] ?? 0) + 1;
@@ -230,9 +235,9 @@ export default function SupportTickets() {
                   <label className="grid gap-1.5 text-sm font-medium">Created to
                     <Input className="h-10 bg-background font-normal" type="date" value={draftToDate} min={draftFromDate || undefined} onChange={(event) => setDraftToDate(event.target.value)} />
                   </label>
-                  <div className="flex items-center justify-between border-t pt-3">
-                    <Button type="button" variant="ghost" size="sm" onClick={() => { setDraftFromDate(""); setDraftToDate(""); }}><X className="size-4" />Clear dates</Button>
-                    <Button type="button" size="sm" onClick={() => { setFromDate(draftFromDate); setToDate(draftToDate); setPage(0); setFiltersOpen(false); }}>Apply</Button>
+                  <div className="flex items-center justify-end gap-3 border-t pt-3">
+                    <Button type="button" variant="outline" className="h-12 px-4 text-base" onClick={() => { setDraftFromDate(""); setDraftToDate(""); }}>Clear dates</Button>
+                    <Button type="button" className="h-12 px-5 text-base" onClick={() => { setFromDate(draftFromDate); setToDate(draftToDate); setPage(0); setFiltersOpen(false); }}>Apply</Button>
                   </div>
                 </div>
               </PopoverContent>
@@ -279,7 +284,7 @@ export default function SupportTickets() {
               <Table className="min-w-[980px]">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Ticket / reference</TableHead>
+                    <TableHead>Ticket</TableHead>
                     <TableHead>Requester</TableHead>
                     <TableHead>Category</TableHead>
                     <TableHead>Priority</TableHead>
@@ -293,7 +298,6 @@ export default function SupportTickets() {
                     <TableRow key={ticket.ticket_id}>
                       <TableCell className="max-w-64">
                         <p className="truncate font-medium">{ticket.subject}</p>
-                        <p className="mt-1 truncate font-mono text-xs text-muted-foreground">{ticket.ticket_id}</p>
                       </TableCell>
                       <TableCell className="max-w-56 truncate">{ticket.requester_email}</TableCell>
                       <TableCell>{ticket.category}</TableCell>
@@ -322,10 +326,17 @@ export default function SupportTickets() {
             </div>
           )}
           {!loading && visible.length > 0 && (
-            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t pt-4">
-              <Button variant="outline" disabled={page === 0} onClick={() => setPage((current) => Math.max(0, current - 1))}>Previous</Button>
-              <span className="text-sm text-muted-foreground">Showing {page * pageSize + 1}-{Math.min((page + 1) * pageSize, visible.length)} of {visible.length} tickets</span>
-              <Button variant="outline" disabled={page + 1 >= pageCount} onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))}>Next</Button>
+            <div className="mt-5 flex flex-wrap items-center justify-center gap-1.5 border-t pt-4">
+              <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage(0)}>First</Button>
+              <Button size="sm" variant="outline" aria-label="Previous page" disabled={page === 0} onClick={() => setPage((current) => Math.max(0, current - 1))}>Previous</Button>
+              {pageNumbers.map((number, index) => (
+                <Fragment key={number}>
+                  {index > 0 && number - pageNumbers[index - 1] > 1 && <span className="px-1 text-muted-foreground" aria-hidden="true">…</span>}
+                  <Button size="sm" variant={number === page + 1 ? "default" : "outline"} aria-label={`Page ${number}`} aria-current={number === page + 1 ? "page" : undefined} onClick={() => setPage(number - 1)}>{number}</Button>
+                </Fragment>
+              ))}
+              <Button size="sm" variant="outline" aria-label="Next page" disabled={page + 1 >= pageCount} onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))}>Next</Button>
+              <Button size="sm" variant="outline" disabled={page + 1 >= pageCount} onClick={() => setPage(pageCount - 1)}>Last</Button>
             </div>
           )}
         </CardContent>
@@ -367,13 +378,6 @@ export default function SupportTickets() {
                 </Button>
               )}
             </div>
-            {selected && (
-              <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                <span>{selected.category}</span>
-                <span aria-hidden="true">·</span>
-                <span className="break-all">{selected.requester_email}</span>
-              </div>
-            )}
           </DialogHeader>
           {selected && (
             <div className="space-y-4">

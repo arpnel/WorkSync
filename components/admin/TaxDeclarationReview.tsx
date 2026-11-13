@@ -3,12 +3,16 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import AdminDocumentLink from "@/components/admin/AdminDocumentLink";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import { supabase } from "@/lib/supabaseClient";
+import { getPublicIdentities, identityName } from "@/services/profile/publicIdentityService";
+import AdminPagination from "@/components/admin/AdminPagination";
+import { Check, Copy, Search, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -49,6 +53,15 @@ const statusClass = (status: string) => status === "accepted"
 export default function TaxDeclarationReview() {
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<Row[]>([]);
+  const [freelancerNames, setFreelancerNames] = useState<Record<string, string>>({});
+  const [page, setPage] = useState(0);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "reviewed">("all");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [draftFromDate, setDraftFromDate] = useState("");
+  const [draftToDate, setDraftToDate] = useState("");
+  const [copiedReference, setCopiedReference] = useState(false);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [taxYearConfirmed, setTaxYearConfirmed] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState("");
@@ -64,7 +77,15 @@ export default function TaxDeclarationReview() {
       const response = await fetch("/api/admin/tax-declarations", { headers: { Authorization: `Bearer ${session.access_token}` }, cache: "no-store" });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "Unable to load tax declarations.");
-      setRows(body.declarations ?? []);
+      const declarations = (body.declarations ?? []) as Row[];
+      setRows(declarations);
+      setPage(0);
+      try {
+        const identities = await getPublicIdentities({ userIds: [...new Set(declarations.map((row) => row.user_id))] });
+        setFreelancerNames(Object.fromEntries(identities.profiles.map((profile) => [profile.user_id, identityName(profile, "")]).filter(([, name]) => name)));
+      } catch {
+        setFreelancerNames({});
+      }
       setRevocationAvailable(body.revocationAvailable === true);
     } finally {
       setLoading(false);
@@ -73,9 +94,23 @@ export default function TaxDeclarationReview() {
   useEffect(() => { void load().catch((cause) => setError(cause instanceof Error ? cause.message : "Unable to load declarations.")); }, [load]);
   const pendingRows = useMemo(() => rows.filter((row) => row.status === "pending"), [rows]);
   const reviewedRows = useMemo(() => rows.filter((row) => row.status !== "pending"), [rows]);
+  const filteredRows = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return rows.filter((row) => {
+      if (statusFilter === "pending" && row.status !== "pending") return false;
+      if (statusFilter === "reviewed" && row.status === "pending") return false;
+      const submittedDate = row.submitted_at.slice(0, 10);
+      if (fromDate && submittedDate < fromDate) return false;
+      if (toDate && submittedDate > toDate) return false;
+      return !query || [row.declaration_id, row.tax_year, row.reported_threshold_status, row.status, freelancerNames[row.user_id]]
+        .some((value) => String(value ?? "").toLowerCase().includes(query));
+    });
+  }, [rows, search, statusFilter, freelancerNames, fromDate, toDate]);
+  const visibleRows = filteredRows.slice(page * 10, (page + 1) * 10);
 
   function openDeclaration(row: Row) {
     setSelectedDeclaration(row);
+    setCopiedReference(false);
     setNotes((current) => ({ ...current, [row.declaration_id]: current[row.declaration_id] ?? "" }));
     setError("");
     setSuccess("");
@@ -131,17 +166,6 @@ export default function TaxDeclarationReview() {
         </Button>
       </div>
 
-      {!loading && (
-        <div className="flex flex-wrap gap-2 text-xs">
-          <span className="rounded-full bg-amber-500/10 px-2 py-0.5 font-medium text-amber-700 dark:text-amber-300">
-            {pendingRows.length} needs review
-          </span>
-          <span className="rounded-full bg-muted px-2 py-0.5 font-medium text-muted-foreground">
-            {reviewedRows.length} reviewed
-          </span>
-        </div>
-      )}
-
       {error && (
         <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
           {error}
@@ -157,101 +181,76 @@ export default function TaxDeclarationReview() {
         <ContentSkeleton label="Loading freelancer tax declarations" variant="admin-table" count={5} />
       )}
 
-      {!loading && pendingRows.length > 0 && (
-        <section className="space-y-3">
-          <div className="flex items-center gap-2">
-            <h3 className="font-semibold">Needs review</h3>
-            <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
-              {pendingRows.length}
-            </span>
-          </div>
-          <div className="overflow-x-auto rounded-lg border">
-            <table className="w-full min-w-[700px] text-left text-sm">
-              <thead className="bg-muted/50 text-xs text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Declaration</th>
-                  <th className="px-4 py-3 font-medium">For</th>
-                  <th className="px-4 py-3 font-medium">Submitted</th>
-                  <th className="px-4 py-3 text-right font-medium">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {pendingRows.map((row) => (
-                  <tr key={row.declaration_id}>
-                    <td className="px-4 py-3 font-medium">
-                      {row.tax_year} sworn declaration
-                      <p className="mt-0.5 text-xs font-normal capitalize text-muted-foreground">
-                        {row.reported_threshold_status.replaceAll("_", " ")} threshold
-                      </p>
-                    </td>
-                    <td className="max-w-56 truncate px-4 py-3" title={row.user_id}>
-                      Freelancer: {row.user_id}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
-                      {dateTime(row.submitted_at)}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <Button size="sm" onClick={() => openDeclaration(row)}>
-                        Review
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
-
       {!loading && (
         <section className="space-y-3">
-          <div>
-            <h3 className="font-semibold">Reviewed declarations</h3>
-            <p className="text-sm text-muted-foreground">
-              Previously reviewed freelancer declarations.
-            </p>
+          <div className="flex gap-2">
+            <label className="relative block min-w-0 flex-1">
+              <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-3 size-4 text-muted-foreground" />
+              <Input className="h-10 bg-background pl-10" value={search} placeholder="Search declarations or freelancers..." aria-label="Search sworn declarations" onChange={(event) => { setSearch(event.target.value); setPage(0); }} />
+            </label>
+            <Popover onOpenChange={(open) => { if (open) { setDraftFromDate(fromDate); setDraftToDate(toDate); } }}>
+              <PopoverTrigger asChild>
+                <Button type="button" variant="outline" className="h-10 shrink-0"><SlidersHorizontal className="size-4" />Filters</Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-[min(22rem,calc(100vw-2rem))] p-4">
+                <div className="grid gap-4">
+                  <label className="grid gap-1.5 text-sm font-medium">Submitted from<Input type="date" value={draftFromDate} max={draftToDate || undefined} onChange={(event) => setDraftFromDate(event.target.value)} /></label>
+                  <label className="grid gap-1.5 text-sm font-medium">Submitted to<Input type="date" value={draftToDate} min={draftFromDate || undefined} onChange={(event) => setDraftToDate(event.target.value)} /></label>
+                  <div className="flex items-center justify-end gap-3 border-t pt-3">
+                    <Button type="button" variant="outline" onClick={() => { setDraftFromDate(""); setDraftToDate(""); setFromDate(""); setToDate(""); setPage(0); }}>Clear dates</Button>
+                    <Button type="button" onClick={() => { setFromDate(draftFromDate); setToDate(draftToDate); setPage(0); }}>Apply</Button>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
-          {reviewedRows.length === 0 ? (
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Filter declarations by review status">
+            {([
+              ["all", `All declarations (${rows.length})`],
+              ["pending", `Needs review (${pendingRows.length})`],
+              ["reviewed", `Reviewed (${reviewedRows.length})`],
+            ] as const).map(([value, label]) => (
+              <button key={value} type="button" aria-pressed={statusFilter === value} onClick={() => { setStatusFilter(value); setPage(0); }} className={`rounded-full px-3 py-1 text-xs font-medium ${statusFilter === value ? "bg-blue-600 text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {filteredRows.length === 0 ? (
             <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-              {pendingRows.length > 0
-                ? "No reviewed declarations yet."
-                : "No BIR sworn declarations have been submitted."}
+              {rows.length ? "No declarations match these filters." : "No BIR sworn declarations have been submitted."}
             </p>
           ) : (
             <div className="overflow-x-auto rounded-lg border">
-              <table className="w-full min-w-[760px] text-left text-sm">
+              <table className="w-full min-w-[820px] text-left text-sm">
                 <thead className="bg-muted/50 text-xs text-muted-foreground">
                   <tr>
-                    <th className="px-4 py-3 font-medium">Declaration</th>
-                    <th className="px-4 py-3 font-medium">For</th>
+                    <th className="px-4 py-3 font-medium">Name</th>
+                    <th className="px-4 py-3 font-medium">Tax year</th>
+                    <th className="px-4 py-3 font-medium">Threshold</th>
                     <th className="px-4 py-3 font-medium">Status</th>
-                    <th className="px-4 py-3 font-medium">Reviewed on</th>
+                    <th className="px-4 py-3 font-medium">Date</th>
                     <th className="px-4 py-3 text-right font-medium">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {reviewedRows.map((row) => (
+                {visibleRows.map((row) => (
                     <tr key={row.declaration_id}>
-                      <td className="px-4 py-3 font-medium">
-                        {row.tax_year} sworn declaration
-                        <p className="mt-0.5 text-xs font-normal capitalize text-muted-foreground">
-                          {row.reported_threshold_status.replaceAll("_", " ")} threshold
-                        </p>
+                      <td className="max-w-56 truncate px-4 py-3 font-medium">
+                        {freelancerNames[row.user_id] || "Name unavailable"}
                       </td>
-                      <td className="max-w-56 truncate px-4 py-3" title={row.user_id}>
-                        Freelancer: {row.user_id}
-                      </td>
+                      <td className="px-4 py-3 font-medium">{row.tax_year}</td>
+                      <td className="px-4 py-3 capitalize">{row.reported_threshold_status.replaceAll("_", " ")}</td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs capitalize ${statusClass(row.status)}`}>
                           {row.status.replaceAll("_", " ")}
                         </span>
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
-                        {dateTime(row.reviewed_at)}
+                      {dateTime(row.reviewed_at ?? row.submitted_at)}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <Button variant="outline" size="sm" onClick={() => openDeclaration(row)}>
-                          Details
+                      <Button variant={row.status === "pending" ? "default" : "outline"} size="sm" onClick={() => openDeclaration(row)}>
+                        {row.status === "pending" ? "Review" : "Details"}
                         </Button>
                       </td>
                     </tr>
@@ -260,6 +259,7 @@ export default function TaxDeclarationReview() {
               </table>
             </div>
           )}
+          {filteredRows.length > 0 && <AdminPagination page={page} itemCount={filteredRows.length} onPageChange={setPage} />}
         </section>
       )}
 
@@ -275,12 +275,24 @@ export default function TaxDeclarationReview() {
           <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
             <DialogHeader className="min-w-0 shrink-0 border-b p-5 pr-12">
               <DialogTitle>{selectedDeclaration.tax_year} sworn declaration</DialogTitle>
-              <DialogDescription className="break-words">
-                Freelancer: {selectedDeclaration.user_id} · Status: {selectedDeclaration.status.replaceAll("_", " ")}
-              </DialogDescription>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="break-all">Reference ID: {selectedDeclaration.declaration_id}</span>
+                <Button type="button" variant="outline" size="icon-sm" aria-label="Copy declaration reference ID" title={copiedReference ? "Copied" : "Copy reference ID"} onClick={async () => {
+                  try { await navigator.clipboard.writeText(selectedDeclaration.declaration_id); setCopiedReference(true); }
+                  catch { setCopiedReference(false); }
+                }}>{copiedReference ? <Check className="size-4" /> : <Copy className="size-4" />}</Button>
+              </div>
             </DialogHeader>
             <div className="min-h-0 min-w-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden p-5">
               <dl className="grid min-w-0 gap-3 text-sm sm:grid-cols-2">
+                <div>
+                  <dt className="text-muted-foreground">Freelancer</dt>
+                  <dd>{freelancerNames[selectedDeclaration.user_id] || "Name unavailable"}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Status</dt>
+                  <dd className="capitalize">{selectedDeclaration.status.replaceAll("_", " ")}</dd>
+                </div>
                 <div className="min-w-0">
                   <dt className="text-muted-foreground">Freelancer account</dt>
                   <dd className="break-all">{selectedDeclaration.user_id}</dd>

@@ -2,6 +2,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
+  Activity,
+  ArrowRight,
   ShieldCheck,
   Scale,
   ChartNoAxesCombined,
@@ -67,6 +69,52 @@ const reviewModules = [
   ADMIN_MODULES.verification,
 ] as const;
 type FeedState = { data?: AdminResult; error?: string };
+
+function auditActionLabel(action: string) {
+  const labels: Record<string, string> = {
+    resolve_dispute: "Dispute resolved",
+    cancel_project: "Project cancelled",
+    moderate_account: "Account moderation updated",
+    "service:hide": "Service listing hidden",
+    "service:restore": "Service listing restored",
+    "job:hide": "Job listing hidden",
+    "job:restore": "Job listing restored",
+  };
+  if (labels[action.toLowerCase()]) return labels[action.toLowerCase()];
+  return action
+    .split(":")
+    .map((part) => part.replaceAll("_", " ").trim())
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" · ");
+}
+
+function auditTargetLabel(action: string) {
+  const prefix = action.split(":")[0]?.toLowerCase();
+  return ({
+    service: "Service listing",
+    job: "Job listing",
+    project: "Project",
+    cancel_project: "Project",
+    resolve_dispute: "Dispute",
+    moderate_account: "User account",
+    user: "User account",
+  } as Record<string, string>)[prefix] ?? "Record";
+}
+
+function auditSummary(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const details = value as Record<string, unknown>;
+  const note = [details.resolution, details.notes, details.reason].find(
+    (item): item is string => typeof item === "string" && Boolean(item.trim()),
+  );
+  if (note) return note.trim();
+  const status = details.status;
+  return typeof status === "string" && status.trim()
+    ? `Status: ${status.replaceAll("_", " ")}`
+    : null;
+}
+
 export default function AdminDashboard() {
   const [results, setResults] = useState<
     Partial<Record<AdminModule, FeedState>>
@@ -403,21 +451,23 @@ export default function AdminDashboard() {
             </div>
           </section>
           <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <CardTitle>System audit stream</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between gap-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <Activity className="size-5" />
+                </span>
+                <div className="min-w-0">
+                  <CardTitle>Recent admin activity</CardTitle>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Latest recorded administrative and moderation activity.
+                    A clear record of recent moderation and project actions.
                   </p>
                 </div>
-                <Link
-                  href="/admin/audit"
-                  className="text-sm font-medium text-primary hover:underline"
-                >
-                  View history
-                </Link>
               </div>
+              <Button asChild variant="outline" size="sm" className="shrink-0">
+                <Link href="/admin/audit">
+                  View history <ArrowRight className="ml-1 size-4" />
+                </Link>
+              </Button>
             </CardHeader>
             <CardContent>
               {results.overview?.error ? (
@@ -425,23 +475,44 @@ export default function AdminDashboard() {
                   {results.overview.error}
                 </p>
               ) : results.overview?.data?.rows.length ? (
-                <ul className="divide-y">
+                <ul className="space-y-2">
                   {results.overview.data.rows.slice(0, 5).map((row) => (
-                    <li
-                      key={row.id}
-                      className="flex flex-wrap items-start justify-between gap-3 py-3 first:pt-0 last:pb-0"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium">{row.title}</p>
-                        <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                          {row.detail}
-                        </p>
+                    <li key={row.id}>
+                      <Link
+                        href={`/admin/audit?record=${encodeURIComponent(row.id)}`}
+                        className="block rounded-xl border bg-muted/20 p-3 transition-colors hover:border-primary/40 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:p-4"
+                        aria-label={`View audit details: ${auditActionLabel(row.title)}`}
+                      >
+                      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
+                          <p className="text-sm font-semibold">{auditActionLabel(row.title)}</p>
+                          <Badge variant="secondary" className="font-normal">
+                            {auditTargetLabel(row.title)}
+                          </Badge>
+                        </div>
+                        <time className="shrink-0 text-xs text-muted-foreground">
+                          {row.created_at
+                            ? new Date(row.created_at).toLocaleString(undefined, {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                                hour: "numeric",
+                                minute: "2-digit",
+                              })
+                            : "Date unavailable"}
+                        </time>
                       </div>
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {row.created_at
-                          ? new Date(row.created_at).toLocaleString()
-                          : "Date unavailable"}
-                      </span>
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        By <span className="font-medium text-foreground">{row.owner_name || "Administrator"}</span>
+                        <span className="mx-1.5">·</span>
+                        Target: <span className="font-medium text-foreground">{row.target_name || auditTargetLabel(row.title)}</span>
+                      </p>
+                      {auditSummary(row.audit_details) && (
+                        <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-muted-foreground">
+                          {auditSummary(row.audit_details)}
+                        </p>
+                      )}
+                      </Link>
                     </li>
                   ))}
                 </ul>

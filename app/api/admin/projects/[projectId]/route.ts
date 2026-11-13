@@ -74,7 +74,7 @@ export async function GET(
     );
 
     const contractSelect =
-      "contract_id,status,final_price,delivery_time_days,revisions_count,created_at,updated_at,client_signed_at,freelancer_signed_at,current_version,client_signed_version,freelancer_signed_version";
+      "contract_id,status,final_price,delivery_time_days,revisions_count,terms,created_at,updated_at,client_signed_at,freelancer_signed_at,current_version,client_signed_version,freelancer_signed_version";
     const contractResults = await Promise.all([
       project.order_id
         ? db
@@ -165,6 +165,7 @@ export async function GET(
             finalPrice: contract.final_price,
             deliveryDays: contract.delivery_time_days,
             revisions: contract.revisions_count,
+            terms: contract.terms,
             createdAt: contract.created_at,
             updatedAt: contract.updated_at,
             clientSignedAt: contract.client_signed_at,

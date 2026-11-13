@@ -1,4 +1,4 @@
-import { PaymentError } from "@/lib/payments/paymongo";
+﻿import { PaymentError } from "@/lib/payments/paymongo";
 import { paymentResponse, paymentUser } from "@/services/payments/paymentServer";
 
 export const runtime = "nodejs";
@@ -51,9 +51,7 @@ export async function POST(request: Request) {
       if (result.error) throw new PaymentError("Seller document record is unavailable.");
       if (result.data?.document_path) paths = [result.data.document_path];
     } else {
-      const result = await db.from("verification_requests").select("document_paths").eq("request_id", recordId).maybeSingle();
-      if (result.error) throw new PaymentError("Identity verification record is unavailable.");
-      paths = Array.isArray(result.data?.document_paths) ? result.data.document_paths : [];
+      throw new PaymentError("Unsupported document source.", 400);
     }
 
     const path = typeof body?.path === "string" ? body.path : paths[0];
@@ -70,3 +68,5 @@ export async function POST(request: Request) {
     return paymentResponse(error);
   }
 }
+
+

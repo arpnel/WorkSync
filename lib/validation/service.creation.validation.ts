@@ -3,6 +3,49 @@ import type { ListingRole } from "@/services/serviceP/service.types";
 
 export const MAX_JOB_BUDGET_PHP = 100_000;
 export const MAX_SERVICE_PRICE_PHP = 100_000;
+export const MIN_SERVICE_PRICE_PHP = 100;
+export const MAX_STANDARD_SERVICE_PRICE_PHP = 10_000;
+
+export function servicePriceValidationError(
+  price: number | undefined,
+  serviceType: "standard" | "milestone" = "standard",
+) {
+  if (price === undefined || !Number.isFinite(price)) {
+    return "Enter a valid service price.";
+  }
+  if (price < MIN_SERVICE_PRICE_PHP) {
+    return "Service price must be at least PHP 100.";
+  }
+  if (price <= 0) {
+    return "Price must be greater than 0.";
+  }
+  if (price > MAX_SERVICE_PRICE_PHP) {
+    return "Service price must be no more than PHP 100,000.";
+  }
+  if (serviceType === "standard" && price > MAX_STANDARD_SERVICE_PRICE_PHP) {
+    return 'Price cannot exceed PHP 10,000. Select "Milestone" for higher amounts.';
+  }
+  return null;
+}
+
+export function jobBudgetValidationError(
+  budget: number | undefined,
+  projectType: "standard" | "milestone" = "standard",
+) {
+  if (budget === undefined || !Number.isFinite(budget)) {
+    return "Enter a valid project budget.";
+  }
+  if (budget < MIN_SERVICE_PRICE_PHP) {
+    return "Project budget must be at least PHP 100.";
+  }
+  if (budget > MAX_JOB_BUDGET_PHP) {
+    return "Project budget must be no more than PHP 100,000.";
+  }
+  if (projectType === "standard" && budget > MAX_STANDARD_SERVICE_PRICE_PHP) {
+    return 'Budget cannot exceed PHP 10,000. Select "Milestone" for higher amounts.';
+  }
+  return null;
+}
 
 type ValidationResult<T> =
   | { ok: true; data: T }
@@ -46,14 +89,8 @@ export function validateListingCreationValues(
   }
 
   if (role === "freelancer") {
-    if (
-      values.price === undefined ||
-      !Number.isFinite(values.price) ||
-      values.price <= 0 ||
-      values.price > MAX_SERVICE_PRICE_PHP
-    ) {
-      errors.price = "Price must be greater than 0 and no more than PHP 100,000.";
-    }
+    const priceError = servicePriceValidationError(values.price, values.serviceType);
+    if (priceError) errors.price = priceError;
 
     if (
       !Number.isFinite(values.deliveryTimeDays) ||
@@ -66,15 +103,8 @@ export function validateListingCreationValues(
       errors.revisionCount = "Revision count cannot be negative.";
     }
   } else {
-    if (
-      values.budgetMax === undefined ||
-      !Number.isFinite(values.budgetMax) ||
-      values.budgetMax <= 0 ||
-      values.budgetMax > MAX_JOB_BUDGET_PHP
-    ) {
-      errors.budgetMax =
-        "Budget must be greater than 0 and no more than PHP 100,000.";
-    }
+    const budgetError = jobBudgetValidationError(values.budgetMax, values.serviceType);
+    if (budgetError) errors.budgetMax = budgetError;
 
     if (
       !["beginner", "intermediate", "expert"].includes(values.experienceLevel)

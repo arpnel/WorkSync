@@ -1,6 +1,6 @@
 import type { ServiceFormValues } from "../types/service-form.types";
-import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { RequiredLabel } from "./RequiredLabel";
 
 const levels = [
   { value: "beginner", label: "Beginner" },
@@ -17,7 +17,7 @@ type Props = {
 export function JobExpertiseSection({ values, errors, onChange }: Props) {
   return (
     <div className="space-y-3 md:col-span-2">
-      <Label>Expected Expertise</Label>
+      <RequiredLabel>Expected Expertise</RequiredLabel>
       <div
         className="grid grid-cols-3 gap-2"
         role="group"

@@ -1,10 +1,10 @@
-import { ADMIN_MODULES } from "@/services/admin/adminModules";
-import AdminRecords from "@/components/admin/AdminRecords";
+import AdminPageHeader from "@/components/admin/AdminPageHeader";
+import AdminProjectTabs from "@/components/admin/AdminProjectTabs";
 export default function Page() {
   return (
-    <AdminRecords
-      module={ADMIN_MODULES.projects}
-      title="Projects and contracts"
-    />
+    <div className="mx-auto w-full max-w-[1600px] min-w-0 space-y-6">
+      <AdminPageHeader title="Projects and contracts" />
+      <AdminProjectTabs />
+    </div>
   );
 }

@@ -2,36 +2,23 @@
 
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import { useEffect, useState } from "react";
-import { getAdminDisputeContext } from "@/services/admin/adminService";
+import {
+  getAdminDisputeContext,
+} from "@/services/admin/adminService";
 import type { AdminDisputeContext } from "@/services/admin/adminResponses";
-import { openProjectAttachment } from "@/services/project/projectDeliveryService";
+import {
+  downloadProjectAttachment,
+  openProjectAttachment,
+} from "@/services/project/projectDeliveryService";
+import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { AdminStatus } from "@/components/admin/admin-ui";
-import {
-  projectPlanSnapshotSchema,
-  type ProjectPlanSnapshotData,
-} from "@/services/project/projectPlanSnapshot";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 
 type ContractTermsRecord = Record<string, unknown>;
 type ParsedContractTerms = {
   plainText: string | null;
   terms: Array<{ label: string; value: string }> | null;
-  plan: ProjectPlanSnapshotData | null;
-  planUnavailable: boolean;
-  projectTitle: string | null;
-  description: string | null;
-  startDate: string | null;
-  deadline: string | null;
 };
-
 function isRecord(value: unknown): value is ContractTermsRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -56,7 +43,13 @@ function readableTermValue(value: unknown, depth = 0): string {
   }
   if (isRecord(value)) {
     return Object.entries(value)
-      .filter(([key]) => !/(^id$|_id$|Id$|^schemaVersion$)/i.test(key))
+      .filter(([key]) => {
+        const normalizedKey = key.replace(/[^a-z0-9]/gi, "").toLowerCase();
+        return (
+          !/(^id$|_id$|Id$|^schemaVersion$)/i.test(key) &&
+          normalizedKey !== "categoryname"
+        );
+      })
       .map(([key, item]) => {
         const text = readableTermValue(item, depth + 1);
         return text ? `${"  ".repeat(depth)}${readableLabel(key)}: ${text}` : "";
@@ -75,12 +68,6 @@ function parseContractTerms(raw: string): ParsedContractTerms {
     return {
       plainText: raw,
       terms: null,
-      plan: null,
-      planUnavailable: false,
-      projectTitle: null,
-      description: null,
-      startDate: null,
-      deadline: null,
     };
   }
 
@@ -88,43 +75,41 @@ function parseContractTerms(raw: string): ParsedContractTerms {
     return {
       plainText: typeof value === "string" ? value : readableTermValue(value),
       terms: null,
-      plan: null,
-      planUnavailable: false,
-      projectTitle: null,
-      description: null,
-      startDate: null,
-      deadline: null,
     };
   }
 
-  const planValue = isRecord(value.plan) ? value.plan : null;
-  const parsedPlan = planValue
-    ? projectPlanSnapshotSchema.safeParse({
-        ...planValue,
-        description: typeof planValue.description === "string" ? planValue.description : "",
-      })
-    : null;
-  const plan = parsedPlan?.success ? parsedPlan.data : null;
+  const summaryFields = new Set([
+    "plan",
+    "schemaversion",
+    "projecttitle",
+    "description",
+    "startdate",
+    "deadline",
+    "budget",
+    "price",
+    "finalprice",
+    "agreedprice",
+    "deliverydays",
+    "deliverytime",
+    "deliverytimedays",
+    "revisions",
+    "revisionscount",
+    "includedrevisions",
+    "categoryid",
+    "categoryname",
+  ]);
   const terms = Object.entries(value)
-    .filter(([key]) => !["plan", "schemaVersion", "projectTitle", "description", "startDate", "deadline", "budget", "deliveryDays", "revisionsCount"].includes(key))
+    .filter(([key]) => {
+      const normalizedKey = key.replace(/[^a-z0-9]/gi, "").toLowerCase();
+      return !summaryFields.has(normalizedKey);
+    })
     .map(([key, item]) => ({ label: readableLabel(key), value: readableTermValue(item) }))
     .filter((item) => item.value);
 
   return {
     plainText: null,
     terms,
-    plan,
-    planUnavailable: Boolean(planValue && !plan),
-    projectTitle: typeof value.projectTitle === "string" ? value.projectTitle : null,
-    description: typeof value.description === "string" ? value.description : null,
-    startDate: typeof value.startDate === "string" ? value.startDate : null,
-    deadline: typeof value.deadline === "string" ? value.deadline : null,
   };
-}
-
-function formatContractDate(value: string) {
-  const date = new Date(`${value.slice(0, 10)}T00:00:00`);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
 }
 
 function ContractTermsOverview({ raw }: { raw: string }) {
@@ -134,29 +119,7 @@ function ContractTermsOverview({ raw }: { raw: string }) {
   }
 
   return (
-    <div className="mt-3 space-y-4">
-      {parsed.projectTitle && <p className="font-medium">{parsed.projectTitle}</p>}
-      {parsed.description && (
-        <div>
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Project description</h4>
-          <p className="mt-1 whitespace-pre-wrap break-words">{parsed.description}</p>
-        </div>
-      )}
-      {(parsed.startDate || parsed.deadline) && (
-        <dl className="grid gap-x-5 gap-y-2 sm:grid-cols-2">
-          {parsed.startDate && <><dt className="text-muted-foreground">Start date</dt><dd>{formatContractDate(parsed.startDate)}</dd></>}
-          {parsed.deadline && <><dt className="text-muted-foreground">Deadline</dt><dd>{formatContractDate(parsed.deadline)}</dd></>}
-        </dl>
-      )}
-      {parsed.plan && (
-        <ContractPlanOverview
-          plan={parsed.plan}
-          projectDescription={parsed.description}
-        />
-      )}
-      {parsed.planUnavailable && (
-        <p className="text-muted-foreground">The saved work plan could not be displayed.</p>
-      )}
+    <div className="space-y-4">
       {parsed.terms?.map((item) => (
         <div key={item.label}>
           <h4 className="font-medium">{item.label}</h4>
@@ -167,69 +130,52 @@ function ContractTermsOverview({ raw }: { raw: string }) {
   );
 }
 
-function ContractPlanOverview({
-  plan,
-  projectDescription,
-}: {
-  plan: ProjectPlanSnapshotData;
-  projectDescription: string | null;
-}) {
-  const taskCount = plan.content.columns.reduce((total, column) => total + column.tasks.length, 0);
-  const normalizeDescription = (value: string) => value.replace(/\s+/g, " ").trim().toLocaleLowerCase();
-  const showPlanDescription =
-    plan.description.trim() &&
-    normalizeDescription(plan.description) !== normalizeDescription(projectDescription ?? "");
+function DisputeEvidencePreview({ path }: { path: string }) {
+  const [preview, setPreview] = useState<{ path: string; url: string } | null>(null);
+  const image = /\.(png|jpe?g|webp|gif|avif)$/i.test(path);
+
+  useEffect(() => {
+    if (!image) return;
+    let alive = true;
+    void supabase.storage
+      .from("project-attachments")
+      .createSignedUrl(path, 3600)
+      .then(({ data, error }) => {
+        if (error) throw error;
+        if (alive) setPreview({ path, url: data.signedUrl });
+      })
+      .catch(() => {
+        if (alive) setPreview({ path, url: "" });
+      });
+    return () => {
+      alive = false;
+    };
+  }, [image, path]);
+
+  if (!image) return null;
+  if (preview?.path !== path) {
+    return <p className="mt-3 text-sm text-muted-foreground">Loading image preview…</p>;
+  }
+  if (!preview.url) {
+    return <p className="mt-3 text-sm text-muted-foreground">Preview unavailable. Download the evidence to view it.</p>;
+  }
   return (
-    <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
-      <div className="min-w-0">
-        <h4 className="font-medium">Work plan</h4>
-        <p className="mt-1 text-muted-foreground">
-          {plan.name} · {plan.content.columns.length} stages · {taskCount} tasks
-        </p>
-      </div>
-      <Dialog>
-        <DialogTrigger asChild>
-          <Button type="button" variant="outline" size="sm">View plan</Button>
-        </DialogTrigger>
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>{plan.name}</DialogTitle>
-            <DialogDescription>
-              {plan.content.columns.length} stages · {taskCount} tasks
-            </DialogDescription>
-          </DialogHeader>
-          {showPlanDescription && (
-            <p className="whitespace-pre-wrap text-sm text-muted-foreground">{plan.description}</p>
-          )}
-          <div className="space-y-3">
-            {plan.content.columns.map((column) => (
-              <section key={column.id} className="rounded-lg border bg-muted/30 p-3">
-                <h5 className="font-medium">{column.name}</h5>
-                {column.tasks.length ? (
-                  <ul className="mt-2 space-y-3">
-                    {column.tasks.map((task) => (
-                      <li key={task.id} className="border-t pt-2">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <span className="font-medium">{task.title}</span>
-                          <span className="text-xs capitalize text-muted-foreground">
-                            {task.priority}{task.expectedDays ? ` · ${task.expectedDays} days` : ""}
-                          </span>
-                        </div>
-                        {task.description && <p className="mt-1 whitespace-pre-wrap text-muted-foreground">{task.description}</p>}
-                      </li>
-                    ))}
-                  </ul>
-                ) : <p className="mt-1 text-muted-foreground">No tasks in this stage.</p>}
-              </section>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
-    </section>
+    // Signed private images are rendered directly without the public image optimizer.
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={preview.url}
+      alt="Dispute evidence"
+      loading="lazy"
+      className="mt-3 max-h-96 w-full rounded-lg border bg-muted/20 object-contain"
+    />
   );
 }
 
-export default function DisputeContext({ id }: { id: string }) {
+export default function DisputeContext({
+  id,
+}: {
+  id: string;
+}) {
   const [data, setData] = useState<AdminDisputeContext | null>(null);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
@@ -254,9 +200,10 @@ export default function DisputeContext({ id }: { id: string }) {
     };
   }, [id, retry]);
 
-  async function file(path: string) {
+  async function file(path: string, download = false) {
     try {
-      await openProjectAttachment(path);
+      if (download) await downloadProjectAttachment(path);
+      else await openProjectAttachment(path);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to open the attachment.");
     }
@@ -274,43 +221,39 @@ export default function DisputeContext({ id }: { id: string }) {
         error ? null : <ContentSkeleton label="Loading dispute details" variant="detail" />
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <section className="min-w-0 rounded-xl border p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="font-semibold">Project</h3>
-                <AdminStatus tone={data.project.status === "completed" || data.project.status === "active" ? "green" : "neutral"}>
-                  {data.project.status.replaceAll("_", " ")}
-                </AdminStatus>
+          <section className="space-y-3 rounded-xl border p-4">
+            <h3 className="font-semibold">Details</h3>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground">Project</p>
+                <p className="mt-1 break-words font-medium">{data.project.title}</p>
               </div>
-              <p className="mt-2 break-words font-medium">{data.project.title}</p>
-            </section>
-            <section className="min-w-0 rounded-xl border p-4">
-              <h3 className="font-semibold">Participants</h3>
-              <div className="mt-2 space-y-3">
-                {data.parties.map((party) => (
-                  <div key={party.role} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                    <span className="capitalize text-muted-foreground">{party.role}</span>
-                    <span className="break-all text-right font-medium">{party.display_name ?? "Name unavailable"}</span>
-                    {party.user_id ? (
-                      <span className="w-full break-all text-right font-mono text-xs text-muted-foreground">
-                        Account ID: {party.user_id}
-                      </span>
-                    ) : party.profile_id ? (
-                      <span className="w-full break-all text-right font-mono text-xs text-muted-foreground">
-                        Profile ID: {party.profile_id}
-                      </span>
-                    ) : null}
-                  </div>
-                ))}
-                {data.parties.length === 0 && (
-                  <p className="text-muted-foreground">Participant details were not returned.</p>
-                )}
+              <div>
+                <p className="text-xs text-muted-foreground">Status</p>
+                <div className="mt-1">
+                  <AdminStatus tone={data.project.status === "completed" || data.project.status === "active" ? "green" : "neutral"}>
+                    {data.project.status.replaceAll("_", " ")}
+                  </AdminStatus>
+                </div>
               </div>
-            </section>
-          </div>
+              {data.parties.map((party) => (
+                <div key={party.role} className="min-w-0">
+                  <p className="text-xs capitalize text-muted-foreground">{party.role}</p>
+                  <p className="mt-1 break-words font-medium">
+                    {party.display_name ?? "Name unavailable"}
+                  </p>
+                </div>
+              ))}
+              {data.parties.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  Participant details were not returned.
+                </p>
+              )}
+            </div>
+          </section>
 
-          <section className="rounded-xl border p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+          <section className="space-y-4 rounded-xl border p-4">
+            <div className="flex flex-wrap items-center gap-2">
               <h3 className="font-semibold">Contract overview</h3>
               {data.contract && (
                 <AdminStatus tone={data.contract.status === "signed" || data.contract.status === "active" ? "green" : "neutral"}>
@@ -320,37 +263,58 @@ export default function DisputeContext({ id }: { id: string }) {
             </div>
             {data.contract ? (
               <>
-                <dl className="mt-3 grid gap-x-5 gap-y-2 sm:grid-cols-2">
-                  <dt className="text-muted-foreground">Agreed price</dt>
-                  <dd className="font-semibold tabular-nums">PHP {data.contract.final_price.toLocaleString("en-PH")}</dd>
-                  <dt className="text-muted-foreground">Delivery time</dt>
-                  <dd>{data.contract.delivery_time_days} days</dd>
-                  <dt className="text-muted-foreground">Revisions</dt>
-                  <dd>{data.contract.revisions_count}</dd>
+                <dl className="grid gap-x-5 gap-y-3 text-sm sm:grid-cols-3">
+                  <div>
+                    <dt className="text-muted-foreground">Agreed price</dt>
+                    <dd className="mt-1 font-semibold tabular-nums">PHP {data.contract.final_price.toLocaleString("en-PH")}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Delivery time</dt>
+                    <dd className="mt-1 font-medium">{data.contract.delivery_time_days} days</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Revisions</dt>
+                    <dd className="mt-1 font-medium">{data.contract.revisions_count}</dd>
+                  </div>
                 </dl>
-                {data.contract.terms && (
-                  <details className="mt-3 border-t pt-3">
-                    <summary className="cursor-pointer font-medium">Agreement terms</summary>
+                <div>
+                  {data.contract.terms ? (
                     <ContractTermsOverview raw={data.contract.terms} />
-                  </details>
-                )}
+                  ) : (
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      No agreement terms or work plan were recorded.
+                    </p>
+                  )}
+                </div>
               </>
-            ) : data.contextLimitations.includes("contract") ? (
-              <p className="mt-2 text-muted-foreground">
-                Contract overview is unavailable until the dispute-context database update is installed.
-              </p>
             ) : (
-              <p className="mt-2 text-muted-foreground">No contract is linked to this project.</p>
+              <p className="text-sm text-muted-foreground">
+                {data.contextLimitations.includes("contract")
+                  ? "Contract details are unavailable."
+                  : "No contract is linked to this project."}
+              </p>
             )}
           </section>
 
           {(data.dispute.evidence_path || data.dispute.resolution) && (
-            <section className="grid gap-3 sm:grid-cols-2">
+            <section className="space-y-3">
               {data.dispute.evidence_path && (
                 <div className="rounded-xl border p-4">
                   <h3 className="font-semibold">Dispute evidence</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">Open the file attached to this dispute.</p>
-                  <Button className="mt-3" variant="outline" onClick={() => void file(data.dispute.evidence_path!)}>View evidence</Button>
+                  <DisputeEvidencePreview path={data.dispute.evidence_path} />
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                    <p className="min-w-0 break-all text-xs text-muted-foreground">
+                      {data.dispute.evidence_path.split("/").pop() || "Attached evidence"}
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void file(data.dispute.evidence_path!, true)}
+                    >
+                      Download evidence
+                    </Button>
+                  </div>
                 </div>
               )}
               {data.dispute.resolution && (
@@ -362,11 +326,11 @@ export default function DisputeContext({ id }: { id: string }) {
             </section>
           )}
 
-          <details className="rounded-xl border p-4">
-            <summary className="cursor-pointer font-semibold">
-              {data.contextLimitations.includes("complete_milestone_list") ? "Affected milestone" : "Milestones"} ({data.milestones.length})
-            </summary>
-            {data.milestones.length ? (
+          {data.milestones.length > 0 && (
+            <details className="rounded-xl border p-4">
+              <summary className="cursor-pointer font-semibold">
+                {data.contextLimitations.includes("complete_milestone_list") ? "Affected milestone" : "Milestones"} ({data.milestones.length})
+              </summary>
               <div className="mt-3 divide-y">
                 {data.milestones.map((milestone) => (
                   <div key={milestone.milestone_id} className="flex flex-wrap items-center justify-between gap-2 py-2">
@@ -375,8 +339,8 @@ export default function DisputeContext({ id }: { id: string }) {
                   </div>
                 ))}
               </div>
-            ) : <p className="mt-2 text-muted-foreground">{data.contextLimitations.includes("complete_milestone_list") ? "The deployed function did not return an affected milestone." : "No milestones recorded."}</p>}
-          </details>
+            </details>
+          )}
 
           <details className="rounded-xl border p-4">
             <summary className="cursor-pointer font-semibold">Submission history ({data.submissions.length})</summary>

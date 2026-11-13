@@ -9,7 +9,6 @@ import {
   Send,
   TicketCheck,
   BookOpen,
-  ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -187,23 +186,17 @@ export function FaqBubble({
                   </div>
                   <label className="grid gap-3 text-xs font-medium">
                     <span>Category</span>
-                    <span className="relative block">
-                      <StyledSelect
-                        className="h-10 w-full appearance-none rounded-lg border border-input bg-background px-3 pr-9 text-sm font-normal outline-none transition focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
-                        value={category}
-                        onChange={(event) => setCategory(event.target.value)}
-                      >
-                        {CATEGORIES.map((item) => (
-                          <option key={item} value={item}>
-                            {item}
-                          </option>
-                        ))}
-                      </StyledSelect>
-                      <ChevronDown
-                        aria-hidden="true"
-                        className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-                      />
-                    </span>
+                    <StyledSelect
+                      className="h-10 w-full rounded-lg border border-input bg-background px-3 pr-9 text-sm font-normal outline-none transition focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                      value={category}
+                      onChange={(event) => setCategory(event.target.value)}
+                    >
+                      {CATEGORIES.map((item) => (
+                        <option key={item} value={item}>
+                          {item}
+                        </option>
+                      ))}
+                    </StyledSelect>
                   </label>
                   <label className="grid gap-2 text-xs font-medium">
                     <span className="block">Subject</span>

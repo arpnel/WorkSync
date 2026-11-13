@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabaseClient";
+import { getPublicIdentities, identityName } from "@/services/profile/publicIdentityService";
 
 /* ==========================================================
    TYPES
@@ -28,6 +29,8 @@ interface ClientProfileRow {
 interface ProfileRow {
   user_id: string;
   display_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
   avatar_url: string | null;
 }
 
@@ -102,6 +105,32 @@ export async function getMarketplaceReviews(
     ),
   ];
 
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) {
+    try {
+      const identities = await getPublicIdentities({ clientIds });
+      const userByClientId = new Map(
+        identities.clients.map((client) => [client.client_id, client.user_id]),
+      );
+      const profileByUserId = new Map(
+        identities.profiles.map((profile) => [profile.user_id, profile]),
+      );
+      return reviews.map((review) => {
+        const profile = profileByUserId.get(userByClientId.get(review.client_id) ?? "");
+        return {
+          ...review,
+          rating: Number(review.rating),
+          client: {
+            display_name: identityName(profile, "Client"),
+            avatar_url: profile?.avatar_url ?? null,
+          },
+        };
+      });
+    } catch {
+      // Keep the direct public profile lookup as a guest and fallback path.
+    }
+  }
+
   const {
     data: clientProfiles,
     error: clientsError,
@@ -158,6 +187,8 @@ export async function getMarketplaceReviews(
     .select(`
       user_id,
       display_name,
+      first_name,
+      last_name,
       avatar_url
     `)
     .in("user_id", userIds);
@@ -198,7 +229,7 @@ export async function getMarketplaceReviews(
 
       client: {
         display_name:
-          profile?.display_name?.trim() || "Client",
+          identityName(profile, "Client"),
 
         avatar_url:
           profile?.avatar_url ?? null,

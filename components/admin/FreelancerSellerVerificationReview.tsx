@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import AdminDocumentLink from "@/components/admin/AdminDocumentLink";
+import AdminPagination from "@/components/admin/AdminPagination";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import { supabase } from "@/lib/supabaseClient";
+import { getPublicIdentities, identityName } from "@/services/profile/publicIdentityService";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RefreshCw } from "lucide-react";
@@ -15,6 +17,8 @@ type Queue = { requirements: Requirement[]; submissions: Submission[]; events: E
 
 export function FreelancerSellerVerificationReview() {
   const [queue, setQueue] = useState<Queue | null>(null);
+  const [requirementPage, setRequirementPage] = useState(0);
+  const [freelancerNames, setFreelancerNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [reason, setReason] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState("");
@@ -30,7 +34,15 @@ export function FreelancerSellerVerificationReview() {
       const response = await fetch("/api/admin/seller-verification", { headers: { Authorization: `Bearer ${session.access_token}` }, cache: "no-store" });
       const data = await response.json().catch(() => null);
       if (!response.ok) throw new Error(data?.error ?? "Seller verification queue failed to load.");
-      setQueue(data as Queue);
+      const nextQueue = data as Queue;
+      setQueue(nextQueue);
+      setRequirementPage(0);
+      try {
+        const identities = await getPublicIdentities({ userIds: [...new Set(nextQueue.requirements.map((item) => item.user_id))] });
+        setFreelancerNames(Object.fromEntries(identities.profiles.map((profile) => [profile.user_id, identityName(profile, "")]).filter(([, name]) => name)));
+      } catch {
+        setFreelancerNames({});
+      }
     } finally {
       setLoading(false);
     }
@@ -69,17 +81,18 @@ export function FreelancerSellerVerificationReview() {
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     <details className="rounded-xl border bg-card p-4"><summary className="cursor-pointer font-semibold">Configure an additional seller requirement</summary><div className="mt-3 space-y-3"><p className="text-sm text-muted-foreground">Use this only for an account-specific requirement beyond identity verification and Form 2303.</p><div className="grid gap-3 sm:grid-cols-2"><Input aria-label="Freelancer user ID" placeholder="Freelancer user ID" value={userId} onChange={event => setUserId(event.target.value)} /><Input aria-label="Requirement label" value={label} maxLength={200} onChange={event => setLabel(event.target.value)} /><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={required} onChange={event => setRequired(event.target.checked)} />Required for checkout and withdrawal</label><Input aria-label="Configuration reason" placeholder="Reason for this requirement" value={reason.configure ?? ""} maxLength={2000} onChange={event => setReason(prev => ({ ...prev, configure: event.target.value }))} /></div><Button disabled={busy === "configure"} onClick={() => void configure()}>Save requirement</Button></div></details>
     {loading && !queue && <ContentSkeleton label="Loading seller verification requests" variant="list" count={3} />}
-    {queue?.requirements.map(item => {
+    {queue?.requirements.slice(requirementPage * 10, (requirementPage + 1) * 10).map(item => {
       const current = submissions.find(row => row.submission_id === item.current_submission_id);
       const history = queue.events.filter(event => event.requirement_id === item.requirement_id);
       return <article key={item.requirement_id} className="space-y-3 rounded-xl border bg-card p-4">
-        <div className="flex flex-wrap justify-between gap-2"><div><h2 className="font-medium">{item.requirement_label}</h2><p className="text-xs text-muted-foreground">Freelancer user ID: {item.user_id}</p></div><span className="rounded-full border px-2 py-1 text-sm">{item.status.replaceAll("_", " ")}</span></div>
+        <div className="flex flex-wrap justify-between gap-2"><div><h2 className="font-medium">{item.requirement_label}</h2><p className="text-sm text-muted-foreground">Freelancer: {freelancerNames[item.user_id] || "Name unavailable"}</p><details className="mt-1 text-xs text-muted-foreground"><summary className="cursor-pointer">Reference ID</summary><p className="mt-1 break-all font-mono">{item.user_id}</p></details></div><span className="rounded-full border px-2 py-1 text-sm">{item.status.replaceAll("_", " ")}</span></div>
         {current && <div className="space-y-2 rounded-lg bg-muted/40 p-3 text-sm"><p>Submitted {new Date(current.submitted_at).toLocaleString()}{current.registered_name ? ` · Registered name: ${current.registered_name}` : ""}</p><AdminDocumentLink source="seller_submission" recordId={current.submission_id} />{current.review_reason && <p>Previous feedback: {current.review_reason}</p>}</div>}
         {item.status === "pending" && <><Input aria-label="Review reason" placeholder="Explain your review decision" value={reason[item.requirement_id] ?? ""} onChange={event => setReason(prev => ({ ...prev, [item.requirement_id]: event.target.value }))} maxLength={2000} /><div className="flex flex-wrap gap-2"><Button disabled={busy === item.requirement_id} onClick={() => void review(item, "verified")}>Verify</Button><Button variant="destructive" disabled={busy === item.requirement_id} onClick={() => void review(item, "rejected")}>Reject with correction reason</Button><Button variant="outline" disabled={busy === item.requirement_id} onClick={() => void review(item, "not_applicable")}>Mark not applicable</Button></div></>}
         {item.status !== "pending" && <p className="text-sm text-muted-foreground">{item.review_reason || "No review reason."}</p>}
         {history.length > 0 && <details><summary className="cursor-pointer text-sm">Review history ({history.length})</summary><ul className="mt-2 space-y-1 text-xs text-muted-foreground">{history.map(event => <li key={event.event_id}>{event.action} · {new Date(event.created_at).toLocaleString()} · {event.reason}</li>)}</ul></details>}
       </article>;
     })}
+    {queue && <AdminPagination page={requirementPage} itemCount={queue.requirements.length} onPageChange={setRequirementPage} />}
     {queue && queue.requirements.length === 0 && <p className="rounded-xl border p-6 text-center text-muted-foreground">No additional seller requirements are awaiting review.</p>}
   </div>;
 }

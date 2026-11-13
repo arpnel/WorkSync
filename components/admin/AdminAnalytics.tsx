@@ -27,7 +27,7 @@ import AdminPageHeader from "./AdminPageHeader";
 import { AdminFilterPanel } from "./admin-ui";
 import { getAdminAnalytics } from "@/services/admin/adminService";
 import type { AdminAnalyticsResult } from "@/services/admin/adminResponses";
-import { CalendarDays, RefreshCw, RotateCcw } from "lucide-react";
+import { RefreshCw, RotateCcw } from "lucide-react";
 
 type Point = Record<string, string | number>;
 type Series = { key: string; name: string; color: string };
@@ -588,14 +588,6 @@ export default function AdminAnalytics() {
             </Button>
           </div>
         </div>
-        <div className="mt-2 flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
-          <CalendarDays className="size-3.5" aria-hidden="true" />
-          <span>UTC dates</span>
-          <span aria-hidden="true">·</span>
-          <span>Test payments only</span>
-          <span aria-hidden="true">·</span>
-          <span>Current snapshots are labeled</span>
-        </div>
       </AdminFilterPanel>
 
       {error && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p>}
@@ -678,7 +670,6 @@ export default function AdminAnalytics() {
               { label: "Created", value: number(data.projects.created), featured: true },
               { label: "Completed", value: number(data.projects.completedInRange), accent: chartColors[1] },
               { label: "Active now", value: number(data.projects.active), accent: chartColors[0] },
-              { label: "Cohort completion rate", value: rate(data.projects.completionRate), accent: chartColors[3] },
               { label: "Paid project sales", value: number(data.projects.paidProjectSalesCount), accent: chartColors[4] },
               { label: "New service listings", value: number(data.projects.servicesPostedCount), accent: chartColors[3] },
             ]} />

@@ -4,6 +4,7 @@ import type { ListingRole } from "@/services/serviceP/service.types";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { RequiredLabel } from "./RequiredLabel";
 
 type Props = {
   values: ServiceFormValues;
@@ -20,12 +21,12 @@ const serviceTypes = [
   {
     value: "standard",
     label: "Standard Service",
-    description: "Single delivery after completion.",
+    description: "One delivery.",
   },
   {
     value: "milestone",
     label: "Milestone Project",
-    description: "Work divided into defined stages.",
+    description: "Split into stages.",
   },
 ] as const;
 
@@ -38,7 +39,7 @@ export function ServiceDeliverySection({
   if (listingRole === "client") {
     return (
       <div className="space-y-3">
-        <Label htmlFor="deadline">Project Deadline</Label>
+        <RequiredLabel htmlFor="deadline">Project Deadline</RequiredLabel>
         <Input
           id="deadline"
           type="date"
@@ -77,7 +78,7 @@ export function ServiceDeliverySection({
 
       <div className="grid gap-6 md:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor="delivery-time">Expected Duration</Label>
+          <RequiredLabel htmlFor="delivery-time">Delivery time (days)</RequiredLabel>
           <Input
             id="delivery-time"
             type="number"
@@ -95,7 +96,7 @@ export function ServiceDeliverySection({
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="revision-count">Revisions Included</Label>
+          <RequiredLabel htmlFor="revision-count">Revisions Included</RequiredLabel>
           <Input
             id="revision-count"
             type="number"

@@ -263,13 +263,16 @@ export function useProjectWorkspace(serviceOrderId: string) {
     if ((!content && !attachment) || !workspace) return false;
 
     const messageId = crypto.randomUUID();
+    const localImagePreview = attachment?.type.startsWith("image/")
+      ? URL.createObjectURL(attachment)
+      : null;
     const optimisticMessage: WorkspaceMessage = {
       id: messageId,
       senderId: workspace.currentUserId,
       senderName: "You",
       senderAvatarUrl: workspace.currentUserAvatarUrl,
       message: content || attachment?.name || "Attachment",
-      attachmentUrl: null,
+      attachmentUrl: localImagePreview,
       attachmentType: attachment?.type || null,
       createdAt: new Date().toISOString(),
       mine: true,
@@ -311,9 +314,13 @@ export function useProjectWorkspace(serviceOrderId: string) {
             }
           : current,
       );
+      if (localImagePreview) {
+        requestAnimationFrame(() => URL.revokeObjectURL(localImagePreview));
+      }
       clearProjectReadCache();
       return true;
     } catch (cause) {
+      if (localImagePreview) URL.revokeObjectURL(localImagePreview);
       setWorkspace((current) =>
         current?.orderId === serviceOrderId
           ? {

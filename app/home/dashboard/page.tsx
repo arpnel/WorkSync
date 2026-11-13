@@ -130,15 +130,6 @@ export default function DashboardPage() {
         <WorkspacePageHeader
           title="Dashboard"
           description="Your projects, performance, and upcoming work in one place."
-          actions={
-            <Link
-              href="/home/my-listings"
-              className="inline-flex h-10 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground"
-            >
-              <Plus className="size-4" />
-              Create a listing
-            </Link>
-          }
         />
       </div>
 

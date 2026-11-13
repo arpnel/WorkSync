@@ -2,8 +2,8 @@ import type { ServiceFormValues } from "../types/service-form.types";
 import type { ListingRole } from "@/services/serviceP/service.types";
 
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { RequiredLabel } from "./RequiredLabel";
 
 type Props = {
   values: ServiceFormValues;
@@ -24,7 +24,7 @@ export function ServiceDetailsSection({
     <div className="space-y-6">
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-4">
-          <Label htmlFor="title">{noun} Title</Label>
+          <RequiredLabel htmlFor="title">{noun} Title</RequiredLabel>
           <span className="shrink-0 text-xs text-muted-foreground">
             {values.title.length}/120
           </span>
@@ -47,7 +47,7 @@ export function ServiceDetailsSection({
 
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-4">
-          <Label htmlFor="description">{noun} Description</Label>
+          <RequiredLabel htmlFor="description">{noun} Description</RequiredLabel>
           <span className="shrink-0 text-xs text-muted-foreground">
             {values.description.length}/2000
           </span>

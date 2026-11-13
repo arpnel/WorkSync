@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabaseClient";
+﻿import { supabase } from "@/lib/supabaseClient";
 import {
   validateClientSetup,
   validateFreelancerSetup,
@@ -101,7 +101,7 @@ export async function loadAccountSetup(
   };
 }
 // Retrying the same selected file does not create another upload. No ID images
-// are sent here; Didit handles them. Supporting documents store paths, not public URLs.
+// are sent here; the manual identity review flow handles identity documents. Supporting documents store paths, not public URLs.
 const uploads = new WeakMap<File, Map<string, string>>();
 async function upload(
   bucket: string,
@@ -321,3 +321,4 @@ export async function submitFreelancerSetup(
   );
   await finish(user.id, "freelancer");
 }
+

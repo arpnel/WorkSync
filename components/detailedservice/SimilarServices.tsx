@@ -442,7 +442,7 @@ export default function MarketplaceServiceDetails({
                   active:opacity-80
                 "
               >
-                Buy
+                Hire
               </button>
 
               <p className="mt-3 text-center text-xs leading-5 text-muted-foreground">

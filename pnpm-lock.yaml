@@ -1,4 +1,4 @@
-lockfileVersion: '9.0'
+﻿lockfileVersion: '9.0'
 
 settings:
   autoInstallPeers: true
@@ -14,9 +14,6 @@ importers:
       '@daily-co/daily-js':
         specifier: ^0.92.2
         version: 0.92.2
-      '@didit-protocol/sdk-web':
-        specifier: ^0.3.1
-        version: 0.3.1
       '@google/genai':
         specifier: ^2.22.0
         version: 2.22.0(@modelcontextprotocol/sdk@1.28.0(zod@3.24.1))
@@ -289,9 +286,6 @@ packages:
   '@date-fns/tz@1.4.1':
     resolution: {integrity: sha512-P5LUNhtbj6YfI3iJjw5EL9eUAG6OitD0W3fWQcpQjDRc/QIsL0tRNuO1PcDvPccWL1fSTXXdE1ds+l95DV/OFA==}
 
-  '@didit-protocol/sdk-web@0.3.1':
-    resolution: {integrity: sha512-5ahsxPfmMJw02AQBtOFpMPhYUvqKGP1JpfcoJPwRcSYNxytqWj+wUYxlezYqHAKI77I+u/d+gLdzbMijEoco5g==}
-    engines: {node: '>=16.0.0'}
 
   '@dotenvx/dotenvx@1.59.1':
     resolution: {integrity: sha512-Qg+meC+XFxliuVSDlEPkKnaUjdaJKK6FNx/Wwl2UxhQR8pyPIuLhMavsF7ePdB9qFZUWV1jEK3ckbJir/WmF4w==}
@@ -4576,7 +4570,6 @@ snapshots:
 
   '@date-fns/tz@1.4.1': {}
 
-  '@didit-protocol/sdk-web@0.3.1': {}
 
   '@dotenvx/dotenvx@1.59.1':
     dependencies:
@@ -8856,3 +8849,5 @@ snapshots:
   zod@3.24.1: {}
 
   zod@4.4.3: {}
+
+

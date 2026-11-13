@@ -524,15 +524,7 @@ export function ServiceDialog({
                   listingRole={listingRole ?? "freelancer"}
                   onChange={updateValues}
                 />
-                <div
-                  className={isJob ? "mt-6 grid gap-5 md:grid-cols-2" : "mt-6"}
-                >
-                  <ServicePricingSection
-                    values={values}
-                    errors={errors}
-                    listingRole={listingRole ?? "freelancer"}
-                    onChange={updateValues}
-                  />
+                <div className={isJob ? "mt-6 space-y-5" : "mt-6"}>
                   {isJob && (
                     <ServiceDeliverySection
                       values={values}
@@ -541,6 +533,12 @@ export function ServiceDialog({
                       onChange={updateValues}
                     />
                   )}
+                  <ServicePricingSection
+                    values={values}
+                    errors={errors}
+                    listingRole={listingRole ?? "freelancer"}
+                    onChange={updateValues}
+                  />
                   {isJob && (
                     <div className="md:col-span-2">
                       <JobProjectTypeSection
@@ -569,7 +567,10 @@ export function ServiceDialog({
                   categories={categories}
                   onChange={updateValues}
                 />
-                <h4 className="mb-3 mt-6 text-sm font-semibold">Skills</h4>
+                <h4 className="mb-3 mt-6 text-sm font-semibold">
+                  Skills<span aria-hidden="true" className="ml-1 text-destructive">*</span>
+                  <span className="sr-only"> required</span>
+                </h4>
                 <ServiceSkillsSection
                   values={values}
                   skills={skills}

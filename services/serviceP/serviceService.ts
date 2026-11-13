@@ -1,8 +1,8 @@
 ﻿import { invalidatePageReads } from "@/lib/pageReadCache";
 import { supabase } from "@/lib/supabaseClient";
 import {
-  MAX_JOB_BUDGET_PHP,
-  MAX_SERVICE_PRICE_PHP,
+  jobBudgetValidationError,
+  servicePriceValidationError,
 } from "@/lib/validation/service.creation.validation";
 import type {
   CreateListingPayload,
@@ -192,14 +192,11 @@ async function createFreelancerService(
   userId: string,
   payload: CreateListingPayload,
 ): Promise<CreateListingResult> {
-  if (
-    payload.price === undefined ||
-    !Number.isFinite(payload.price) ||
-    payload.price <= 0 ||
-    payload.price > MAX_SERVICE_PRICE_PHP
-  ) {
-    throw new Error("Service price must be no more than PHP 100,000.");
-  }
+  const priceError = servicePriceValidationError(
+    payload.price,
+    payload.service_type ?? "standard",
+  );
+  if (priceError) throw new Error(priceError);
 
   const { data: freelancer, error: freelancerError } = await supabase
     .from("freelancer_profiles")
@@ -352,15 +349,11 @@ async function createClientJob(
   userId: string,
   payload: CreateListingPayload,
 ): Promise<CreateListingResult> {
-  if (
-    !Number.isFinite(payload.budget_max) ||
-    payload.budget_max! <= 0 ||
-    payload.budget_max! > MAX_JOB_BUDGET_PHP
-  ) {
-    throw new Error(
-      "Budget must be greater than 0 and no more than PHP 100,000.",
-    );
-  }
+  const budgetError = jobBudgetValidationError(
+    payload.budget_max,
+    payload.project_type ?? "standard",
+  );
+  if (budgetError) throw new Error(budgetError);
 
   const { data: client, error: clientError } = await supabase
     .from("client_profiles")

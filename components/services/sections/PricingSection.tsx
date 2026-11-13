@@ -2,10 +2,12 @@ import type { ServiceFormValues } from "../types/service-form.types";
 import type { ListingRole } from "@/services/serviceP/service.types";
 
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { RequiredLabel } from "./RequiredLabel";
 import {
   MAX_JOB_BUDGET_PHP,
   MAX_SERVICE_PRICE_PHP,
+  MAX_STANDARD_SERVICE_PRICE_PHP,
+  MIN_SERVICE_PRICE_PHP,
 } from "@/lib/validation/service.creation.validation";
 
 type Props = {
@@ -26,13 +28,13 @@ export function ServicePricingSection({
   if (isJob) {
     return (
       <div className="space-y-3">
-        <Label htmlFor="budget-max">Maximum Budget (PHP)</Label>
+        <RequiredLabel htmlFor="budget-max">Maximum Budget (PHP)</RequiredLabel>
         <Input
           id="budget-max"
           type="number"
           inputMode="numeric"
-          min={1}
-          max={MAX_JOB_BUDGET_PHP}
+          min={MIN_SERVICE_PRICE_PHP}
+          max={values.serviceType === "standard" ? MAX_STANDARD_SERVICE_PRICE_PHP : MAX_JOB_BUDGET_PHP}
           step={1}
           placeholder="e.g. 15000"
           value={values.budgetMax ?? ""}
@@ -45,14 +47,16 @@ export function ServicePricingSection({
                 amount === undefined
                   ? undefined
                   : Number.isFinite(amount)
-                    ? Math.min(amount, MAX_JOB_BUDGET_PHP)
+                  ? Math.min(amount, MAX_JOB_BUDGET_PHP)
                     : MAX_JOB_BUDGET_PHP,
               pricingType: "fixed",
             });
           }}
         />
         <p className="text-xs text-muted-foreground">
-          Maximum project budget: PHP 100,000.
+          {values.serviceType === "standard"
+            ? "Enter a budget between PHP 100 and PHP 10,000. For amounts over PHP 10,000, please use Milestone billing."
+            : "Milestone budget: up to PHP 100,000."}
         </p>
         {errors.budgetMax && (
           <p className="text-xs text-destructive">{errors.budgetMax}</p>
@@ -63,15 +67,15 @@ export function ServicePricingSection({
 
   return (
     <div className="space-y-3">
-      <Label htmlFor="price">Minimum Estimated Price (PHP)</Label>
+      <RequiredLabel htmlFor="price">Service price (PHP)</RequiredLabel>
       <Input
         id="price"
         type="number"
         inputMode="numeric"
-        min={1}
-        max={MAX_SERVICE_PRICE_PHP}
+        min={MIN_SERVICE_PRICE_PHP}
+        max={values.serviceType === "standard" ? MAX_STANDARD_SERVICE_PRICE_PHP : MAX_SERVICE_PRICE_PHP}
         step={1}
-        placeholder="e.g. 5000"
+        placeholder={values.serviceType === "standard" ? "100–10,000" : "e.g. 15000"}
         value={values.price ?? ""}
         onChange={(event) => {
           const amount = event.target.value ? Number(event.target.value) : undefined;
@@ -86,7 +90,9 @@ export function ServicePricingSection({
         }}
       />
       <p className="text-xs text-muted-foreground">
-        Maximum service price: PHP 100,000.
+        {values.serviceType === "standard"
+          ? "Enter an amount between PHP 100 and PHP 10,000. For amounts over PHP 10,000, please use Milestone billing."
+          : "Milestone price: up to PHP 100,000."}
       </p>
       {errors.price && (
         <p className="text-xs text-destructive">{errors.price}</p>

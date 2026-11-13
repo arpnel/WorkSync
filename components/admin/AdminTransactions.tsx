@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Ban,
   CalendarDays,
@@ -19,7 +19,6 @@ import {
   SlidersHorizontal,
   RefreshCw,
   Search,
-  X,
 } from "lucide-react";
 import AdminPageHeader from "@/components/admin/AdminPageHeader";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
@@ -109,6 +108,7 @@ type Transaction = {
     order_id: string | null;
     client_id: string;
     freelancer_id: string;
+    freelancer_name: string | null;
   } | null;
   refunds: Refund[];
   receipt: { receipt_number: string; issued_at: string } | null;
@@ -178,6 +178,14 @@ export default function AdminTransactions({ mode = "payments" }: { mode?: "payme
   const [refundException, setRefundException] = useState<"" | "technical_failure" | "applicable_law">("");
   const [refundExceptionReason, setRefundExceptionReason] = useState("");
   const sequence = useRef(0);
+  const pageSize = data?.limit || 10;
+  const pageCount = data ? Math.ceil(data.total / pageSize) : 0;
+  const currentPage = data ? Math.floor(data.offset / pageSize) + 1 : 0;
+  const pageNumbers = pageCount <= 7
+    ? Array.from({ length: pageCount }, (_, index) => index + 1)
+    : [...new Set([1, currentPage - 1, currentPage, currentPage + 1, pageCount])]
+        .filter((page) => page >= 1 && page <= pageCount)
+        .sort((a, b) => a - b);
 
   const load = useCallback(
     async (signal: AbortSignal) => {
@@ -535,21 +543,20 @@ export default function AdminTransactions({ mode = "payments" }: { mode?: "payme
                       />
                     </label>
                   </div>
-                  <div className="flex items-center justify-between border-t pt-3">
+                  <div className="flex items-center justify-end gap-3 border-t pt-3">
                     <Button
                       type="button"
-                      variant="ghost"
-                      size="sm"
+                      variant="outline"
+                      className="h-12 px-4 text-base"
                       onClick={() => {
                         setDraftStatus("all");
                         setDraftFrom("");
                         setDraftThrough("");
                       }}
                     >
-                      <X className="size-4" />
                       Clear filters
                     </Button>
-                    <Button type="button" size="sm" onClick={applyFilters}>
+                    <Button type="button" className="h-12 px-5 text-base" onClick={applyFilters}>
                       Apply
                     </Button>
                   </div>
@@ -644,7 +651,6 @@ export default function AdminTransactions({ mode = "payments" }: { mode?: "payme
               <Table className="min-w-[920px]">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Transaction</TableHead>
                     <TableHead>{mode === "subscriptions" ? "Purchaser / plan" : "Client / project"}</TableHead>
                     <TableHead>Amount</TableHead>
                     <TableHead>Status</TableHead>
@@ -667,15 +673,6 @@ export default function AdminTransactions({ mode = "payments" }: { mode?: "payme
                     );
                     return (
                       <TableRow key={row.payment_id}>
-                        <TableCell className="max-w-64">
-                          <p className="truncate font-medium">
-                            {row.transaction_reference ||
-                              "No checkout reference"}
-                          </p>
-                          <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
-                            {row.payment_id}
-                          </p>
-                        </TableCell>
                         <TableCell className="max-w-64">
                           <p className="truncate font-medium">
                             {row.payer.display_name ||
@@ -763,33 +760,18 @@ export default function AdminTransactions({ mode = "payments" }: { mode?: "payme
             </div>
           )
         )}
-        {data && (
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t p-4">
-            <p className="text-sm text-muted-foreground">
-              {data.total === 0
-                ? "0 transactions"
-                : `Showing ${data.offset + 1}–${Math.min(data.offset + data.rows.length, data.total)} of ${data.total.toLocaleString()}`}
-            </p>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={loading || offset === 0}
-                onClick={() =>
-                  setOffset((value) => Math.max(0, value - (data.limit || 10)))
-                }
-              >
-                Previous
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={loading || offset + data.rows.length >= data.total}
-                onClick={() => setOffset((value) => value + (data.limit || 10))}
-              >
-                Next
-              </Button>
-            </div>
+        {data && data.total > 0 && (
+          <div className="flex flex-wrap items-center justify-center gap-1.5 border-t p-4">
+            <Button type="button" size="sm" variant="outline" disabled={loading || currentPage <= 1} onClick={() => setOffset(0)}>First</Button>
+            <Button type="button" size="sm" variant="outline" aria-label="Previous page" disabled={loading || currentPage <= 1} onClick={() => setOffset(Math.max(0, offset - pageSize))}>Previous</Button>
+            {pageNumbers.map((page, index) => (
+              <Fragment key={page}>
+                {index > 0 && page - pageNumbers[index - 1] > 1 && <span className="px-1 text-muted-foreground" aria-hidden="true">…</span>}
+                <Button type="button" size="sm" variant={page === currentPage ? "default" : "outline"} aria-label={`Page ${page}`} aria-current={page === currentPage ? "page" : undefined} disabled={loading} onClick={() => setOffset((page - 1) * pageSize)}>{page}</Button>
+              </Fragment>
+            ))}
+            <Button type="button" size="sm" variant="outline" aria-label="Next page" disabled={loading || currentPage >= pageCount} onClick={() => setOffset(Math.min((pageCount - 1) * pageSize, offset + pageSize))}>Next</Button>
+            <Button type="button" size="sm" variant="outline" disabled={loading || currentPage >= pageCount} onClick={() => setOffset(Math.max(0, (pageCount - 1) * pageSize))}>Last</Button>
           </div>
         )}
       </Card>
@@ -803,7 +785,6 @@ export default function AdminTransactions({ mode = "payments" }: { mode?: "payme
         <DialogContent className="flex max-h-[90dvh] w-[min(96vw,56rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none">
           {selected && (
             <>
-              <div className="min-h-0 flex-1 overflow-y-auto">
               <DialogHeader className="border-b px-5 py-4 pr-14">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                   <div className="min-w-0">
@@ -826,6 +807,7 @@ export default function AdminTransactions({ mode = "payments" }: { mode?: "payme
                   </div>
                 </div>
               </DialogHeader>
+              <div className="min-h-0 flex-1 overflow-y-auto">
                 <div className="space-y-4 px-5 py-4">
                 <section className="space-y-3 rounded-xl border p-4">
                   <SectionHeading icon={<CreditCard className="size-3.5" />}>Payment information</SectionHeading>
@@ -857,6 +839,12 @@ export default function AdminTransactions({ mode = "payments" }: { mode?: "payme
                     <Detail label={selected.kind === "subscription" ? "Purchaser" : "Client / payer"}>
                       {selected.payer.display_name || selected.payer.email || selected.payer_id}
                     </Detail>
+                    {selected.kind !== "subscription" && <Detail label="Project status"><Badge variant="outline" className="capitalize">{selected.project?.status?.replaceAll("_", " ") || "Not available"}</Badge></Detail>}
+                    {selected.kind !== "subscription" && selected.project?.freelancer_id && (
+                      <Detail label="Freelancer">
+                        {selected.project.freelancer_name || "Name unavailable"}
+                      </Detail>
+                    )}
                     {selected.kind === "subscription" && (
                       <>
                         <Detail label="Current Premium status">
@@ -870,7 +858,6 @@ export default function AdminTransactions({ mode = "payments" }: { mode?: "payme
                         </Detail>
                       </>
                     )}
-                    {selected.kind !== "subscription" && <Detail label="Project status"><Badge variant="outline" className="capitalize">{selected.project?.status?.replaceAll("_", " ") || "Not available"}</Badge></Detail>}
                   </dl>
                   {selected.kind === "subscription" && selected.refund_eligibility && (
                     <div className="border-t pt-3">
@@ -888,7 +875,7 @@ export default function AdminTransactions({ mode = "payments" }: { mode?: "payme
                   )}
                   <details className="group border-t pt-3">
                     <summary className="flex cursor-pointer list-none items-center gap-2 text-xs text-muted-foreground hover:text-foreground">
-                      <Code2 className="size-3.5" /> Technical references &amp; raw metadata
+                      <Code2 className="size-3.5" /> Reference ID
                       <ChevronDown className="ml-auto size-3.5 transition-transform group-open:rotate-180" />
                     </summary>
                     <dl className="mt-3 grid gap-3 sm:grid-cols-2">

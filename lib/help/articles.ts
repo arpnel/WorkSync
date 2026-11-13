@@ -1,4 +1,4 @@
-export type HelpSection = {
+﻿export type HelpSection = {
   heading: string;
   paragraphs?: string[];
   bullets?: string[];
@@ -92,12 +92,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
     { heading: "Reset your password", steps: ["Use the password reset flow from the sign-in page.", "Open the recovery link sent by Supabase Auth.", "Choose a password that meets the on-screen requirements."] },
     { heading: "If you suspect unauthorized access", paragraphs: ["Reset your password and review account activity available in WorkSync. Contact support through the Help Center if you can sign in. Do not send passwords or recovery codes with a support request."] },
   ] },
-  { slug: "identity-verification", question: "How does identity verification work?", title: "Identity verification", description: "Understand the current Didit verification flow and what a completed profile does not mean.", category: "Account and Security", keywords: ["identity", "verification", "Didit", "badge", "documents", "KYC"], related: ["account-profile", "account-security"], sections: [
-    { heading: "Start verification", paragraphs: ["Eligible users can open identity verification from Settings and use the Didit flow to submit identity documents to the verification provider. WorkSync stores a limited session status for the flow."] },
-    { heading: "Approval and badges", paragraphs: ["A profile marked complete is not identity verification. The current implementation does not synchronize Didit status into public verified badges because the persistent schema and policy mapping are not confirmed. Do not treat starting or completing the provider screen as a WorkSync badge."] },
-    { heading: "Availability", paragraphs: ["Provider credentials, webhook delivery, and account setup must be configured for verification status to update. If verification cannot start or status does not update, contact support and do not upload identity documents through an unrelated channel."] },
-  ] },
-  { slug: "reporting-a-listing", question: "How do I report a job or service?", title: "Report a job or service listing", description: "Send a marketplace concern to the listing moderation workflow.", category: "Troubleshooting", keywords: ["report", "flag", "scam", "spam", "listing", "safety"], related: ["finding-work", "messaging", "contact-support"], sections: [
+  { slug: "identity-verification", question: "How does identity verification work?", title: "Identity verification", description: "Submit a government ID and selfie for manual review.", category: "Account and Security", keywords: ["identity", "verification", "badge", "documents", "KYC"], related: ["account-profile", "account-security"], sections: [
+    { heading: "Submit your documents", paragraphs: ["Open verification settings and submit clear images of the front and back of your government-issued photo ID, plus a selfie taken with your camera. If your ID has no back, indicate that in the form. Images are stored privately for review."] },
+    { heading: "Review and approval", paragraphs: ["An administrator reviews the submission. You can see pending, verified, or rejected status and any review reason in your settings. If a new submission is requested, submit updated images there. A completed profile does not itself mean identity verification is approved."] }
+  ] },  { slug: "reporting-a-listing", question: "How do I report a job or service?", title: "Report a job or service listing", description: "Send a marketplace concern to the listing moderation workflow.", category: "Troubleshooting", keywords: ["report", "flag", "scam", "spam", "listing", "safety"], related: ["finding-work", "messaging", "contact-support"], sections: [
     { heading: "Submit a listing report", steps: ["Open the job or service listing that concerns you.", "Choose Report and select the closest reason.", "Add any useful details, then send the report."] },
     { heading: "What happens next", paragraphs: ["Reports are reviewed in the admin moderation workflow. A report is a request for review and does not itself hide a listing or decide the outcome."] },
   ] },
@@ -110,3 +108,5 @@ export const HELP_ARTICLES: HelpArticle[] = [
 export const HELP_CATEGORIES = [...new Set(HELP_ARTICLES.map((article) => article.category))];
 export function getHelpArticle(slug: string) { return HELP_ARTICLES.find((article) => article.slug === slug); }
 export function searchText(article: HelpArticle) { return [article.question, article.title, article.description, article.category, ...article.keywords, ...article.sections.flatMap((section) => [section.heading, ...(section.paragraphs ?? []), ...(section.bullets ?? []), ...(section.steps ?? [])])].join(" ").toLowerCase(); }
+
+

@@ -171,6 +171,21 @@ export async function openProjectAttachment(
     throw error;
   }
 }
+export async function downloadProjectAttachment(path: string) {
+  const viewer = window.open("about:blank", "_blank");
+  if (!viewer) throw new Error("Allow pop-ups to download this project attachment.");
+  viewer.opener = null;
+  try {
+    const { data, error } = await supabase.storage
+      .from("project-attachments")
+      .createSignedUrl(path, 60, { download: true });
+    if (error) throw databaseError(error);
+    viewer.location.replace(data.signedUrl);
+  } catch (error) {
+    viewer.close();
+    throw error;
+  }
+}
 export type SettlementReviewOutcome = {
   status:
     | "disabled"

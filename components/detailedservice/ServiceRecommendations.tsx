@@ -329,7 +329,7 @@ export default function MarketplaceServiceDetails({
   const serviceType =
     service.service_type === "milestone" ? "Milestone" : "Standard";
 
-  const actionLabel = isJob ? "Apply" : "Buy";
+  const actionLabel = isJob ? "Apply" : "Hire";
 
   /* ==========================================================
      RETURN

@@ -296,6 +296,46 @@ export async function GET(request: Request) {
     const projects = new Map(
       (projectsResult.data ?? []).map((row) => [row.project_id, row]),
     );
+    const freelancerIds = [...new Set(
+      (projectsResult.data ?? [])
+        .map((project) => project.freelancer_id)
+        .filter((id): id is string => Boolean(id)),
+    )];
+    const freelancerProfilesResult = freelancerIds.length
+      ? await db.from("freelancer_profiles").select("freelancer_id,user_id").in("freelancer_id", freelancerIds)
+      : { data: [], error: null };
+    if (freelancerProfilesResult.error) {
+      console.error("[admin/transactions] Supabase query failed", {
+        requestId,
+        stage: "load_related_records",
+        query: "freelancer_profiles",
+        code: freelancerProfilesResult.error.code,
+        message: freelancerProfilesResult.error.message,
+      });
+      throw new PaymentError("Transaction inspection details are unavailable.");
+    }
+    const freelancerUserIds = [...new Set(
+      (freelancerProfilesResult.data ?? []).map((profile) => profile.user_id),
+    )];
+    const freelancerNamesResult = freelancerUserIds.length
+      ? await db.from("profiles").select("user_id,display_name").in("user_id", freelancerUserIds)
+      : { data: [], error: null };
+    if (freelancerNamesResult.error) {
+      console.error("[admin/transactions] Supabase query failed", {
+        requestId,
+        stage: "load_related_records",
+        query: "freelancer_profiles",
+        code: freelancerNamesResult.error.code,
+        message: freelancerNamesResult.error.message,
+      });
+      throw new PaymentError("Transaction inspection details are unavailable.");
+    }
+    const freelancerUserByProfile = new Map(
+      (freelancerProfilesResult.data ?? []).map((profile) => [profile.freelancer_id, profile.user_id]),
+    );
+    const freelancerNames = new Map(
+      (freelancerNamesResult.data ?? []).map((profile) => [profile.user_id, profile.display_name]),
+    );
     const profileNames = new Map(
       (profilesResult.data ?? []).map((row) => [row.user_id, row.display_name]),
     );
@@ -352,6 +392,9 @@ export async function GET(request: Request) {
                 order_id: row.order_id ?? project.order_id,
                 client_id: project.client_id,
                 freelancer_id: project.freelancer_id,
+                freelancer_name: project.freelancer_id
+                  ? freelancerNames.get(freelancerUserByProfile.get(project.freelancer_id) ?? "") ?? null
+                  : null,
               }
             : null,
           refunds: refundsByPayment.get(row.payment_id) ?? [],

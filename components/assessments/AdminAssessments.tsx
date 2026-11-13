@@ -65,6 +65,8 @@ export default function AdminAssessments() {
     [minimumAccountAgeDays, setMinimumAccountAgeDays] = useState("30");
   const [results, setResults] = useState<OpeningResults | null>(null),
     [search, setSearch] = useState("");
+  const [resultsAssessment, setResultsAssessment] =
+    useState<AdminAssessment | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [closeTarget, setCloseTarget] = useState<string | null>(null);
   const discardEditor = () => {
@@ -267,10 +269,11 @@ export default function AdminAssessments() {
                           ? `${active.status === "scheduled" ? "Scheduled" : "Open"} until ${date(active.closesAt)}`
                           : "Closed"}
                       </p>
-                      <div className="mt-auto flex flex-wrap gap-2 border-t pt-4">
+                      <div className="mt-auto flex flex-nowrap gap-1.5 border-t pt-4">
                         <Button
                           size="sm"
                           variant="outline"
+                          className="shrink-0 whitespace-nowrap px-2 text-xs"
                           disabled={busy}
                           onClick={() => void edit(item)}
                         >
@@ -280,6 +283,7 @@ export default function AdminAssessments() {
                           <Button
                             size="sm"
                             variant="destructive"
+                            className="shrink-0 whitespace-nowrap px-2 text-xs"
                             disabled={busy}
                             onClick={() => setCloseTarget(active.id)}
                           >
@@ -288,45 +292,25 @@ export default function AdminAssessments() {
                         ) : (
                           <Button
                             size="sm"
+                            className="shrink-0 whitespace-nowrap px-2 text-xs"
                             disabled={busy || !item.quiz}
                             onClick={() => void showOpening(item)}
                           >
                             Open assessment
                           </Button>
                         )}
+                        {item.openings.length > 0 && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="shrink-0 whitespace-nowrap px-2 text-xs"
+                            disabled={busy}
+                            onClick={() => setResultsAssessment(item)}
+                          >
+                            View results
+                          </Button>
+                        )}
                       </div>
-                      {item.openings.length > 0 && (
-                        <details>
-                          <summary className="cursor-pointer text-sm">
-                            Openings & results ({item.openings.length})
-                          </summary>
-                          <div className="mt-2 space-y-2">
-                            {item.openings.map((o) => (
-                              <Button
-                                key={o.id}
-                                variant="outline"
-                                size="sm"
-                                className="h-auto w-full whitespace-normal"
-                                disabled={busy}
-                                onClick={() =>
-                                  void action(async () => {
-                                    setResults(await assessmentResults(o.id));
-                                    setSearch("");
-                                  })
-                                }
-                              >
-                                Version {o.version} · {date(o.openedAt)} ·{" "}
-                                {o.status} · {o.eligibleCount ?? 0} eligible ·{" "}
-                                {o.audienceScope === "all_freelancers"
-                                  ? "all active freelancers"
-                                  : "category freelancers"}{" "}
-                                · {o.minimumAccountAgeDays ?? 30}+ day account
-                                age
-                              </Button>
-                            ))}
-                          </div>
-                        </details>
-                      )}
                     </CardContent>
                   </Card>
                 );
@@ -501,6 +485,61 @@ export default function AdminAssessments() {
         </DialogContent>
       </Dialog>{" "}
       <Dialog
+        open={!!resultsAssessment}
+        onOpenChange={(value) => {
+          if (!value && !busy) setResultsAssessment(null);
+        }}
+      >
+        <DialogContent className="max-h-[85dvh] gap-5 overflow-y-auto rounded-2xl p-5 sm:max-w-2xl sm:p-6">
+          <DialogHeader className="space-y-2 text-left">
+            <DialogTitle className="pr-8 text-xl tracking-tight">
+              {resultsAssessment?.category} results
+            </DialogTitle>
+            <DialogDescription>
+              Select an opening to review its freelancer results.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            {resultsAssessment?.openings.map((o) => (
+              <section
+                key={o.id}
+                className="flex flex-col gap-3 rounded-lg border bg-card p-3 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0 space-y-1">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                    <span className="font-semibold">Version {o.version}</span>
+                    <span className="text-muted-foreground">·</span>
+                    <span className="text-muted-foreground">
+                      {date(o.openedAt)}
+                    </span>
+                    <span className="rounded-full border bg-muted/30 px-2 py-0.5 text-xs capitalize">
+                      {o.status}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex shrink-0 justify-end">
+                  <Button
+                    size="sm"
+                    className="h-8 px-3 text-xs"
+                    disabled={busy}
+                    onClick={() =>
+                      void action(async () => {
+                        const openingResults = await assessmentResults(o.id);
+                        setResultsAssessment(null);
+                        setResults(openingResults);
+                        setSearch("");
+                      })
+                    }
+                  >
+                    View results
+                  </Button>
+                </div>
+              </section>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog
         open={!!results}
         onOpenChange={(v) => {
           if (!v) setResults(null);
@@ -510,9 +549,7 @@ export default function AdminAssessments() {
           <DialogHeader>
             <DialogTitle>{results?.category} results</DialogTitle>
             <DialogDescription>
-              Opened {date(results?.openedAt ?? null)} · Closes{" "}
-              {date(results?.closesAt ?? null)}
-              {results?.closedAt ? ` · Closed ${date(results.closedAt)}` : ""}
+              Review the assessment opening and freelancer outcomes.
             </DialogDescription>
           </DialogHeader>
           {error && (
@@ -522,6 +559,25 @@ export default function AdminAssessments() {
           )}
           {results && (
             <>
+              <section className="space-y-3 rounded-xl border bg-muted/20 p-4">
+                <h3 className="text-sm font-semibold">Opening details</h3>
+                <dl className="grid gap-3 text-sm sm:grid-cols-3">
+                  <div>
+                    <dt className="text-muted-foreground">Opened</dt>
+                    <dd className="mt-1 font-medium">{date(results.openedAt)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Closes</dt>
+                    <dd className="mt-1 font-medium">{date(results.closesAt)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Closed</dt>
+                    <dd className="mt-1 font-medium">
+                      {results.closedAt ? date(results.closedAt) : "Still open"}
+                    </dd>
+                  </div>
+                </dl>
+              </section>
               <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
                 {[
                   ["Eligible", results.rows.length],
@@ -529,18 +585,6 @@ export default function AdminAssessments() {
                   [
                     "Passed",
                     results.rows.filter((r) => r.passed === true).length,
-                  ],
-                  [
-                    "Failed",
-                    results.rows.filter((r) => r.passed === false).length,
-                  ],
-                  [
-                    "Not attempted",
-                    results.rows.filter((r) => !r.startedAt).length,
-                  ],
-                  [
-                    "Expired attempts",
-                    results.rows.filter((r) => r.status === "expired").length,
                   ],
                 ].map(([label, n]) => (
                   <div key={label} className="rounded-lg bg-muted p-3">

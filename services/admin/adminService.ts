@@ -1,4 +1,4 @@
-import { ADMIN_RECORD_MODULES, type AdminModule } from "./adminModules";
+﻿import { ADMIN_RECORD_MODULES, type AdminModule } from "./adminModules";
 import { z } from "zod";
 export type { AdminModule } from "./adminModules";
 import { platformAction } from "@/services/platform/platformService";
@@ -123,6 +123,12 @@ export type AdminRow = {
   created_at: string;
   detail: string;
   owner_id?: string;
+  owner_name?: string;
+  target_id?: string;
+  target_name?: string;
+  audit_details?: unknown;
+  client_name?: string;
+  freelancer_name?: string;
   document_paths?: string[];
   disputeMilestoneId?: string | null;
   disputeCompletionActionsAvailable?: boolean;
@@ -136,48 +142,34 @@ export interface AdminResult {
   total?: number;
 }
 
-const adminDiditIdentitySchema = z.object({
-  identity: z
-    .object({
-      fullName: z.string().nullable(),
-      documentType: z.string().nullable(),
-      issuingCountry: z.string().nullable(),
-      documentStatus: z.string(),
-      livenessStatuses: z.array(z.string()),
-      faceMatchStatuses: z.array(z.string()),
-      environment: z.enum(["sandbox", "live"]),
-    })
-    .nullable(),
-  simulated: z.boolean(),
-});
-export type AdminDiditIdentity = z.infer<typeof adminDiditIdentitySchema>;
-
-export async function getAdminDiditIdentity(
-  requestId: string,
-): Promise<AdminDiditIdentity> {
-  const {
-    data: { session },
-    error,
-  } = await supabase.auth.getSession();
+export type AdminIdentityVerification = {
+  requestId: string; userId: string; account: { name: string; email: string | null }; status: string;
+  rejectionReason: string | null; submittedAt: string; reviewedAt: string | null; reviewedBy: string | null;
+  reverificationRequestedAt: string | null; reverificationReason: string | null;
+  duplicateAccounts: Array<{ userId: string; name: string; email: string | null }>;
+  history: Array<{ request_id: string; status: string; rejection_reason: string | null; submitted_at: string; reviewed_at: string | null; reviewed_by: string | null }>;
+  documents: { front: string | null; back: string | null; selfie: string | null };
+};
+async function verificationFetch(path: string, init?: RequestInit) {
+  const { data: { session }, error } = await supabase.auth.getSession();
   if (error) throw error;
-  if (!session) throw new Error("Sign in to view verification evidence.");
-  const response = await fetch(
-    `/api/admin/verifications/${encodeURIComponent(requestId)}`,
-    {
-      headers: { Authorization: `Bearer ${session.access_token}` },
-      cache: "no-store",
-    },
-  );
+  if (!session) throw new Error('Sign in to manage identity verification.');
+  const response = await fetch(path, { ...init, headers: { Authorization: `Bearer ${session.access_token}`, ...(init?.headers ?? {}) }, cache: 'no-store' });
   const body = await response.json().catch(() => null);
-  if (!response.ok)
-    throw new Error(
-      typeof body?.error === "string"
-        ? body.error
-        : "Didit identity evidence could not be loaded.",
-    );
-  return adminDiditIdentitySchema.parse(body);
+  if (!response.ok) throw new Error(typeof body?.error === 'string' ? body.error : 'Identity verification request failed.');
+  return body;
 }
-
+export async function getAdminIdentityVerification(requestId: string): Promise<AdminIdentityVerification> {
+  return verificationFetch(`/api/admin/verifications/${encodeURIComponent(requestId)}`);
+}
+async function getAdminPendingIdentityCount(): Promise<{ count: number | null; error: unknown }> {
+  try {
+    const result = await verificationFetch("/api/admin/verifications?countsOnly=1");
+    return { count: typeof result?.pendingCount === "number" ? result.pendingCount : null, error: null };
+  } catch (error) {
+    return { count: null, error };
+  }
+}
 export type AdminQuickActionCounts = {
   transactions: number | null;
   verification: number | null;
@@ -208,7 +200,7 @@ export async function getAdminQuickActionCounts(): Promise<AdminQuickActionCount
     sellerRequirements,
   ] = await Promise.all([
     supabase.from("payments").select("payment_id", { count: "exact", head: true }).in("status", ["pending", "needs_review"]),
-    supabase.from("verification_requests").select("request_id", { count: "exact", head: true }).in("status", pendingStatuses),
+    getAdminPendingIdentityCount(),
     supabase.from("listing_reports").select("report_id", { count: "exact", head: true }).in("status", pendingStatuses),
     supabase.from("project_disputes").select("dispute_id", { count: "exact", head: true }).in("status", pendingStatuses),
     supabase.from("listing_submissions").select("submission_id", { count: "exact", head: true }).in("status", ["pending_review", "manual_review"]),
@@ -241,17 +233,95 @@ export async function getAdminRecords(
 ): Promise<AdminResult> {
   const rpc =
     module === "disputes" ? "worksync_admin_disputes_page" : "worksync_admin_records";
-  return parseAdminRecords(
-    await adminRead(rpc, {
-      ...(module === "disputes"
-        ? {}
-        : { p_module: ADMIN_RECORD_MODULES[module] }),
-      p_search: search.trim(),
-      p_offset: offset,
+  let result: AdminResult;
+  if (module === 'verification') {
+    const body = await verificationFetch(`/api/admin/verifications?search=${encodeURIComponent(search.trim())}`);
+    return parseAdminRecords({ rows: body.rows, total: body.total, limit: body.limit, offset: body.offset, hasNext: false }, 'manual_identity_verification_requests', 0);
+  }
+  if (module !== "overview" && module !== "transactions") {
+    const rows: AdminRow[] = [];
+    const seenIds = new Set<string>();
+    let pageOffset = 0;
+    let total = 0;
+    let page: AdminResult;
+    do {
+      page = parseAdminRecords(
+        await adminRead(rpc, {
+          ...(module === "disputes" ? {} : { p_module: ADMIN_RECORD_MODULES[module] }),
+          p_search: search.trim(),
+          p_offset: pageOffset,
+        }),
+        rpc,
+        pageOffset,
+      );
+      const freshRows = page.rows.filter((row) => !seenIds.has(row.id));
+      freshRows.forEach((row) => seenIds.add(row.id));
+      rows.push(...freshRows);
+      total = page.total ?? rows.length;
+      pageOffset = page.offset + page.limit;
+      if (page.hasNext && freshRows.length === 0) break;
+    } while (page.hasNext && page.rows.length > 0 && pageOffset <= 100_000);
+    result = {
+      rows,
+      limit: Math.max(rows.length, 1),
+      offset: 0,
+      hasNext: false,
+      total,
+    };
+  } else {
+    result = parseAdminRecords(
+      await adminRead(rpc, {
+        p_module: ADMIN_RECORD_MODULES[module],
+        p_search: search.trim(),
+        p_offset: offset,
+      }),
+      rpc,
+      offset,
+    );
+  }
+  const accountIds = [...new Set(result.rows.flatMap((row) => [
+    ...[row.owner_id, row.target_id].filter((id): id is string => Boolean(id && /^[a-f\d-]{36}$/i.test(id))),
+    ...["Client account", "Freelancer account", "Client profile", "Freelancer profile"].flatMap((label) => {
+      const value = row.detail.match(new RegExp(`^${label}:\\s*(.+)$`, "im"))?.[1]?.trim();
+      return value && /^[a-f\d-]{36}$/i.test(value) ? [value] : [];
     }),
-    rpc,
-    offset,
-  );
+  ]))];
+  if (!accountIds.length) return result;
+  try {
+    const identities = await getPublicIdentities({
+      userIds: accountIds,
+      clientIds: accountIds,
+      freelancerIds: accountIds,
+    });
+    const profileNames = new Map(identities.profiles.map((profile) => [
+      profile.user_id,
+      identityName(profile, ""),
+    ]));
+    const clientUsers = new Map(identities.clients.map((profile) => [profile.client_id, profile.user_id]));
+    const freelancerUsers = new Map(identities.freelancers.map((profile) => [profile.freelancer_id, profile.user_id]));
+    const nameFor = (id: string | undefined) => {
+      if (!id) return undefined;
+      const userId = clientUsers.get(id) ?? freelancerUsers.get(id) ?? id;
+      const name = profileNames.get(userId)?.trim();
+      return name || undefined;
+    };
+    return {
+      ...result,
+      rows: result.rows.map((row) => {
+        const clientId = row.detail.match(/^Client (?:account|profile):\s*(.+)$/im)?.[1]?.trim();
+        const freelancerId = row.detail.match(/^Freelancer (?:account|profile):\s*(.+)$/im)?.[1]?.trim();
+        return {
+          ...row,
+          owner_name: nameFor(row.owner_id),
+          target_name: nameFor(row.target_id),
+          client_name: nameFor(clientId) ?? (clientId && !/^[a-f\d-]{36}$/i.test(clientId) ? clientId : undefined),
+          freelancer_name: nameFor(freelancerId) ?? (freelancerId && !/^[a-f\d-]{36}$/i.test(freelancerId) ? freelancerId : undefined),
+        };
+      }),
+    };
+  } catch {
+    return result;
+  }
 }
 export async function getAdminJobMonitoringDetails(jobId: string) {
   const {
@@ -329,7 +399,6 @@ export async function reviewAdminRecord(
   id: string,
   action: string,
   notes: string,
-  expires?: string,
 ) {
   if (!notes.trim()) throw new Error("Record the reason for this action.");
   if (module === "users")
@@ -337,18 +406,11 @@ export async function reviewAdminRecord(
       p_user: id,
       p_status: action === "suspend" ? "suspended" : "active",
       p_reason: notes.trim(),
-      p_expires:
-        action === "suspend" && expires
-          ? new Date(expires).toISOString()
-          : null,
+      p_expires: null,
     });
   if (module === "verification") {
-    if (action !== "revoke")
-      throw new Error("Unsupported verification action.");
-    return platformAction("worksync_admin_revoke_verification", {
-      p_request_id: id,
-      p_reason: notes.trim(),
-    });
+    await verificationFetch(`/api/admin/verifications/${encodeURIComponent(id)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: action === "approve" ? "approve" : action === "reject" ? "reject" : "request_reverification", reason: notes.trim() }) });
+    return;
   }
   if (module === "disputes") {
     const {
@@ -425,3 +487,9 @@ export async function reviewAdminRecord(
     p_notes: notes.trim(),
   });
 }
+
+
+
+
+
+

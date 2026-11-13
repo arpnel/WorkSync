@@ -61,6 +61,8 @@ function formatDate(date: string) {
 export default function ServiceReviews({ freelancerId }: ServiceReviewsProps) {
   const [reviews, setReviews] = useState<MarketplaceReview[]>([]);
 
+  const [selectedRating, setSelectedRating] = useState<number | null>(null);
+
   const [loading, setLoading] = useState(true);
 
   const [error, setError] = useState<string | null>(null);
@@ -74,6 +76,7 @@ export default function ServiceReviews({ freelancerId }: ServiceReviewsProps) {
 
   useEffect(() => {
     async function loadReviews() {
+      setSelectedRating(null);
       if (!freelancerId) {
         setReviews([]);
         setLoading(false);
@@ -131,6 +134,13 @@ export default function ServiceReviews({ freelancerId }: ServiceReviewsProps) {
       1: reviews.filter((review) => review.rating === 1).length,
     };
   }, [reviews]);
+
+  const filteredReviews = useMemo(
+    () => selectedRating === null
+      ? reviews
+      : reviews.filter((review) => review.rating === selectedRating),
+    [reviews, selectedRating],
+  );
 
   /* ==========================================================
      RATING PERCENTAGE
@@ -254,7 +264,14 @@ export default function ServiceReviews({ freelancerId }: ServiceReviewsProps) {
 
             <div className="flex flex-col justify-center gap-2">
               {[5, 4, 3, 2, 1].map((rating) => (
-                <div key={rating} className="flex items-center gap-3">
+                <button
+                  key={rating}
+                  type="button"
+                  aria-pressed={selectedRating === rating}
+                  aria-label={`Show ${rating}-star reviews (${ratingCounts[rating as keyof typeof ratingCounts]})`}
+                  onClick={() => setSelectedRating((current) => current === rating ? null : rating)}
+                  className={`flex w-full items-center gap-3 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selectedRating === rating ? "bg-muted/70" : ""}`}
+                >
                   <div className="flex w-12 shrink-0 items-center gap-1">
                     <span className="text-sm">{rating}</span>
 
@@ -273,17 +290,30 @@ export default function ServiceReviews({ freelancerId }: ServiceReviewsProps) {
                   <span className="w-10 text-right text-xs text-muted-foreground">
                     {getPercentage(rating)}%
                   </span>
-                </div>
+                </button>
               ))}
             </div>
           </div>
+
+          {selectedRating !== null && (
+            <div className="mt-4 flex justify-end text-sm">
+              <button
+                type="button"
+                className="font-medium text-primary hover:underline"
+                onClick={() => setSelectedRating(null)}
+              >
+                Show all ratings
+              </button>
+            </div>
+          )}
 
           {/* =================================================
                 REVIEW LIST
             ================================================= */}
 
+          {filteredReviews.length > 0 ? (
           <div className="mt-6 divide-y rounded-2xl border">
-            {reviews.map((review) => {
+            {filteredReviews.map((review) => {
               const name = review.client.display_name || "Client";
 
               return (
@@ -338,6 +368,11 @@ export default function ServiceReviews({ freelancerId }: ServiceReviewsProps) {
               );
             })}
           </div>
+          ) : (
+            <p className="mt-6 rounded-2xl border bg-muted/20 px-6 py-8 text-center text-sm text-muted-foreground">
+              No {selectedRating}-star reviews yet.
+            </p>
+          )}
         </>
       )}
     </section>

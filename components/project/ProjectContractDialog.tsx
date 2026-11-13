@@ -11,7 +11,30 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import type { ProjectWorkspace } from "@/types/project/projectWorkspace";
+import type { ProjectWorkspace, WorkspaceMilestone } from "@/types/project/projectWorkspace";
+
+export type ProjectContractView = Pick<
+  ProjectWorkspace,
+  | "type"
+  | "title"
+  | "categoryName"
+  | "budget"
+  | "deliveryDays"
+  | "revisions"
+  | "clientName"
+  | "freelancerName"
+  | "description"
+  | "terms"
+  | "startDate"
+  | "dueDate"
+  | "createdAt"
+  | "clientSignedAt"
+  | "freelancerSignedAt"
+> & {
+  milestones: Array<
+    Pick<WorkspaceMilestone, "id" | "title" | "description" | "amount" | "dueDate">
+  >;
+};
 
 function date(value: string | null) {
   return value && Number.isFinite(Date.parse(value))
@@ -22,14 +45,16 @@ function date(value: string | null) {
 export function ProjectContractDialog({
   project,
   buttonLabel = "Agreed scope & contract",
+  buttonClassName = "w-full",
 }: {
-  project: ProjectWorkspace;
+  project: ProjectContractView;
   buttonLabel?: string;
+  buttonClassName?: string;
 }) {
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button variant="outline" className="w-full">
+        <Button variant="outline" className={buttonClassName}>
           <FileText className="h-4 w-4" />
           {buttonLabel}
         </Button>

@@ -4,7 +4,7 @@ import type { ServiceFormValues } from "../types/service-form.types";
 import type { Category } from "@/services/serviceP/categoryService";
 
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { RequiredLabel } from "./RequiredLabel";
 
 type Props = {
   values: ServiceFormValues;
@@ -47,7 +47,7 @@ export function ServiceCategorySection({
 
   return (
     <div ref={containerRef} className="space-y-2">
-      <Label htmlFor="category">Category</Label>
+      <RequiredLabel htmlFor="category">Category</RequiredLabel>
       <div className="relative">
         <Input
           id="category"

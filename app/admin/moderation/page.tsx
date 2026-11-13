@@ -34,6 +34,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { getPublicIdentities, identityName } from "@/services/profile/publicIdentityService";
 
 type Submission = {
   submission_id: string;
@@ -68,6 +69,7 @@ const isReviewable = (status: string) =>
 
 export default function ModerationPage() {
   const [rows, setRows] = useState<Submission[]>([]);
+  const [ownerNames, setOwnerNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [type, setType] = useState("all");
@@ -84,7 +86,7 @@ export default function ModerationPage() {
   const [listingFacts, setListingFacts] = useState<ListingFacts | null>(null);
   const [listingFactsLoading, setListingFactsLoading] = useState(false);
   const [listingFactsError, setListingFactsError] = useState("");
-  const [decision, setDecision] = useState<"reject" | null>(null);
+  const [decision, setDecision] = useState<"reject" | "return_to_review" | null>(null);
   const [category, setCategory] = useState("policy_violation");
   const [explanation, setExplanation] = useState("");
   const [busy, setBusy] = useState(false);
@@ -208,6 +210,16 @@ export default function ModerationPage() {
       return;
     }
     setRows((data ?? []) as Submission[]);
+    try {
+      const ownerIds = [...new Set((data ?? []).map((row) => row.owner_id))];
+      const identities = await getPublicIdentities({ userIds: ownerIds });
+      setOwnerNames(Object.fromEntries(identities.profiles.map((profile) => [
+        profile.user_id,
+        identityName(profile, "Name unavailable"),
+      ])));
+    } catch {
+      setOwnerNames({});
+    }
     setTotal(count ?? 0);
     const names = ["pending_review", "manual_review", "approved", "rejected"];
     const results = await Promise.all(
@@ -240,13 +252,21 @@ export default function ModerationPage() {
     return () => clearTimeout(timer);
   }, [load]);
 
-  async function act(action: "approve" | "reject" | null = decision) {
+  async function act(action: "approve" | "reject" | "return_to_review" | null = decision) {
     if (!selected || !action || busy) return;
-    if (!isReviewable(selected.status)) {
+    if (action !== "return_to_review" && !isReviewable(selected.status)) {
       setDecision(null);
       setSelected(null);
       await load();
       setError("This submission has already been reviewed.");
+      return;
+    }
+    if (action === "return_to_review" && isReviewable(selected.status)) {
+      setError("This submission is already awaiting review.");
+      return;
+    }
+    if (action === "return_to_review" && !explanation.trim()) {
+      setError("Add a reason before returning this listing to review.");
       return;
     }
     if (
@@ -258,12 +278,18 @@ export default function ModerationPage() {
     }
     setBusy(true);
     setError("");
-    const { error } = await supabase.rpc("worksync_admin_decide_listing", {
-      p_submission: selected.submission_id,
-      p_action: action,
-      p_category: category.trim(),
-      p_explanation: explanation.trim(),
-    });
+    const { error } = action === "return_to_review"
+      ? await supabase.rpc("worksync_admin_hide_listing", {
+          p_listing_type: selected.listing_type,
+          p_listing_id: selected.listing_id,
+          p_notes: explanation.trim(),
+        })
+      : await supabase.rpc("worksync_admin_decide_listing", {
+          p_submission: selected.submission_id,
+          p_action: action,
+          p_category: category.trim(),
+          p_explanation: explanation.trim(),
+        });
     if (error) setError(error.message);
     else {
       setDecision(null);
@@ -390,7 +416,7 @@ export default function ModerationPage() {
             <Table className="min-w-[1120px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead>Listing / reference</TableHead>
+                  <TableHead>Listing name</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Owner</TableHead>
                   <TableHead>Risk</TableHead>
@@ -404,11 +430,10 @@ export default function ModerationPage() {
                   <TableRow key={row.submission_id}>
                     <TableCell className="max-w-sm">
                       <button className="text-left font-medium hover:underline" onClick={() => setSelected(row)}>{row.title}</button>
-                      <p className="mt-1 truncate font-mono text-xs text-muted-foreground">{row.submission_id}</p>
                       {row.owner_removed_at && <Badge variant="outline" className="mt-1">Removed from owner view</Badge>}
                     </TableCell>
                     <TableCell className="capitalize">{row.listing_type}</TableCell>
-                    <TableCell className="font-mono text-xs">{row.owner_id.slice(0, 8)}</TableCell>
+                    <TableCell>{ownerNames[row.owner_id] || "Name unavailable"}</TableCell>
                     <TableCell><Badge variant="secondary" className="capitalize">{row.ai_risk ?? "assessment pending"}</Badge></TableCell>
                     <TableCell>
                       <AdminStatus tone={row.status === "approved" ? "green" : row.status === "rejected" ? "neutral" : "blue"}>
@@ -417,17 +442,13 @@ export default function ModerationPage() {
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-muted-foreground">{new Date(row.created_at).toLocaleDateString()}</TableCell>
                     <TableCell className="text-right">
-                      {isReviewable(row.status) ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setSelected(row)}
-                        >
-                          View details
-                        </Button>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">Reviewed</span>
-                      )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setSelected(row)}
+                      >
+                        {isReviewable(row.status) ? "View details" : "Edit"}
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -474,7 +495,7 @@ export default function ModerationPage() {
                 <Badge variant="secondary" className="px-2 py-0.5">
                   {selected?.listing_type === "job" ? "Job listing" : "Service listing"}
                 </Badge>
-                <span>Owner: {selected?.owner_id}</span>
+                <span>Owner: {selected ? ownerNames[selected.owner_id] || "Name unavailable" : "Name unavailable"}</span>
                 <span aria-hidden="true">·</span>
                 <span>{selected && new Date(selected.created_at).toLocaleString()}</span>
               </DialogDescription>
@@ -602,7 +623,23 @@ export default function ModerationPage() {
                 </div>
               </>
             ) : (
-              <p className="text-sm text-muted-foreground">This submission has already been reviewed.</p>
+              <div className="flex w-full flex-wrap items-center gap-3">
+                <p className="text-sm text-muted-foreground">
+                  Reviewed as {selected?.status === "approved" ? "approved" : "rejected"}.
+                </p>
+                <Button
+                  className="ml-auto"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => {
+                    setError("");
+                    setExplanation("");
+                    setDecision("return_to_review");
+                  }}
+                >
+                  {selected?.status === "approved" ? "Revoke approval" : "Return to review"}
+                </Button>
+              </div>
             )}
           </div>
         </DialogContent>
@@ -621,14 +658,22 @@ export default function ModerationPage() {
             <DialogTitle>
               {decision === "reject"
                 ? "Reject listing"
-                : "Approve listing"}
+                : decision === "return_to_review"
+                  ? selected?.status === "approved"
+                    ? "Revoke listing approval"
+                    : "Return listing to review"
+                  : "Approve listing"}
             </DialogTitle>
             <DialogDescription>
-              Give the owner a clear reason for this decision.
+              {decision === "return_to_review"
+                ? selected?.status === "approved"
+                  ? "This hides the approved listing and sends it back to the owner for edits and resubmission. Add a reason for the review history."
+                  : "This sends the rejected listing back for review and owner edits. Add a reason for the review history."
+                : "Give the owner a clear reason for this decision."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <label className="block space-y-1.5 text-sm font-medium">
+            {decision === "reject" && <label className="block space-y-1.5 text-sm font-medium">
               Reason category
               <StyledSelect
                 className="h-10 w-full rounded-lg border bg-background px-3 font-normal"
@@ -650,16 +695,24 @@ export default function ModerationPage() {
                   </option>
                 ))}
               </StyledSelect>
-            </label>
+            </label>}
             <label className="block space-y-1.5 text-sm font-medium">
-              Explanation
+              {decision === "return_to_review"
+                ? selected?.status === "approved"
+                  ? "Reason for revoking approval"
+                  : "Reason for returning to review"
+                : "Explanation"}
               <Textarea
                 className="font-normal"
                 minLength={decision === "reject" ? 12 : 0}
                 maxLength={1200}
                 value={explanation}
                 onChange={(event) => setExplanation(event.target.value)}
-                placeholder="Describe the decision and next steps"
+                placeholder={decision === "return_to_review"
+                  ? selected?.status === "approved"
+                    ? "Explain why approval is being revoked"
+                    : "Explain why this listing is returning to review"
+                  : "Describe the decision and next steps"}
               />
             </label>
             {error && (
@@ -671,11 +724,16 @@ export default function ModerationPage() {
               className="h-11 w-full rounded-lg"
               disabled={
                 busy ||
-                (decision === "reject" && explanation.trim().length < 12)
+                (decision === "reject" && explanation.trim().length < 12) ||
+                (decision === "return_to_review" && !explanation.trim())
               }
               onClick={() => void act()}
             >
-              {busy ? "Saving…" : "Confirm"}
+              {busy
+                ? "Saving…"
+                : decision === "return_to_review"
+                  ? selected?.status === "approved" ? "Revoke approval" : "Return to review"
+                  : "Confirm"}
             </Button>
           </div>
         </DialogContent>

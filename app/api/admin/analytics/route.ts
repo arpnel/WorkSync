@@ -1,4 +1,4 @@
-import { PaymentError } from "@/lib/payments/paymongo";
+﻿import { PaymentError } from "@/lib/payments/paymongo";
 import { paymentResponse, paymentUser } from "@/services/payments/paymentServer";
 
 export const runtime = "nodejs";
@@ -245,7 +245,7 @@ export async function GET(request: Request) {
         .order("created_at", { ascending: true }).order("user_id", { ascending: true })
         .range(start, end);
     const readVerifications = (start: number, end: number) =>
-      db.from("verification_requests").select("user_id,status,verified_at")
+      db.from("manual_identity_verification_requests").select("user_id,status,verified_at:reviewed_at")
         .eq("is_current", true).order("user_id", { ascending: true }).range(start, end);
     const readProjects = (start: number, end: number) =>
       db.from("projects").select("project_id,status,project_type,created_at,completed_at,due_date,deadline_at")
@@ -1021,3 +1021,5 @@ export async function GET(request: Request) {
     return paymentResponse(error);
   }
 }
+
+

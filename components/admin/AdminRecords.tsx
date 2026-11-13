@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { StyledSelect } from "@/components/ui/styled-select";
 
 import { ADMIN_PAGE_GUIDANCE } from "./admin-page-guidance";
@@ -8,12 +8,13 @@ import { filterAdminPage } from "@/services/admin/adminRecordFilters";
 import AdminPageHeader from "./AdminPageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Check, Copy, RefreshCw, Search, SlidersHorizontal, X } from "lucide-react";
+import { Check, Copy, RefreshCw, Search, SlidersHorizontal } from "lucide-react";
 import { openSavedTaxReceipt } from "@/lib/payments/receiptClient";
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import DisputeContext from "./DisputeContext";
+import { ProjectContractDialog, type ProjectContractView } from "@/components/project/ProjectContractDialog";
 import { Button } from "@/components/ui/button";
 import AdminDocumentLink from "@/components/admin/AdminDocumentLink";
 import { Input } from "@/components/ui/input";
@@ -32,6 +33,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogDescription,
@@ -40,14 +42,18 @@ import {
   getAdminJobMonitoringDetails,
   getAdminProjectDetails,
   getAdminRecords,
-  getAdminDiditIdentity,
+  getAdminIdentityVerification,
   reviewAdminRecord,
   getAdminReportDetails,
   type AdminModule,
   type AdminResult,
   type AdminRow,
-  type AdminDiditIdentity,
+  type AdminIdentityVerification,
 } from "@/services/admin/adminService";
+import {
+  getPublicIdentities,
+  identityName,
+} from "@/services/profile/publicIdentityService";
 
 type AdminJobMonitoringDetails = Awaited<
   ReturnType<typeof getAdminJobMonitoringDetails>
@@ -56,6 +62,19 @@ type AdminProjectDetails = Awaited<
   ReturnType<typeof getAdminProjectDetails>
 >;
 type AdminReportDetails = Awaited<ReturnType<typeof getAdminReportDetails>>;
+
+function contractTerms(value: string | null) {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value);
+    if (parsed && typeof parsed === "object" && typeof parsed.description === "string") {
+      return parsed.description;
+    }
+  } catch {
+    // Older contracts store plain text terms.
+  }
+  return value;
+}
 
 function jobBudget(detail: string) {
   const match = detail.match(/Budget:\s*PHP\s*([\d,.]+)\s*-\s*([\d,.]+)/i);
@@ -66,7 +85,8 @@ function jobBudget(detail: string) {
       currency: "PHP",
       maximumFractionDigits: 0,
     }).format(Number(value.replaceAll(",", "")));
-  return `${format(match[1])} – ${format(match[2])}`;
+  if (Number(match[1].replaceAll(",", "")) === 0) return format(match[2]);
+  return `${format(match[1])} â€“ ${format(match[2])}`;
 }
 
 function jobDescription(detail: string) {
@@ -144,13 +164,28 @@ function adminStatusLabel(status: string, module: AdminModule) {
 }
 
 function verificationDetail(detail: string, label: string) {
-  return detail.match(new RegExp(`^${label}:\\s*(.*)$`, "im"))?.[1]?.trim() ?? "Not recorded";
+  return detail.match(new RegExp(`^${label}:[ \\t]*(.*)$`, "im"))?.[1]?.trim() || "Not recorded";
 }
 
 function adminJobDate(value: string | null | undefined) {
   if (!value) return "Not set";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
+}
+
+function adminAccountAge(value: string) {
+  const createdAt = new Date(value);
+  if (Number.isNaN(createdAt.getTime())) return "Not recorded";
+  const ageInDays = Math.max(
+    0,
+    Math.floor((Date.now() - createdAt.getTime()) / 86_400_000),
+  );
+  if (ageInDays < 30) return `${ageInDays} days`;
+  const ageInMonths = Math.floor(ageInDays / 30.4375);
+  if (ageInMonths < 12) return `${ageInMonths} months`;
+  const years = Math.floor(ageInMonths / 12);
+  const months = ageInMonths % 12;
+  return `${years} ${years === 1 ? "year" : "years"}${months ? ` ${months} mo` : ""}`;
 }
 
 function adminInitials(name: string) {
@@ -189,6 +224,41 @@ function projectDate(value: string | null | undefined) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
+function auditActionTitle(value: string) {
+  return value
+    .split(":")
+    .map((part) => part.replaceAll("_", " ").trim())
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" Â· ");
+}
+
+function auditTargetType(action: string) {
+  const prefix = action.split(":")[0]?.toLowerCase();
+  return ({
+    job: "Job listing",
+    service: "Service listing",
+    project: "Project",
+    user: "User account",
+    freelancer: "Freelancer account",
+    client: "Client account",
+  } as Record<string, string>)[prefix] ?? "Related record";
+}
+
+function auditValue(value: unknown) {
+  if (typeof value === "string") return value;
+  if (value == null) return "Not recorded";
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return JSON.stringify(value, null, 2);
+}
+
+function auditMetadata(value: unknown) {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return Object.entries(value as Record<string, unknown>);
+  }
+  return value == null ? [] : [["Details", value] as [string, unknown]];
+}
+
 function adminActionLabel(module: AdminModule, value: string) {
   if (module === "disputes") {
     const labels: Record<string, string> = {
@@ -209,9 +279,11 @@ function adminActionLabel(module: AdminModule, value: string) {
 export default function AdminRecords({
   module,
   title,
+  showHeader = true,
 }: {
   module: AdminModule;
   title: string;
+  showHeader?: boolean;
 }) {
   const [data, setData] = useState<AdminResult | null>(null);
   const [search, setSearch] = useState("");
@@ -227,6 +299,7 @@ export default function AdminRecords({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<AdminRow | null>(null);
+  const [userProfileName, setUserProfileName] = useState<string | null>(null);
   const [jobDetails, setJobDetails] =
     useState<AdminJobMonitoringDetails | null>(null);
   const [jobDetailsError, setJobDetailsError] = useState("");
@@ -237,26 +310,52 @@ export default function AdminRecords({
   const [projectDetailsLoading, setProjectDetailsLoading] = useState(false);
   const [reportDetails, setReportDetails] = useState<AdminReportDetails | null>(null);
   const [reportDetailsLoading, setReportDetailsLoading] = useState(false);
-  const [diditIdentity, setDiditIdentity] = useState<AdminDiditIdentity | null>(null);
-  const [diditIdentityError, setDiditIdentityError] = useState("");
-  const [diditIdentityLoading, setDiditIdentityLoading] = useState(false);
-  const [projectDescriptionOpen, setProjectDescriptionOpen] = useState(false);
+  const [identityReview, setIdentityReview] = useState<AdminIdentityVerification | null>(null);
+  const [identityReviewError, setIdentityReviewError] = useState("");
+  const [identityReviewLoading, setIdentityReviewLoading] = useState(false);
   const [proposalApplicant, setProposalApplicant] = useState<
     AdminJobMonitoringDetails["applicants"][number] | null
   >(null);
   const [copiedReference, setCopiedReference] = useState(false);
-  const [expires, setExpires] = useState("");
   const [notes, setNotes] = useState("");
   const [action, setAction] = useState("");
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState("");
   const sequence = useRef(0);
+  const useClientRecordPagination = !["overview", "transactions"].includes(module);
   const notesLimit = module === "jobs" || module === "projects" || module === "verification" ? 500 : 5000;
   const reportFields =
     module === "reports" && selected
       ? reportDetailFields(selected.detail)
       : null;
   const projectContract = projectDetails?.contract ?? null;
+  const projectContractView: ProjectContractView | null =
+    projectDetails && projectContract
+      ? {
+          type: projectDetails.project.projectType === "milestone" ? "milestone" : "standard",
+          title: projectDetails.project.title,
+          categoryName: null,
+          budget: Number(projectContract.finalPrice ?? projectDetails.project.budget ?? 0),
+          deliveryDays: projectContract.deliveryDays,
+          revisions: projectContract.revisions,
+          clientName: projectDetails.clientName,
+          freelancerName: projectDetails.freelancerName,
+          description: projectDetails.project.description ?? "",
+          terms: contractTerms(projectContract.terms),
+          startDate: projectDetails.project.startDate,
+          dueDate: projectDetails.project.dueDate,
+          createdAt: projectDetails.project.createdAt ?? projectContract.createdAt ?? "",
+          clientSignedAt: projectContract.clientSignedAt,
+          freelancerSignedAt: projectContract.freelancerSignedAt,
+          milestones: projectDetails.milestones.map((milestone) => ({
+            id: milestone.id,
+            title: milestone.title,
+            description: milestone.description ?? "",
+            amount: Number(milestone.amount ?? 0),
+            dueDate: milestone.dueDate,
+          })),
+        }
+      : null;
   const projectContractIsSigned = Boolean(
     projectContract?.clientSignedAt &&
       projectContract.freelancerSignedAt &&
@@ -297,29 +396,29 @@ export default function AdminRecords({
   }, [module, selected]);
   useEffect(() => {
     if (module !== "verification" || !selected) {
-      setDiditIdentity(null);
-      setDiditIdentityError("");
-      setDiditIdentityLoading(false);
+      setIdentityReview(null);
+      setIdentityReviewError("");
+      setIdentityReviewLoading(false);
       return;
     }
     let current = true;
-    setDiditIdentity(null);
-    setDiditIdentityError("");
-    setDiditIdentityLoading(true);
-    void getAdminDiditIdentity(selected.id)
+    setIdentityReview(null);
+    setIdentityReviewError("");
+    setIdentityReviewLoading(true);
+    void getAdminIdentityVerification(selected.id)
       .then((details) => {
-        if (current) setDiditIdentity(details);
+        if (current) setIdentityReview(details);
       })
       .catch((cause) => {
         if (current)
-          setDiditIdentityError(
+          setIdentityReviewError(
             cause instanceof Error
               ? cause.message
-              : "Didit identity evidence could not be loaded.",
+              : "Identity evidence could not be loaded.",
           );
       })
       .finally(() => {
-        if (current) setDiditIdentityLoading(false);
+        if (current) setIdentityReviewLoading(false);
       });
     return () => {
       current = false;
@@ -330,11 +429,9 @@ export default function AdminRecords({
       setProjectDetails(null);
       setProjectDetailsError("");
       setProjectDetailsLoading(false);
-      setProjectDescriptionOpen(false);
       return;
     }
     let current = true;
-    setProjectDescriptionOpen(false);
     setProjectDetails(null);
     setProjectDetailsError("");
     setProjectDetailsLoading(true);
@@ -380,12 +477,45 @@ export default function AdminRecords({
       current = false;
     };
   }, [module, selected]);
+  useEffect(() => {
+    if (module !== "users" || !selected) {
+      setUserProfileName(null);
+      return;
+    }
+    if (selected.owner_name) {
+      setUserProfileName(selected.owner_name);
+      return;
+    }
+    if (!/^[a-f\d-]{36}$/i.test(selected.id)) {
+      setUserProfileName("");
+      return;
+    }
+    let current = true;
+    setUserProfileName(null);
+    void getPublicIdentities({ userIds: [selected.id] })
+      .then(({ profiles }) => {
+        if (current) {
+          setUserProfileName(
+            identityName(
+              profiles.find((profile) => profile.user_id === selected.id),
+              "",
+            ),
+          );
+        }
+      })
+      .catch(() => {
+        if (current) setUserProfileName("");
+      });
+    return () => {
+      current = false;
+    };
+  }, [module, selected]);
   const load = useCallback(async () => {
     const request = ++sequence.current;
     setLoading(true);
     setError("");
     try {
-      const result = await getAdminRecords(module, search, offset);
+      const result = await getAdminRecords(module, search, useClientRecordPagination ? 0 : offset);
       if (request === sequence.current) setData(result);
     } catch (cause) {
       if (request === sequence.current) {
@@ -397,7 +527,7 @@ export default function AdminRecords({
     } finally {
       if (request === sequence.current) setLoading(false);
     }
-  }, [module, search, offset]);
+  }, [module, search, useClientRecordPagination ? 0 : offset]);
   useEffect(() => {
     const requests = sequence;
     const timer = setTimeout(() => void load(), 200);
@@ -406,6 +536,17 @@ export default function AdminRecords({
       requests.current++;
     };
   }, [load]);
+  useEffect(() => {
+    if (module !== "audit" || !data) return;
+    const recordId = new URLSearchParams(window.location.search).get("record");
+    if (!recordId) return;
+    const record = data.rows.find((row) => row.id === recordId);
+    if (record) setSelected(record);
+  }, [module, data]);
+  useEffect(() => {
+    setOffset(0);
+    setPreviousOffsets([]);
+  }, [module, search, statusFilter, fromDate, toDate, sort]);
   const actions =
     module === "users"
       ? ["suspend", "restore"]
@@ -425,7 +566,7 @@ export default function AdminRecords({
         : module === "reports"
           ? ["under_review", "resolved", "dismissed"]
           : module === "verification"
-            ? ["revoke"]
+            ? ["approve", "reject", "request_reverification"]
             : module === "projects"
               ? ["cancel_project"]
             : module === "services" || module === "jobs"
@@ -438,11 +579,22 @@ export default function AdminRecords({
   );
   const visibleRows = filterAdminPage(
     adminRows,
-    statusFilter,
+    module === "audit" ? "all" : statusFilter,
     fromDate,
     toDate,
     sort,
   );
+  const recordPageSize = 10;
+  const recordPageCount = useClientRecordPagination ? Math.ceil(visibleRows.length / recordPageSize) : 0;
+  const recordCurrentPage = recordPageCount ? Math.min(Math.floor(offset / recordPageSize) + 1, recordPageCount) : 0;
+  const recordPageNumbers = recordPageCount <= 7
+    ? Array.from({ length: recordPageCount }, (_, index) => index + 1)
+    : [...new Set([1, recordCurrentPage - 1, recordCurrentPage, recordCurrentPage + 1, recordPageCount])]
+        .filter((page) => page >= 1 && page <= recordPageCount)
+        .sort((a, b) => a - b);
+  const displayRows = useClientRecordPagination
+    ? visibleRows.slice(offset, offset + recordPageSize)
+    : visibleRows;
   const statusCounts = adminRows.reduce<Record<string, number>>(
     (counts, row) => {
       counts[row.status] = (counts[row.status] ?? 0) + 1;
@@ -454,12 +606,7 @@ export default function AdminRecords({
   const isUserModule = module === "users";
   const isAuditModule = module === "audit";
   const isVerificationModule = module === "verification";
-  const canRevokeVerification = Boolean(
-    isVerificationModule &&
-      selected?.status === "approved" &&
-      verificationDetail(selected.detail, "Provider").toLowerCase() === "didit" &&
-      verificationDetail(selected.detail, "Current").toLowerCase() === "true",
-  );
+  const canRevokeVerification = Boolean(isVerificationModule && selected);
   const isStructuredRecordsModule =
     module === "jobs" ||
     module === "services" ||
@@ -473,6 +620,8 @@ export default function AdminRecords({
     "verification",
     "disputes",
   ].includes(module);
+  const usesPopoverDateFilter =
+    usesAdminTableLayout || isUserModule || isAuditModule;
   const listingStatuses = [
     ...new Set([
       ...(module === "jobs"
@@ -483,7 +632,7 @@ export default function AdminRecords({
             ? ["active", "in_progress", "completed", "cancelled"]
             : module === "reports"
               ? ["pending", "under_review", "resolved", "dismissed"]
-              : module === "disputes" ? ["open", "under_review", "resolved", "closed"] : module === "users" ? ["active", "suspended"] : module === "verification" ? ["pending", "approved", "rejected", "expired", "revoked"] : []),
+              : module === "disputes" ? ["open", "under_review", "resolved", "closed"] : module === "users" ? ["active", "suspended"] : module === "verification" ? ["pending", "verified", "rejected"] : []),
       ...(module === "jobs" || module === "services"
         ? []
         : adminRows.map((row) => row.status)),
@@ -498,7 +647,11 @@ export default function AdminRecords({
     data?.total == null ? "Loaded page only" : "All records";
   const isListingModule = ["jobs", "services", "projects"].includes(module);
   const recordNoun =
-    module === "jobs"
+    module === "users"
+      ? "users"
+      : module === "audit"
+        ? "audit entries"
+      : module === "jobs"
       ? "jobs"
       : module === "services"
         ? "services"
@@ -510,7 +663,11 @@ export default function AdminRecords({
               ? "verification requests"
               : "disputes";
   const statusFilterNoun =
-    module === "jobs"
+    module === "users"
+      ? "user"
+      : module === "audit"
+        ? "audit event"
+      : module === "jobs"
       ? "job"
       : module === "services"
         ? "service"
@@ -522,7 +679,13 @@ export default function AdminRecords({
               ? "verification request"
               : "dispute";
   const allStatusLabel =
-    module === "jobs"
+    module === "users"
+      ? "All users"
+      : module === "audit"
+        ? "All events"
+        : module === "verification"
+          ? "All requests"
+      : module === "jobs"
       ? "All jobs"
       : module === "services"
         ? "All services"
@@ -530,9 +693,7 @@ export default function AdminRecords({
           ? "All projects"
           : module === "reports"
             ? "All reports"
-            : module === "verification"
-              ? "All requests"
-              : "All disputes";
+            : "All disputes";
   function clearTableFilters() {
     setSearch("");
     setStatusFilter("all");
@@ -593,11 +754,11 @@ export default function AdminRecords({
   );
   return (
     <div className={isStructuredRecordsModule ? "min-w-0 space-y-4" : "min-w-0 space-y-6"}>
-      <AdminPageHeader title={title} />
+      {showHeader && <AdminPageHeader title={title} />}
       {isStructuredRecordsModule && (
         <section
           aria-label={`${module === "jobs" ? "Job" : module === "services" ? "Service" : module === "projects" ? "Project" : module === "reports" ? "Report" : module === "disputes" ? "Dispute" : module === "audit" ? "Audit" : module === "verification" ? "Verification" : "User"} summary`}
-          className={`grid gap-3 ${isModerationRecordModule || isUserModule ? "sm:grid-cols-2 xl:grid-cols-4" : "sm:grid-cols-3"}`}
+          className={`grid gap-3 ${isUserModule ? "sm:grid-cols-3" : isModerationRecordModule ? "sm:grid-cols-2 xl:grid-cols-4" : "sm:grid-cols-3"}`}
         >
           <Card className="gap-1 rounded-xl border p-3 shadow-none">
             <p className="text-xs text-muted-foreground">
@@ -634,7 +795,7 @@ export default function AdminRecords({
               {isAuditModule ? Object.keys(statusCounts).length.toLocaleString() : isVerificationModule ? (statusCounts.pending ?? 0).toLocaleString() : reviewMetric.toLocaleString()}
             </p>
             {module !== "reports" && module !== "disputes" && (
-              <p className="text-xs text-muted-foreground">On the loaded page</p>
+              <p className="text-xs text-muted-foreground">{useClientRecordPagination ? "All records" : "On the loaded page"}</p>
             )}
           </Card>
           <Card className="gap-1 rounded-xl border p-3 shadow-none">
@@ -647,13 +808,13 @@ export default function AdminRecords({
                     ? "Completed"
                     : module === "reports"
                       ? "Resolved / dismissed"
-                      : module === "disputes" ? "Resolved / closed" : module === "audit" ? "Actors on loaded page" : module === "verification" ? "Approved / revoked" : "Suspended"}
+                      : module === "disputes" ? "Resolved / closed" : module === "audit" ? "Actors on loaded page" : module === "verification" ? "Verified" : "Suspended"}
             </p>
             <p className="text-xl font-semibold tabular-nums">
-              {isAuditModule ? new Set((data?.rows ?? []).map((row) => row.owner_id).filter(Boolean)).size.toLocaleString() : isVerificationModule ? ((statusCounts.approved ?? 0) + (statusCounts.revoked ?? 0)).toLocaleString() : closedMetric.toLocaleString()}
+              {isAuditModule ? new Set((data?.rows ?? []).map((row) => row.owner_id).filter(Boolean)).size.toLocaleString() : isVerificationModule ? (statusCounts.verified ?? 0).toLocaleString() : closedMetric.toLocaleString()}
             </p>
             {module !== "reports" && module !== "disputes" && (
-              <p className="text-xs text-muted-foreground">On the loaded page</p>
+              <p className="text-xs text-muted-foreground">{useClientRecordPagination ? "All records" : "On the loaded page"}</p>
             )}
           </Card>
           {isModerationRecordModule && (
@@ -742,7 +903,7 @@ export default function AdminRecords({
                 />
               </label>
               <div className="flex shrink-0 gap-2">
-                {usesAdminTableLayout ? (
+                {usesPopoverDateFilter ? (
                   <Popover
                     open={jobFiltersOpen}
                     onOpenChange={(open) => {
@@ -765,7 +926,7 @@ export default function AdminRecords({
                     >
                       <div className="grid gap-4">
                         <label className="grid gap-1.5 text-sm font-medium">
-                          Created from
+                          From
                           <Input
                             className="h-10 bg-background font-normal"
                             type="date"
@@ -775,7 +936,7 @@ export default function AdminRecords({
                           />
                         </label>
                         <label className="grid gap-1.5 text-sm font-medium">
-                          Created to
+                          To
                           <Input
                             className="h-10 bg-background font-normal"
                             type="date"
@@ -784,22 +945,21 @@ export default function AdminRecords({
                             onChange={(event) => setDraftToDate(event.target.value)}
                           />
                         </label>
-                        <div className="flex items-center justify-between border-t pt-3">
+                        <div className="flex items-center justify-end gap-3 border-t pt-3">
                           <Button
                             type="button"
-                            variant="ghost"
-                            size="sm"
+                            variant="outline"
+                            className="h-12 px-4 text-base"
                             onClick={() => {
                               setDraftFromDate("");
                               setDraftToDate("");
                             }}
                           >
-                            <X className="size-4" />
-                            Clear dates
+                            Clear filters
                           </Button>
                           <Button
                             type="button"
-                            size="sm"
+                            className="h-12 px-5 text-base"
                             onClick={() => {
                               setFromDate(draftFromDate);
                               setToDate(draftToDate);
@@ -843,7 +1003,7 @@ export default function AdminRecords({
                 )}
               </div>
             </div>
-            <div
+            {!isAuditModule && <div
               className="flex flex-wrap gap-2"
               role="group"
               aria-label={`Filter by ${statusFilterNoun} status`}
@@ -852,7 +1012,7 @@ export default function AdminRecords({
                 type="button"
                 className={`rounded-full px-3 py-1 text-xs font-medium ${statusFilter === "all" ? "bg-blue-600 text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
                 aria-pressed={statusFilter === "all"}
-                onClick={() => setStatusFilter("all")}
+                onClick={() => { setStatusFilter("all"); setOffset(0); setPreviousOffsets([]); }}
               >
                 {allStatusLabel}
               </button>
@@ -862,16 +1022,16 @@ export default function AdminRecords({
                   key={value}
                   className={`rounded-full px-3 py-1 text-xs font-medium capitalize ${statusFilter === value ? "bg-blue-600 text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
                   aria-pressed={statusFilter === value}
-                  onClick={() => setStatusFilter(value)}
+                  onClick={() => { setStatusFilter(value); setOffset(0); setPreviousOffsets([]); }}
                 >
                   {adminStatusLabel(value, module)}
                 </button>
               ))}
-            </div>
-            {!usesAdminTableLayout && jobFiltersOpen && (
+            </div>}
+            {!usesPopoverDateFilter && jobFiltersOpen && (
               <div className="grid grid-cols-1 gap-3 border-t pt-3 sm:grid-cols-2">
                 <label className="grid min-w-0 gap-1.5 text-sm font-medium">
-                  Created from
+                  From
                   <Input
                     className="h-10 w-full rounded-lg bg-background font-normal"
                     type="date"
@@ -881,7 +1041,7 @@ export default function AdminRecords({
                   />
                 </label>
                 <label className="grid min-w-0 gap-1.5 text-sm font-medium">
-                  Created to
+                  To
                   <Input
                     className="h-10 w-full rounded-lg bg-background font-normal"
                     type="date"
@@ -936,7 +1096,7 @@ export default function AdminRecords({
             </StyledSelect>
           </label>
           <label className="grid min-w-0 gap-1.5 text-sm font-medium">
-            Created from
+            From
             <Input
               className="h-10 w-full rounded-lg bg-background font-normal"
               type="date"
@@ -946,7 +1106,7 @@ export default function AdminRecords({
             />
           </label>
           <label className="grid min-w-0 gap-1.5 text-sm font-medium">
-            Created through
+            To
             <Input
               className="h-10 w-full rounded-lg bg-background font-normal"
               type="date"
@@ -999,9 +1159,11 @@ export default function AdminRecords({
           </div>
         </div>
         )}
-        {module !== "reports" && module !== "disputes" && (
+        {module !== "reports" && module !== "disputes" && module !== "users" && (
           <p className="mt-3 text-xs leading-5 text-muted-foreground">
-            {isStructuredRecordsModule
+            {isAuditModule
+              ? "Search checks event names, administrators, and references. Dates and sorting apply to the loaded page."
+              : isStructuredRecordsModule
               ? `Search checks ${module === "jobs" ? "job" : module === "services" ? "service" : module === "projects" ? "project" : "dispute"} titles, statuses, and references. Status, dates, and sorting apply to the loaded page.`
               : "Search checks all records. Status, dates, and sorting apply to the loaded page."}
           </p>
@@ -1094,11 +1256,11 @@ export default function AdminRecords({
                       ? "Projects, budgets, participants, and delivery status."
                       : module === "reports"
                         ? "Reported listings and their review status."
-                        : module === "disputes" ? "Project disputes and their resolution status." : module === "audit" ? "Administrative actions recorded for review." : module === "verification" ? "Monitor identity decisions returned by Didit. Revoke an approved result only when a specific case requires it." : "Accounts and their current access status."}
+                        : module === "disputes" ? "Project disputes and their resolution status." : module === "audit" ? "Administrative actions recorded for review." : module === "verification" ? "Review government ID and selfie submissions. Approve, reject, or request a new submission." : "Accounts and their current access status."}
               </p>
-              {data && (
+              {data && !isAuditModule && (
                 <Badge variant="outline" className="mt-1 w-fit font-normal">
-                  {usesAdminTableLayout
+                  {usesAdminTableLayout || useClientRecordPagination
                     ? `${matchingCount.toLocaleString()} matching`
                     : `${listingTotal.toLocaleString()} ${listingTotal === 1 ? "record" : "records"}${data.total == null ? " loaded" : ""}`}
                 </Badge>
@@ -1144,14 +1306,14 @@ export default function AdminRecords({
                 <TableRow>
                   <TableHead>
                     {module === "jobs"
-                      ? "Job / reference"
+                      ? "Job"
                       : module === "services"
-                        ? "Service / reference"
+                        ? "Service"
                         : module === "projects"
-                          ? "Project / reference"
+                          ? "Project"
                           : module === "reports"
-                            ? "Report / reference"
-                            : module === "disputes" ? "Dispute / project" : module === "audit" ? "Event / reference" : module === "verification" ? "Document / reference" : "User / reference"}
+                            ? "Report"
+                            : module === "disputes" ? "Dispute reason" : module === "audit" ? "Event" : module === "verification" ? "Document" : "User"}
                   </TableHead>
                   <TableHead>
                     {module === "jobs"
@@ -1175,24 +1337,21 @@ export default function AdminRecords({
                   )}
                   {module === "projects" && <TableHead>Deadline</TableHead>}
                   <TableHead>Created</TableHead>
-                  <TableHead>Status</TableHead>
+                  {!isAuditModule && <TableHead>Status</TableHead>}
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {visibleRows.map((row) => (
+                {displayRows.map((row) => (
                   <TableRow key={row.id}>
                     <TableCell className={usesAdminTableLayout ? "max-w-64" : "max-w-sm"}>
                       <p className="truncate font-medium">{row.title}</p>
-                      <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
-                        {row.id}
-                      </p>
                     </TableCell>
                     <TableCell className="font-medium">
                       {module === "projects" ? (
                         <div className="space-y-1 text-xs">
-                          <p>Client: {projectDetailValue(row.detail, "Client account")}</p>
-                          <p>Freelancer: {projectDetailValue(row.detail, "Freelancer account")}</p>
+                          <p>Client: {row.client_name || "Name unavailable"}</p>
+                          <p>Freelancer: {row.freelancer_name || "Name unavailable"}</p>
                         </div>
                       ) : isUserModule ? (
                         <div className="space-y-1 text-xs">
@@ -1200,8 +1359,8 @@ export default function AdminRecords({
                           <p className="text-muted-foreground">{projectDetailValue(row.detail, "Email")}</p>
                         </div>
                       ) : row.owner_id ? (
-                        `ID ${row.owner_id.slice(0, 8)}`
-                      ) : isAuditModule ? projectDetailValue(row.detail, "Administrator") : (
+                        row.owner_name || "Name unavailable"
+                      ) : isAuditModule ? row.owner_name || "Name unavailable" : (
                         "Not available"
                       )}
                     </TableCell>
@@ -1226,7 +1385,7 @@ export default function AdminRecords({
                           : new Date(row.created_at).toLocaleDateString()
                         : "Not recorded"}
                     </TableCell>
-                    <TableCell>
+                    {!isAuditModule && <TableCell>
                       {usesAdminTableLayout ? (
                         <AdminStatus
                           tone={
@@ -1247,7 +1406,7 @@ export default function AdminRecords({
                           {row.status.replaceAll("_", " ")}
                         </Badge>
                       )}
-                    </TableCell>
+                    </TableCell>}
                     <TableCell className="text-right">
                       <Button
                         type="button"
@@ -1255,7 +1414,6 @@ export default function AdminRecords({
                         size="sm"
                         onClick={() => {
                           setSelected(row);
-                          setExpires("");
                           setNotes("");
                           setAction(actions[0] ?? "");
                         }}
@@ -1273,9 +1431,7 @@ export default function AdminRecords({
             <Table>
               <TableHeader className="hidden md:table-header-group">
                 <TableRow>
-                  <TableHead>
-                    "Name / reference"
-                  </TableHead>
+                  <TableHead>Name</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Date</TableHead>
                   {module === "transactions" && <TableHead>Receipt</TableHead>}
@@ -1283,7 +1439,7 @@ export default function AdminRecords({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {visibleRows.map((row) => (
+                {displayRows.map((row) => (
                   <TableRow
                     key={row.id}
                     className="grid grid-cols-2 gap-2 py-4 md:table-row md:py-0"
@@ -1302,7 +1458,7 @@ export default function AdminRecords({
                     <TableCell className="text-right text-xs text-muted-foreground md:text-left md:text-sm">
                       {row.created_at
                         ? new Date(row.created_at).toLocaleDateString()
-                        : "—"}
+                        : "â€”"}
                     </TableCell>
                     {module === "transactions" && (
                       <TableCell className="col-span-2 md:text-left">
@@ -1338,7 +1494,6 @@ export default function AdminRecords({
                         size="sm"
                         onClick={() => {
                           setSelected(row);
-                          setExpires("");
                           setNotes("");
                           setAction(actions[0] ?? "");
                         }}
@@ -1375,64 +1530,89 @@ export default function AdminRecords({
             )
           )}
           {module !== "overview" && (
-            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t pt-4">
-              <Button
-                variant="outline"
-                disabled={loading || previousOffsets.length === 0}
-                onClick={() => {
-                  setOffset(previousOffsets[previousOffsets.length - 1] ?? 0);
-                  setPreviousOffsets(previousOffsets.slice(0, -1));
-                }}
-              >
-                Previous
-              </Button>
-              <span className="text-sm">
-                {usesAdminTableLayout
-                  ? matchingCount === 0
-                    ? `0 ${recordNoun}`
-                    : `Showing ${visibleRows.length} of ${matchingCount.toLocaleString()} ${recordNoun}`
-                  : isStructuredRecordsModule && data?.total != null
-                  ? statusFilter === "all" && !fromDate && !toDate
-                    ? `Showing ${data.rows.length ? data.offset + 1 : 0}–${data.offset + data.rows.length} of ${data.total.toLocaleString()}`
-                    : `Showing ${visibleRows.length} of ${data.rows.length} loaded · ${data.total.toLocaleString()} total`
-                  : `Page ${previousOffsets.length + 1}: ${data?.rows.length ?? 0} records loaded; ${visibleRows.length} shown`}
-              </span>
-              <Button
-                variant="outline"
-                disabled={loading || !data?.hasNext}
-                onClick={() => {
-                  if (!data) return;
-                  setPreviousOffsets([...previousOffsets, offset]);
-                  setOffset(data.offset + data.limit);
-                }}
-              >
-                Next
-              </Button>
-            </div>
+            useClientRecordPagination ? (
+              <div className="mt-5 flex flex-wrap items-center justify-center gap-1.5 border-t pt-4">
+                <Button type="button" size="sm" variant="outline" disabled={loading || recordCurrentPage <= 1} onClick={() => setOffset(0)}>First</Button>
+                <Button type="button" size="sm" variant="outline" aria-label="Previous page" disabled={loading || recordCurrentPage <= 1} onClick={() => setOffset(Math.max(0, offset - recordPageSize))}>Previous</Button>
+                {recordPageNumbers.map((page, index) => (
+                  <Fragment key={page}>
+                    {index > 0 && page - recordPageNumbers[index - 1] > 1 && <span className="px-1 text-muted-foreground" aria-hidden="true">â€¦</span>}
+                    <Button type="button" size="sm" variant={page === recordCurrentPage ? "default" : "outline"} aria-label={`Page ${page}`} aria-current={page === recordCurrentPage ? "page" : undefined} disabled={loading} onClick={() => setOffset((page - 1) * recordPageSize)}>{page}</Button>
+                  </Fragment>
+                ))}
+                <Button type="button" size="sm" variant="outline" aria-label="Next page" disabled={loading || recordCurrentPage >= recordPageCount} onClick={() => setOffset(Math.min((recordPageCount - 1) * recordPageSize, offset + recordPageSize))}>Next</Button>
+                <Button type="button" size="sm" variant="outline" disabled={loading || recordCurrentPage >= recordPageCount} onClick={() => setOffset(Math.max(0, (recordPageCount - 1) * recordPageSize))}>Last</Button>
+              </div>
+            ) : (
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+                <Button
+                  variant="outline"
+                  disabled={loading || previousOffsets.length === 0}
+                  onClick={() => {
+                    setOffset(previousOffsets[previousOffsets.length - 1] ?? 0);
+                    setPreviousOffsets(previousOffsets.slice(0, -1));
+                  }}
+                >
+                  Previous
+                </Button>
+                <span className="text-sm">
+                  {usesAdminTableLayout
+                    ? matchingCount === 0
+                      ? `0 ${recordNoun}`
+                      : `Showing ${visibleRows.length} of ${matchingCount.toLocaleString()} ${recordNoun}`
+                    : isStructuredRecordsModule && data?.total != null
+                      ? statusFilter === "all" && !fromDate && !toDate
+                        ? `Showing ${data.rows.length ? data.offset + 1 : 0}â€“${data.offset + data.rows.length} of ${data.total.toLocaleString()}`
+                        : `Showing ${visibleRows.length} of ${data.rows.length} loaded Â· ${data.total.toLocaleString()} total`
+                      : `Page ${previousOffsets.length + 1}: ${data?.rows.length ?? 0} records loaded; ${visibleRows.length} shown`}
+                </span>
+                <Button
+                  variant="outline"
+                  disabled={loading || !data?.hasNext}
+                  onClick={() => {
+                    if (!data) return;
+                    setPreviousOffsets([...previousOffsets, offset]);
+                    setOffset(data.offset + data.limit);
+                  }}
+                >
+                  Next
+                </Button>
+              </div>
+            )
           )}
         </CardContent>
       </Card>
       <Dialog
         open={!!selected}
         onOpenChange={(open) => {
-          if (!open && !busy) setSelected(null);
+          if (!open && !busy) {
+            setSelected(null);
+            if (module === "audit") {
+              const url = new URL(window.location.href);
+              url.searchParams.delete("record");
+              window.history.replaceState(window.history.state, "", url);
+            }
+          }
         }}
       >
-        <DialogContent className="max-h-[90vh] overflow-y-auto rounded-2xl sm:max-w-3xl">
+        <DialogContent
+          className={
+            isAuditModule || isUserModule || module === "disputes" || module === "projects" || module === "jobs" || module === "services"
+              ? `flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 ${module === "disputes" ? "sm:max-w-4xl" : "sm:max-w-3xl"}`
+              : "max-h-[90vh] overflow-y-auto rounded-2xl sm:max-w-3xl"
+          }
+        >
           {module === "jobs" && selected ? (
-            <div className="space-y-2 border-b pb-5 pr-7">
+            <div className="shrink-0 space-y-2 border-b px-5 py-4 pr-14">
               <div className="flex flex-wrap items-center gap-2">
                 <DialogTitle className="text-lg">{selected.title}</DialogTitle>
                 <Badge variant="secondary" className="capitalize">
                   {(jobDetails?.status ?? selected.status).replaceAll("_", " ")}
                   {jobDetails?.projectType
-                    ? ` · ${jobDetails.projectType.replaceAll("_", " ")}`
+                    ? ` Â· ${jobDetails.projectType.replaceAll("_", " ")}`
                     : ""}
                 </Badge>
               </div>
-              <DialogDescription className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-                {jobDescription(selected.detail)}
-              </DialogDescription>
               <div className="flex min-w-0 items-center gap-2">
                 <span className="break-all text-xs text-muted-foreground">
                   Reference: {selected.id}
@@ -1461,16 +1641,13 @@ export default function AdminRecords({
               </p>
             </div>
           ) : module === "services" && selected ? (
-            <div className="space-y-3 border-b pb-5 pr-7">
+            <div className="shrink-0 space-y-3 border-b px-5 py-4 pr-14">
               <div className="flex flex-wrap items-center gap-2">
                 <DialogTitle className="text-lg">{selected.title}</DialogTitle>
                 <AdminStatus tone={selected.status === "active" ? "green" : selected.status === "hidden" ? "neutral" : "orange"}>
                   {selected.status.replaceAll("_", " ")}
                 </AdminStatus>
               </div>
-              <DialogDescription className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-                {serviceDescription(selected.detail) || "No service description provided."}
-              </DialogDescription>
               <div className="flex min-w-0 items-center gap-2">
                 <span className="break-all text-xs text-muted-foreground">
                   Reference: {selected.id}
@@ -1496,7 +1673,8 @@ export default function AdminRecords({
               </div>
             </div>
           ) : module === "projects" && selected ? (
-            <div className="space-y-2 border-b pb-3 pr-7">
+            <DialogHeader className="shrink-0 border-b px-5 py-4 pr-14">
+              <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-2">
                 <DialogTitle className="text-2xl">
                   {projectDetails?.project.title ?? selected.title}
@@ -1534,20 +1712,9 @@ export default function AdminRecords({
                 >
                   {copiedReference ? <Check className="size-4" /> : <Copy className="size-4" />}
                 </Button>
-                {projectDetails?.project.description?.trim() && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-7 shrink-0"
-                    aria-haspopup="dialog"
-                    onClick={() => setProjectDescriptionOpen(true)}
-                  >
-                    View description
-                  </Button>
-                )}
               </div>
-            </div>
+              </div>
+            </DialogHeader>
           ) : module === "reports" && selected ? (
             <div className="space-y-2 border-b pb-3 pr-7">
               <div className="flex flex-wrap items-center gap-2">
@@ -1581,7 +1748,7 @@ export default function AdminRecords({
               </div>
             </div>
           ) : module === "disputes" && selected ? (
-            <div className="space-y-2 border-b pb-3 pr-7">
+            <DialogHeader className="shrink-0 border-b px-5 py-4 pr-14">
               <div className="flex flex-wrap items-center gap-2">
                 <DialogTitle className="text-xl">Dispute details</DialogTitle>
                 <AdminStatus tone={selected.status === "resolved" || selected.status === "closed" ? "green" : selected.status === "open" ? "orange" : "blue"}>
@@ -1589,7 +1756,7 @@ export default function AdminRecords({
                 </AdminStatus>
               </div>
               <div className="flex min-w-0 items-center gap-2 text-sm">
-                <span className="break-all text-muted-foreground">Reference: {selected.id}</span>
+                <span className="break-all text-xs text-muted-foreground">Reference ID: {selected.id}</span>
                 <Button
                   type="button"
                   variant="outline"
@@ -1609,20 +1776,115 @@ export default function AdminRecords({
                   {copiedReference ? <Check className="size-4" /> : <Copy className="size-4" />}
                 </Button>
               </div>
-            </div>
+            </DialogHeader>
+          ) : module === "users" && selected ? (
+            <DialogHeader className="shrink-0 border-b px-5 py-4 pr-14">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <DialogTitle>{selected.title}</DialogTitle>
+                    <AdminStatus tone={selected.status === "active" ? "green" : selected.status === "suspended" ? "orange" : "neutral"}>
+                      {adminStatusLabel(selected.status, module)}
+                    </AdminStatus>
+                  </div>
+                  <DialogDescription className="mt-1">User account details and moderation controls</DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
+          ) : module === "audit" && selected ? (
+            <DialogHeader className="shrink-0 border-b px-5 py-4 pr-14">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <DialogTitle>{auditActionTitle(selected.title)}</DialogTitle>
+                    <AdminStatus tone="neutral">Recorded</AdminStatus>
+                  </div>
+                  <DialogDescription className="mt-1">{selected.created_at ? new Date(selected.created_at).toLocaleString() : "Date not recorded"}</DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
           ) : (
             <DialogHeader>
-              <DialogTitle>{selected?.title}</DialogTitle>
-              <DialogDescription>Reference: {selected?.id}</DialogDescription>
+              <div className="flex flex-wrap items-center gap-2">
+                <DialogTitle>{selected?.title}</DialogTitle>
+                {selected && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon-sm"
+                    aria-label="Copy reference ID"
+                    title={copiedReference ? "Copied" : "Copy reference ID"}
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(selected.id);
+                        setCopiedReference(true);
+                      } catch {
+                        setCopiedReference(false);
+                      }
+                    }}
+                  >
+                    {copiedReference ? <Check className="size-4" /> : <Copy className="size-4" />}
+                  </Button>
+                )}
+              </div>
+              <DialogDescription>Reference ID: {selected?.id}</DialogDescription>
             </DialogHeader>
           )}
-          {module === "disputes" && selected?.detail?.trim() && (
-            <section className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-4">
-              <h3 className="font-semibold text-amber-700 dark:text-amber-300">Dispute summary</h3>
-              <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed">{selected.detail}</p>
+          <div className={isAuditModule || isUserModule || module === "disputes" || module === "projects" || module === "jobs" || module === "services" ? "min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4" : "contents"}>
+          {module === "audit" && selected && (
+            <>
+              <section className="space-y-3 rounded-xl border p-4">
+                <h3 className="font-semibold">Audit context</h3>
+                <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+                  <div><dt className="text-muted-foreground">Administrator</dt><dd className="mt-1 font-medium">{selected.owner_name || "Name unavailable"}</dd></div>
+                  <div><dt className="text-muted-foreground">Target</dt><dd className="mt-1 font-medium">{selected.target_name || auditTargetType(selected.title)}</dd></div>
+                  <div><dt className="text-muted-foreground">Action</dt><dd className="mt-1 font-medium">{auditActionTitle(selected.title)}</dd></div>
+                  <div><dt className="text-muted-foreground">Recorded</dt><dd className="mt-1 font-medium">{selected.created_at ? new Date(selected.created_at).toLocaleString() : "Date not recorded"}</dd></div>
+                </dl>
+              </section>
+              <section className="space-y-3 rounded-xl border p-4">
+                <h3 className="font-semibold">Event details</h3>
+                {auditMetadata(selected.audit_details).length ? (
+                  <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+                    {auditMetadata(selected.audit_details).map(([key, value]) => (
+                      <div key={key} className="min-w-0">
+                        <dt className="text-muted-foreground">{key.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase())}</dt>
+                        <dd className="mt-1 break-words font-medium">{auditValue(value)}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                ) : <p className="text-sm text-muted-foreground">No additional event details were recorded.</p>}
+              </section>
+              <section className="space-y-3 rounded-xl border p-4">
+                <h3 className="font-semibold">Reference IDs</h3>
+                <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+                  <div className="min-w-0"><dt className="text-muted-foreground">Audit record</dt><dd className="mt-1"><AuditCopyValue value={selected.id} label="audit reference ID" /></dd></div>
+                  {selected.target_id && <div className="min-w-0"><dt className="text-muted-foreground">Target record</dt><dd className="mt-1"><AuditCopyValue value={selected.target_id} label="target reference ID" /></dd></div>}
+                  {selected.owner_id && <div className="min-w-0"><dt className="text-muted-foreground">Administrator account</dt><dd className="mt-1"><AuditCopyValue value={selected.owner_id} label="administrator account ID" /></dd></div>}
+                </dl>
+              </section>
+            </>
+          )}
+          {module === "users" && selected && (
+            <section className="space-y-3 rounded-xl border p-4">
+              <h3 className="font-semibold">User profile</h3>
+              <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+                <div>
+                  <dt className="text-muted-foreground">Name</dt>
+                  <dd className="mt-1 font-medium">
+                    {userProfileName === null
+                      ? "Loading nameâ€¦"
+                      : userProfileName || "Name unavailable"}
+                  </dd>
+                </div>
+                <div><dt className="text-muted-foreground">Role</dt><dd className="mt-1 font-medium">{verificationDetail(selected.detail, "Role")}</dd></div>
+                <div><dt className="text-muted-foreground">Email</dt><dd className="mt-1 break-words font-medium">{verificationDetail(selected.detail, "Email")}</dd></div>
+                <div><dt className="text-muted-foreground">Account age</dt><dd className="mt-1 font-medium">{selected.created_at ? adminAccountAge(selected.created_at) : "Not recorded"}</dd></div>
+                <div className="min-w-0"><dt className="text-muted-foreground">Reference ID</dt><dd className="mt-1"><AuditCopyValue value={selected.id} label="user reference ID" /></dd></div>
+              </dl>
             </section>
           )}
-          {module !== "jobs" && module !== "services" && module !== "projects" && module !== "reports" && module !== "disputes" && (
+          {module !== "jobs" && module !== "services" && module !== "projects" && module !== "reports" && module !== "disputes" && module !== "audit" && module !== "users" && (
             <p className="whitespace-pre-wrap break-words text-sm">{selected?.detail}</p>
           )}
           {module === "reports" && selected && reportFields && (
@@ -1635,7 +1897,7 @@ export default function AdminRecords({
                 <div className="min-w-0 rounded-xl border p-4">
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Reporter account</p>
                   <p className="mt-1 text-sm font-semibold">
-                    {reportDetails?.reporterName ?? (reportDetailsLoading ? "Loading name…" : "Name unavailable")}
+                    {reportDetails?.reporterName ?? (reportDetailsLoading ? "Loading nameâ€¦" : "Name unavailable")}
                   </p>
                   <p className="mt-1 break-all text-xs text-muted-foreground">
                     Account ID: {reportDetails?.reporterId ?? reportFields.reporter ?? "Not available"}
@@ -1644,9 +1906,10 @@ export default function AdminRecords({
               </div>
               <div className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-4">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">Reason:</p>
+                  <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">Type:</p>
                   <p className="text-sm font-medium">{reportName(selected.title)}</p>
                 </div>
+                <p className="mt-2 text-sm font-semibold text-amber-700 dark:text-amber-300">Reporter&apos;s reason:</p>
                 <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-relaxed">
                   {reportFields.reason || "No additional reason was provided."}
                 </p>
@@ -1656,6 +1919,12 @@ export default function AdminRecords({
           {module === "jobs" && selected && (
             <section className="space-y-4">
               <h3 className="font-semibold">Job participants and details</h3>
+              <div className="rounded-xl border bg-muted/10 p-4">
+                <p className="text-sm font-medium">Description:</p>
+                <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-relaxed">
+                  {jobDescription(selected.detail) || "No job description provided."}
+                </p>
+              </div>
               {jobDetailsLoading ? (
                 <div
                   role="status"
@@ -1738,7 +2007,7 @@ export default function AdminRecords({
                                   </div>
                                   <p className="text-xs text-muted-foreground">
                                     Applied {adminJobDate(applicant.appliedAt)}
-                                    {price ? ` · Proposed ${price}` : ""}
+                                    {price ? ` Â· Proposed ${price}` : ""}
                                   </p>
                                 </div>
                               </div>
@@ -1832,26 +2101,26 @@ export default function AdminRecords({
                       ["Completed", projectDetails.project.completedAt ? projectDateOnly(projectDetails.project.completedAt) : "Not completed"],
                     ].map(([label, value]) => (
                       <div key={label} className="min-w-0 rounded-lg bg-muted/60 p-2.5">
-                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-                        <p className="mt-1 truncate text-base font-semibold tabular-nums">{value}</p>
+                        <p className="text-xs font-medium text-muted-foreground">{label}</p>
+                        <p className="mt-1 truncate text-sm font-semibold tabular-nums">{value}</p>
                       </div>
                     ))}
                   </div>
 
                   <div className="grid gap-2 sm:grid-cols-2">
                     <section className="min-w-0 rounded-lg border p-3">
-                      <h3 className="mb-2 text-lg font-semibold">Participants</h3>
+                      <h3 className="mb-2 text-base font-semibold">Participants</h3>
                       {!projectDetails.participantNamesAvailable && (
                         <p className="mb-2 text-sm text-muted-foreground">Some participant names could not be loaded.</p>
                       )}
-                      <dl className="space-y-2 text-base">
+                      <dl className="space-y-2 text-sm">
                         <div className="flex items-start justify-between gap-3">
                           <dt className="text-muted-foreground">Client</dt>
-                          <dd className="text-right text-lg font-semibold">{projectDetails.clientName}</dd>
+                          <dd className="text-right font-semibold">{projectDetails.clientName}</dd>
                         </div>
                         <div className="flex items-start justify-between gap-3">
                           <dt className="text-muted-foreground">Freelancer</dt>
-                          <dd className="text-right text-lg font-semibold">{projectDetails.freelancerName}</dd>
+                          <dd className="text-right font-semibold">{projectDetails.freelancerName}</dd>
                         </div>
                       </dl>
                       {(projectDetails.project.orderId || projectDetails.project.applicationId) && (
@@ -1864,19 +2133,28 @@ export default function AdminRecords({
 
                     <section className="min-w-0 rounded-lg border p-3">
                       <div className="mb-2 flex items-center justify-between gap-2">
-                        <h3 className="text-lg font-semibold">Contract</h3>
-                        {projectContract && (
-                          <Badge variant="secondary" className={projectContractIsSigned ? "bg-emerald-600/15 text-emerald-600" : "capitalize"}>
-                            {projectContractIsSigned ? "Signed" : projectContract.status.replaceAll("_", " ")}
-                          </Badge>
-                        )}
+                        <h3 className="text-base font-semibold">Contract</h3>
+                        <div className="ml-auto flex items-center gap-2">
+                          {projectContract && (
+                            <Badge variant="secondary" className={projectContractIsSigned ? "bg-emerald-600/15 text-emerald-600" : "capitalize"}>
+                              {projectContractIsSigned ? "Signed" : projectContract.status.replaceAll("_", " ")}
+                            </Badge>
+                          )}
+                          {projectContractView && (
+                            <ProjectContractDialog
+                              project={projectContractView}
+                              buttonLabel="View full contract"
+                              buttonClassName="h-8 shrink-0 px-2 text-xs"
+                            />
+                          )}
+                        </div>
                       </div>
                       {projectContract ? (
                         <>
-                          <dl className="space-y-2 text-base">
+                          <dl className="space-y-2 text-sm">
                             <div className="flex items-center justify-between gap-3">
                               <dt className="text-muted-foreground">Delivery time</dt>
-                              <dd className="text-right text-lg font-semibold">
+                              <dd className="text-right font-semibold">
                                 {projectContract.deliveryDays == null
                                   ? "Not recorded"
                                   : `${projectContract.deliveryDays} ${projectContract.deliveryDays === 1 ? "day" : "days"}`}
@@ -1884,14 +2162,13 @@ export default function AdminRecords({
                             </div>
                             <div className="flex items-center justify-between gap-3">
                               <dt className="text-muted-foreground">Revisions</dt>
-                              <dd className="text-right text-lg font-semibold">{projectContract.revisions ?? "Not recorded"}</dd>
+                              <dd className="text-right font-semibold">{projectContract.revisions ?? "Not recorded"}</dd>
                             </div>
                           </dl>
                           <div className="mt-2 space-y-1 border-t pt-2 text-xs leading-relaxed text-muted-foreground">
                             <p>Client signed {projectDate(projectContract.clientSignedAt)}</p>
                             <p>Freelancer signed {projectDate(projectContract.freelancerSignedAt)}</p>
                           </div>
-                          <p className="mt-1 break-all text-xs text-muted-foreground">Contract ref: {projectContract.id}</p>
                         </>
                       ) : (
                         <p className="text-sm text-muted-foreground">
@@ -1905,10 +2182,10 @@ export default function AdminRecords({
                     projectDetails.milestones.length > 0) && (
                   <section className="space-y-2">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <h3 className="text-lg font-semibold">Work progress</h3>
+                      <h3 className="text-base font-semibold">Work progress</h3>
                       <span className="text-xs text-muted-foreground">
                         {projectDetails.taskProgress
-                          ? `${projectDetails.taskProgress.total} tasks · `
+                          ? `${projectDetails.taskProgress.total} tasks Â· `
                           : ""}
                         {projectDetails.milestones.length} milestones
                       </span>
@@ -1950,11 +2227,17 @@ export default function AdminRecords({
           {module === "services" && selected && (
             <section className="space-y-4">
               <h3 className="font-semibold">Service participants and details</h3>
+              <div className="rounded-xl border bg-muted/10 p-4">
+                <p className="text-sm font-medium">Description:</p>
+                <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-relaxed">
+                  {serviceDescription(selected.detail) || "No service description provided."}
+                </p>
+              </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="flex items-center justify-between gap-3 rounded-xl border bg-muted/20 p-4">
                   <div className="min-w-0">
                     <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Freelancer account</p>
-                    <p className="mt-1 truncate font-medium">{selected.owner_id ? `ID ${selected.owner_id.slice(0, 8)}` : "Not available"}</p>
+                    <p className="mt-1 truncate font-medium">{selected.owner_name || "Name unavailable"}</p>
                     <p className="mt-1 text-xs text-muted-foreground">Created {selected.created_at ? new Date(selected.created_at).toLocaleDateString() : "Not recorded"}</p>
                   </div>
                   {selected.owner_id && (
@@ -1976,82 +2259,24 @@ export default function AdminRecords({
             </section>
           )}
           {module === "disputes" && selected && (
-            <DisputeContext key={selected.id} id={selected.id} />
+            <DisputeContext
+              key={selected.id}
+              id={selected.id}
+            />
           )}
           {isVerificationModule && selected && (
-            <section className="rounded-xl border bg-muted/10 p-4">
-              <h3 className="font-semibold">Didit verification record</h3>
-              <dl className="mt-3 grid gap-x-5 gap-y-3 text-sm sm:grid-cols-2">
-                <div>
-                  <dt className="text-muted-foreground">Provider</dt>
-                  <dd className="mt-1 font-medium">{verificationDetail(selected.detail, "Provider")}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Provider decision</dt>
-                  <dd className="mt-1 font-medium">{verificationDetail(selected.detail, "Provider status")}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Current request</dt>
-                  <dd className="mt-1 font-medium">{verificationDetail(selected.detail, "Current")}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Provider approval time</dt>
-                  <dd className="mt-1 font-medium">{verificationDetail(selected.detail, "Verified")}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Last review</dt>
-                  <dd className="mt-1 font-medium">{verificationDetail(selected.detail, "Reviewed")}</dd>
-                </div>
-              </dl>
-              <div className="mt-4 border-t pt-4">
-                <h4 className="text-sm font-semibold">Identity details from Didit</h4>
-                {diditIdentityLoading ? (
-                  <p className="mt-2 text-sm text-muted-foreground">Loading provider result…</p>
-                ) : diditIdentityError ? (
-                  <p className="mt-2 text-sm text-destructive">{diditIdentityError}</p>
-                ) : diditIdentity?.identity ? (
-                  <>
-                    {diditIdentity.simulated && (
-                      <p className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-                        Sandbox result: identity details are simulated test data.
-                      </p>
-                    )}
-                    <dl className="mt-3 grid gap-x-5 gap-y-3 text-sm sm:grid-cols-2">
-                      <div>
-                        <dt className="text-muted-foreground">Name on ID</dt>
-                        <dd className="mt-1 font-medium">{diditIdentity.identity.fullName ?? "Not returned by Didit"}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-muted-foreground">Document type</dt>
-                        <dd className="mt-1 font-medium">{diditIdentity.identity.documentType ?? "Not returned by Didit"}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-muted-foreground">Issuing country</dt>
-                        <dd className="mt-1 font-medium">{diditIdentity.identity.issuingCountry ?? "Not returned by Didit"}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-muted-foreground">ID document check</dt>
-                        <dd className="mt-1 font-medium">{diditIdentity.identity.documentStatus}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-muted-foreground">Liveness check</dt>
-                        <dd className="mt-1 font-medium">{diditIdentity.identity.livenessStatuses.join(", ") || "Not included in this workflow"}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-muted-foreground">Face match</dt>
-                        <dd className="mt-1 font-medium">{diditIdentity.identity.faceMatchStatuses.join(", ") || "Not included in this workflow"}</dd>
-                      </div>
-                    </dl>
-                  </>
-                ) : (
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Didit identity details are available only for the current approved document verification.
-                  </p>
-                )}
-              </div>
+            <section className="space-y-4 rounded-xl border bg-muted/10 p-4">
+              <h3 className="font-semibold">Manual identity review</h3>
+              {identityReviewLoading ? <p className="text-sm text-muted-foreground">Loading secure evidence…</p> : identityReviewError ? <p role="alert" className="text-sm text-destructive">{identityReviewError}</p> : identityReview ? <>
+                <p className="text-sm">{identityReview.account.name} · {identityReview.account.email ?? "Email unavailable"}</p>
+                <p className="text-sm">Submitted {new Date(identityReview.submittedAt).toLocaleString()} · {identityReview.status}</p>
+                {identityReview.reverificationReason && <p className="text-sm">Reverification requested: {identityReview.reverificationReason}</p>}
+                {identityReview.duplicateAccounts.length > 0 && <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">Possible duplicate ID match: {identityReview.duplicateAccounts.map(a=>`${a.name} (${a.email ?? "no email"})`).join(", ")}. Review manually; this is not an automatic rejection.</div>}
+                <div className="grid gap-3 sm:grid-cols-3">{([['ID front',identityReview.documents.front],['ID back',identityReview.documents.back],['Selfie',identityReview.documents.selfie]] as const).map(([label,url])=>url ? <a key={label} href={url} target="_blank" rel="noreferrer" className="block rounded-lg border p-2"><span className="mb-2 block text-sm">{label}</span><img src={url} alt={label} className="max-h-64 w-full rounded object-contain" /></a> : null)}</div>
+                <div className="text-sm"><strong>Review history</strong>{identityReview.history.map(h=><p key={h.request_id}>{new Date(h.submitted_at).toLocaleString()} · {h.status}{h.rejection_reason ? ` · ${h.rejection_reason}` : ""}</p>)}</div>
+              </> : <p className="text-sm text-muted-foreground">No manual verification data.</p>}
             </section>
-          )}
-          {selected?.owner_id && module !== "jobs" && module !== "services" && module !== "reports" && module !== "disputes" && (
+          )}          {selected?.owner_id && module !== "jobs" && module !== "services" && module !== "reports" && module !== "disputes" && module !== "audit" && module !== "users" && (
             <Link
               className="text-sm underline"
               href={`/admin/users/${encodeURIComponent(selected.owner_id)}`}
@@ -2075,7 +2300,8 @@ export default function AdminRecords({
               (projectDetails?.project.status ?? selected?.status ?? "").toLowerCase(),
             )) && (
             <form
-              className={`space-y-4 ${module === "jobs" || module === "services" ? "rounded-xl border bg-muted/10 p-5" : module === "projects" ? "rounded-xl border border-destructive/40 bg-destructive/5 p-5" : ""}`}
+              id={isUserModule ? "admin-user-action-form" : module === "disputes" ? "admin-dispute-action-form" : undefined}
+              className={`space-y-4 ${module === "jobs" || module === "services" ? "rounded-xl border bg-muted/10 p-5" : module === "projects" ? "rounded-xl border border-destructive/40 bg-destructive/5 p-5" : isUserModule ? "rounded-xl border p-4" : ""}`}
               onSubmit={async (e) => {
                 e.preventDefault();
                 if (!selected || busy) return;
@@ -2087,7 +2313,6 @@ export default function AdminRecords({
                     selected.id,
                     action,
                     notes,
-                    expires,
                   );
                   const settlementReviewStatus =
                     module === "disputes" && action.startsWith("complete_") &&
@@ -2127,15 +2352,15 @@ export default function AdminRecords({
               )}
               {isVerificationModule ? (
                 <div>
-                  <h3 className="font-semibold">Revoke identity verification</h3>
+                  <h3 className="font-semibold">Review identity submission</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Use this only when a specific case requires removing the approved verification.
+                    Choose approve, reject, or request reverification. Include a reason for rejection or reverification.
                   </p>
                 </div>
-              ) : <label className="block text-sm">
+              ) : <label className="block space-y-1.5 text-sm">
                 {module === "jobs" || module === "services" ? "Select action" : "Action"}
                 <StyledSelect
-                  className="mt-1 w-full rounded-md border bg-background p-2"
+                  className="w-full rounded-md border bg-background p-2"
                   value={action}
                   onChange={(e) => setAction(e.target.value)}
                 >
@@ -2230,22 +2455,14 @@ export default function AdminRecords({
                   </div>
                 </div>
               )}
-              {module === "users" && action === "suspend" && (
-                <label className="block text-sm">
-                  Expiration (optional)
-                  <Input
-                    type="datetime-local"
-                    value={expires}
-                    onChange={(e) => setExpires(e.target.value)}
-                  />
-                </label>
-              )}
-              <label className="block text-sm">
+              <label className="block space-y-1.5 text-sm">
                 <span className="flex flex-wrap items-center justify-between gap-2">
                   <span>
                     {isVerificationModule
-                      ? "Reason for revocation (required)"
-                      : `Reason / review notes${module === "projects" ? " (recorded in admin audit history)" : module !== "jobs" ? " (sent to the affected user)" : ""}`}
+                      ? "Review reason (required)"
+                      : module === "reports"
+                        ? "Review notes"
+                      : "Reason / review notes"}
                   </span>
                     {(module === "jobs" || module === "projects") && (
                     <span className="text-xs text-muted-foreground">
@@ -2265,17 +2482,15 @@ export default function AdminRecords({
                   {error}
                 </p>
               )}
-              <Button disabled={busy || !notes.trim()}>
+              {!isUserModule && module !== "disputes" && <Button disabled={busy || !notes.trim()}>
                 {busy
-                  ? "Saving…"
+                  ? "Savingâ€¦"
                   : module === "projects" && action === "cancel_project"
                     ? "Confirm project cancellation"
-                    : module === "disputes" && action.startsWith("complete_")
-                      ? "Confirm completion"
                     : isVerificationModule
-                      ? "Revoke verification"
+                      ? adminActionLabel(module, action)
                     : "Confirm action"}
-              </Button>
+              </Button>}
             </form>
           )}
           <Dialog
@@ -2333,7 +2548,7 @@ export default function AdminRecords({
                       </h3>
                       {proposalApplicant.proposedPlan ? (
                         <p className="text-sm text-muted-foreground">
-                          {proposalApplicant.proposedPlan.content.columns.length} stages · {proposalApplicant.proposedPlan.content.columns.reduce((total, column) => total + column.tasks.length, 0)} tasks
+                          {proposalApplicant.proposedPlan.content.columns.length} stages Â· {proposalApplicant.proposedPlan.content.columns.reduce((total, column) => total + column.tasks.length, 0)} tasks
                         </p>
                       ) : (
                         <p className="text-sm text-muted-foreground">
@@ -2396,24 +2611,83 @@ export default function AdminRecords({
               )}
             </DialogContent>
           </Dialog>
-        </DialogContent>
-      </Dialog>
-      <Dialog
-        open={projectDescriptionOpen}
-        onOpenChange={setProjectDescriptionOpen}
-      >
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Project description</DialogTitle>
-            <DialogDescription>
-              {projectDetails?.project.title ?? selected?.title}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-            {projectDetails?.project.description || "Project description unavailable."}
           </div>
+          {module === "audit" && selected && (
+            <DialogFooter className="mx-0 mb-0 shrink-0 border-t px-6 py-5">
+              {selected.owner_id && (
+                <Button asChild type="button" variant="outline">
+                  <Link href={`/admin/users/${encodeURIComponent(selected.owner_id)}`}>View administrator</Link>
+                </Button>
+              )}
+              <Button type="button" onClick={() => setSelected(null)}>Close</Button>
+            </DialogFooter>
+          )}
+          {module === "users" && selected && (
+            <DialogFooter className="mx-0 mb-0 shrink-0 flex-wrap border-t px-6 py-5">
+              <Button asChild type="button" variant="outline">
+                <Link href={`/admin/users/${encodeURIComponent(selected.owner_id ?? selected.id)}`}>View profile</Link>
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setSelected(null)}>Close</Button>
+              <Button type="submit" form="admin-user-action-form" disabled={busy || !notes.trim()}>
+                {busy ? "Savingâ€¦" : "Confirm action"}
+              </Button>
+            </DialogFooter>
+          )}
+          {module === "disputes" && selected && (
+            <DialogFooter className="mx-0 mb-0 shrink-0 flex-wrap border-t px-6 py-5">
+              <Button type="button" variant="outline" onClick={() => setSelected(null)}>
+                Close
+              </Button>
+              <Button
+                type="submit"
+                form="admin-dispute-action-form"
+                disabled={busy || !notes.trim()}
+              >
+                {busy
+                  ? "Savingâ€¦"
+                  : action.startsWith("complete_")
+                    ? "Confirm completion"
+                    : "Confirm action"}
+              </Button>
+            </DialogFooter>
+          )}
         </DialogContent>
       </Dialog>
     </div>
   );
 }
+
+function AuditCopyValue({ value, label }: { value: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <span className="flex min-w-0 items-center gap-1 rounded-md border bg-background/40 px-2 py-0.5 font-mono text-xs">
+      <span className="min-w-0 break-all">{value}</span>
+      <Button
+        type="button"
+        size="icon-sm"
+        variant="ghost"
+        className="size-6 shrink-0"
+        aria-label={`Copy ${label}`}
+        title={copied ? "Copied" : `Copy ${label}`}
+        onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(value);
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 1000);
+          } catch {
+            setCopied(false);
+          }
+        }}
+      >
+        {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+      </Button>
+    </span>
+  );
+}
+
+
+
+
+
+
+

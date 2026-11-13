@@ -542,7 +542,7 @@ export default function MarketplaceServiceDetails({
 
   const isFreelancer = currentUserRole === "freelancer";
 
-  const actionLabel = isService ? "Buy" : "Apply";
+  const actionLabel = isService ? "Hire" : "Apply";
   const sellerName = guest
     ? guestSeller?.display_name || "Freelancer name unavailable"
     : service.freelancer?.profile?.display_name ||

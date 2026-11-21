@@ -959,7 +959,7 @@ export function JobAgreementWizard({
     if (
       targetStageIndex > sourceStageIndex &&
       movingTask &&
-      taskExceedsContractTimeline(movingTask, startDate, deadline)
+      taskTimelineIssues(movingTask, startDate, deadline).length > 0
     ) {
       setError("Resolve this task's estimate or due date before moving it to another stage.");
       return;

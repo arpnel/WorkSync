@@ -429,6 +429,18 @@ export async function screenApplicant(
         p_weaknesses: JSON.stringify(evaluation.weaknesses),
         p_recommendation: evaluation.recommendation,
       });
+      if (
+        !error &&
+        data &&
+        typeof data === "object" &&
+        "conflict" in data &&
+        data.conflict === "SCREENING_INPUT_CHANGED"
+      )
+        throw new ScreeningError(
+          "The job or application changed while screening was running. Refresh and try again.",
+          409,
+          "SCREENING_INPUT_CHANGED",
+        );
       if (error || !data) {
         console.error("Applicant screening persistence failed", {
           code: error?.code,

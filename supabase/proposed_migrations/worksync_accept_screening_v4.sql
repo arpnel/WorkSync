@@ -1,5 +1,6 @@
 -- PREPARED, NOT APPLIED
 -- Permit the plan-aware, PHP-aware screening rubric to save its v4 result envelope.
+-- Return stale-input conflicts as data so expected edits do not create Postgres ERROR logs.
 begin;
 
 create or replace function public.worksync_save_screening(
@@ -11,7 +12,9 @@ begin
  select * into a from public.job_applications where application_id=p_application for update;
  select * into j from public.jobs where job_id=a.job_id for share;
  if a.application_id is null or not exists(select 1 from public.client_profiles c where c.client_id=j.client_id and c.user_id=p_actor) then raise exception 'Application owner required'; end if;
- if a.updated_at is distinct from p_application_updated or j.updated_at is distinct from p_job_updated then raise exception 'Application or job changed' using errcode='40001'; end if;
+ if a.updated_at is distinct from p_application_updated or j.updated_at is distinct from p_job_updated then
+  return jsonb_build_object('conflict','SCREENING_INPUT_CHANGED');
+ end if;
  metadata:=p_result::jsonb;
  if p_score is null or p_score not between 0 and 100 or metadata->>'version' is null or metadata->>'version' not in ('worksync-match-v1','worksync-match-v2','worksync-match-v3','worksync-match-v4')
  or coalesce(metadata->>'inputHash','') !~ '^[a-f0-9]{64}$'

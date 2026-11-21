@@ -264,10 +264,10 @@ export function MilestoneProjectWorkspace({
     );
   }
 
-  const pendingContractStatuses = ["draft", "pending", "pending_client", "pending_freelancer"];
+  const closedContractStatuses = ["rejected", "cancelled", "completed"];
   const isPendingAgreement = Boolean(
     workspace.contractId &&
-    pendingContractStatuses.includes(workspace.contractStatus ?? "") &&
+    !closedContractStatuses.includes(workspace.contractStatus ?? "") &&
     !(workspace.clientSignedAt && workspace.freelancerSignedAt),
   );
   if (isPendingAgreement && !workspace.applicationId && agreementLoading) {

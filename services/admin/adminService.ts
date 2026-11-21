@@ -236,7 +236,7 @@ export async function getAdminRecords(
   let result: AdminResult;
   if (module === 'verification') {
     const body = await verificationFetch(`/api/admin/verifications?search=${encodeURIComponent(search.trim())}`);
-    return parseAdminRecords({ rows: body.rows, total: body.total, limit: body.limit, offset: body.offset, hasNext: false }, 'manual_identity_verification_requests', 0);
+    return parseAdminRecords(body, 'manual_identity_verification_requests', 0);
   }
   if (module !== "overview" && module !== "transactions") {
     const rows: AdminRow[] = [];

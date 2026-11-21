@@ -89,7 +89,7 @@ export function normalizePlanContent(
   const stages = columns
     .filter((_, index) => index !== doneIndex)
     .map((column) => ({ ...column, type: "stage" as const }));
-  if (doneIndex < 0 && !ensureDone) return { columns: stages };
+  if (!ensureDone) return { columns: stages };
   const done =
     doneIndex >= 0
       ? { ...columns[doneIndex], type: "done" as const }

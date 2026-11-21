@@ -27,7 +27,7 @@ import type {
   ProjectPlan,
   ProjectPlanSnapshot,
 } from "@/services/project/projectPlans";
-import { listProjectPlans } from "@/services/project/projectPlans";
+import { listProjectPlans, normalizePlanContent } from "@/services/project/projectPlans";
 import { supabase } from "@/lib/supabaseClient";
 
 const stageAccents = [
@@ -133,8 +133,8 @@ export function ProjectPlanProposalAttachment({
       name: selectedPlan.name,
       description: selectedPlan.description ?? "",
       content: {
-        // Keep the terminal Done column: the application RPC requires it last.
-        columns: selectedPlan.content.columns.map((column) => ({
+        // Contract plans need a terminal Done stage; the reusable template does not.
+        columns: normalizePlanContent(selectedPlan.content, true).columns.map((column) => ({
           ...column,
           tasks: column.tasks.map((task) => ({
             ...task,

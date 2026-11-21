@@ -43,13 +43,10 @@ import type { ProjectPlanSnapshotData } from "@/services/project/projectPlanSnap
 
 export function StandardProjectWorkspace({
   serviceOrderId,
-  initialAgreementView = false,
 }: {
   serviceOrderId: string;
-  initialAgreementView?: boolean;
 }) {
   const router = useRouter();
-  const [showExistingAgreement, setShowExistingAgreement] = useState(initialAgreementView);
   const [activationError, setActivationError] = useState("");
   const activationAttemptedFor = useRef<string | null>(null);
   const [basicAgreementLoading, setBasicAgreementLoading] = useState(false);
@@ -273,10 +270,10 @@ export function StandardProjectWorkspace({
     );
   }
 
-  const pendingContractStatuses = ["draft", "pending", "pending_client", "pending_freelancer"];
+  const closedContractStatuses = ["rejected", "cancelled", "completed"];
   const isPendingAgreement = Boolean(
     workspace.contractId &&
-    pendingContractStatuses.includes(workspace.contractStatus ?? "") &&
+    !closedContractStatuses.includes(workspace.contractStatus ?? "") &&
     !(workspace.clientSignedAt && workspace.freelancerSignedAt),
   );
   const today = new Date();
@@ -287,10 +284,7 @@ export function StandardProjectWorkspace({
   if (isPendingAgreement && basicAgreementLoading) {
     return <ContentSkeleton label="Loading agreement approvals" variant="workspace" />;
   }
-  const bothBasicPartiesAgreed = Boolean(
-    basicAgreement?.clientAgreed && basicAgreement?.freelancerAgreed,
-  );
-  if (isPendingAgreement && (!showExistingAgreement || !bothBasicPartiesAgreed)) {
+  if (isPendingAgreement) {
     return <JobAgreementWizard
       clientName={workspace.clientName}
       freelancerName={workspace.freelancerName}
@@ -342,9 +336,7 @@ export function StandardProjectWorkspace({
       workPlanAgreementStatus={workPlanAgreement ?? undefined}
       onAgreeWorkPlan={agreeToWorkPlan}
       onAgree={async () => {
-        const saved = await respondToAgreement(true);
-        if (saved) setShowExistingAgreement(true);
-        return saved;
+        return respondToAgreement(true);
       }}
       conversation={{
         conversationId: workspace.conversationId,
@@ -376,7 +368,6 @@ export function StandardProjectWorkspace({
           workspace.currentUserId,
         ).catch((draftError) => console.warn("Saved contract draft could not be cleared:", draftError));
         await refresh();
-        setShowExistingAgreement(true);
       }}
     />;
   }

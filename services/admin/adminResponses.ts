@@ -23,6 +23,13 @@ const recordRows = z.array(
       .transform((value) => value ?? undefined),
   }),
 );
+const verificationPageSchema = z.object({
+  rows: recordRows,
+  total: count,
+  limit: count,
+  offset: count,
+  hasNext: z.boolean(),
+});
 const recordsSchema = z
   .object({
     records: z.array(
@@ -449,6 +456,16 @@ function parseResponse<S extends z.ZodTypeAny>(
   return result.data;
 }
 export function parseAdminRecords(value: unknown, rpc: string, offset = 0) {
+  if (rpc === "manual_identity_verification_requests") {
+    const page = parseResponse(verificationPageSchema, value, rpc);
+    return {
+      rows: page.rows,
+      limit: page.limit,
+      offset: page.offset,
+      hasNext: page.hasNext,
+      total: page.total,
+    };
+  }
   if (rpc === "worksync_list_disputes" || rpc === "worksync_admin_disputes_page") {
     const page = Array.isArray(value)
       ? null

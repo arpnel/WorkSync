@@ -2,14 +2,11 @@ import { StandardProjectWorkspace } from "@/components/standardproject/StandardP
 
 export default async function StandardProjectPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ orderId: string }>;
-  searchParams: Promise<{ view?: string }>;
 }) {
-  const [{ orderId: serviceOrderId }, query] = await Promise.all([params, searchParams]);
+  const { orderId: serviceOrderId } = await params;
   return <StandardProjectWorkspace
     serviceOrderId={serviceOrderId}
-    initialAgreementView={query.view === "agreement"}
   />;
 }

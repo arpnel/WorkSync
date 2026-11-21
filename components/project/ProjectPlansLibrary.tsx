@@ -1411,11 +1411,12 @@ export default function ProjectPlansLibrary() {
                       {plan.description}
                     </p>
                   )}
-                  <p className="mt-3 text-xs text-muted-foreground">
-                    {allTasks(plan).length} tasks Â· Updated{" "}
-                    {new Date(plan.updated_at).toLocaleDateString()} Â·{" "}
-                    {plan.shared ? "Shared" : "Private"}
-                  </p>
+                  <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                    <span>{allTasks(plan).length} {allTasks(plan).length === 1 ? "task" : "tasks"}</span>
+                    <span aria-hidden="true">|</span>
+                    <span>Updated {new Date(plan.updated_at).toLocaleDateString()}</span>
+                    <span>{plan.shared ? "Shared" : "Private"}</span>
+                  </div>
                 </div>
                 <div className="mt-3 flex justify-end">
                   <DropdownMenu>

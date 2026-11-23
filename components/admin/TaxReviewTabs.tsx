@@ -9,7 +9,7 @@ export default function TaxReviewTabs() {
     <Tabs defaultValue="sworn" className="min-w-0">
       <TabsList aria-label="Tax document review sections" className="grid w-full grid-cols-2 sm:w-fit">
         <TabsTrigger value="sworn">Sworn declarations</TabsTrigger>
-        <TabsTrigger value="seller">Seller documents</TabsTrigger>
+        <TabsTrigger value="seller">Tax documents</TabsTrigger>
       </TabsList>
       <TabsContent value="sworn" className="mt-4">
         <section

@@ -68,6 +68,25 @@ export async function POST(request: Request) {
     if (type === "bir_cor" && !registeredName) throw new PaymentError("Enter the registered business name shown on the COR.", 400);
     const roles = await partyTypes(db, user.id);
     if (!roles.includes(partyType as "client" | "freelancer")) throw new PaymentError("That account role is not available.", 403);
+    if (partyType === "client" && type === "bir_cor") {
+      const client = await db.from("client_profiles").select("client_id").eq("user_id", user.id).maybeSingle();
+      if (client.error || !client.data) throw new PaymentError("Client account details are unavailable.", 503);
+      const organization = await db.from("client_organization_profiles")
+        .select("client_type")
+        .eq("client_id", client.data.client_id)
+        .maybeSingle();
+      if (organization.error) throw new PaymentError("Client organization documents are unavailable. The prepared database migration must be applied.", 503);
+      if (organization.data?.client_type !== "organization") throw new PaymentError("Change your client account type to Business or organization before submitting Form 2303.", 403);
+      const pendingDocument = await db.from("tax_documents")
+        .select("document_id")
+        .eq("user_id", user.id)
+        .eq("party_type", "client")
+        .eq("document_type", "bir_cor")
+        .eq("status", "pending")
+        .limit(1);
+      if (pendingDocument.error) throw new PaymentError("Unable to check your existing organization document.");
+      if (pendingDocument.data?.length) throw new PaymentError("Your Form 2303 is already awaiting review.", 409);
+    }
     if (partyType === "freelancer" && type === "bir_cor") {
       const existing = await db.from("tax_documents").select("document_id,status,submitted_at").eq("user_id", user.id).eq("party_type", "freelancer").eq("document_type", "bir_cor").order("submitted_at", { ascending: false }).limit(2);
       if (existing.error) throw new PaymentError("Unable to check your existing Form 2303 submission.");

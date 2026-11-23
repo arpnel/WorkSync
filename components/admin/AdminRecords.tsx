@@ -1301,7 +1301,7 @@ export default function AdminRecords({
           ) : isStructuredRecordsModule ? (
             usesAdminTableLayout && visibleRows.length === 0 ? null : (
             <div className={usesAdminTableLayout ? "rounded-lg border" : ""}>
-            <Table className={module === "projects" ? "min-w-[1120px]" : usesAdminTableLayout ? "min-w-[920px]" : "min-w-[900px]"}>
+            <Table className={module === "projects" ? "min-w-[1120px]" : module === "verification" ? "min-w-[760px]" : usesAdminTableLayout ? "min-w-[920px]" : "min-w-[900px]"}>
               <TableHeader>
                 <TableRow>
                   <TableHead>
@@ -1313,9 +1313,9 @@ export default function AdminRecords({
                           ? "Project"
                           : module === "reports"
                             ? "Report"
-                            : module === "disputes" ? "Dispute reason" : module === "audit" ? "Event" : module === "verification" ? "Document" : "User"}
+                            : module === "disputes" ? "Dispute reason" : module === "audit" ? "Event" : module === "verification" ? "Applicant" : "User"}
                   </TableHead>
-                  <TableHead>
+                  {!isVerificationModule && <TableHead>
                     {module === "jobs"
                       ? "Client account"
                       : module === "services"
@@ -1324,8 +1324,8 @@ export default function AdminRecords({
                           ? "Participants"
                           : module === "reports"
                             ? "Listing owner"
-                            : module === "disputes" ? "Opened by" : module === "audit" ? "Administrator" : module === "verification" ? "Freelancer" : "Role / email"}
-                  </TableHead>
+                            : module === "disputes" ? "Opened by" : module === "audit" ? "Administrator" : "Role / email"}
+                  </TableHead>}
                   {isListingModule && (
                     <TableHead>
                       {module === "jobs"
@@ -1347,7 +1347,7 @@ export default function AdminRecords({
                     <TableCell className={usesAdminTableLayout ? "max-w-64" : "max-w-sm"}>
                       <p className="truncate font-medium">{row.title}</p>
                     </TableCell>
-                    <TableCell className="font-medium">
+                    {!isVerificationModule && <TableCell className="font-medium">
                       {module === "projects" ? (
                         <div className="space-y-1 text-xs">
                           <p>Client: {row.client_name || "Name unavailable"}</p>
@@ -1363,7 +1363,7 @@ export default function AdminRecords({
                       ) : isAuditModule ? row.owner_name || "Name unavailable" : (
                         "Not available"
                       )}
-                    </TableCell>
+                    </TableCell>}
                     {isListingModule && (
                     <TableCell className={`whitespace-nowrap ${usesAdminTableLayout && isListingModule ? "font-semibold tabular-nums" : "font-medium"}`}>
                         {module === "jobs"
@@ -1597,7 +1597,7 @@ export default function AdminRecords({
       >
         <DialogContent
           className={
-            isAuditModule || isUserModule || module === "disputes" || module === "projects" || module === "jobs" || module === "services"
+            isAuditModule || isUserModule || isVerificationModule || module === "disputes" || module === "projects" || module === "jobs" || module === "services"
               ? `flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 ${module === "disputes" ? "sm:max-w-4xl" : "sm:max-w-3xl"}`
               : "max-h-[90vh] overflow-y-auto rounded-2xl sm:max-w-3xl"
           }
@@ -1804,9 +1804,14 @@ export default function AdminRecords({
               </div>
             </DialogHeader>
           ) : (
-            <DialogHeader>
+            <DialogHeader className={isVerificationModule ? "shrink-0 border-b px-5 py-4 pr-14" : undefined}>
               <div className="flex flex-wrap items-center gap-2">
-                <DialogTitle>{selected?.title}</DialogTitle>
+                <DialogTitle>{isVerificationModule ? "Review identity verification" : selected?.title}</DialogTitle>
+                {isVerificationModule && selected && (
+                  <AdminStatus tone={selected.status === "verified" ? "green" : selected.status === "rejected" ? "red" : selected.status === "pending" ? "orange" : "neutral"}>
+                    {selected.status.replaceAll("_", " ")}
+                  </AdminStatus>
+                )}
                 {selected && (
                   <Button
                     type="button"
@@ -1830,7 +1835,7 @@ export default function AdminRecords({
               <DialogDescription>Reference ID: {selected?.id}</DialogDescription>
             </DialogHeader>
           )}
-          <div className={isAuditModule || isUserModule || module === "disputes" || module === "projects" || module === "jobs" || module === "services" ? "min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4" : "contents"}>
+          <div className={isAuditModule || isUserModule || isVerificationModule || module === "disputes" || module === "projects" || module === "jobs" || module === "services" ? "min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4" : "contents"}>
           {module === "audit" && selected && (
             <>
               <section className="space-y-3 rounded-xl border p-4">
@@ -1884,7 +1889,29 @@ export default function AdminRecords({
               </dl>
             </section>
           )}
-          {module !== "jobs" && module !== "services" && module !== "projects" && module !== "reports" && module !== "disputes" && module !== "audit" && module !== "users" && (
+          {module === "verification" && selected ? (
+            <section className="space-y-3 rounded-xl border bg-muted/10 p-4">
+              <h3 className="text-sm font-semibold">Applicant details</h3>
+              <dl className="grid gap-3 sm:grid-cols-2">
+                <div className="min-w-0 rounded-lg border bg-card p-3">
+                  <dt className="text-xs font-medium text-muted-foreground">Name</dt>
+                  <dd className="mt-1 truncate text-sm font-semibold">{selected.title || "Name unavailable"}</dd>
+                </div>
+                <div className="min-w-0 rounded-lg border bg-card p-3">
+                  <dt className="text-xs font-medium text-muted-foreground">Email</dt>
+                  <dd className="mt-1 break-all text-sm font-semibold">{verificationDetail(selected.detail, "Email")}</dd>
+                </div>
+                <div className="min-w-0 rounded-lg border bg-card p-3">
+                  <dt className="text-xs font-medium text-muted-foreground">Submitted</dt>
+                  <dd className="mt-1 text-sm font-semibold">{selected.created_at ? new Date(selected.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Not recorded"}</dd>
+                </div>
+                <div className="min-w-0 rounded-lg border bg-card p-3">
+                  <dt className="text-xs font-medium text-muted-foreground">Possible duplicate accounts</dt>
+                  <dd className="mt-1 text-sm font-semibold tabular-nums">{verificationDetail(selected.detail, "Possible duplicate accounts")}</dd>
+                </div>
+              </dl>
+            </section>
+          ) : module !== "jobs" && module !== "services" && module !== "projects" && module !== "reports" && module !== "disputes" && module !== "audit" && module !== "users" && (
             <p className="whitespace-pre-wrap break-words text-sm">{selected?.detail}</p>
           )}
           {module === "reports" && selected && reportFields && (
@@ -2266,17 +2293,15 @@ export default function AdminRecords({
           )}
           {isVerificationModule && selected && (
             <section className="space-y-4 rounded-xl border bg-muted/10 p-4">
-              <h3 className="font-semibold">Manual identity review</h3>
+              <h3 className="font-semibold">Submitted files</h3>
               {identityReviewLoading ? <p className="text-sm text-muted-foreground">Loading secure evidence…</p> : identityReviewError ? <p role="alert" className="text-sm text-destructive">{identityReviewError}</p> : identityReview ? <>
-                <p className="text-sm">{identityReview.account.name} · {identityReview.account.email ?? "Email unavailable"}</p>
-                <p className="text-sm">Submitted {new Date(identityReview.submittedAt).toLocaleString()} · {identityReview.status}</p>
                 {identityReview.reverificationReason && <p className="text-sm">Reverification requested: {identityReview.reverificationReason}</p>}
                 {identityReview.duplicateAccounts.length > 0 && <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">Possible duplicate ID match: {identityReview.duplicateAccounts.map(a=>`${a.name} (${a.email ?? "no email"})`).join(", ")}. Review manually; this is not an automatic rejection.</div>}
                 <div className="grid gap-3 sm:grid-cols-3">{([['ID front',identityReview.documents.front],['ID back',identityReview.documents.back],['Selfie',identityReview.documents.selfie]] as const).map(([label,url])=>url ? <a key={label} href={url} target="_blank" rel="noreferrer" className="block rounded-lg border p-2"><span className="mb-2 block text-sm">{label}</span><img src={url} alt={label} className="max-h-64 w-full rounded object-contain" /></a> : null)}</div>
-                <div className="text-sm"><strong>Review history</strong>{identityReview.history.map(h=><p key={h.request_id}>{new Date(h.submitted_at).toLocaleString()} · {h.status}{h.rejection_reason ? ` · ${h.rejection_reason}` : ""}</p>)}</div>
+                {identityReview.history.some((h) => h.request_id !== identityReview.requestId) && <div className="text-sm"><strong>Previous submissions</strong>{identityReview.history.filter((h) => h.request_id !== identityReview.requestId).map(h=><p key={h.request_id}>{new Date(h.submitted_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })} · {h.status}{h.rejection_reason ? ` · ${h.rejection_reason}` : ""}</p>)}</div>}
               </> : <p className="text-sm text-muted-foreground">No manual verification data.</p>}
             </section>
-          )}          {selected?.owner_id && module !== "jobs" && module !== "services" && module !== "reports" && module !== "disputes" && module !== "audit" && module !== "users" && (
+          )}          {selected?.owner_id && module !== "jobs" && module !== "services" && module !== "reports" && module !== "disputes" && module !== "audit" && module !== "users" && !isVerificationModule && (
             <Link
               className="text-sm underline"
               href={`/admin/users/${encodeURIComponent(selected.owner_id)}`}
@@ -2300,7 +2325,7 @@ export default function AdminRecords({
               (projectDetails?.project.status ?? selected?.status ?? "").toLowerCase(),
             )) && (
             <form
-              id={isUserModule ? "admin-user-action-form" : module === "disputes" ? "admin-dispute-action-form" : undefined}
+              id={isUserModule ? "admin-user-action-form" : module === "disputes" ? "admin-dispute-action-form" : isVerificationModule ? "admin-verification-action-form" : undefined}
               className={`space-y-4 ${module === "jobs" || module === "services" ? "rounded-xl border bg-muted/10 p-5" : module === "projects" ? "rounded-xl border border-destructive/40 bg-destructive/5 p-5" : isUserModule ? "rounded-xl border p-4" : ""}`}
               onSubmit={async (e) => {
                 e.preventDefault();
@@ -2354,8 +2379,13 @@ export default function AdminRecords({
                 <div>
                   <h3 className="font-semibold">Review identity submission</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Choose approve, reject, or request reverification. Include a reason for rejection or reverification.
+                    Choose whether to approve, reject, or request a new submission.
                   </p>
+                  <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Identity review decision">
+                    {([["approve", "Approve"], ["reject", "Reject"], ["request_reverification", "Request new submission"]] as const).map(([value, label]) => (
+                      <Button key={value} type="button" size="sm" variant={action === value ? "default" : "outline"} aria-pressed={action === value} onClick={() => setAction(value)}>{label}</Button>
+                    ))}
+                  </div>
                 </div>
               ) : <label className="block space-y-1.5 text-sm">
                 {module === "jobs" || module === "services" ? "Select action" : "Action"}
@@ -2459,7 +2489,7 @@ export default function AdminRecords({
                 <span className="flex flex-wrap items-center justify-between gap-2">
                   <span>
                     {isVerificationModule
-                      ? "Review reason (required)"
+                      ? action === "approve" ? "Review note (optional)" : "Review reason (required)"
                       : module === "reports"
                         ? "Review notes"
                       : "Reason / review notes"}
@@ -2471,7 +2501,7 @@ export default function AdminRecords({
                   )}
                 </span>
                 <Textarea
-                  required
+                  required={!isVerificationModule || action !== "approve"}
                   maxLength={notesLimit}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
@@ -2482,7 +2512,7 @@ export default function AdminRecords({
                   {error}
                 </p>
               )}
-              {!isUserModule && module !== "disputes" && <Button disabled={busy || !notes.trim()}>
+              {!isUserModule && module !== "disputes" && !isVerificationModule && <Button disabled={busy || !notes.trim()}>
                 {busy
                   ? "Savingâ€¦"
                   : module === "projects" && action === "cancel_project"
@@ -2648,6 +2678,24 @@ export default function AdminRecords({
                   : action.startsWith("complete_")
                     ? "Confirm completion"
                     : "Confirm action"}
+              </Button>
+            </DialogFooter>
+          )}
+          {isVerificationModule && selected && (
+            <DialogFooter className="mx-0 mb-0 shrink-0 flex-wrap border-t px-6 py-4">
+              {selected.owner_id && (
+                <Button asChild type="button" variant="outline">
+                  <Link href={`/admin/users/${encodeURIComponent(selected.owner_id)}`}>View profile</Link>
+                </Button>
+              )}
+              <Button type="button" variant="outline" onClick={() => setSelected(null)}>Close</Button>
+              <Button
+                type="submit"
+                form="admin-verification-action-form"
+                disabled={busy || (action !== "approve" && !notes.trim())}
+                className={action === "approve" ? "bg-emerald-600 text-white hover:bg-emerald-700" : action === "reject" ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : undefined}
+              >
+                {busy ? "Saving…" : "Confirm"}
               </Button>
             </DialogFooter>
           )}

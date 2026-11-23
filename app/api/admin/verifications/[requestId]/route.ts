@@ -22,24 +22,32 @@ export async function GET(request: Request, context: { params: Promise<{ request
     if (result.error) throw new PaymentError("Identity evidence could not be loaded. The prepared database migration must be applied.", 503);
     if (!result.data) throw new PaymentError("Verification request not found.", 404);
     const row = result.data;
-    const [profile, signedFront, signedBack, signedSelfie, history, duplicateRows] = await Promise.all([
-      db.from("profiles").select("user_id,first_name,last_name,display_name,email").eq("user_id", row.user_id).maybeSingle(),
+    const [profile, account, signedFront, signedBack, signedSelfie, history, duplicateRows] = await Promise.all([
+      db.from("profiles").select("user_id,first_name,last_name,display_name").eq("user_id", row.user_id).maybeSingle(),
+      db.from("Users").select("email").eq("user_id", row.user_id).maybeSingle(),
       db.storage.from("verification-documents").createSignedUrl(row.id_front_path, 300),
       row.id_back_path ? db.storage.from("verification-documents").createSignedUrl(row.id_back_path, 300) : Promise.resolve({ data: null, error: null }),
       db.storage.from("verification-documents").createSignedUrl(row.selfie_path, 300),
       db.from("manual_identity_verification_requests").select("request_id,status,rejection_reason,submitted_at,reviewed_at,reviewed_by").eq("user_id", row.user_id).order("submitted_at", { ascending: false }).limit(20),
       row.id_fingerprint ? db.from("manual_identity_verification_requests").select("request_id,user_id").eq("id_fingerprint", row.id_fingerprint).neq("user_id", row.user_id) : Promise.resolve({ data: [], error: null }),
     ]);
-    if (profile.error || history.error || duplicateRows.error || signedFront.error || signedSelfie.error || signedBack.error)
+    if (profile.error || account.error || history.error || duplicateRows.error || signedFront.error || signedSelfie.error || signedBack.error)
       throw new PaymentError("Identity review details or private evidence are unavailable.", 503);
     const duplicateIds = [...new Set((duplicateRows.data ?? []).map((item) => item.user_id))];
-    const duplicateProfiles = duplicateIds.length ? await db.from("profiles").select("user_id,first_name,last_name,display_name,email").in("user_id", duplicateIds) : { data: [], error: null };
+    const [duplicateProfiles, duplicateAccounts] = duplicateIds.length
+      ? await Promise.all([
+          db.from("profiles").select("user_id,first_name,last_name,display_name").in("user_id", duplicateIds),
+          db.from("Users").select("user_id,email").in("user_id", duplicateIds),
+        ])
+      : [{ data: [], error: null }, { data: [], error: null }];
     if (duplicateProfiles.error) throw new PaymentError("Possible duplicate account details are unavailable.", 503);
+    if (duplicateAccounts.error) throw new PaymentError("Possible duplicate account contacts are unavailable.", 503);
+    const duplicateAccountMap = new Map((duplicateAccounts.data ?? []).map((item) => [item.user_id, item]));
     const name = (item: { first_name?: string | null; last_name?: string | null; display_name?: string | null }) => item.display_name?.trim() || [item.first_name, item.last_name].filter(Boolean).join(" ") || "Name unavailable";
     return json({
       requestId: row.request_id,
       userId: row.user_id,
-      account: { name: profile.data ? name(profile.data) : "Name unavailable", email: profile.data?.email ?? null },
+      account: { name: profile.data ? name(profile.data) : "Name unavailable", email: account.data?.email ?? null },
       status: row.status,
       rejectionReason: row.rejection_reason,
       submittedAt: row.submitted_at,
@@ -47,7 +55,7 @@ export async function GET(request: Request, context: { params: Promise<{ request
       reviewedBy: row.reviewed_by,
       reverificationRequestedAt: row.reverification_requested_at,
       reverificationReason: row.reverification_reason,
-      duplicateAccounts: (duplicateProfiles.data ?? []).map((item) => ({ userId: item.user_id, name: name(item), email: item.email })),
+      duplicateAccounts: (duplicateProfiles.data ?? []).map((item) => ({ userId: item.user_id, name: name(item), email: duplicateAccountMap.get(item.user_id)?.email ?? null })),
       history: history.data ?? [],
       documents: {
         front: signedFront.data?.signedUrl ?? null,

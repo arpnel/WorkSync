@@ -67,7 +67,7 @@ export async function POST(request: Request) {
         // status/code are enough to distinguish a missing object from a
         // bucket/configuration or Storage service failure.
         console.error("Identity verification storage readback failed", {
-          code: error?.error ?? error?.name ?? null,
+          code: error?.name ?? null,
           status: error?.status ?? null,
           statusCode: error?.statusCode ?? null,
           dataReturned: Boolean(data),

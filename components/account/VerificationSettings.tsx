@@ -4,7 +4,7 @@ import ContentSkeleton from "@/components/shared/ContentSkeleton";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Camera, IdCard, UserRound, Upload } from "lucide-react";
+import { BadgeCheck, Camera, CircleAlert, Clock3, IdCard, RefreshCw, UserRound, Upload, XCircle } from "lucide-react";
 import {
   getIdentityVerification,
   submitIdentityVerification,
@@ -134,6 +134,52 @@ export default function VerificationSettings() {
 
   const locked = verification?.status === "pending" || (verification?.verified && !verification.reverificationReason);
   const showForm = !locked;
+  const statusCard = !verification
+    ? null
+    : verification.reverificationReason
+      ? {
+          title: "New submission requested",
+          description: "Please review the administrator's note and submit updated documents.",
+          badge: "Action needed",
+          Icon: CircleAlert,
+          tone: "border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-300",
+          iconTone: "bg-amber-500/10 text-amber-600 dark:text-amber-300",
+        }
+      : verification.status === "pending"
+        ? {
+            title: "Under review",
+            description: "Your documents are being reviewed. We'll let you know when there's an update.",
+            badge: "In progress",
+            Icon: Clock3,
+            tone: "border-sky-500/30 bg-sky-500/5 text-sky-700 dark:text-sky-300",
+            iconTone: "bg-sky-500/10 text-sky-600 dark:text-sky-300",
+          }
+        : verification.status === "verified"
+          ? {
+              title: "Identity verified",
+              description: "Your identity has been confirmed.",
+              badge: "Verified",
+              Icon: BadgeCheck,
+              tone: "border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300",
+              iconTone: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-300",
+            }
+          : verification.status === "rejected"
+            ? {
+                title: "Verification not approved",
+                description: "Review the reason below, then submit updated documents.",
+                badge: "Action needed",
+                Icon: XCircle,
+                tone: "border-destructive/30 bg-destructive/5 text-destructive",
+                iconTone: "bg-destructive/10 text-destructive",
+              }
+            : {
+                title: "Not submitted",
+                description: "Submit your ID and selfie to begin identity verification.",
+                badge: "Not started",
+                Icon: IdCard,
+                tone: "border-border bg-muted/20 text-foreground",
+                iconTone: "bg-muted text-muted-foreground",
+              };
 
   function imagePanel(slot: "front" | "back", file: File | null, inputRef: React.RefObject<HTMLInputElement | null>) {
     const label = slot === "front" ? "ID Front" : "ID Back";
@@ -170,13 +216,30 @@ export default function VerificationSettings() {
         <p className="text-xs text-muted-foreground">Submit your valid ID and a selfie holding it for manual verification.</p>
       </header>
 
-      {(verification?.status !== "not_submitted" || verification?.reverificationReason || verification?.rejectionReason) && <div className="rounded-md border bg-muted/20 px-3 py-2 text-xs">
-        <p className="font-medium">Status: {verification?.status === "verified" ? "Verified" : verification?.status === "pending" ? "Under review" : verification?.status === "rejected" ? "Rejected" : "Not submitted"}</p>
-        {verification?.submittedAt && <p className="text-muted-foreground">Submitted {new Date(verification.submittedAt).toLocaleString()}</p>}
-        {verification?.reviewedAt && <p className="text-muted-foreground">Reviewed {new Date(verification.reviewedAt).toLocaleString()}</p>}
-        {verification?.reverificationReason && <p className="mt-1">New submission requested: {verification.reverificationReason}</p>}
-        {verification?.rejectionReason && <p className="mt-1 text-destructive">Reason: {verification.rejectionReason}</p>}
-      </div>}
+      {statusCard && verification && <section className={`space-y-3 rounded-xl border p-3.5 sm:p-4 ${statusCard.tone}`} aria-live="polite">
+        <div className="flex items-start gap-3">
+          <span className={`mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full ${statusCard.iconTone}`}>
+            <statusCard.Icon className="size-5" aria-hidden="true" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold">{statusCard.title}</h3>
+              <div className="flex items-center gap-2">
+                <span className="rounded-full border border-current/20 px-2 py-0.5 text-[11px] font-medium">{statusCard.badge}</span>
+                <Button type="button" variant="ghost" size="icon-sm" aria-label="Refresh verification status" title="Refresh status" disabled={checking} onClick={() => void refresh()}>
+                  <RefreshCw className={checking ? "size-4 animate-spin" : "size-4"} aria-hidden="true" />
+                </Button>
+              </div>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">{statusCard.description}</p>
+          </div>
+        </div>
+        {(verification.submittedAt || verification.reviewedAt) && <dl className="grid gap-2 border-t border-current/10 pt-3 text-xs sm:grid-cols-2">
+          {verification.submittedAt && <div><dt className="text-muted-foreground">Submitted</dt><dd className="mt-0.5 font-medium text-foreground">{new Date(verification.submittedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</dd></div>}
+          {verification.reviewedAt && <div><dt className="text-muted-foreground">Reviewed</dt><dd className="mt-0.5 font-medium text-foreground">{new Date(verification.reviewedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</dd></div>}
+        </dl>}
+        {(verification.reverificationReason || verification.rejectionReason) && <p className="border-t border-current/10 pt-3 text-xs"><span className="font-semibold">Administrator note: </span>{verification.reverificationReason || verification.rejectionReason}</p>}
+      </section>}
 
       {notice && <p role="status" className="text-xs text-emerald-600">{notice}</p>}
       {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
@@ -216,7 +279,7 @@ export default function VerificationSettings() {
           <p className="text-[11px] text-muted-foreground">Images must be JPG or PNG, up to 5 MB each. By submitting, you confirm these documents belong to you and consent to identity review.</p>
         </div>
         <Button type="submit" className="w-full" disabled={busy || checking || Boolean(cameraTarget)}>{busy ? "Submitting securely…" : <><Upload className="size-4" />Submit for review</>}</Button>
-      </form> : <Button type="button" variant="outline" size="sm" disabled={checking} onClick={() => void refresh()}>{checking ? "Refreshing…" : "Refresh status"}</Button>}
+      </form> : null}
     </CardContent>
   </Card>;
 }

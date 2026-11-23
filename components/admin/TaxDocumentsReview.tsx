@@ -187,8 +187,8 @@ export default function TaxDocumentsReview() {
   return <section id="business-tax-document-review" className="scroll-mt-6 space-y-6">
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h2 id="business-tax-documents-heading" className="text-xl font-semibold">Seller tax documents</h2>
-        <p className="mt-1 max-w-3xl text-sm text-muted-foreground">Review submitted seller tax documents and their current approval status.</p>
+        <h2 id="business-tax-documents-heading" className="text-xl font-semibold">Tax documents</h2>
+        <p className="mt-1 max-w-3xl text-sm text-muted-foreground">Review submitted tax documents and their current approval status.</p>
       </div>
       <Button variant="outline" size="sm" disabled={!!busy || loading} onClick={() => {
         setError("");
@@ -200,13 +200,13 @@ export default function TaxDocumentsReview() {
     {error && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p>}
     {success && <p role="status" className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm text-emerald-700 dark:text-emerald-300">{success}</p>}
 
-    {loading && <ContentSkeleton label="Loading business tax documents" variant="admin-table" count={5} />}
+    {loading && <ContentSkeleton label="Loading tax documents" variant="admin-table" count={5} />}
 
     {!loading && <section className="space-y-3">
       <div className="flex gap-2">
         <label className="relative block min-w-0 flex-1">
           <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-3 size-4 text-muted-foreground" />
-          <Input className="h-10 bg-background pl-10" value={search} placeholder="Search documents or sellers..." aria-label="Search seller tax documents" onChange={event => { setSearch(event.target.value); setPage(0); }} />
+          <Input className="h-10 bg-background pl-10" value={search} placeholder="Search tax documents or people..." aria-label="Search tax documents" onChange={event => { setSearch(event.target.value); setPage(0); }} />
         </label>
           <Popover onOpenChange={open => { if (open) { setDraftFromDate(fromDate); setDraftToDate(toDate); } }}>
             <PopoverTrigger asChild><Button type="button" variant="outline" className="h-10 shrink-0"><SlidersHorizontal className="size-4" />Filters</Button></PopoverTrigger>
@@ -217,7 +217,7 @@ export default function TaxDocumentsReview() {
             </div></PopoverContent>
           </Popover>
       </div>
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Filter seller documents by review status">
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Filter tax documents by review status">
         {([
           ["all", `All documents (${rows.length})`],
           ["pending", `Needs review (${pendingRows.length})`],
@@ -225,7 +225,7 @@ export default function TaxDocumentsReview() {
         ] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={statusFilter === value} onClick={() => { setStatusFilter(value); setPage(0); }} className={`rounded-full px-3 py-1 text-xs font-medium ${statusFilter === value ? "bg-blue-600 text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}>{label}</button>)}
       </div>
       {filteredRows.length === 0
-        ? <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">{rows.length ? "No documents match these filters." : "No business tax documents have been submitted."}</p>
+        ? <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">{rows.length ? "No documents match these filters." : "No tax documents have been submitted."}</p>
         : <div className="overflow-x-auto rounded-lg border">
           <table className="w-full min-w-[650px] text-left text-sm">
             <thead className="bg-muted/50 text-xs text-muted-foreground"><tr><th className="px-4 py-3 font-medium">Name</th><th className="px-4 py-3 font-medium">Status</th><th className="px-4 py-3 font-medium">Date</th><th className="px-4 py-3 text-right font-medium">Action</th></tr></thead>

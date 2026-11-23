@@ -81,7 +81,7 @@ export const ADMIN_NAV_GROUPS = [
         href: "/admin/financial/tax",
         label: "Tax documents & declarations",
         icon: ClipboardCheck,
-        description: "Review BIR sworn declarations and uploaded seller tax documents.",
+        description: "Review BIR sworn declarations and uploaded tax documents.",
       },
       {
         href: "/admin/disputes",

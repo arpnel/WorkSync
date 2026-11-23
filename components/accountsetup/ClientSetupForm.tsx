@@ -2,7 +2,6 @@
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
 
 import { BasicInformationSection } from "./sections/BasicInformationSection";
-import { ClientHiringTypeSection } from "./sections/ClientHiringTypeSection";
 import { ProfileSection } from "./sections/ProfileSection";
 import { useClientSetup } from "./hooks/useClientSetup";
 import VerificationSettings from "@/components/account/VerificationSettings";
@@ -14,7 +13,7 @@ import type { ClientSetupValues } from "@/types/account-setup.types";
 
 const setupSteps = [
   { title: "Personal Profile", detail: "Basic information and profile" },
-  { title: "Business Details & Finish", detail: "Hiring type and verification" },
+  { title: "Verification & Finish", detail: "Verify your identity and finish setup" },
 ] as const;
 
 export function ClientSetupForm() {
@@ -127,8 +126,6 @@ export function ClientSetupForm() {
       </>}
 
       {step === 1 && <>
-      <ClientHiringTypeSection />
-
       <VerificationSettings />
 
       <div className="flex flex-col-reverse justify-between gap-2 sm:flex-row">

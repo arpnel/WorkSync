@@ -21,10 +21,27 @@ export async function POST(request: Request) {
     if (!valid) throw new PaymentError("The file type does not match its extension.", 400);
     const [freelancer, client] = await Promise.all([
       db.from("freelancer_profiles").select("user_id").eq("user_id", user.id).maybeSingle(),
-      db.from("client_profiles").select("user_id").eq("user_id", user.id).maybeSingle(),
+      db.from("client_profiles").select("client_id").eq("user_id", user.id).maybeSingle(),
     ]);
     if (freelancer.error || client.error) throw new PaymentError("Unable to check account roles.");
     if (body.partyType === "freelancer" ? !freelancer.data : !client.data) throw new PaymentError("That account role is not available.", 403);
+    if (body.partyType === "client" && body.documentType === "bir_cor") {
+      const organization = await db.from("client_organization_profiles")
+        .select("client_type")
+        .eq("client_id", client.data!.client_id)
+        .maybeSingle();
+      if (organization.error) throw new PaymentError("Client organization documents are unavailable. The prepared database migration must be applied.", 503);
+      if (organization.data?.client_type !== "organization") throw new PaymentError("Change your client account type to Business or organization before submitting Form 2303.", 403);
+      const pendingDocument = await db.from("tax_documents")
+        .select("document_id")
+        .eq("user_id", user.id)
+        .eq("party_type", "client")
+        .eq("document_type", "bir_cor")
+        .eq("status", "pending")
+        .limit(1);
+      if (pendingDocument.error) throw new PaymentError("Unable to check your existing organization document.");
+      if (pendingDocument.data?.length) throw new PaymentError("Your Form 2303 is already awaiting review.", 409);
+    }
     if (uploadKind === "withholding_declaration") {
       if (body.partyType !== "freelancer" || !isSupportedTaxYear(body.taxYear)) throw new PaymentError("Choose a valid freelancer tax year.", 400);
       const existing = await db.from("freelancer_tax_declarations")

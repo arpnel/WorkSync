@@ -4,6 +4,7 @@ import AccountSettings from "@/components/account/AccountSettings";
 import MessageSettings from "@/components/message/MessageSettings";
 import { SettingsWorkspace } from "@/components/account/SettingsWorkspace";
 import TaxDocuments from "@/components/account/TaxDocuments";
+import ClientBusinessDocumentation from "@/components/account/ClientBusinessDocumentation";
 import { WorkspacePageHeader } from "@/components/shared/WorkspacePageHeader";
 export default function Page() {
   return (
@@ -16,7 +17,7 @@ export default function Page() {
         panels={{
           account: <AccountSettings />,
           verification: <VerificationSettings />,
-          "seller-verification": <TaxDocuments settingsMode />,
+          "seller-verification": <><ClientBusinessDocumentation /><TaxDocuments settingsMode /></>,
           notifications: <NotificationSettings />,
           messaging: <MessageSettings />,
         }}

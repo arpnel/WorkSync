@@ -22,6 +22,25 @@ export function paymentDatabase() {
     { auth: { persistSession: false, autoRefreshToken: false } },
   );
 }
+async function authFetch(input: RequestInfo | URL, init?: RequestInit) {
+  // Auth verification is a read-only GET. Retry one transport failure so a
+  // brief connection timeout does not turn an otherwise valid session into a
+  // failed verification upload. Keep both attempts bounded for server routes.
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await fetch(input, {
+        ...init,
+        signal: AbortSignal.any([
+          ...(init?.signal ? [init.signal] : []),
+          AbortSignal.timeout(4_000),
+        ]),
+      });
+    } catch (error) {
+      if (attempt > 0 || init?.signal?.aborted) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+}
 export async function paymentUser(request: Request) {
   const token = request.headers
     .get("authorization")
@@ -34,7 +53,10 @@ export async function paymentUser(request: Request) {
   } = await createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { auth: { persistSession: false, autoRefreshToken: false } },
+    {
+      global: { fetch: authFetch },
+      auth: { persistSession: false, autoRefreshToken: false },
+    },
   ).auth.getUser(token);
   if (error && /api.?key/i.test(error.message))
     throw new PaymentError(

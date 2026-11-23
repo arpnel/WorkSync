@@ -62,7 +62,18 @@ export async function POST(request: Request) {
 
     const validateStoredImage = async (path: string) => {
       const { data, error } = await db.storage.from(bucket).download(path);
-      if (error || !data) throw new PaymentError("An uploaded image could not be verified in private storage.", 400);
+      if (error || !data) {
+        // Keep document paths and Storage's response body out of logs; the
+        // status/code are enough to distinguish a missing object from a
+        // bucket/configuration or Storage service failure.
+        console.error("Identity verification storage readback failed", {
+          code: error?.error ?? error?.name ?? null,
+          status: error?.status ?? null,
+          statusCode: error?.statusCode ?? null,
+          dataReturned: Boolean(data),
+        });
+        throw new PaymentError("An uploaded image could not be verified in private storage.", 400);
+      }
       const format = validateIdentityImage(path, data.type || (path.endsWith(".png") ? "image/png" : "image/jpeg"), data.size);
       try {
         inspectTaxDocument(path, format.contentType, new Uint8Array(await data.arrayBuffer()));

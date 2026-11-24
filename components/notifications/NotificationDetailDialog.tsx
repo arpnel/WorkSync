@@ -22,7 +22,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { getPublicIdentities } from "@/services/profile/publicIdentityService";
 import { respondToServiceRequest } from "@/services/project/projectService";
 import { listMyAssessments } from "@/services/assessments/assessmentService";
-import { markNotificationUnread } from "@/services/notification/notificationService";
+import { formatNotificationDescription, markNotificationUnread } from "@/services/notification/notificationService";
 import type { NotificationRecord } from "@/services/notification/notificationService";
 import { getProjectNotificationHref } from "./notification-data";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -101,6 +101,7 @@ export function NotificationDetailDialog({
   const isMessage = type.includes("message");
   const isDeclined =
     lowerTitle.includes("declined") || lowerTitle.includes("rejected");
+  const isListingRejection = type?.includes("listing_moderation") && isDeclined;
   const isSelectedApplication =
     type.includes("application") &&
     /selected|discussion|accepted/.test(lowerTitle) &&
@@ -112,8 +113,8 @@ export function NotificationDetailDialog({
     ? "Message"
     : isDeadline
       ? "Deadline"
-      : isDeclined
-        ? "Application update"
+        : isDeclined
+          ? isListingRejection ? "Listing update" : "Application update"
         : isRequest
           ? "Custom order request"
           : /application/.test(type)
@@ -636,8 +637,8 @@ export function NotificationDetailDialog({
                   ? "You have a new custom order request!"
                   : isDeadline
                     ? "A project deadline is coming up."
-                    : isDeclined
-                      ? "Your application was not selected."
+                : isDeclined
+                      ? isListingRejection ? "Your listing was rejected." : "Your application was not selected."
                       : isMessage
                         ? "You have a new message."
                         : item.title}
@@ -646,7 +647,9 @@ export function NotificationDetailDialog({
               {isSelectedApplication
                 ? "The client would like to discuss your application. Review your proposal, then continue the conversation."
                 : isDeclined
-                  ? "Unfortunately, your proposal was not selected for this project. Keep applying; the right client is just around the corner."
+                  ? isListingRejection
+                    ? formatNotificationDescription(item.description) || "Your listing did not meet the marketplace content requirements. Review the reason above and update it before resubmitting."
+                    : "Unfortunately, your proposal was not selected for this project. Keep applying; the right client is just around the corner."
                   : item.description ||
                     "Review the details below for more information."}
             </p>

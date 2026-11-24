@@ -10,7 +10,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 
 const groups = {
@@ -25,6 +24,8 @@ const messageGroups = {
   direct: "Direct messages",
 };
 
+const SAVE_DEBOUNCE_MS = 10_000;
+
 function stringList(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string")
@@ -36,6 +37,7 @@ export default function NotificationSettings() {
   const [hiddenMessages, setHiddenMessages] = useState<string[]>([]);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [dirty, setDirty] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [error, setError] = useState("");
 
@@ -72,6 +74,41 @@ export default function NotificationSettings() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!ready || !dirty) return;
+
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        setBusy(true);
+        setError("");
+        setFeedback("Saving notification preferences...");
+        try {
+          const { error: updateError } = await supabase.auth.updateUser({
+            data: {
+              hidden_notification_groups: hidden,
+              hidden_message_notification_groups: hiddenMessages,
+            },
+          });
+          if (updateError) throw updateError;
+          setDirty(false);
+          setFeedback("Notification preferences saved.");
+          window.dispatchEvent(new Event("notification-preferences-changed"));
+        } catch (saveError) {
+          setError(
+            saveError instanceof Error
+              ? saveError.message
+              : "Unable to save notification preferences. Please try again.",
+          );
+          setFeedback("");
+        } finally {
+          setBusy(false);
+        }
+      })();
+    }, SAVE_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [ready, dirty, hidden, hiddenMessages]);
+
   if (!ready && !error)
     return (
       <ContentSkeleton
@@ -107,13 +144,16 @@ export default function NotificationSettings() {
                 checked={!hidden.includes(key)}
                 disabled={!ready || busy}
                 aria-labelledby={`notification-group-${key}`}
-                onCheckedChange={(checked) =>
+                onCheckedChange={(checked) => {
+                  setDirty(true);
+                  setError("");
+                  setFeedback("Changes will be saved automatically in 10 seconds.");
                   setHidden((current) =>
                     checked
                       ? current.filter((item) => item !== key)
                       : [...current, key],
-                  )
-                }
+                  );
+                }}
               />
             </div>
           ))}
@@ -145,13 +185,16 @@ export default function NotificationSettings() {
                   checked={!hiddenMessages.includes(key)}
                   disabled={!ready || busy || hidden.includes("messages")}
                   aria-labelledby={`message-notification-group-${key}`}
-                  onCheckedChange={(checked) =>
+                  onCheckedChange={(checked) => {
+                    setDirty(true);
+                    setError("");
+                    setFeedback("Changes will be saved automatically in 10 seconds.");
                     setHiddenMessages((current) =>
                       checked
                         ? current.filter((item) => item !== key)
                         : [...current, key],
-                    )
-                  }
+                    );
+                  }}
                 />
               </div>
             ))}
@@ -173,38 +216,6 @@ export default function NotificationSettings() {
             {feedback}
           </p>
         )}
-        <Button
-          disabled={!ready || busy}
-          variant="outline"
-          onClick={async () => {
-            setBusy(true);
-            setError("");
-            setFeedback("");
-            try {
-              const { error: updateError } = await supabase.auth.updateUser({
-                data: {
-                  hidden_notification_groups: hidden,
-                  hidden_message_notification_groups: hiddenMessages,
-                },
-              });
-              if (updateError) throw updateError;
-              setFeedback("Notification preferences saved.");
-              window.dispatchEvent(
-                new Event("notification-preferences-changed"),
-              );
-            } catch (saveError) {
-              setError(
-                saveError instanceof Error
-                  ? saveError.message
-                  : "Unable to save notification preferences. Please try again.",
-              );
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          Save notification preferences
-        </Button>
       </CardContent>
     </Card>
   );

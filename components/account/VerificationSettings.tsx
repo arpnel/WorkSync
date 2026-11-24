@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import ContentSkeleton from "@/components/shared/ContentSkeleton";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { BadgeCheck, Camera, CircleAlert, Clock3, IdCard, RefreshCw, UserRound, Upload, XCircle } from "lucide-react";
@@ -13,6 +13,10 @@ import {
 
 type ImageSlot = "front" | "back" | "selfie";
 
+export type IdentityVerificationSetupHandle = {
+  submitForSetup: () => Promise<void>;
+};
+
 function LocalPreview({ file, alt }: { file: File; alt: string }) {
   const [url, setUrl] = useState("");
   useEffect(() => {
@@ -23,7 +27,7 @@ function LocalPreview({ file, alt }: { file: File; alt: string }) {
   return url ? <img src={url} alt={alt} className="h-full w-full rounded-md object-cover" /> : null;
 }
 
-export default function VerificationSettings() {
+const VerificationSettings = forwardRef<IdentityVerificationSetupHandle, { setupMode?: boolean }>(function VerificationSettings({ setupMode = false }, ref) {
   const [verification, setVerification] = useState<VerificationStatus | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -102,12 +106,15 @@ export default function VerificationSettings() {
     }, "image/jpeg", 0.92);
   }
 
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
+  async function submitDocuments(requireComplete: boolean) {
     setError("");
     setNotice("");
+    const hasAnyInput = Boolean(front || back || selfie || idNumber.trim() || noBack);
+    if (!requireComplete && !hasAnyInput) return;
     if (!front || !selfie || !idNumber.trim() || (!back && !noBack)) {
-      setError("Add the front of your ID, its back or mark that it has no back, and a selfie.");
+      const message = "Add the front of your ID, its back or mark that it has no back, and a selfie.";
+      setError(message);
+      if (!requireComplete) throw new Error(message);
       return;
     }
     setBusy(true);
@@ -123,11 +130,22 @@ export default function VerificationSettings() {
       if (backInput.current) backInput.current.value = "";
       await refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Submission failed. Please try again.");
+      const message = cause instanceof Error ? cause.message : "Submission failed. Please try again.";
+      setError(message);
+      if (!requireComplete) throw cause instanceof Error ? cause : new Error(message);
     } finally {
       setBusy(false);
     }
   }
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    await submitDocuments(true);
+  }
+
+  useImperativeHandle(ref, () => ({
+    submitForSetup: () => submitDocuments(false),
+  }));
 
   if (!verification && !error)
     return <ContentSkeleton label="Loading verification settings" variant="verification-settings" />;
@@ -278,11 +296,15 @@ export default function VerificationSettings() {
           <p className="pt-0.5 text-[11px] text-muted-foreground">Your documents are stored privately and reviewed by authorized administrators.</p>
           <p className="text-[11px] text-muted-foreground">Images must be JPG or PNG, up to 5 MB each. By submitting, you confirm these documents belong to you and consent to identity review.</p>
         </div>
-        <Button type="submit" className="w-full" disabled={busy || checking || Boolean(cameraTarget)}>{busy ? "Submitting securely…" : <><Upload className="size-4" />Submit for review</>}</Button>
+        {!setupMode && <Button type="submit" className="w-full" disabled={busy || checking || Boolean(cameraTarget)}>{busy ? "Submitting securely…" : <><Upload className="size-4" />Submit for review</>}</Button>}
       </form> : null}
     </CardContent>
   </Card>;
-}
+});
+
+VerificationSettings.displayName = "VerificationSettings";
+
+export default VerificationSettings;
 
 
 

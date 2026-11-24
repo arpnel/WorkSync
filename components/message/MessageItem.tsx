@@ -1,7 +1,7 @@
 "use client";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import MessageAttachment from "./MessageAttachment";
+import MessageAttachment, { attachmentName } from "./MessageAttachment";
 import CallMessage from "@/components/calls/CallMessage";
 import { cn } from "@/lib/utils";
 
@@ -36,6 +36,8 @@ export default function MessageItem({
     .toUpperCase();
 
   const isMe = sender === "me";
+  const normalizeFilename = (value: string) => value.toLocaleLowerCase().replace(/[^a-z0-9]/g, "");
+  const showContent = !attachmentUrl || normalizeFilename(content) !== normalizeFilename(attachmentName(attachmentUrl));
 
   return (
     <div
@@ -63,9 +65,9 @@ export default function MessageItem({
             isMe ? "bg-blue-500 text-white" : "bg-muted",
           )}
         >
-          <CallMessage content={content} />
+          {showContent && <CallMessage content={content} />}
           {attachmentUrl && (
-            <div className="mt-2">
+            <div className={showContent ? "mt-2" : undefined}>
               <MessageAttachment path={attachmentUrl} type={attachmentType} recordId={id} />
             </div>
           )}

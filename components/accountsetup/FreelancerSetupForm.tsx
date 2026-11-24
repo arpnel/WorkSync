@@ -6,7 +6,7 @@ import { ProfileSection } from "./sections/ProfileSection";
 import { FreelancerInformationSection } from "./sections/FreelancerInformationSection";
 
 import { useFreelancerSetup } from "./hooks/useFreelancerSetup";
-import VerificationSettings from "@/components/account/VerificationSettings";
+import VerificationSettings, { type IdentityVerificationSetupHandle } from "@/components/account/VerificationSettings";
 import TaxDocuments, { type TaxDocumentsSetupHandle } from "@/components/account/TaxDocuments";
 import FreelancerTaxDeclaration, { type FreelancerTaxDeclarationHandle } from "@/components/account/FreelancerTaxDeclaration";
 import { Button } from "@/components/ui/button";
@@ -72,6 +72,7 @@ export function FreelancerSetupForm() {
   const [tinError, setTinError] = useState("");
   const taxDocumentsRef = useRef<TaxDocumentsSetupHandle>(null);
   const taxDeclarationRef = useRef<FreelancerTaxDeclarationHandle>(null);
+  const identityVerificationRef = useRef<IdentityVerificationSetupHandle>(null);
   const hasExistingAccount = hasClientProfile || hasFreelancerProfile;
 
   useEffect(() => {
@@ -170,6 +171,7 @@ export function FreelancerSetupForm() {
           ? result.reason instanceof Error ? result.reason.message : "A document could not be submitted."
           : "");
       if (documentErrors.length) throw new Error(documentErrors.join(" "));
+      await identityVerificationRef.current?.submitForSetup();
       setDocumentationVersion((version) => version + 1);
     }, true);
   }
@@ -342,7 +344,7 @@ export function FreelancerSetupForm() {
         </div>
       </section>
       {/* Submit */}
-      <VerificationSettings />
+      <VerificationSettings ref={identityVerificationRef} setupMode />
       </>}
 
       <div className="flex flex-col-reverse justify-between gap-2 sm:flex-row">

@@ -1,11 +1,10 @@
 "use client";
 
-import Image from "next/image";
 import CallButton from "@/components/calls/CallButton";
 import CallMessage from "@/components/calls/CallMessage";
+import MessageAttachment, { attachmentName } from "@/components/message/MessageAttachment";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  FileText,
   Loader2,
   ChevronUp,
   MessageSquare,
@@ -46,45 +45,20 @@ function initials(name: string) {
     .toUpperCase();
 }
 
-function MessageAttachment({ message }: { message: WorkspaceMessage }) {
+function ProjectMessageAttachment({ message }: { message: WorkspaceMessage }) {
   if (!message.attachmentUrl) return null;
-
-  if (message.attachmentType?.startsWith("image/")) {
-    return (
-      <a href={message.attachmentUrl} target="_blank" rel="noreferrer">
-        <Image
-          src={message.attachmentUrl}
-          alt="Message attachment"
-          width={360}
-          height={240}
-          unoptimized
-          className="mt-2 max-h-60 w-auto max-w-full rounded-md object-contain"
-        />
-      </a>
-    );
-  }
-
   if (message.attachmentType?.startsWith("video/")) {
-    return (
-      <video
-        src={message.attachmentUrl}
-        controls
-        className="mt-2 max-h-60 max-w-full rounded-md"
-      />
-    );
+    return <video src={message.attachmentUrl} controls className="mt-2 max-h-60 max-w-full rounded-md" />;
   }
+  return <MessageAttachment path={message.attachmentUrl} type={message.attachmentType} recordId={message.id} />;
+}
 
-  return (
-    <a
-      href={message.attachmentUrl}
-      target="_blank"
-      rel="noreferrer"
-      className="mt-2 flex items-center gap-2 rounded-md border border-current/20 px-3 py-2 text-xs"
-    >
-      <FileText className="h-4 w-4 shrink-0" />
-      Open attachment
-    </a>
-  );
+function messageCaption(message: WorkspaceMessage) {
+  if (!message.attachmentUrl || !message.message.trim()) return message.message;
+  const normalizeFilename = (value: string) => value.toLocaleLowerCase().replace(/[^a-z0-9]/g, "");
+  return normalizeFilename(message.message) === normalizeFilename(attachmentName(message.attachmentUrl))
+    ? ""
+    : message.message;
 }
 
 export function ProjectChatPanel({
@@ -248,12 +222,12 @@ export function ProjectChatPanel({
                         : "rounded-lg bg-muted px-3 py-2 text-sm"
                     }
                   >
-                    {item.message && (
+                    {messageCaption(item) && (
                       <div className="whitespace-pre-wrap break-words">
-                        <CallMessage content={item.message} />
+                        <CallMessage content={messageCaption(item)} />
                       </div>
                     )}
-                    <MessageAttachment message={item} />
+                    <ProjectMessageAttachment message={item} />
                   </div>
                 </div>
               </div>

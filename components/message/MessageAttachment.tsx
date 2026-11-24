@@ -34,13 +34,15 @@ export default function MessageAttachment({
   const [loading, setLoading] = useState(false);
   const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(
-    /^https?:\/\//i.test(path) && type?.startsWith("image/") ? path : null,
+    /^https?:\/\//i.test(path) && (type?.startsWith("image/") || type?.startsWith("video/")) ? path : null,
   );
   const isImage = type?.startsWith("image/") ?? false;
+  const isVideo = type?.startsWith("video/") ?? false;
+  const isPreviewableMedia = isImage || isVideo;
 
   useEffect(() => {
-    if (!isImage || /^https?:\/\//i.test(path)) {
-      setPreviewUrl(isImage ? path : null);
+    if (!isPreviewableMedia || /^https?:\/\//i.test(path)) {
+      setPreviewUrl(isPreviewableMedia ? path : null);
       return;
     }
     let active = true;
@@ -51,6 +53,10 @@ export default function MessageAttachment({
         if (active) setPreviewUrl(url);
       })
       .catch(() => {
+        if (!isImage) {
+          if (active) setPreviewUrl(null);
+          return;
+        }
         void supabase.storage
           .from("message-attachments")
           .download(path)
@@ -68,7 +74,7 @@ export default function MessageAttachment({
       active = false;
       if (downloadedPreview) URL.revokeObjectURL(downloadedPreview);
     };
-  }, [isImage, path, recordId]);
+  }, [isImage, isPreviewableMedia, path, recordId]);
 
   const open = async () => {
     if (loading) return;
@@ -100,6 +106,9 @@ export default function MessageAttachment({
     : type?.startsWith("image/")
       ? ImageIcon
       : FileText;
+  if (isVideo && previewUrl) {
+    return <video src={previewUrl} controls preload="metadata" className="mt-2 max-h-72 max-w-full rounded-xl" aria-label={attachmentName(path)} />;
+  }
   if (isImage && previewUrl) {
     return (
       <>
@@ -164,7 +173,7 @@ export default function MessageAttachment({
         type="button"
         disabled={loading}
         onClick={() => void open()}
-        className="flex w-full min-w-0 items-center gap-2 rounded-xl border border-current/20 p-3 text-left text-xs hover:opacity-80"
+        className="flex w-full min-w-0 cursor-pointer items-center justify-center gap-2 text-center text-xs underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         title={isImage ? "Preview image" : "Open attachment in a new tab"}
       >
         <Icon className="h-5 w-5 shrink-0" />

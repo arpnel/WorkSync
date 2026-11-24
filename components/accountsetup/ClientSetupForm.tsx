@@ -3,13 +3,15 @@ import ContentSkeleton from "@/components/shared/ContentSkeleton";
 
 import { BasicInformationSection } from "./sections/BasicInformationSection";
 import { ProfileSection } from "./sections/ProfileSection";
+import { ClientHiringTypeSection } from "./sections/ClientHiringTypeSection";
 import { useClientSetup } from "./hooks/useClientSetup";
 import VerificationSettings from "@/components/account/VerificationSettings";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ArrowRight, Check } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { validateClientSetup } from "@/lib/validation/account-setup.validation";
 import type { ClientSetupValues } from "@/types/account-setup.types";
+import type { IdentityVerificationSetupHandle } from "@/components/account/VerificationSettings";
 
 const setupSteps = [
   { title: "Personal Profile", detail: "Basic information and profile" },
@@ -35,6 +37,7 @@ export function ClientSetupForm() {
   } = useClientSetup();
   const [step, setStep] = useState(0);
   const [stageErrors, setStageErrors] = useState<Partial<Record<keyof ClientSetupValues, string>>>({});
+  const identityVerificationRef = useRef<IdentityVerificationSetupHandle>(null);
 
   function handleBasicInformationChange(field: keyof ClientSetupValues, value: ClientSetupValues[keyof ClientSetupValues]) {
     handleChange(field, value);
@@ -63,7 +66,9 @@ export function ClientSetupForm() {
       return;
     }
     setStageErrors({});
-    void handleSubmit();
+    void handleSubmit(async () => {
+      await identityVerificationRef.current?.submitForSetup();
+    });
   }
 
   if (isLoadingProfile)
@@ -126,7 +131,8 @@ export function ClientSetupForm() {
       </>}
 
       {step === 1 && <>
-      <VerificationSettings />
+      <ClientHiringTypeSection />
+      <VerificationSettings ref={identityVerificationRef} setupMode />
 
       <div className="flex flex-col-reverse justify-between gap-2 sm:flex-row">
         <Button type="button" variant="outline" onClick={() => setStep(0)}><ArrowLeft /> Back</Button>

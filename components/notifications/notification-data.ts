@@ -6,7 +6,6 @@ export type NotificationKind =
   | "agreement"
   | "listing"
   | "system";
-
 export function getNotificationKind(type: string | null): NotificationKind {
   if (type?.includes("message")) return "message";
   if (type?.includes("contract") || type?.includes("agreement"))

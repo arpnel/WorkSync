@@ -27,6 +27,20 @@ export interface NotificationBatch {
 
 const NOTIFICATION_PAGE_SIZE = 10;
 
+export function formatNotificationDescription(
+  message: string | null | undefined,
+) {
+  if (!message) return "";
+  return message.replace(/\(([a-z][a-z0-9]*_[a-z0-9_]+)\):/gi, (_match, rawCategory: string) => {
+    const category = rawCategory
+      .split(/[_ -]+/)
+      .filter(Boolean)
+      .map((word) => word[0].toUpperCase() + word.slice(1).toLowerCase())
+      .join(" ");
+    return ` — ${category}:`;
+  });
+}
+
 async function currentUser() {
   try {
     const {
@@ -233,7 +247,7 @@ async function fetchNotifications(
       title: item.title || "Notification",
       description: item.message?.includes(CALL_PREFIX)
         ? "Video call invitation"
-        : item.message || "",
+        : formatNotificationDescription(item.message),
       relatedId: item.related_id,
       unread: !item.is_read,
       createdAt: item.created_at,

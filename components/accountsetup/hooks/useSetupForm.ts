@@ -204,11 +204,7 @@ export function useSetupForm(role: "client" | "freelancer") {
       profileSaved = true;
       if (role === "freelancer") setHasFreelancerProfile(true);
       await afterProfileSaved?.();
-      toast.success(
-        stayOnPage
-          ? "Profile saved. You can submit your seller and tax documents below."
-          : "Profile setup saved. Identity verification has its own status.",
-      );
+      toast.success("Profile saved.");
       if (!stayOnPage) {
         router.push("/home/dashboard");
         router.refresh();
